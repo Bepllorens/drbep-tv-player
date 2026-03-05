@@ -29,7 +29,7 @@
 
     <LinearLayout
         android:id="@+id/channelOverlay"
-        android:layout_width="400dp"
+        android:layout_width="460dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
         android:background="#E61A1A1A"
@@ -44,6 +44,27 @@
             android:text="Canales"
             android:textColor="#FFFFFF"
             android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/filterText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="6dp"
+            android:text="Filtro: Todos"
+            android:textColor="#A7D0FF"
+            android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="10dp"
+            android:text="Usa ←/→ para cambiar plataforma o grupo"
+            android:textColor="#B0B0B0"
+            android:textSize="13sp" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/channelList"

@@ -15,6 +15,7 @@ import android.widget.TextView;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
@@ -36,8 +37,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -60,10 +63,15 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_FAVORITES = "favorite_channel_ids";
     private static final String PREF_REMINDERS = "channel_reminders";
+    private static final int FILTER_ALL = 0;
+    private static final int FILTER_PLATFORM = 1;
+    private static final int FILTER_CUSTOM_GROUP = 2;
+    private static final int FILTER_VOD = 3;
 
     private PlayerView playerView;
     private TextView errorText;
     private TextView statusText;
+    private TextView filterText;
     private View channelOverlay;
     private RecyclerView channelList;
 
@@ -73,6 +81,7 @@ public class MainActivity extends FragmentActivity {
 
     private final List<ChannelItem> channels = new ArrayList<>();
     private final List<ChannelItem> allChannels = new ArrayList<>();
+    private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final List<ReminderItem> reminders = new ArrayList<>();
     private ChannelAdapter channelAdapter;
@@ -85,7 +94,9 @@ public class MainActivity extends FragmentActivity {
     private boolean favoritesOnly;
     private long lastMenuPressedAtMs;
     private String lastChannelId;
+    private String selectedFilterKey = "all";
     private final Set<String> favoriteChannelIds = new HashSet<>();
+    private final Map<String, StreamInfo> streamInfoByChannelId = new HashMap<>();
 
     private final Runnable hideOverlayRunnable = this::hideOverlay;
     private final Runnable hideStatusRunnable = () -> {
@@ -109,6 +120,7 @@ public class MainActivity extends FragmentActivity {
         playerView = findViewById(R.id.playerView);
         errorText = findViewById(R.id.errorText);
         statusText = findViewById(R.id.statusText);
+        filterText = findViewById(R.id.filterText);
         channelOverlay = findViewById(R.id.channelOverlay);
         channelList = findViewById(R.id.channelList);
 
@@ -160,11 +172,13 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
                 ChannelItem current = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
-                if (!usingPlaybackFallback && current != null && current.fallbackPlayUrl != null && !current.fallbackPlayUrl.isEmpty()) {
+                StreamInfo cachedStreamInfo = current == null ? null : streamInfoByChannelId.get(current.id);
+                boolean allowFallback = cachedStreamInfo == null || (!cachedStreamInfo.encrypted && !"dash".equals(safeLower(cachedStreamInfo.type)));
+                if (allowFallback && !usingPlaybackFallback && current != null && current.fallbackPlayUrl != null && !current.fallbackPlayUrl.isEmpty()) {
                     usingPlaybackFallback = true;
                     Log.w(TAG, "primary playback failed, retrying fallback URL", error);
                     showStatus("Reintentando modo compat...");
-                    playChannel(current, true, true);
+                    playChannel(current, true, true, cachedStreamInfo);
                     return;
                 }
                 String msg = "Error de reproduccion: " + error.getMessage();
@@ -195,71 +209,260 @@ public class MainActivity extends FragmentActivity {
     private void loadChannels() {
         showStatus("Cargando canales...");
         ioExecutor.execute(() -> {
-            HttpURLConnection conn = null;
             try {
-                URL url = new URL(baseUrl + "/api/channels");
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(15000);
-                conn.setRequestProperty("Accept", "application/json");
-
-                int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) {
-                    throw new IllegalStateException("HTTP " + code + " cargando canales");
-                }
-
-                String body = readAll(conn.getInputStream());
-                JSONArray arr = new JSONArray(body);
-                List<ChannelItem> parsed = new ArrayList<>(arr.length());
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject o = arr.optJSONObject(i);
-                    if (o == null) {
-                        continue;
-                    }
-                    String id = o.optString("id", "").trim();
-                    String name = o.optString("name", "Canal").trim();
-                    String logo = o.optString("logo", "").trim();
-                    String group = o.optString("group", "").trim();
-                    String playUrl = o.optString("play_url", "").trim();
-                    if (id.isEmpty() || playUrl.isEmpty()) {
-                        continue;
-                    }
-                    if (playUrl.startsWith("/")) {
-                        playUrl = baseUrl + playUrl;
-                    }
-                    String fallbackUrl = buildFallbackPlayUrl(id);
-                    parsed.add(new ChannelItem(id, name, logo, group, playUrl, fallbackUrl, i));
-                }
-
-                uiHandler.post(() -> {
-                    allChannels.clear();
-                    allChannels.addAll(parsed);
-                    rebuildVisibleChannels(lastChannelId, lastChannelId);
-                    channelAdapter.notifyDataSetChanged();
-                    if (channels.isEmpty()) {
-                        showError("No hay canales disponibles en la API");
-                        return;
-                    }
-                    int startIndex = 0;
-                    if (lastChannelId != null && !lastChannelId.trim().isEmpty()) {
-                        int found = findChannelIndexById(lastChannelId);
-                        if (found >= 0) {
-                            startIndex = found;
-                        }
-                    }
-                    tuneToIndex(startIndex, true);
-                    loadEpgNow();
-                });
-            } catch (Exception e) {
-                Log.e(TAG, "load channels failed", e);
-                uiHandler.post(() -> showError("No se pudieron cargar canales: " + e.getMessage()));
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
+                CatalogLoadResult result = fetchCatalogChannels();
+                uiHandler.post(() -> applyLoadedChannels(result));
+            } catch (Exception catalogErr) {
+                Log.w(TAG, "catalog load failed, fallback to /api/channels", catalogErr);
+                try {
+                    CatalogLoadResult fallback = fetchActiveChannels();
+                    uiHandler.post(() -> applyLoadedChannels(fallback));
+                } catch (Exception e) {
+                    Log.e(TAG, "load channels failed", e);
+                    uiHandler.post(() -> showError("No se pudieron cargar canales: " + e.getMessage()));
                 }
             }
         });
+    }
+
+    private CatalogLoadResult fetchCatalogChannels() throws Exception {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(baseUrl + "/api/channels/catalog?include_disabled=0");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("Accept", "application/json");
+
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException("HTTP " + code + " cargando catalogo");
+            }
+
+            String body = readAll(conn.getInputStream());
+            JSONObject payload = new JSONObject(body);
+            JSONArray arr = payload.optJSONArray("channels");
+            if (arr == null) {
+                arr = new JSONArray();
+            }
+
+            List<ChannelItem> parsed = new ArrayList<>(arr.length());
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) {
+                    continue;
+                }
+                String id = o.optString("id", "").trim();
+                if (id.isEmpty() || "null".equalsIgnoreCase(id)) {
+                    long numericID = o.optLong("id", 0L);
+                    if (numericID > 0) {
+                        id = String.valueOf(numericID);
+                    }
+                }
+                String name = o.optString("name", "Canal").trim();
+                if ("0".equals(id) || id.isEmpty() || name.isEmpty()) {
+                    continue;
+                }
+
+                String logo = o.optString("logo", "").trim();
+                String sourceGroup = o.optString("group", "").trim();
+                String playbackUrl = baseUrl + "/live/" + id;
+                String fallbackUrl = buildFallbackPlayUrl(id);
+                String externalId = o.optString("external_id", "").trim();
+                String tvgId = o.optString("tvg_id", "").trim();
+
+                int platformId = (int) o.optLong("platform_id", 0L);
+                String platformName = o.optString("platform_name", "").trim();
+                int sortOrder = o.optInt("sort_order", Integer.MAX_VALUE);
+                if (sortOrder <= 0) {
+                    sortOrder = o.optInt("dial", i + 1);
+                }
+                boolean isVod = o.optBoolean("is_vod", false) || isLikelyVod(externalId, name, tvgId, sourceGroup);
+
+                List<String> customGroups = new ArrayList<>();
+                JSONArray groupsArr = o.optJSONArray("custom_groups");
+                if (groupsArr != null) {
+                    for (int j = 0; j < groupsArr.length(); j++) {
+                        String g = groupsArr.optString(j, "").trim();
+                        if (!g.isEmpty()) {
+                            customGroups.add(g);
+                        }
+                    }
+                }
+
+                parsed.add(new ChannelItem(
+                        id,
+                        name,
+                        logo,
+                        sourceGroup,
+                        playbackUrl,
+                        fallbackUrl,
+                        i,
+                        sortOrder,
+                        isVod,
+                        platformId,
+                        platformName,
+                        customGroups
+                ));
+            }
+
+            long activePlatformID = payload.optLong("active_platform_id", 0L);
+            List<ChannelFilter> parsedFilters = buildFiltersFromCatalog(parsed, activePlatformID);
+            String defaultFilterKey = "all";
+            return new CatalogLoadResult(parsed, parsedFilters, defaultFilterKey);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private CatalogLoadResult fetchActiveChannels() throws Exception {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(baseUrl + "/api/channels");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("Accept", "application/json");
+
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException("HTTP " + code + " cargando canales");
+            }
+
+            String body = readAll(conn.getInputStream());
+            JSONArray arr = new JSONArray(body);
+            List<ChannelItem> parsed = new ArrayList<>(arr.length());
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) {
+                    continue;
+                }
+                String id = o.optString("id", "").trim();
+                String name = o.optString("name", "Canal").trim();
+                String logo = o.optString("logo", "").trim();
+                String playUrl = o.optString("play_url", "").trim();
+                String sourceGroup = o.optString("group", "").trim();
+                if (id.isEmpty() || playUrl.isEmpty()) {
+                    continue;
+                }
+                if (playUrl.startsWith("/")) {
+                    playUrl = baseUrl + playUrl;
+                }
+                String fallbackUrl = buildFallbackPlayUrl(id);
+                parsed.add(new ChannelItem(
+                        id,
+                        name,
+                        logo,
+                        sourceGroup,
+                        playUrl,
+                        fallbackUrl,
+                        i,
+                        i + 1,
+                        isLikelyVod("", name, "", sourceGroup),
+                        0,
+                        "Plataforma activa",
+                        new ArrayList<>()
+                ));
+            }
+
+            List<ChannelFilter> parsedFilters = new ArrayList<>();
+            parsedFilters.add(new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
+            return new CatalogLoadResult(parsed, parsedFilters, "all");
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformID) {
+        LinkedHashMap<String, ChannelFilter> byKey = new LinkedHashMap<>();
+        byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
+
+        Map<Integer, String> platformNames = new LinkedHashMap<>();
+        Set<String> customGroupNames = new HashSet<>();
+        for (ChannelItem item : parsed) {
+            if (item.platformId > 0 && !platformNames.containsKey(item.platformId)) {
+                String pName = item.platformName == null ? "" : item.platformName.trim();
+                if (pName.isEmpty()) {
+                    pName = "ID " + item.platformId;
+                }
+                platformNames.put(item.platformId, pName);
+            }
+            for (String g : item.customGroups) {
+                String trimmed = g == null ? "" : g.trim();
+                if (!trimmed.isEmpty()) {
+                    customGroupNames.add(trimmed);
+                }
+            }
+        }
+
+        if (activePlatformID > 0) {
+            int activeID = (int) activePlatformID;
+            String activeName = platformNames.containsKey(activeID) ? platformNames.get(activeID) : ("ID " + activeID);
+            String key = "platform:" + activeID;
+            byKey.put(key, new ChannelFilter(key, "Plataforma activa: " + activeName, FILTER_PLATFORM, activeID, ""));
+        }
+
+        List<Integer> platformIDs = new ArrayList<>(platformNames.keySet());
+        Collections.sort(platformIDs);
+        for (int pid : platformIDs) {
+            String key = "platform:" + pid;
+            if (byKey.containsKey(key)) {
+                continue;
+            }
+            byKey.put(key, new ChannelFilter(key, "Plataforma: " + platformNames.get(pid), FILTER_PLATFORM, pid, ""));
+        }
+
+        List<String> groupNames = new ArrayList<>(customGroupNames);
+        groupNames.sort(String::compareToIgnoreCase);
+        for (String g : groupNames) {
+            String key = "custom-group:" + g.toLowerCase(Locale.ROOT);
+            byKey.put(key, new ChannelFilter(key, "Grupo: " + g, FILTER_CUSTOM_GROUP, 0, g));
+        }
+        byKey.put("vod", new ChannelFilter("vod", "VOD", FILTER_VOD, 0, ""));
+
+        return new ArrayList<>(byKey.values());
+    }
+
+    private void applyLoadedChannels(CatalogLoadResult result) {
+        allChannels.clear();
+        allChannels.addAll(result.channels);
+
+        filters.clear();
+        filters.addAll(result.filters);
+
+        int foundFilterIndex = findFilterIndexByKey(selectedFilterKey);
+        if (foundFilterIndex < 0) {
+            foundFilterIndex = findFilterIndexByKey(result.defaultFilterKey);
+        }
+        if (foundFilterIndex < 0) {
+            foundFilterIndex = 0;
+        }
+        selectedFilterKey = filters.isEmpty() ? "all" : filters.get(foundFilterIndex).key;
+
+        rebuildVisibleChannels(lastChannelId, lastChannelId);
+        channelAdapter.notifyDataSetChanged();
+        updateFilterText();
+
+        if (channels.isEmpty()) {
+            showError("No hay canales disponibles para este filtro");
+            return;
+        }
+
+        int startIndex = 0;
+        if (lastChannelId != null && !lastChannelId.trim().isEmpty()) {
+            int found = findChannelIndexById(lastChannelId);
+            if (found >= 0) {
+                startIndex = found;
+            }
+        }
+        tuneToIndex(startIndex, true);
+        loadEpgNow();
     }
 
     private void tuneToIndex(int index, boolean autoPlay) {
@@ -281,19 +484,38 @@ public class MainActivity extends FragmentActivity {
         ChannelItem ch = channels.get(index);
         saveLastChannelId(ch.id);
         usingPlaybackFallback = false;
-        playChannel(ch, autoPlay, false);
+        StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
+        playChannel(ch, autoPlay, false, cachedStreamInfo);
+        resolveStreamInfoAndReplayIfNeeded(ch, autoPlay);
 
         hideError();
         showStatus(ch.name);
     }
 
-    private void playChannel(ChannelItem ch, boolean autoPlay, boolean useFallback) {
+    private void playChannel(ChannelItem ch, boolean autoPlay, boolean useFallback, StreamInfo streamInfo) {
         if (ch == null || player == null) {
             return;
         }
+        String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
         String targetUrl = useFallback && ch.fallbackPlayUrl != null && !ch.fallbackPlayUrl.isEmpty()
                 ? ch.fallbackPlayUrl
                 : ch.playUrl;
+        String playUrlLower = ch.playUrl == null ? "" : ch.playUrl.toLowerCase(Locale.ROOT);
+        boolean looksDash = playUrlLower.contains(".mpd");
+        if (!useFallback) {
+            if (streamInfo != null) {
+                if ("widevine".equals(drmType)) {
+                    targetUrl = baseUrl + "/proxy/manifest/" + ch.id;
+                } else if ("clearkey".equals(drmType)) {
+                    targetUrl = baseUrl + "/proxy/manifest/" + ch.id;
+                } else if (streamInfo.encrypted || looksDash) {
+                    targetUrl = baseUrl + "/proxy/manifest/" + ch.id + "?nodrm=1";
+                }
+            } else {
+                // Default path before stream info arrives: use proxy manifest.
+                targetUrl = baseUrl + "/proxy/manifest/" + ch.id;
+            }
+        }
         usingPlaybackFallback = useFallback;
         if (targetUrl == null || targetUrl.trim().isEmpty()) {
             showError("URL de reproduccion vacia");
@@ -301,11 +523,43 @@ public class MainActivity extends FragmentActivity {
         }
 
         String mime = inferMimeType(targetUrl);
+        if ((mime == null || mime.trim().isEmpty()) && streamInfo != null && streamInfo.type != null) {
+            String t = safeLower(streamInfo.type);
+            if ("dash".equals(t)) {
+                mime = MimeTypes.APPLICATION_MPD;
+            } else if ("hls".equals(t)) {
+                mime = MimeTypes.APPLICATION_M3U8;
+            }
+        }
+        if ((mime == null || mime.trim().isEmpty()) && looksDash) {
+            mime = MimeTypes.APPLICATION_MPD;
+        }
+        if ((mime == null || mime.trim().isEmpty()) && !useFallback && streamInfo == null && targetUrl.contains("/proxy/manifest/")) {
+            mime = MimeTypes.APPLICATION_MPD;
+        }
+        if ((mime == null || mime.trim().isEmpty()) && (targetUrl.contains("/proxy/manifest/") || targetUrl.contains("/drm/manifest/"))) {
+            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
+            if ("hls".equals(streamType)) {
+                mime = MimeTypes.APPLICATION_M3U8;
+            } else {
+                mime = MimeTypes.APPLICATION_MPD;
+            }
+        }
         MediaItem.Builder builder = new MediaItem.Builder().setUri(targetUrl);
         if (mime != null && !mime.trim().isEmpty()) {
             builder.setMimeType(mime);
         }
+        if ("widevine".equals(drmType)) {
+            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                    .setLicenseUri(baseUrl + "/api/widevine/" + ch.id)
+                    .build());
+        } else if ("clearkey".equals(drmType)) {
+            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                    .setLicenseUri(baseUrl + "/api/clearkey/" + ch.id)
+                    .build());
+        }
 
+        Log.i(TAG, "playChannel id=" + ch.id + " name=" + ch.name + " drmType=" + drmType + " encrypted=" + (streamInfo != null && streamInfo.encrypted) + " mime=" + (mime == null ? "" : mime) + " target=" + targetUrl + " useFallback=" + useFallback);
         player.setMediaItem(builder.build());
         player.prepare();
         player.setPlayWhenReady(autoPlay);
@@ -314,13 +568,111 @@ public class MainActivity extends FragmentActivity {
         showStatus(ch.name + mode);
     }
 
+    private void resolveStreamInfoAndReplayIfNeeded(ChannelItem ch, boolean autoPlay) {
+        if (ch == null || ch.id == null || ch.id.trim().isEmpty()) {
+            return;
+        }
+        final String channelId = ch.id.trim();
+        final String channelName = ch.name;
+        ioExecutor.execute(() -> {
+            StreamInfo info = streamInfoByChannelId.get(channelId);
+            if (info == null) {
+                info = fetchStreamInfo(channelId);
+                if (info != null) {
+                    streamInfoByChannelId.put(channelId, info);
+                }
+            }
+            if (info == null) {
+                return;
+            }
+            boolean requiresReplay = "widevine".equals(safeLower(info.drmType)) || info.encrypted;
+            if (!requiresReplay) {
+                return;
+            }
+            final StreamInfo resolved = info;
+            uiHandler.post(() -> {
+                ChannelItem current = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
+                if (current == null || !channelId.equals(current.id)) {
+                    return;
+                }
+                playChannel(current, autoPlay, false, resolved);
+                if ("widevine".equals(safeLower(resolved.drmType))) {
+                    showStatus(channelName + " (Widevine)");
+                }
+            });
+        });
+    }
+
+    private StreamInfo fetchStreamInfo(String channelId) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(baseUrl + "/api/stream/" + channelId);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(20000);
+            conn.setRequestProperty("Accept", "application/json");
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                return null;
+            }
+            JSONObject o = new JSONObject(readAll(conn.getInputStream()));
+            StreamInfo info = new StreamInfo();
+            info.drmType = o.optString("drm_type", "").trim();
+            info.licenseUrl = o.optString("license_url", "").trim();
+            info.type = o.optString("type", "").trim();
+            info.encrypted = o.optBoolean("encrypted", false);
+            return info;
+        } catch (Exception e) {
+            Log.w(TAG, "stream info fetch failed for channel " + channelId, e);
+            return null;
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private static String safeLower(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isLikelyVod(String externalId, String name, String tvgId, String groupTitle) {
+        String n = safeLower(name);
+        String t = safeLower(tvgId);
+        String g = safeLower(groupTitle);
+        return containsVodToken(n) || containsVodToken(t) || containsVodToken(g);
+    }
+
+    private static boolean containsVodToken(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        if (text.contains("vodafone")) {
+            return false;
+        }
+        if (text.equals("vod")) {
+            return true;
+        }
+        return text.contains(" vod ")
+                || text.startsWith("vod ")
+                || text.endsWith(" vod")
+                || text.contains("vod/")
+                || text.contains("/vod")
+                || text.contains("vod-")
+                || text.contains("-vod")
+                || text.contains("_vod")
+                || text.contains("vod_")
+                || text.contains("vod:");
+    }
+
     private String buildFallbackPlayUrl(String id) {
         if (id == null || id.trim().isEmpty()) {
             return "";
         }
         try {
             Long.parseLong(id.trim());
-            return baseUrl + "/play/" + id.trim();
+            return baseUrl + "/proxy/manifest/" + id.trim();
         } catch (Exception ignored) {
             return "";
         }
@@ -919,8 +1271,9 @@ public class MainActivity extends FragmentActivity {
             item.favorite = favoriteChannelIds.contains(item.id);
         }
         target.sort((a, b) -> {
-            if (a.favorite != b.favorite) {
-                return a.favorite ? -1 : 1;
+            int byDashboardOrder = Integer.compare(a.dashboardOrder, b.dashboardOrder);
+            if (byDashboardOrder != 0) {
+                return byDashboardOrder;
             }
             return Integer.compare(a.originalOrder, b.originalOrder);
         });
@@ -931,6 +1284,9 @@ public class MainActivity extends FragmentActivity {
 
         channels.clear();
         for (ChannelItem item : allChannels) {
+            if (!channelMatchesCurrentFilter(item)) {
+                continue;
+            }
             if (!favoritesOnly || item.favorite) {
                 channels.add(item);
             }
@@ -945,6 +1301,106 @@ public class MainActivity extends FragmentActivity {
         if (selectedOverlayIndex < 0 && !channels.isEmpty()) {
             selectedOverlayIndex = 0;
         }
+    }
+
+    private boolean channelMatchesCurrentFilter(ChannelItem item) {
+        ChannelFilter filter = getSelectedFilter();
+        if (filter == null || filter.type == FILTER_ALL) {
+            return true;
+        }
+        if (filter.type == FILTER_PLATFORM) {
+            return item.platformId == filter.platformId && !item.isVod;
+        }
+        if (filter.type == FILTER_CUSTOM_GROUP) {
+            for (String name : item.customGroups) {
+                if (name != null && name.equalsIgnoreCase(filter.groupName)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (filter.type == FILTER_VOD) {
+            return item.isVod;
+        }
+        return true;
+    }
+
+    private ChannelFilter getSelectedFilter() {
+        for (ChannelFilter filter : filters) {
+            if (filter.key.equals(selectedFilterKey)) {
+                return filter;
+            }
+        }
+        return filters.isEmpty() ? null : filters.get(0);
+    }
+
+    private int findFilterIndexByKey(String key) {
+        if (key == null || key.trim().isEmpty()) {
+            return -1;
+        }
+        for (int i = 0; i < filters.size(); i++) {
+            if (key.equals(filters.get(i).key)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void cycleFilter(int delta) {
+        if (filters.isEmpty()) {
+            return;
+        }
+        int currentFilterIndex = findFilterIndexByKey(selectedFilterKey);
+        if (currentFilterIndex < 0) {
+            currentFilterIndex = 0;
+        }
+
+        int next = currentFilterIndex + delta;
+        if (next < 0) {
+            next = filters.size() - 1;
+        }
+        if (next >= filters.size()) {
+            next = 0;
+        }
+
+        selectedFilterKey = filters.get(next).key;
+
+        String keepCurrentID = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : "";
+        String keepSelectedID = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) ? channels.get(selectedOverlayIndex).id : keepCurrentID;
+
+        rebuildVisibleChannels(keepCurrentID, keepSelectedID);
+        channelAdapter.notifyDataSetChanged();
+        updateFilterText();
+
+        if (channels.isEmpty()) {
+            showStatus("Sin canales para el filtro seleccionado");
+            showOverlay();
+            return;
+        }
+
+        if (currentIndex < 0) {
+            tuneToIndex(0, true);
+        } else if (selectedOverlayIndex >= 0) {
+            channelList.scrollToPosition(selectedOverlayIndex);
+        }
+
+        ChannelFilter filter = getSelectedFilter();
+        if (filter != null) {
+            showStatus("Filtro: " + filter.label);
+        }
+        showOverlay();
+    }
+
+    private void updateFilterText() {
+        if (filterText == null) {
+            return;
+        }
+        ChannelFilter filter = getSelectedFilter();
+        if (filter == null) {
+            filterText.setText("Filtro: Todos");
+            return;
+        }
+        filterText.setText("Filtro: " + filter.label);
     }
 
     private void saveFavorites() {
@@ -1099,8 +1555,18 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (isOverlayVisible()) {
+                    cycleFilter(-1);
+                } else {
+                    showOverlay();
+                }
+                return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                showOverlay();
+                if (isOverlayVisible()) {
+                    cycleFilter(1);
+                } else {
+                    showOverlay();
+                }
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
@@ -1207,10 +1673,15 @@ public class MainActivity extends FragmentActivity {
         final String playUrl;
         final String fallbackPlayUrl;
         final int originalOrder;
+        final int dashboardOrder;
+        final boolean isVod;
+        final int platformId;
+        final String platformName;
+        final List<String> customGroups;
         boolean favorite;
         String nowProgram;
 
-        ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder) {
+        ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, int platformId, String platformName, List<String> customGroups) {
             this.id = id;
             this.name = name;
             this.logoUrl = logoUrl;
@@ -1218,7 +1689,47 @@ public class MainActivity extends FragmentActivity {
             this.playUrl = playUrl;
             this.fallbackPlayUrl = fallbackPlayUrl;
             this.originalOrder = originalOrder;
+            this.dashboardOrder = dashboardOrder;
+            this.isVod = isVod;
+            this.platformId = platformId;
+            this.platformName = platformName;
+            this.customGroups = customGroups;
             this.nowProgram = "";
+        }
+    }
+
+    private static final class StreamInfo {
+        String drmType;
+        String licenseUrl;
+        String type;
+        boolean encrypted;
+    }
+
+    private static final class ChannelFilter {
+        final String key;
+        final String label;
+        final int type;
+        final int platformId;
+        final String groupName;
+
+        ChannelFilter(String key, String label, int type, int platformId, String groupName) {
+            this.key = key;
+            this.label = label;
+            this.type = type;
+            this.platformId = platformId;
+            this.groupName = groupName;
+        }
+    }
+
+    private static final class CatalogLoadResult {
+        final List<ChannelItem> channels;
+        final List<ChannelFilter> filters;
+        final String defaultFilterKey;
+
+        CatalogLoadResult(List<ChannelItem> channels, List<ChannelFilter> filters, String defaultFilterKey) {
+            this.channels = channels;
+            this.filters = filters;
+            this.defaultFilterKey = defaultFilterKey;
         }
     }
 

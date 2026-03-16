@@ -21,7 +21,7 @@
 
 - [x] Crear `PlayerController`
 - [x] Crear `CatalogRepository`
-- [ ] Crear `EpgRepository`
+- [x] Crear `EpgRepository`
 - [ ] Crear `RecordingsRepository`
 - [ ] Crear `ReminderStore`
 - [ ] Reducir `MainActivity` por debajo de 1000 lineas

@@ -80,6 +80,7 @@ public class MainActivity extends FragmentActivity {
     private final List<ReminderItem> reminders = new ArrayList<>();
     private ChannelAdapter channelAdapter;
     private CatalogRepository catalogRepository;
+    private EpgRepository epgRepository;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -120,6 +121,7 @@ public class MainActivity extends FragmentActivity {
 
         baseUrl = resolveBaseUrl();
     catalogRepository = new CatalogRepository(baseUrl);
+    epgRepository = new EpgRepository(baseUrl);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         favoritesOnly = false;
@@ -280,41 +282,8 @@ public class MainActivity extends FragmentActivity {
 
     private void loadEpgNow() {
         ioExecutor.execute(() -> {
-            HttpURLConnection conn = null;
             try {
-                URL url = new URL(baseUrl + "/api/epg/now");
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(15000);
-                conn.setRequestProperty("Accept", "application/json");
-
-                int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) {
-                    return;
-                }
-
-                JSONArray arr = new JSONArray(readAll(conn.getInputStream()));
-                Map<String, String> updates = new HashMap<>();
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject o = arr.optJSONObject(i);
-                    if (o == null) {
-                        continue;
-                    }
-                    String channelId = String.valueOf(o.optLong("channel_id", -1L));
-                    if ("-1".equals(channelId)) {
-                        continue;
-                    }
-                    String title = o.optString("title", "").trim();
-                    int progress = o.optInt("progress", -1);
-                    if (title.isEmpty()) {
-                        continue;
-                    }
-                    if (progress >= 0) {
-                        title = title + " (" + progress + "%)";
-                    }
-                    updates.put(channelId, title);
-                }
+                Map<String, String> updates = epgRepository.fetchNowPrograms();
 
                 uiHandler.post(() -> {
                     epgNowByChannelId.clear();
@@ -326,10 +295,6 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "load epg now failed", e);
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
             }
         });
     }
@@ -395,32 +360,13 @@ public class MainActivity extends FragmentActivity {
         }
         showStatus(getString(R.string.status_loading_guide));
         ioExecutor.execute(() -> {
-            HttpURLConnection conn = null;
             try {
-                URL url = new URL(baseUrl + "/api/epg/channel/" + ch.id);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(15000);
-                conn.setRequestProperty("Accept", "application/json");
-                if (conn.getResponseCode() < 200 || conn.getResponseCode() >= 300) {
-                    throw new IllegalStateException("EPG HTTP " + conn.getResponseCode());
-                }
-
-                JSONArray arr = new JSONArray(readAll(conn.getInputStream()));
-                List<JSONObject> items = new ArrayList<>();
+                List<EpgRepository.EpgProgram> items = epgRepository.fetchChannelPrograms(ch.id, 8);
                 List<String> lines = new ArrayList<>();
-                int max = Math.min(arr.length(), 8);
-                for (int i = 0; i < max; i++) {
-                    JSONObject o = arr.optJSONObject(i);
-                    if (o == null) {
-                        continue;
-                    }
-                    String title = o.optString("title", "Sin titulo");
-                    String start = shortTime(o.optString("start_time", ""));
-                    String end = shortTime(o.optString("end_time", ""));
-                    lines.add(start + " - " + end + "  " + title);
-                    items.add(o);
+                for (EpgRepository.EpgProgram program : items) {
+                    String start = shortTime(program.startTime);
+                    String end = shortTime(program.endTime);
+                    lines.add(start + " - " + end + "  " + program.title);
                 }
 
                 uiHandler.post(() -> {
@@ -441,19 +387,15 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, "mini guide failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
             }
         });
     }
 
-    private void showProgramActionMenu(ChannelItem ch, JSONObject program) {
+    private void showProgramActionMenu(ChannelItem ch, EpgRepository.EpgProgram program) {
         if (ch == null || program == null) {
             return;
         }
-        String title = program.optString("title", "Programa");
+        String title = program.title == null || program.title.trim().isEmpty() ? "Programa" : program.title;
         String[] options = new String[]{"Grabar", "Recordatorio"};
         new AlertDialog.Builder(this)
                 .setTitle(title)
@@ -480,26 +422,14 @@ public class MainActivity extends FragmentActivity {
         if (ch == null) {
             return;
         }
-        String suffix = next ? "/next" : "/current";
         showStatus(getString(next ? R.string.status_searching_next_program : R.string.status_searching_current_program));
         ioExecutor.execute(() -> {
-            HttpURLConnection conn = null;
             try {
-                URL url = new URL(baseUrl + "/api/epg/channel/" + ch.id + suffix);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(15000);
-                conn.setRequestProperty("Accept", "application/json");
-                int code = conn.getResponseCode();
-                if (code == 404) {
+                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(ch.id, next);
+                if (program == null) {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;
                 }
-                if (code < 200 || code >= 300) {
-                    throw new IllegalStateException("EPG HTTP " + code);
-                }
-                JSONObject program = new JSONObject(readAll(conn.getInputStream()));
                 uiHandler.post(() -> {
                     if (reminderOnly) {
                         createReminder(ch, program);
@@ -510,15 +440,11 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, "fetch program failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
             }
         });
     }
 
-    private void scheduleProgram(ChannelItem ch, JSONObject program) {
+    private void scheduleProgram(ChannelItem ch, EpgRepository.EpgProgram program) {
         if (ch == null || program == null) {
             return;
         }
@@ -537,10 +463,10 @@ public class MainActivity extends FragmentActivity {
                 req.put("channel_id", Long.parseLong(ch.id));
                 req.put("channel_name", ch.name);
                 req.put("tvg_id", "");
-                req.put("program_title", program.optString("title", ch.name));
-                req.put("poster", program.optString("icon", ch.logoUrl));
-                req.put("start_time", program.optString("start_time", ""));
-                req.put("end_time", program.optString("end_time", ""));
+                req.put("program_title", program.title == null || program.title.trim().isEmpty() ? ch.name : program.title);
+                req.put("poster", program.icon == null || program.icon.trim().isEmpty() ? ch.logoUrl : program.icon);
+                req.put("start_time", program.startTime == null ? "" : program.startTime);
+                req.put("end_time", program.endTime == null ? "" : program.endTime);
 
                 byte[] payload = req.toString().getBytes(StandardCharsets.UTF_8);
                 conn.getOutputStream().write(payload);
@@ -561,16 +487,17 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
-    private void createReminder(ChannelItem ch, JSONObject program) {
+    private void createReminder(ChannelItem ch, EpgRepository.EpgProgram program) {
         if (ch == null || program == null) {
             return;
         }
-        long startAt = parseIsoMillis(program.optString("start_time", ""));
+        long startAt = parseIsoMillis(program.startTime);
         if (startAt <= 0) {
             showStatus(getString(R.string.status_failed_create_reminder));
             return;
         }
-        ReminderItem item = new ReminderItem(ch.id, ch.name, program.optString("title", "Programa"), startAt, false);
+        String title = program.title == null || program.title.trim().isEmpty() ? "Programa" : program.title;
+        ReminderItem item = new ReminderItem(ch.id, ch.name, title, startAt, false);
         reminders.add(item);
         saveReminders();
         showStatus(getString(R.string.status_reminder_created));

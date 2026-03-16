@@ -17,6 +17,20 @@
         android:textStyle="bold" />
 
     <TextView
+        android:id="@+id/programBadgeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="#33517BA7"
+        android:paddingLeft="8dp"
+        android:paddingTop="3dp"
+        android:paddingRight="8dp"
+        android:paddingBottom="3dp"
+        android:textColor="#EAF2FF"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <TextView
         android:id="@+id/programTitleText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -25,6 +39,17 @@
         android:textColor="#FFFFFF"
         android:textSize="18sp"
         android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/programProgressBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:layout_marginTop="10dp"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="#61B3FF"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/programMetaText"

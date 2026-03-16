@@ -37,12 +37,14 @@ final class PlayerController {
         final String channelName;
         final String playUrl;
         final String fallbackPlayUrl;
+        final String playbackMode;
 
-        PlaybackRequest(String channelId, String channelName, String playUrl, String fallbackPlayUrl) {
+        PlaybackRequest(String channelId, String channelName, String playUrl, String fallbackPlayUrl, String playbackMode) {
             this.channelId = channelId;
             this.channelName = channelName;
             this.playUrl = playUrl;
             this.fallbackPlayUrl = fallbackPlayUrl;
+            this.playbackMode = playbackMode;
         }
 
         boolean hasFallback() {
@@ -64,17 +66,19 @@ final class PlayerController {
         final String targetUrl;
         final String mimeType;
         final String drmType;
+        final String playbackMode;
         final boolean encrypted;
         final boolean usingFallback;
         final String lastError;
 
-        PlaybackDiagnostics(String channelName, String playbackState, String routeLabel, String targetUrl, String mimeType, String drmType, boolean encrypted, boolean usingFallback, String lastError) {
+        PlaybackDiagnostics(String channelName, String playbackState, String routeLabel, String targetUrl, String mimeType, String drmType, String playbackMode, boolean encrypted, boolean usingFallback, String lastError) {
             this.channelName = channelName;
             this.playbackState = playbackState;
             this.routeLabel = routeLabel;
             this.targetUrl = targetUrl;
             this.mimeType = mimeType;
             this.drmType = drmType;
+            this.playbackMode = playbackMode;
             this.encrypted = encrypted;
             this.usingFallback = usingFallback;
             this.lastError = lastError;
@@ -85,13 +89,15 @@ final class PlayerController {
         final String targetUrl;
         final String mimeType;
         final String drmType;
+        final String playbackMode;
         final boolean useFallback;
         final boolean allowCompatibilityFallback;
 
-        PlaybackDecision(String targetUrl, String mimeType, String drmType, boolean useFallback, boolean allowCompatibilityFallback) {
+        PlaybackDecision(String targetUrl, String mimeType, String drmType, String playbackMode, boolean useFallback, boolean allowCompatibilityFallback) {
             this.targetUrl = targetUrl;
             this.mimeType = mimeType;
             this.drmType = drmType;
+            this.playbackMode = playbackMode;
             this.useFallback = useFallback;
             this.allowCompatibilityFallback = allowCompatibilityFallback;
         }
@@ -103,6 +109,7 @@ final class PlayerController {
             return equalsNullable(targetUrl, other.targetUrl)
                     && equalsNullable(mimeType, other.mimeType)
                     && equalsNullable(drmType, other.drmType)
+                    && equalsNullable(playbackMode, other.playbackMode)
                     && useFallback == other.useFallback;
         }
 
@@ -202,6 +209,7 @@ final class PlayerController {
         String targetUrl = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.targetUrl);
         String mimeType = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.mimeType);
         String drmType = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.drmType);
+        String playbackMode = currentPlaybackDecision == null ? PlaybackModeStore.MODE_AUTO : safeLogValue(currentPlaybackDecision.playbackMode);
         boolean encrypted = currentStreamInfo != null && currentStreamInfo.encrypted;
         return new PlaybackDiagnostics(
                 channelName,
@@ -210,6 +218,7 @@ final class PlayerController {
                 targetUrl,
                 mimeType,
                 drmType,
+            playbackMode,
                 encrypted,
                 usingPlaybackFallback,
                 safeLogValue(lastErrorSummary)
@@ -366,16 +375,17 @@ final class PlayerController {
 
     private PlaybackDecision buildPlaybackDecision(PlaybackRequest request, boolean useFallback, StreamInfo streamInfo) {
         String directUrl = useFallback && request.hasFallback() ? request.fallbackPlayUrl : request.playUrl;
-        String directUrlLower = directUrl == null ? "" : directUrl.toLowerCase(Locale.ROOT);
         String playUrlLower = request.playUrl == null ? "" : request.playUrl.toLowerCase(Locale.ROOT);
         boolean looksDash = playUrlLower.contains(".mpd");
         String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
+        String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
 
         if (useFallback) {
             return new PlaybackDecision(
                     directUrl,
                     inferMimeType(directUrl),
                     "",
+                    playbackMode,
                     true,
                     false
             );
@@ -386,6 +396,19 @@ final class PlayerController {
                     baseUrl + "/proxy/manifest/" + request.channelId,
                     MimeTypes.APPLICATION_MPD,
                     drmType,
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
+
+        if (PlaybackModeStore.MODE_PROXY.equals(playbackMode)) {
+            String proxyUrl = baseUrl + "/proxy/manifest/" + request.channelId + (streamInfo != null && streamInfo.encrypted ? "?nodrm=1" : "");
+            return new PlaybackDecision(
+                    proxyUrl,
+                    resolveMimeType(proxyUrl, streamInfo, true),
+                    "",
+                    playbackMode,
                     false,
                     false
             );
@@ -396,8 +419,20 @@ final class PlayerController {
                     baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1",
                     resolveMimeType(baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1", streamInfo, true),
                     "",
+                    playbackMode,
                     false,
                     false
+            );
+        }
+
+        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
+            return new PlaybackDecision(
+                    request.playUrl,
+                    resolveMimeType(request.playUrl, streamInfo, false),
+                    "",
+                    playbackMode,
+                    false,
+                    request.hasFallback()
             );
         }
 
@@ -408,6 +443,7 @@ final class PlayerController {
                         baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1",
                         MimeTypes.APPLICATION_MPD,
                         "",
+                        playbackMode,
                         false,
                         false
                 );
@@ -416,6 +452,7 @@ final class PlayerController {
                     request.playUrl,
                     resolveMimeType(request.playUrl, streamInfo, false),
                     "",
+                    playbackMode,
                     false,
                     request.hasFallback()
             );
@@ -426,6 +463,7 @@ final class PlayerController {
                     baseUrl + "/proxy/manifest/" + request.channelId,
                     MimeTypes.APPLICATION_MPD,
                     "",
+                    playbackMode,
                     false,
                     false
             );
@@ -435,6 +473,7 @@ final class PlayerController {
                 request.playUrl,
                 resolveMimeType(request.playUrl, null, false),
                 "",
+                playbackMode,
                 false,
                 request.hasFallback()
         );
@@ -494,6 +533,7 @@ final class PlayerController {
         return "{target=" + shortenUrl(decision.targetUrl)
                 + ",mime=" + safeLogValue(decision.mimeType)
                 + ",drm=" + safeLogValue(decision.drmType)
+                + ",mode=" + safeLogValue(decision.playbackMode)
                 + ",fallback=" + decision.useFallback
                 + ",allowCompat=" + decision.allowCompatibilityFallback
                 + "}";

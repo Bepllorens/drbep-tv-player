@@ -54,6 +54,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_FAVORITES = "favorite_channel_ids";
     private static final String PREF_FAVORITE_ORDER = "favorite_order_ids";
+    private static final String PREF_PLAYBACK_MODES = "playback_mode_by_channel";
     private static final String PREF_REMINDERS = "channel_reminders";
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
     private static final int FILTER_ALL = 0;
@@ -92,6 +93,7 @@ public class MainActivity extends FragmentActivity {
     private ReminderStore reminderStore;
     private RecentChannelsStore recentChannelsStore;
     private FavoriteOrderStore favoriteOrderStore;
+    private PlaybackModeStore playbackModeStore;
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
     private HttpClient httpClient;
@@ -156,6 +158,7 @@ public class MainActivity extends FragmentActivity {
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
         recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
         favoriteOrderStore = new FavoriteOrderStore(prefs, PREF_FAVORITE_ORDER);
+        playbackModeStore = new PlaybackModeStore(prefs, PREF_PLAYBACK_MODES);
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
@@ -171,6 +174,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void moveFavoriteSelected(int delta) {
                 MainActivity.this.moveFavoriteSelected(delta);
+            }
+
+            @Override
+            public void openPlaybackModeSelector(ChannelItem channelItem) {
+                MainActivity.this.showPlaybackModeDialog(channelItem);
             }
 
             @Override
@@ -223,6 +231,7 @@ public class MainActivity extends FragmentActivity {
         reminderStore.load();
         recentChannelsStore.load();
         favoriteOrderStore.load();
+        playbackModeStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
 
         setupPlayer();
@@ -944,7 +953,39 @@ public class MainActivity extends FragmentActivity {
         if (channelItem == null) {
             return null;
         }
-        return new PlayerController.PlaybackRequest(channelItem.id, channelItem.name, channelItem.playUrl, channelItem.fallbackPlayUrl);
+        return new PlayerController.PlaybackRequest(
+                channelItem.id,
+                channelItem.name,
+                channelItem.playUrl,
+                channelItem.fallbackPlayUrl,
+                playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id)
+        );
+    }
+
+    private void showPlaybackModeDialog(ChannelItem channelItem) {
+        if (channelItem == null || playbackModeStore == null) {
+            return;
+        }
+        String currentMode = playbackModeStore.getMode(channelItem.id);
+        int checkedItem = PlaybackModeStore.MODE_DIRECT.equals(currentMode)
+                ? 1
+                : (PlaybackModeStore.MODE_PROXY.equals(currentMode) ? 2 : 0);
+        String[] options = getResources().getStringArray(R.array.playback_mode_options);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_playback_mode)
+                .setSingleChoiceItems(options, checkedItem, (dialog, which) -> {
+                    String selectedMode = which == 1
+                            ? PlaybackModeStore.MODE_DIRECT
+                            : (which == 2 ? PlaybackModeStore.MODE_PROXY : PlaybackModeStore.MODE_AUTO);
+                    playbackModeStore.setMode(channelItem.id, selectedMode);
+                    showStatus(getString(R.string.status_playback_mode_changed, options[which]));
+                    dialog.dismiss();
+                    if (currentIndex >= 0 && currentIndex < channels.size() && channelItem.id.equals(channels.get(currentIndex).id)) {
+                        tuneToIndex(currentIndex, true);
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
     }
 
     private void syncOverlayCoordinator() {
@@ -1179,6 +1220,7 @@ public class MainActivity extends FragmentActivity {
         appendDiagnosticLine(message, getString(R.string.diagnostics_target, safeText(diagnostics.targetUrl)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_mime, fallbackUnknown(diagnostics.mimeType)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_drm, fallbackUnknown(diagnostics.drmType)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_playback_mode, formatPlaybackModeLabel(diagnostics.playbackMode)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_encrypted, getString(diagnostics.encrypted ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_fallback, getString(diagnostics.usingFallback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
         if (diagnostics.lastError != null && !diagnostics.lastError.trim().isEmpty()) {
@@ -1218,6 +1260,16 @@ public class MainActivity extends FragmentActivity {
 
     private String fallbackUnknown(String value) {
         return value == null || value.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : value;
+    }
+
+    private String formatPlaybackModeLabel(String playbackMode) {
+        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
+            return getString(R.string.playback_mode_direct);
+        }
+        if (PlaybackModeStore.MODE_PROXY.equals(playbackMode)) {
+            return getString(R.string.playback_mode_proxy);
+        }
+        return getString(R.string.playback_mode_auto);
     }
 
     private static String safeText(String value) {
@@ -1375,6 +1427,20 @@ public class MainActivity extends FragmentActivity {
             holder.time.setText(shortTime(program.startTime) + " - " + shortTime(program.endTime));
             holder.title.setText(program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title);
             holder.meta.setText(buildGuideMeta(program));
+            if (program.progress >= 0) {
+                holder.badge.setText(getString(R.string.guide_program_now));
+                holder.badge.setBackgroundColor(0xAA266D3E);
+                holder.progressBar.setVisibility(View.VISIBLE);
+                holder.progressBar.setProgress(Math.min(100, Math.max(0, program.progress)));
+            } else if (position == 1) {
+                holder.badge.setText(getString(R.string.guide_program_next));
+                holder.badge.setBackgroundColor(0xAA405C86);
+                holder.progressBar.setVisibility(View.GONE);
+            } else {
+                holder.badge.setText(getString(R.string.guide_program_later));
+                holder.badge.setBackgroundColor(0xAA4B5361);
+                holder.progressBar.setVisibility(View.GONE);
+            }
             holder.itemView.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(channel, program));
         }
 
@@ -1385,13 +1451,17 @@ public class MainActivity extends FragmentActivity {
 
         final class GuideProgramVH extends RecyclerView.ViewHolder {
             final TextView time;
+            final TextView badge;
             final TextView title;
+            final android.widget.ProgressBar progressBar;
             final TextView meta;
 
             GuideProgramVH(@NonNull View itemView) {
                 super(itemView);
                 time = itemView.findViewById(R.id.programTimeText);
+                badge = itemView.findViewById(R.id.programBadgeText);
                 title = itemView.findViewById(R.id.programTitleText);
+                progressBar = itemView.findViewById(R.id.programProgressBar);
                 meta = itemView.findViewById(R.id.programMetaText);
             }
         }

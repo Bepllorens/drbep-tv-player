@@ -11,6 +11,8 @@ final class ChannelActionsCoordinator {
 
         void moveFavoriteSelected(int delta);
 
+        void openPlaybackModeSelector(ChannelItem channelItem);
+
         void openMiniGuide(ChannelItem channelItem);
 
         void scheduleCurrentProgram(ChannelItem channelItem);
@@ -63,21 +65,24 @@ final class ChannelActionsCoordinator {
                                 host.moveFavoriteSelected(1);
                                 break;
                             case 4:
-                                host.openMiniGuide(channelItem);
+                                host.openPlaybackModeSelector(channelItem);
                                 break;
                             case 5:
-                                host.scheduleCurrentProgram(channelItem);
+                                host.openMiniGuide(channelItem);
                                 break;
                             case 6:
-                                host.scheduleNextProgram(channelItem);
+                                host.scheduleCurrentProgram(channelItem);
                                 break;
                             case 7:
-                                host.createCurrentReminder(channelItem);
+                                host.scheduleNextProgram(channelItem);
                                 break;
                             case 8:
-                                host.createNextReminder(channelItem);
+                                host.createCurrentReminder(channelItem);
                                 break;
                             case 9:
+                                host.createNextReminder(channelItem);
+                                break;
+                            case 10:
                                 host.openRecordings();
                                 break;
                             default:
@@ -93,21 +98,24 @@ final class ChannelActionsCoordinator {
                             host.toggleFavoriteSelected();
                             break;
                         case 2:
-                            host.openMiniGuide(channelItem);
+                            host.openPlaybackModeSelector(channelItem);
                             break;
                         case 3:
-                            host.scheduleCurrentProgram(channelItem);
+                            host.openMiniGuide(channelItem);
                             break;
                         case 4:
-                            host.scheduleNextProgram(channelItem);
+                            host.scheduleCurrentProgram(channelItem);
                             break;
                         case 5:
-                            host.createCurrentReminder(channelItem);
+                            host.scheduleNextProgram(channelItem);
                             break;
                         case 6:
-                            host.createNextReminder(channelItem);
+                            host.createCurrentReminder(channelItem);
                             break;
                         case 7:
+                            host.createNextReminder(channelItem);
+                            break;
+                        case 8:
                             host.openRecordings();
                             break;
                         default:

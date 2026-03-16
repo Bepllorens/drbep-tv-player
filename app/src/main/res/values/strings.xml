@@ -53,6 +53,7 @@
     <string name="status_channel_widevine">%1$s (Widevine)</string>
     <string name="status_playing_recording">Reproduciendo grabacion: %1$s</string>
     <string name="status_channel_compat">%1$s (modo compat)</string>
+    <string name="status_playback_mode_changed">Modo playback: %1$s</string>
     <string name="overlay_now_playing">Ahora en reproduccion</string>
     <string name="overlay_current_program">Emision actual: %1$s</string>
     <string name="overlay_current_program_empty">Emision actual: sin datos EPG</string>
@@ -100,6 +101,7 @@
     <string name="diagnostics_route_direct_generic">Directo</string>
     <string name="diagnostics_route_compat">Compatibilidad</string>
     <string name="diagnostics_state_idle">sin reproduccion</string>
+    <string name="diagnostics_playback_mode">Modo canal: %1$s</string>
     <string name="channel_badge_live">TV</string>
     <string name="channel_badge_vod">VOD</string>
     <string name="menu_tune_channel">Sintonizar</string>
@@ -107,6 +109,7 @@
     <string name="menu_add_favorite">Añadir a favoritos</string>
     <string name="menu_favorite_move_up">Mover favorito arriba</string>
     <string name="menu_favorite_move_down">Mover favorito abajo</string>
+    <string name="menu_playback_mode">Modo playback</string>
     <string name="menu_mini_guide">Mini guia</string>
     <string name="menu_record_current_program">Grabar programa en emision</string>
     <string name="menu_record_next_program">Grabar proximo programa</string>
@@ -115,4 +118,11 @@
     <string name="menu_view_recordings">Ver grabaciones</string>
     <string name="menu_record">Grabar</string>
     <string name="menu_reminder">Recordatorio</string>
+    <string name="title_playback_mode">Preferencia de playback</string>
+    <string name="playback_mode_auto">Auto</string>
+    <string name="playback_mode_direct">Directo</string>
+    <string name="playback_mode_proxy">Proxy</string>
+    <string name="guide_program_now">EN DIRECTO</string>
+    <string name="guide_program_next">SIGUIENTE</string>
+    <string name="guide_program_later">DESPUES</string>
 </resources>

@@ -39,6 +39,9 @@
     <string name="title_recordings">Grabaciones</string>
     <string name="title_recordings_visual">Grabaciones recientes</string>
     <string name="recordings_panel_hint">BACK o MENU para cerrar</string>
+    <string name="recordings_panel_action_hint">OK para reproducir  ·  ARRIBA/ABAJO para navegar</string>
+    <string name="recordings_detail_empty">Selecciona una grabacion</string>
+    <string name="recordings_path">Ruta: %1$s</string>
     <string name="label_program_default">Programa</string>
     <string name="status_reminder_due">Recordatorio: %1$s - %2$s</string>
     <string name="status_filter_changed">Filtro activo: %1$s</string>

@@ -72,6 +72,10 @@ public class MainActivity extends FragmentActivity {
     private TextView overlayRecentText;
     private TextView zapChannelText;
     private TextView zapMetaText;
+    private TextView recordingDetailTitleText;
+    private TextView recordingDetailMetaText;
+    private TextView recordingDetailPathText;
+    private TextView recordingDetailActionText;
     private View channelOverlay;
     private View zapBanner;
     private View recordingsPanel;
@@ -106,8 +110,11 @@ public class MainActivity extends FragmentActivity {
     private long lastMenuPressedAtMs;
     private String lastChannelId;
     private String selectedFilterKey = "all";
+    private int selectedRecordingIndex = 0;
     private final Set<String> favoriteChannelIds = new HashSet<>();
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
+    private RecordingsRepository.RecordingsResult currentRecordingsResult;
+    private RecordingsAdapter recordingsAdapter;
 
     private final Runnable hideOverlayRunnable = this::hideOverlay;
     private final Runnable hideStatusRunnable = () -> {
@@ -144,6 +151,10 @@ public class MainActivity extends FragmentActivity {
         zapBanner = findViewById(R.id.zapBanner);
         zapChannelText = findViewById(R.id.zapChannelText);
         zapMetaText = findViewById(R.id.zapMetaText);
+        recordingDetailTitleText = findViewById(R.id.recordingDetailTitleText);
+        recordingDetailMetaText = findViewById(R.id.recordingDetailMetaText);
+        recordingDetailPathText = findViewById(R.id.recordingDetailPathText);
+        recordingDetailActionText = findViewById(R.id.recordingDetailActionText);
         channelOverlay = findViewById(R.id.channelOverlay);
         recordingsPanel = findViewById(R.id.recordingsPanel);
         channelList = findViewById(R.id.channelList);
@@ -299,6 +310,7 @@ public class MainActivity extends FragmentActivity {
         if (recordingsRecyclerView != null) {
             recordingsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         }
+        updateRecordingsDetailPanel();
     }
 
     private void loadChannels() {
@@ -749,7 +761,12 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         hideOverlay();
-        recordingsRecyclerView.setAdapter(new RecordingsAdapter(result));
+        currentRecordingsResult = result;
+        selectedRecordingIndex = 0;
+        recordingsAdapter = new RecordingsAdapter(result);
+        recordingsRecyclerView.setAdapter(recordingsAdapter);
+        recordingsRecyclerView.scrollToPosition(selectedRecordingIndex);
+        updateRecordingsDetailPanel();
         recordingsPanel.setVisibility(View.VISIBLE);
     }
 
@@ -757,6 +774,60 @@ public class MainActivity extends FragmentActivity {
         if (recordingsPanel != null) {
             recordingsPanel.setVisibility(View.GONE);
         }
+        currentRecordingsResult = null;
+        selectedRecordingIndex = 0;
+        updateRecordingsDetailPanel();
+    }
+
+    private void moveRecordingsSelection(int delta) {
+        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
+            return;
+        }
+        selectedRecordingIndex += delta;
+        if (selectedRecordingIndex < 0) {
+            selectedRecordingIndex = currentRecordingsResult.items.size() - 1;
+        }
+        if (selectedRecordingIndex >= currentRecordingsResult.items.size()) {
+            selectedRecordingIndex = 0;
+        }
+        if (recordingsAdapter != null) {
+            recordingsAdapter.notifyDataSetChanged();
+        }
+        if (recordingsRecyclerView != null) {
+            recordingsRecyclerView.scrollToPosition(selectedRecordingIndex);
+        }
+        updateRecordingsDetailPanel();
+    }
+
+    private void playSelectedRecording() {
+        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
+            return;
+        }
+        if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
+            selectedRecordingIndex = 0;
+        }
+        playRecording(currentRecordingsResult.items.get(selectedRecordingIndex), currentRecordingsResult.basePath);
+    }
+
+    private void updateRecordingsDetailPanel() {
+        if (recordingDetailTitleText == null || recordingDetailMetaText == null || recordingDetailPathText == null || recordingDetailActionText == null) {
+            return;
+        }
+        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
+            recordingDetailTitleText.setText(getString(R.string.recordings_detail_empty));
+            recordingDetailMetaText.setText("");
+            recordingDetailPathText.setText("");
+            recordingDetailActionText.setText(getString(R.string.recordings_panel_action_hint));
+            return;
+        }
+        if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
+            selectedRecordingIndex = 0;
+        }
+        RecordingsRepository.RecordingItem item = currentRecordingsResult.items.get(selectedRecordingIndex);
+        recordingDetailTitleText.setText(item.name);
+        recordingDetailMetaText.setText(buildRecordingMeta(item));
+        recordingDetailPathText.setText(getString(R.string.recordings_path, item.path == null ? "" : item.path));
+        recordingDetailActionText.setText(getString(R.string.recordings_panel_action_hint));
     }
 
     private void showStatus(String text) {
@@ -827,13 +898,25 @@ public class MainActivity extends FragmentActivity {
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_UP:
             case KeyEvent.KEYCODE_PAGE_UP:
+                if (isRecordingsPanelVisible()) {
+                    moveRecordingsSelection(-1);
+                    return true;
+                }
                 tuneRelative(-1);
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
             case KeyEvent.KEYCODE_PAGE_DOWN:
+                if (isRecordingsPanelVisible()) {
+                    moveRecordingsSelection(1);
+                    return true;
+                }
                 tuneRelative(1);
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
+                if (isRecordingsPanelVisible()) {
+                    moveRecordingsSelection(-1);
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     moveOverlaySelection(-1);
                 } else {
@@ -841,6 +924,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (isRecordingsPanelVisible()) {
+                    moveRecordingsSelection(1);
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     moveOverlaySelection(1);
                 } else {
@@ -848,6 +935,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (isRecordingsPanelVisible()) {
+                    hideRecordingsPanel();
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     cycleFilter(-1);
                 } else {
@@ -864,6 +955,10 @@ public class MainActivity extends FragmentActivity {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                if (isRecordingsPanelVisible()) {
+                    playSelectedRecording();
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     tuneToIndex(selectedOverlayIndex, true);
                     hideOverlay();
@@ -1486,7 +1581,14 @@ public class MainActivity extends FragmentActivity {
             RecordingsRepository.RecordingItem item = result.items.get(position);
             holder.name.setText(item.name);
             holder.meta.setText(buildRecordingMeta(item));
-            holder.itemView.setOnClickListener(v -> playRecording(item, result.basePath));
+            boolean selected = position == selectedRecordingIndex;
+            holder.itemView.setBackgroundColor(selected ? 0xFF80542A : 0xFF2C2419);
+            holder.itemView.setOnClickListener(v -> {
+                selectedRecordingIndex = position;
+                notifyDataSetChanged();
+                updateRecordingsDetailPanel();
+                playRecording(item, result.basePath);
+            });
         }
 
         @Override

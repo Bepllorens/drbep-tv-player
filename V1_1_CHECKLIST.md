@@ -32,7 +32,7 @@
 
 - [x] Centralizar cliente HTTP comun
 - [x] Unificar parseo y manejo de errores JSON
-- [ ] Revisar decision entre URL directa, proxy y fallback
+- [x] Revisar decision entre URL directa, proxy y fallback
 - [ ] Mejorar logs de diagnostico de playback
 - [ ] Validar DASH, HLS, Widevine y ClearKey con casos reales
 

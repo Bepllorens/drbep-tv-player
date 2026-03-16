@@ -57,6 +57,39 @@ final class PlayerController {
         boolean encrypted;
     }
 
+    private static final class PlaybackDecision {
+        final String targetUrl;
+        final String mimeType;
+        final String drmType;
+        final boolean useFallback;
+        final boolean allowCompatibilityFallback;
+
+        PlaybackDecision(String targetUrl, String mimeType, String drmType, boolean useFallback, boolean allowCompatibilityFallback) {
+            this.targetUrl = targetUrl;
+            this.mimeType = mimeType;
+            this.drmType = drmType;
+            this.useFallback = useFallback;
+            this.allowCompatibilityFallback = allowCompatibilityFallback;
+        }
+
+        boolean isEquivalentTo(PlaybackDecision other) {
+            if (other == null) {
+                return false;
+            }
+            return equalsNullable(targetUrl, other.targetUrl)
+                    && equalsNullable(mimeType, other.mimeType)
+                    && equalsNullable(drmType, other.drmType)
+                    && useFallback == other.useFallback;
+        }
+
+        private static boolean equalsNullable(String left, String right) {
+            if (left == null) {
+                return right == null;
+            }
+            return left.equals(right);
+        }
+    }
+
     private final Context context;
     private final PlayerView playerView;
     private final String baseUrl;
@@ -68,6 +101,7 @@ final class PlayerController {
     private ExoPlayer player;
     private PlaybackRequest currentRequest;
     private StreamInfo currentStreamInfo;
+    private PlaybackDecision currentPlaybackDecision;
     private boolean usingPlaybackFallback;
 
     PlayerController(Context context, PlayerView playerView, String baseUrl, ExecutorService ioExecutor, Handler uiHandler, Host host) {
@@ -92,13 +126,12 @@ final class PlayerController {
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
                 PlaybackRequest request = currentRequest;
-                StreamInfo streamInfo = currentStreamInfo;
-                boolean allowFallback = streamInfo == null || (!streamInfo.encrypted && !"dash".equals(safeLower(streamInfo.type)));
-                if (allowFallback && !usingPlaybackFallback && request != null && request.hasFallback()) {
+                PlaybackDecision decision = currentPlaybackDecision;
+                if (decision != null && decision.allowCompatibilityFallback && !usingPlaybackFallback && request != null && request.hasFallback()) {
                     usingPlaybackFallback = true;
                     Log.w(TAG, "primary playback failed, retrying fallback URL", error);
                     host.showStatus(context.getString(R.string.status_retry_compat));
-                    playChannelInternal(request, true, true, streamInfo);
+                    playChannelInternal(request, true, true, currentStreamInfo);
                     return;
                 }
 
@@ -161,13 +194,13 @@ final class PlayerController {
             }
 
             boolean requiresReplay = "widevine".equals(safeLower(info.drmType)) || info.encrypted;
-            if (!requiresReplay) {
-                return;
-            }
-
             StreamInfo resolved = info;
             uiHandler.post(() -> {
                 if (!host.isChannelCurrent(channelId)) {
+                    return;
+                }
+                PlaybackDecision resolvedDecision = buildPlaybackDecision(request, false, resolved);
+                if (!requiresReplay && resolvedDecision.isEquivalentTo(currentPlaybackDecision)) {
                     return;
                 }
                 playChannelInternal(request, autoPlay, false, resolved);
@@ -214,29 +247,115 @@ final class PlayerController {
         currentRequest = request;
         currentStreamInfo = streamInfo;
         usingPlaybackFallback = useFallback;
+        PlaybackDecision decision = buildPlaybackDecision(request, useFallback, streamInfo);
+        currentPlaybackDecision = decision;
 
-        String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
-        String targetUrl = useFallback && request.hasFallback() ? request.fallbackPlayUrl : request.playUrl;
-        String playUrlLower = request.playUrl == null ? "" : request.playUrl.toLowerCase(Locale.ROOT);
-        boolean looksDash = playUrlLower.contains(".mpd");
-
-        if (!useFallback) {
-            if (streamInfo != null) {
-                if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
-                    targetUrl = baseUrl + "/proxy/manifest/" + request.channelId;
-                } else if (streamInfo.encrypted || looksDash) {
-                    targetUrl = baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1";
-                }
-            } else {
-                targetUrl = baseUrl + "/proxy/manifest/" + request.channelId;
-            }
-        }
-
-        if (targetUrl == null || targetUrl.trim().isEmpty()) {
+        if (decision.targetUrl == null || decision.targetUrl.trim().isEmpty()) {
             host.showError(context.getString(R.string.error_empty_playback_url));
             return;
         }
 
+        MediaItem.Builder builder = new MediaItem.Builder().setUri(decision.targetUrl);
+        if (decision.mimeType != null && !decision.mimeType.trim().isEmpty()) {
+            builder.setMimeType(decision.mimeType);
+        }
+        if ("widevine".equals(decision.drmType)) {
+            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                    .setLicenseUri(baseUrl + "/api/widevine/" + request.channelId)
+                    .build());
+        } else if ("clearkey".equals(decision.drmType)) {
+            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                    .setLicenseUri(baseUrl + "/api/clearkey/" + request.channelId)
+                    .build());
+        }
+
+        Log.i(TAG, "playChannel id=" + request.channelId + " name=" + request.channelName + " drmType=" + decision.drmType + " encrypted=" + (streamInfo != null && streamInfo.encrypted) + " mime=" + (decision.mimeType == null ? "" : decision.mimeType) + " target=" + decision.targetUrl + " useFallback=" + useFallback + " allowFallback=" + decision.allowCompatibilityFallback);
+        player.setMediaItem(builder.build());
+        player.prepare();
+        player.setPlayWhenReady(autoPlay);
+
+        host.showStatus(useFallback
+            ? context.getString(R.string.status_channel_compat, request.channelName)
+            : request.channelName);
+    }
+
+    private PlaybackDecision buildPlaybackDecision(PlaybackRequest request, boolean useFallback, StreamInfo streamInfo) {
+        String directUrl = useFallback && request.hasFallback() ? request.fallbackPlayUrl : request.playUrl;
+        String directUrlLower = directUrl == null ? "" : directUrl.toLowerCase(Locale.ROOT);
+        String playUrlLower = request.playUrl == null ? "" : request.playUrl.toLowerCase(Locale.ROOT);
+        boolean looksDash = playUrlLower.contains(".mpd");
+        String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
+
+        if (useFallback) {
+            return new PlaybackDecision(
+                    directUrl,
+                    inferMimeType(directUrl),
+                    "",
+                    true,
+                    false
+            );
+        }
+
+        if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
+            return new PlaybackDecision(
+                    baseUrl + "/proxy/manifest/" + request.channelId,
+                    MimeTypes.APPLICATION_MPD,
+                    drmType,
+                    false,
+                    false
+            );
+        }
+
+        if (streamInfo != null && streamInfo.encrypted) {
+            return new PlaybackDecision(
+                    baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1",
+                    resolveMimeType(baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1", streamInfo, true),
+                    "",
+                    false,
+                    false
+            );
+        }
+
+        if (streamInfo != null) {
+            String streamType = safeLower(streamInfo.type);
+            if ("dash".equals(streamType) || looksDash) {
+                return new PlaybackDecision(
+                        baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1",
+                        MimeTypes.APPLICATION_MPD,
+                        "",
+                        false,
+                        false
+                );
+            }
+            return new PlaybackDecision(
+                    request.playUrl,
+                    resolveMimeType(request.playUrl, streamInfo, false),
+                    "",
+                    false,
+                    request.hasFallback()
+            );
+        }
+
+        if (looksDash) {
+            return new PlaybackDecision(
+                    baseUrl + "/proxy/manifest/" + request.channelId,
+                    MimeTypes.APPLICATION_MPD,
+                    "",
+                    false,
+                    false
+            );
+        }
+
+        return new PlaybackDecision(
+                request.playUrl,
+                resolveMimeType(request.playUrl, null, false),
+                "",
+                false,
+                request.hasFallback()
+        );
+    }
+
+    private String resolveMimeType(String targetUrl, StreamInfo streamInfo, boolean defaultDashForProxy) {
         String mimeType = inferMimeType(targetUrl);
         if ((mimeType == null || mimeType.trim().isEmpty()) && streamInfo != null && streamInfo.type != null) {
             String streamType = safeLower(streamInfo.type);
@@ -246,39 +365,12 @@ final class PlayerController {
                 mimeType = MimeTypes.APPLICATION_M3U8;
             }
         }
-        if ((mimeType == null || mimeType.trim().isEmpty()) && looksDash) {
-            mimeType = MimeTypes.APPLICATION_MPD;
+        if ((mimeType == null || mimeType.trim().isEmpty()) && defaultDashForProxy) {
+            mimeType = streamInfo != null && "hls".equals(safeLower(streamInfo.type))
+                    ? MimeTypes.APPLICATION_M3U8
+                    : MimeTypes.APPLICATION_MPD;
         }
-        if ((mimeType == null || mimeType.trim().isEmpty()) && !useFallback && streamInfo == null && targetUrl.contains("/proxy/manifest/")) {
-            mimeType = MimeTypes.APPLICATION_MPD;
-        }
-        if ((mimeType == null || mimeType.trim().isEmpty()) && (targetUrl.contains("/proxy/manifest/") || targetUrl.contains("/drm/manifest/"))) {
-            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
-            mimeType = "hls".equals(streamType) ? MimeTypes.APPLICATION_M3U8 : MimeTypes.APPLICATION_MPD;
-        }
-
-        MediaItem.Builder builder = new MediaItem.Builder().setUri(targetUrl);
-        if (mimeType != null && !mimeType.trim().isEmpty()) {
-            builder.setMimeType(mimeType);
-        }
-        if ("widevine".equals(drmType)) {
-            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                    .setLicenseUri(baseUrl + "/api/widevine/" + request.channelId)
-                    .build());
-        } else if ("clearkey".equals(drmType)) {
-            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                    .setLicenseUri(baseUrl + "/api/clearkey/" + request.channelId)
-                    .build());
-        }
-
-        Log.i(TAG, "playChannel id=" + request.channelId + " name=" + request.channelName + " drmType=" + drmType + " encrypted=" + (streamInfo != null && streamInfo.encrypted) + " mime=" + (mimeType == null ? "" : mimeType) + " target=" + targetUrl + " useFallback=" + useFallback);
-        player.setMediaItem(builder.build());
-        player.prepare();
-        player.setPlayWhenReady(autoPlay);
-
-        host.showStatus(useFallback
-            ? context.getString(R.string.status_channel_compat, request.channelName)
-            : request.channelName);
+        return mimeType;
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {

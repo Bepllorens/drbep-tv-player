@@ -17,54 +17,52 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="28dp"
         android:background="#B3000000"
-        android:paddingLeft="20dp"
-        android:paddingTop="12dp"
-        android:paddingRight="20dp"
-        android:paddingBottom="12dp"
+        android:paddingLeft="24dp"
+        android:paddingTop="14dp"
+        android:paddingRight="24dp"
+        android:paddingBottom="14dp"
         android:textColor="#FFFFFF"
-        android:textSize="16sp"
+        android:textSize="20sp"
         android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/channelOverlay"
-        android:layout_width="460dp"
+        android:layout_width="520dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
         android:background="#E61A1A1A"
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="18dp"
         android:visibility="gone">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="8dp"
+            android:paddingBottom="10dp"
             android:text="@string/channels_title"
             android:textColor="#FFFFFF"
-            android:textSize="20sp" />
+            android:textSize="24sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/filterText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:paddingBottom="6dp"
+            android:paddingBottom="8dp"
             android:text="@string/filter_all_label"
             android:textColor="#A7D0FF"
-            android:textSize="15sp" />
+            android:textSize="18sp"
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:paddingBottom="10dp"
+            android:paddingBottom="14dp"
             android:text="@string/filter_navigation_hint"
             android:textColor="#B0B0B0"
-            android:textSize="13sp" />
+            android:textSize="15sp" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/channelList"
@@ -82,8 +80,9 @@
         android:layout_height="match_parent"
         android:background="#CC000000"
         android:gravity="center"
-        android:padding="32dp"
+        android:lineSpacingExtra="6dp"
+        android:padding="56dp"
         android:textColor="#FFFFFF"
-        android:textSize="18sp"
+        android:textSize="22sp"
         android:visibility="gone" />
 </FrameLayout>

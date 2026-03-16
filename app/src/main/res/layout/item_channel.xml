@@ -3,18 +3,18 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
-    android:minHeight="60dp"
+    android:minHeight="76dp"
     android:orientation="horizontal"
-    android:paddingLeft="10dp"
-    android:paddingTop="8dp"
-    android:paddingRight="10dp"
-    android:paddingBottom="8dp">
+    android:paddingLeft="14dp"
+    android:paddingTop="10dp"
+    android:paddingRight="14dp"
+    android:paddingBottom="10dp">
 
     <ImageView
         android:id="@+id/channelLogo"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
-        android:layout_marginRight="10dp"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginRight="14dp"
         android:contentDescription="@string/channel_logo_content_description"
         android:scaleType="centerCrop" />
 
@@ -31,7 +31,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="18sp"
             android:textStyle="bold" />
 
         <TextView
@@ -39,9 +39,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:ellipsize="end"
-            android:maxLines="1"
+            android:maxLines="2"
             android:textColor="#FFD0D0D0"
-            android:textSize="12sp" />
+            android:textSize="14sp" />
     </LinearLayout>
 
 </LinearLayout>

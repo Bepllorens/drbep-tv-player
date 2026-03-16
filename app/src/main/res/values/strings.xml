@@ -1,14 +1,14 @@
 <resources>
     <string name="app_name">DRBEP TV Player</string>
     <string name="channels_title">Canales</string>
-    <string name="filter_all_label">Filtro: Todos</string>
-    <string name="filter_navigation_hint">Usa ←/→ para cambiar plataforma o grupo</string>
+    <string name="filter_all_label">Filtro activo: Todos</string>
+    <string name="filter_navigation_hint">Usa IZQ/DER para cambiar el filtro</string>
     <string name="channel_logo_content_description">Logo del canal</string>
     <string name="dialog_cancel">Cancelar</string>
     <string name="dialog_close">Cerrar</string>
     <string name="status_retry_compat">Reintentando modo compat...</string>
-    <string name="status_buffering">Buffering...</string>
-    <string name="status_ready">Listo</string>
+    <string name="status_buffering">Cargando stream...</string>
+    <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
     <string name="status_loading_guide">Cargando guia...</string>
     <string name="status_loading_recordings">Cargando grabaciones...</string>
@@ -32,12 +32,12 @@
     <string name="error_load_channels">No se pudieron cargar canales: %1$s</string>
     <string name="error_playback_message">Error de reproduccion: %1$s</string>
     <string name="error_unknown_reason">desconocido</string>
-    <string name="error_playback_details">Error de reproduccion\n\n%1$s\n\nBase URL: %2$s\n\nPulsa MENU para abrir lista/reintentar</string>
+    <string name="error_playback_details">Error de reproduccion\n\n%1$s\n\nBase URL: %2$s\n\nPulsa MENU para abrir la lista o reintentar</string>
     <string name="title_guide">Guia: %1$s</string>
     <string name="title_recordings">Grabaciones</string>
     <string name="label_program_default">Programa</string>
     <string name="status_reminder_due">Recordatorio: %1$s - %2$s</string>
-    <string name="status_filter_changed">Filtro: %1$s</string>
+    <string name="status_filter_changed">Filtro activo: %1$s</string>
     <string name="status_favorite_removed">Eliminado de favoritos</string>
     <string name="status_favorite_added">Añadido a favoritos</string>
     <string name="status_favorites_only_empty">Solo favoritos activado (sin favoritos)</string>

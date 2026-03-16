@@ -81,6 +81,7 @@ public class MainActivity extends FragmentActivity {
     private RecordingsRepository recordingsRepository;
     private ReminderStore reminderStore;
     private ChannelActionsCoordinator channelActionsCoordinator;
+    private ChannelOverlayCoordinator channelOverlayCoordinator;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -125,6 +126,7 @@ public class MainActivity extends FragmentActivity {
         recordingsRepository = new RecordingsRepository(baseUrl);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
+        channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
             public void tuneSelectedChannel() {
@@ -265,22 +267,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void applyLoadedChannels(CatalogLoadResult result) {
-        allChannels.clear();
-        allChannels.addAll(result.channels);
-
-        filters.clear();
-        filters.addAll(result.filters);
-
-        int foundFilterIndex = findFilterIndexByKey(selectedFilterKey);
-        if (foundFilterIndex < 0) {
-            foundFilterIndex = findFilterIndexByKey(result.defaultFilterKey);
-        }
-        if (foundFilterIndex < 0) {
-            foundFilterIndex = 0;
-        }
-        selectedFilterKey = filters.isEmpty() ? "all" : filters.get(foundFilterIndex).key;
-
-        rebuildVisibleChannels(lastChannelId, lastChannelId);
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
+        syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
         updateFilterText();
 
@@ -587,19 +576,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void moveOverlaySelection(int delta) {
-        if (channels.isEmpty()) {
-            return;
-        }
-        if (selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
-            selectedOverlayIndex = currentIndex >= 0 ? currentIndex : 0;
-        }
-        selectedOverlayIndex += delta;
-        if (selectedOverlayIndex < 0) {
-            selectedOverlayIndex = channels.size() - 1;
-        }
-        if (selectedOverlayIndex >= channels.size()) {
-            selectedOverlayIndex = 0;
-        }
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.moveOverlaySelection(delta);
+        syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
         channelList.scrollToPosition(selectedOverlayIndex);
         showOverlay();
@@ -624,109 +603,10 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private void applyFavoritesAndSort(List<ChannelItem> target) {
-        for (ChannelItem item : target) {
-            item.favorite = favoriteChannelIds.contains(item.id);
-        }
-        target.sort((a, b) -> {
-            int byDashboardOrder = Integer.compare(a.dashboardOrder, b.dashboardOrder);
-            if (byDashboardOrder != 0) {
-                return byDashboardOrder;
-            }
-            return Integer.compare(a.originalOrder, b.originalOrder);
-        });
-    }
-
-    private void rebuildVisibleChannels(String keepCurrentChannelId, String keepSelectedChannelId) {
-        applyFavoritesAndSort(allChannels);
-
-        channels.clear();
-        for (ChannelItem item : allChannels) {
-            if (!channelMatchesCurrentFilter(item)) {
-                continue;
-            }
-            if (!favoritesOnly || item.favorite) {
-                channels.add(item);
-            }
-        }
-
-        currentIndex = findChannelIndexById(keepCurrentChannelId);
-        selectedOverlayIndex = findChannelIndexById(keepSelectedChannelId);
-
-        if (selectedOverlayIndex < 0 && currentIndex >= 0) {
-            selectedOverlayIndex = currentIndex;
-        }
-        if (selectedOverlayIndex < 0 && !channels.isEmpty()) {
-            selectedOverlayIndex = 0;
-        }
-    }
-
-    private boolean channelMatchesCurrentFilter(ChannelItem item) {
-        ChannelFilter filter = getSelectedFilter();
-        if (filter == null || filter.type == FILTER_ALL) {
-            return true;
-        }
-        if (filter.type == FILTER_PLATFORM) {
-            return item.platformId == filter.platformId && !item.isVod;
-        }
-        if (filter.type == FILTER_CUSTOM_GROUP) {
-            for (String name : item.customGroups) {
-                if (name != null && name.equalsIgnoreCase(filter.groupName)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        if (filter.type == FILTER_VOD) {
-            return item.isVod;
-        }
-        return true;
-    }
-
-    private ChannelFilter getSelectedFilter() {
-        for (ChannelFilter filter : filters) {
-            if (filter.key.equals(selectedFilterKey)) {
-                return filter;
-            }
-        }
-        return filters.isEmpty() ? null : filters.get(0);
-    }
-
-    private int findFilterIndexByKey(String key) {
-        if (key == null || key.trim().isEmpty()) {
-            return -1;
-        }
-        for (int i = 0; i < filters.size(); i++) {
-            if (key.equals(filters.get(i).key)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     private void cycleFilter(int delta) {
-        if (filters.isEmpty()) {
-            return;
-        }
-        int currentFilterIndex = findFilterIndexByKey(selectedFilterKey);
-        if (currentFilterIndex < 0) {
-            currentFilterIndex = 0;
-        }
-
-        int next = currentFilterIndex + delta;
-        if (next < 0) {
-            next = filters.size() - 1;
-        }
-        if (next >= filters.size()) {
-            next = 0;
-        }
-
-        selectedFilterKey = filters.get(next).key;
-
-        String keepCurrentID = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : "";
-        String keepSelectedID = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) ? channels.get(selectedOverlayIndex).id : keepCurrentID;
-
-        rebuildVisibleChannels(keepCurrentID, keepSelectedID);
+        syncOverlayCoordinator();
+        ChannelFilter filter = channelOverlayCoordinator.cycleFilter(delta);
+        syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
         updateFilterText();
 
@@ -742,7 +622,6 @@ public class MainActivity extends FragmentActivity {
             channelList.scrollToPosition(selectedOverlayIndex);
         }
 
-        ChannelFilter filter = getSelectedFilter();
         if (filter != null) {
             showStatus(getString(R.string.status_filter_changed, filter.label));
         }
@@ -750,15 +629,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateFilterText() {
-        if (filterText == null) {
-            return;
-        }
-        ChannelFilter filter = getSelectedFilter();
-        if (filter == null) {
-            filterText.setText(getString(R.string.filter_all_label));
-            return;
-        }
-        filterText.setText(getString(R.string.status_filter_changed, filter.label));
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.updateFilterText(filterText, this);
     }
 
     private void saveFavorites() {
@@ -771,20 +643,11 @@ public class MainActivity extends FragmentActivity {
         if (channels.isEmpty() || selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
             return;
         }
-
-        String selectedID = channels.get(selectedOverlayIndex).id;
-        String currentID = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : "";
-
-        if (favoriteChannelIds.contains(selectedID)) {
-            favoriteChannelIds.remove(selectedID);
-            showStatus(getString(R.string.status_favorite_removed));
-        } else {
-            favoriteChannelIds.add(selectedID);
-            showStatus(getString(R.string.status_favorite_added));
-        }
+        syncOverlayCoordinator();
+        boolean added = channelOverlayCoordinator.toggleFavoriteSelected();
+        syncOverlayStateFromCoordinator();
+        showStatus(getString(added ? R.string.status_favorite_added : R.string.status_favorite_removed));
         saveFavorites();
-
-        rebuildVisibleChannels(currentID, selectedID);
         channelAdapter.notifyDataSetChanged();
         if (selectedOverlayIndex >= 0) {
             channelList.scrollToPosition(selectedOverlayIndex);
@@ -793,14 +656,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void toggleFavoritesOnlyMode() {
-        String currentID = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : "";
-        String selectedID = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) ? channels.get(selectedOverlayIndex).id : currentID;
-
-        favoritesOnly = !favoritesOnly;
-        rebuildVisibleChannels(currentID, selectedID);
+        syncOverlayCoordinator();
+        boolean nowFavoritesOnly = channelOverlayCoordinator.toggleFavoritesOnlyMode();
+        syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
 
-        if (channels.isEmpty() && favoritesOnly) {
+        if (channels.isEmpty() && nowFavoritesOnly) {
             showStatus(getString(R.string.status_favorites_only_empty));
             return;
         }
@@ -808,28 +669,20 @@ public class MainActivity extends FragmentActivity {
         if (selectedOverlayIndex >= 0) {
             channelList.scrollToPosition(selectedOverlayIndex);
         }
-        showStatus(getString(favoritesOnly ? R.string.status_favorites_only_on : R.string.status_favorites_only_off));
+        showStatus(getString(nowFavoritesOnly ? R.string.status_favorites_only_on : R.string.status_favorites_only_off));
         showOverlay();
     }
 
     private boolean isOverlayVisible() {
-        return channelOverlay != null && channelOverlay.getVisibility() == View.VISIBLE;
+        return channelOverlayCoordinator.isOverlayVisible(channelOverlay);
     }
 
     private void showOverlay() {
-        if (channelOverlay == null) {
-            return;
-        }
-        channelOverlay.setVisibility(View.VISIBLE);
-        uiHandler.removeCallbacks(hideOverlayRunnable);
-        uiHandler.postDelayed(hideOverlayRunnable, OVERLAY_HIDE_MS);
+        channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, OVERLAY_HIDE_MS);
     }
 
     private void hideOverlay() {
-        if (channelOverlay == null) {
-            return;
-        }
-        channelOverlay.setVisibility(View.GONE);
+        channelOverlayCoordinator.hideOverlay(channelOverlay);
     }
 
     private void showStatus(String text) {
@@ -1023,6 +876,17 @@ public class MainActivity extends FragmentActivity {
             return null;
         }
         return new PlayerController.PlaybackRequest(channelItem.id, channelItem.name, channelItem.playUrl, channelItem.fallbackPlayUrl);
+    }
+
+    private void syncOverlayCoordinator() {
+        channelOverlayCoordinator.syncState(currentIndex, selectedOverlayIndex, favoritesOnly, selectedFilterKey);
+    }
+
+    private void syncOverlayStateFromCoordinator() {
+        currentIndex = channelOverlayCoordinator.getCurrentIndex();
+        selectedOverlayIndex = channelOverlayCoordinator.getSelectedOverlayIndex();
+        favoritesOnly = channelOverlayCoordinator.isFavoritesOnly();
+        selectedFilterKey = channelOverlayCoordinator.getSelectedFilterKey();
     }
 
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {

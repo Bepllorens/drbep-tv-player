@@ -25,7 +25,8 @@
 - [x] Crear `RecordingsRepository`
 - [x] Crear `ReminderStore`
 - [x] Extraer coordinador de acciones del overlay
-- [ ] Reducir `MainActivity` por debajo de 1000 lineas
+- [x] Extraer coordinador de filtros y overlay
+- [x] Reducir `MainActivity` por debajo de 1000 lineas
 
 ## Epic 4. Robustez playback y API
 

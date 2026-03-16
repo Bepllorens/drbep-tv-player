@@ -24,8 +24,6 @@
     <string name="status_reminder_created">Recordatorio creado</string>
     <string name="status_no_recordings">No hay grabaciones</string>
     <string name="status_failed_load_recordings">No se pudieron cargar grabaciones</string>
-    <string name="status_recording_deleted">Grabacion borrada</string>
-    <string name="status_failed_delete_recording">No se pudo borrar grabacion</string>
     <string name="status_open_program_actions">Pulsa para grabar o crear recordatorio</string>
     <string name="status_open_recording_actions">Pulsa para reproducir la grabacion</string>
     <string name="status_no_channels_for_filter">Sin canales para el filtro seleccionado</string>
@@ -47,10 +45,6 @@
     <string name="title_recording_actions">Acciones de grabacion</string>
     <string name="recording_action_play">Reproducir</string>
     <string name="recording_action_refresh">Refrescar lista</string>
-    <string name="recording_action_delete">Borrar grabacion</string>
-    <string name="recording_delete_confirm">Se borrara esta grabacion.
-
-%1$s</string>
     <string name="label_program_default">Programa</string>
     <string name="status_reminder_due">Recordatorio: %1$s - %2$s</string>
     <string name="status_filter_changed">Filtro activo: %1$s</string>

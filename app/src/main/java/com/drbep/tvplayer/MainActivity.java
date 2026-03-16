@@ -605,8 +605,7 @@ public class MainActivity extends FragmentActivity {
         }
         String[] options = new String[]{
                 getString(R.string.recording_action_play),
-                getString(R.string.recording_action_refresh),
-                getString(R.string.recording_action_delete)
+                getString(R.string.recording_action_refresh)
         };
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_recording_actions)
@@ -615,46 +614,10 @@ public class MainActivity extends FragmentActivity {
                         playSelectedRecording();
                     } else if (which == 1) {
                         refreshRecordingsPanel();
-                    } else if (which == 2) {
-                        confirmDeleteSelectedRecording();
                     }
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)
                 .show();
-    }
-
-    private void confirmDeleteSelectedRecording() {
-        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
-        if (item == null) {
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.recording_action_delete)
-                .setMessage(getString(R.string.recording_delete_confirm, item.name))
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .setPositiveButton(R.string.recording_action_delete, (dialog, which) -> deleteSelectedRecording())
-                .show();
-    }
-
-    private void deleteSelectedRecording() {
-        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
-        if (item == null || currentRecordingsResult == null) {
-            return;
-        }
-        String basePath = currentRecordingsResult.basePath;
-        showStatus(getString(R.string.recording_action_delete));
-        ioExecutor.execute(() -> {
-            try {
-                recordingsRepository.deleteRecording(item, basePath);
-                uiHandler.post(() -> {
-                    showStatus(getString(R.string.status_recording_deleted));
-                    refreshRecordingsPanel();
-                });
-            } catch (Exception e) {
-                Log.w(TAG, "delete recording failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_delete_recording)));
-            }
-        });
     }
 
     private void checkReminderNotifications() {

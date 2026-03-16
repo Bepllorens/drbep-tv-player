@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -1600,7 +1601,7 @@ public class MainActivity extends FragmentActivity {
             ChannelItem ch = channels.get(position);
             holder.name.setText(ch.favorite ? "★ " + ch.name : ch.name);
             holder.badge.setText(getString(ch.isVod ? R.string.channel_badge_vod : R.string.channel_badge_live));
-            holder.badge.setBackgroundColor(ch.isVod ? 0xAA704C18 : 0xAA204A8A);
+            holder.badge.setBackgroundTintList(ColorStateList.valueOf(ch.isVod ? 0xAA7A4A19 : 0xAA215D8A));
             if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
                 holder.meta.setText(ch.nowProgram);
             } else if (ch.group != null && !ch.group.trim().isEmpty()) {
@@ -1620,11 +1621,11 @@ public class MainActivity extends FragmentActivity {
             boolean tuned = (position == currentIndex);
 
             if (selected) {
-                holder.itemView.setBackgroundColor(0xFF2D5BFF);
+                holder.card.setBackgroundTintList(ColorStateList.valueOf(0xFF2A7C86));
             } else if (tuned) {
-                holder.itemView.setBackgroundColor(0x663F8CFF);
+                holder.card.setBackgroundTintList(ColorStateList.valueOf(0xCC334457));
             } else {
-                holder.itemView.setBackgroundColor(0x00000000);
+                holder.card.setBackgroundTintList(ColorStateList.valueOf(0xFF202833));
             }
 
             holder.itemView.setOnClickListener(v -> {
@@ -1640,6 +1641,7 @@ public class MainActivity extends FragmentActivity {
         }
 
         class ChannelVH extends RecyclerView.ViewHolder {
+            View card;
             TextView name;
             TextView badge;
             TextView meta;
@@ -1647,6 +1649,7 @@ public class MainActivity extends FragmentActivity {
 
             ChannelVH(@NonNull View itemView) {
                 super(itemView);
+                card = itemView.findViewById(R.id.channelCard);
                 name = itemView.findViewById(R.id.channelName);
                 badge = itemView.findViewById(R.id.channelBadge);
                 meta = itemView.findViewById(R.id.channelMeta);

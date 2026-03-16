@@ -9,17 +9,17 @@
 
     <application
         android:allowBackup="true"
-        android:banner="@drawable/ic_banner_drbep_tv"
-        android:icon="@drawable/ic_launcher_drbep_tv"
+        android:banner="@drawable/ic_banner_firetv"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_launcher_drbep_tv"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DrbepTvPlayer">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:banner="@drawable/ic_banner_drbep_tv"
+            android:banner="@drawable/ic_banner_firetv"
             android:label="@string/app_name"
             android:screenOrientation="landscape">
             <intent-filter>

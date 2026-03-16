@@ -41,30 +41,31 @@ final class RecordingsRepository {
     }
 
     RecordingsResult fetchRecordings() throws Exception {
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/recordings/files", 10000, 20000, java.util.Collections.singletonMap("Accept", "application/json"));
-        if (!response.isSuccessful()) {
-            throw new IllegalStateException("recordings HTTP " + response.code);
-        }
-
-        JSONObject body = new JSONObject(response.body);
-            String basePath = body.optString("path", "");
-            JSONArray files = body.optJSONArray("files");
-            List<RecordingItem> items = new ArrayList<>();
-            if (files != null) {
-                for (int i = 0; i < files.length(); i++) {
-                    JSONObject file = files.optJSONObject(i);
-                    if (file == null) {
-                        continue;
-                    }
-                    items.add(new RecordingItem(
-                            file.optString("name", ""),
-                            file.optString("path", ""),
-                            file.optLong("size", 0L),
-                            file.optString("modified", "")
-                    ));
+        JSONObject body = httpClient.getJsonObject(
+                baseUrl + "/api/recordings/files",
+                10000,
+                20000,
+                java.util.Collections.singletonMap("Accept", "application/json"),
+                "cargando grabaciones"
+        );
+        String basePath = body.optString("path", "");
+        JSONArray files = body.optJSONArray("files");
+        List<RecordingItem> items = new ArrayList<>();
+        if (files != null) {
+            for (int i = 0; i < files.length(); i++) {
+                JSONObject file = files.optJSONObject(i);
+                if (file == null) {
+                    continue;
                 }
+                items.add(new RecordingItem(
+                        file.optString("name", ""),
+                        file.optString("path", ""),
+                        file.optLong("size", 0L),
+                        file.optString("modified", "")
+                ));
             }
-            return new RecordingsResult(basePath, items);
+        }
+        return new RecordingsResult(basePath, items);
     }
 
     String buildPlaybackUrl(RecordingItem item, String basePath) {

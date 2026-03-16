@@ -1,5 +1,6 @@
 package com.drbep.tvplayer;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -33,6 +34,40 @@ final class HttpClient {
     Response postJson(String url, JSONObject payload, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
         byte[] body = payload == null ? new byte[0] : payload.toString().getBytes(StandardCharsets.UTF_8);
         return request("POST", url, connectTimeoutMs, readTimeoutMs, headers, body);
+    }
+
+    JSONObject getJsonObject(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers, String errorContext) throws Exception {
+        return parseObject(requireSuccess(get(url, connectTimeoutMs, readTimeoutMs, headers), errorContext).body, errorContext);
+    }
+
+    JSONArray getJsonArray(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers, String errorContext) throws Exception {
+        return parseArray(requireSuccess(get(url, connectTimeoutMs, readTimeoutMs, headers), errorContext).body, errorContext);
+    }
+
+    Response requireSuccess(Response response, String errorContext) {
+        if (response == null) {
+            throw new IllegalStateException(errorContext + ": respuesta vacia");
+        }
+        if (!response.isSuccessful()) {
+            throw new IllegalStateException(errorContext + ": HTTP " + response.code);
+        }
+        return response;
+    }
+
+    JSONObject parseObject(String body, String errorContext) {
+        try {
+            return new JSONObject(body == null ? "" : body);
+        } catch (Exception e) {
+            throw new IllegalStateException(errorContext + ": JSON object invalido", e);
+        }
+    }
+
+    JSONArray parseArray(String body, String errorContext) {
+        try {
+            return new JSONArray(body == null ? "" : body);
+        } catch (Exception e) {
+            throw new IllegalStateException(errorContext + ": JSON array invalido", e);
+        }
     }
 
     private Response request(String method, String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers, byte[] body) throws Exception {

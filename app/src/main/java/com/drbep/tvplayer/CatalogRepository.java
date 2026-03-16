@@ -27,12 +27,13 @@ final class CatalogRepository {
     }
 
     CatalogLoadResult fetchCatalogChannels() throws Exception {
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/channels/catalog?include_disabled=0", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
-        if (!response.isSuccessful()) {
-            throw new IllegalStateException("HTTP " + response.code + " cargando catalogo");
-        }
-
-        JSONObject payload = new JSONObject(response.body);
+        JSONObject payload = httpClient.getJsonObject(
+                baseUrl + "/api/channels/catalog?include_disabled=0",
+                10000,
+                15000,
+                java.util.Collections.singletonMap("Accept", "application/json"),
+                "cargando catalogo"
+        );
             JSONArray channelsArray = payload.optJSONArray("channels");
             if (channelsArray == null) {
                 channelsArray = new JSONArray();
@@ -104,50 +105,51 @@ final class CatalogRepository {
     }
 
     CatalogLoadResult fetchActiveChannels() throws Exception {
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/channels", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
-        if (!response.isSuccessful()) {
-            throw new IllegalStateException("HTTP " + response.code + " cargando canales");
-        }
-
-        JSONArray channelsArray = new JSONArray(response.body);
-            List<ChannelItem> parsed = new ArrayList<>(channelsArray.length());
-            for (int i = 0; i < channelsArray.length(); i++) {
-                JSONObject channel = channelsArray.optJSONObject(i);
-                if (channel == null) {
-                    continue;
-                }
-
-                String id = channel.optString("id", "").trim();
-                String name = channel.optString("name", "Canal").trim();
-                String logo = channel.optString("logo", "").trim();
-                String playUrl = channel.optString("play_url", "").trim();
-                String sourceGroup = channel.optString("group", "").trim();
-                if (id.isEmpty() || playUrl.isEmpty()) {
-                    continue;
-                }
-                if (playUrl.startsWith("/")) {
-                    playUrl = baseUrl + playUrl;
-                }
-
-                parsed.add(new ChannelItem(
-                        id,
-                        name,
-                        logo,
-                        sourceGroup,
-                        playUrl,
-                        buildFallbackPlayUrl(id),
-                        i,
-                        i + 1,
-                        isLikelyVod("", name, "", sourceGroup),
-                        0,
-                        "Plataforma activa",
-                        new ArrayList<>()
-                ));
+        JSONArray channelsArray = httpClient.getJsonArray(
+                baseUrl + "/api/channels",
+                10000,
+                15000,
+                java.util.Collections.singletonMap("Accept", "application/json"),
+                "cargando canales"
+        );
+        List<ChannelItem> parsed = new ArrayList<>(channelsArray.length());
+        for (int i = 0; i < channelsArray.length(); i++) {
+            JSONObject channel = channelsArray.optJSONObject(i);
+            if (channel == null) {
+                continue;
             }
 
-            List<ChannelFilter> filters = new ArrayList<>();
-            filters.add(new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
-            return new CatalogLoadResult(parsed, filters, "all");
+            String id = channel.optString("id", "").trim();
+            String name = channel.optString("name", "Canal").trim();
+            String logo = channel.optString("logo", "").trim();
+            String playUrl = channel.optString("play_url", "").trim();
+            String sourceGroup = channel.optString("group", "").trim();
+            if (id.isEmpty() || playUrl.isEmpty()) {
+                continue;
+            }
+            if (playUrl.startsWith("/")) {
+                playUrl = baseUrl + playUrl;
+            }
+
+            parsed.add(new ChannelItem(
+                    id,
+                    name,
+                    logo,
+                    sourceGroup,
+                    playUrl,
+                    buildFallbackPlayUrl(id),
+                    i,
+                    i + 1,
+                    isLikelyVod("", name, "", sourceGroup),
+                    0,
+                    "Plataforma activa",
+                    new ArrayList<>()
+            ));
+        }
+
+        List<ChannelFilter> filters = new ArrayList<>();
+        filters.add(new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
+        return new CatalogLoadResult(parsed, filters, "all");
     }
 
     private List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId) {

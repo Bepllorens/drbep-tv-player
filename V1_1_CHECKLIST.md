@@ -31,7 +31,7 @@
 ## Epic 4. Robustez playback y API
 
 - [x] Centralizar cliente HTTP comun
-- [ ] Unificar parseo y manejo de errores JSON
+- [x] Unificar parseo y manejo de errores JSON
 - [ ] Revisar decision entre URL directa, proxy y fallback
 - [ ] Mejorar logs de diagnostico de playback
 - [ ] Validar DASH, HLS, Widevine y ClearKey con casos reales

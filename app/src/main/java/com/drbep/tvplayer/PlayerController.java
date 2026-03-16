@@ -288,7 +288,7 @@ final class PlayerController {
                 return null;
             }
 
-            JSONObject jsonObject = new JSONObject(response.body);
+            JSONObject jsonObject = httpClient.parseObject(response.body, "cargando stream info");
             StreamInfo info = new StreamInfo();
             info.drmType = jsonObject.optString("drm_type", "").trim();
             info.licenseUrl = jsonObject.optString("license_url", "").trim();

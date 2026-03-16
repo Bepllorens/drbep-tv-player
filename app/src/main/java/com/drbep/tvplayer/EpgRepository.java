@@ -39,47 +39,48 @@ final class EpgRepository {
             return new HashMap<>();
         }
 
-        JSONArray arr = new JSONArray(response.body);
-            Map<String, String> updates = new HashMap<>();
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject item = arr.optJSONObject(i);
-                if (item == null) {
-                    continue;
-                }
-                String channelId = String.valueOf(item.optLong("channel_id", -1L));
-                if ("-1".equals(channelId)) {
-                    continue;
-                }
-                String title = item.optString("title", "").trim();
-                int progress = item.optInt("progress", -1);
-                if (title.isEmpty()) {
-                    continue;
-                }
-                if (progress >= 0) {
-                    title = title + " (" + progress + "%)";
-                }
-                updates.put(channelId, title);
+        JSONArray arr = httpClient.parseArray(response.body, "cargando EPG actual");
+        Map<String, String> updates = new HashMap<>();
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject item = arr.optJSONObject(i);
+            if (item == null) {
+                continue;
             }
-            return updates;
+            String channelId = String.valueOf(item.optLong("channel_id", -1L));
+            if ("-1".equals(channelId)) {
+                continue;
+            }
+            String title = item.optString("title", "").trim();
+            int progress = item.optInt("progress", -1);
+            if (title.isEmpty()) {
+                continue;
+            }
+            if (progress >= 0) {
+                title = title + " (" + progress + "%)";
+            }
+            updates.put(channelId, title);
+        }
+        return updates;
     }
 
     List<EpgProgram> fetchChannelPrograms(String channelId, int maxItems) throws Exception {
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/channel/" + channelId, 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
-        if (!response.isSuccessful()) {
-            throw new IllegalStateException("EPG HTTP " + response.code);
-        }
-
-        JSONArray arr = new JSONArray(response.body);
-            List<EpgProgram> programs = new ArrayList<>();
-            int limit = Math.min(arr.length(), maxItems);
-            for (int i = 0; i < limit; i++) {
-                JSONObject item = arr.optJSONObject(i);
-                if (item == null) {
-                    continue;
-                }
-                programs.add(fromJson(item));
+        JSONArray arr = httpClient.getJsonArray(
+                baseUrl + "/api/epg/channel/" + channelId,
+                10000,
+                15000,
+                java.util.Collections.singletonMap("Accept", "application/json"),
+                "cargando guia EPG del canal"
+        );
+        List<EpgProgram> programs = new ArrayList<>();
+        int limit = Math.min(arr.length(), maxItems);
+        for (int i = 0; i < limit; i++) {
+            JSONObject item = arr.optJSONObject(i);
+            if (item == null) {
+                continue;
             }
-            return programs;
+            programs.add(fromJson(item));
+        }
+        return programs;
     }
 
     EpgProgram fetchProgramForChannel(String channelId, boolean next) throws Exception {
@@ -87,10 +88,7 @@ final class EpgRepository {
         if (response.code == 404) {
             return null;
         }
-        if (!response.isSuccessful()) {
-            throw new IllegalStateException("EPG HTTP " + response.code);
-        }
-        return fromJson(new JSONObject(response.body));
+        return fromJson(httpClient.parseObject(httpClient.requireSuccess(response, "cargando programa EPG").body, "cargando programa EPG"));
     }
 
     private static EpgProgram fromJson(JSONObject item) {

@@ -1146,15 +1146,19 @@ public class MainActivity extends FragmentActivity {
                 }
                 if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
                     lastMenuPressedAtMs = 0L;
-                    toggleFavoritesOnlyMode();
+                    if (isOverlayVisible()) {
+                        if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
+                            openTimelineGuideAroundSelection();
+                        }
+                    } else if (currentIndex >= 0 && currentIndex < channels.size()) {
+                        openTimelineGuide(currentIndex, System.currentTimeMillis());
+                    } else {
+                        showOverlay();
+                    }
                     return true;
                 }
                 lastMenuPressedAtMs = now;
-                if (isOverlayVisible()) {
-                    hideOverlay();
-                } else {
-                    showOverlay();
-                }
+                showV12ToolsMenu();
                 return true;
             case KeyEvent.KEYCODE_BACK:
                 if (isQuickSearchVisible()) {
@@ -1286,6 +1290,10 @@ public class MainActivity extends FragmentActivity {
                     if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
                         openTimelineGuideAroundSelection();
                     }
+                    return true;
+                }
+                if (currentIndex >= 0 && currentIndex < channels.size()) {
+                    openTimelineGuide(currentIndex, System.currentTimeMillis());
                 } else {
                     showOverlay();
                 }
@@ -1326,9 +1334,28 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     public boolean onKeyLongPress(int keyCode, @NonNull KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_INFO) {
+        if (keyCode == KeyEvent.KEYCODE_INFO || keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
             showV12ToolsMenu();
             return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            if (isQuickSearchVisible()) {
+                clearQuickSearchOverlay();
+                return true;
+            }
+            if (isRecordingsPanelVisible()) {
+                hideRecordingsPanel();
+                return true;
+            }
+            if (isOverlayVisible()) {
+                if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
+                    openTimelineGuideAroundSelection();
+                    return true;
+                }
+            } else if (currentIndex >= 0 && currentIndex < channels.size()) {
+                openTimelineGuide(currentIndex, System.currentTimeMillis());
+                return true;
+            }
         }
         if (isOverlayVisible() && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
             showChannelActionMenu();
@@ -1553,10 +1580,17 @@ public class MainActivity extends FragmentActivity {
 
     private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs) {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_timeline_guide, null, false);
+        android.widget.ScrollView timelineVerticalScroll = dialogView.findViewById(R.id.timelineVerticalScroll);
+        TextView timelineNowButton = dialogView.findViewById(R.id.timelineNowButton);
+        TextView timelineNextButton = dialogView.findViewById(R.id.timelineNextButton);
+        TextView timelineCloseButton = dialogView.findViewById(R.id.timelineCloseButton);
         TextView windowText = dialogView.findViewById(R.id.timelineWindowText);
         LinearLayout headerRow = dialogView.findViewById(R.id.timelineHeaderRow);
         LinearLayout rowsContainer = dialogView.findViewById(R.id.timelineRowsContainer);
         final View[] initialFocus = new View[1];
+        final boolean[] suppressInitialFocusScroll = new boolean[]{true};
+        final List<List<View>> focusRows = new ArrayList<>();
+        final Map<View, Integer> focusCenters = new HashMap<>();
 
         long windowEndMs = windowStartMs + TIMELINE_WINDOW_MS;
         SimpleDateFormat dayFormat = new SimpleDateFormat("EEE d MMM", Locale.getDefault());
@@ -1568,45 +1602,54 @@ public class MainActivity extends FragmentActivity {
                 hourFormat.format(new Date(windowEndMs))
         ));
 
-        int labelWidth = dp(144);
-        int hourWidth = dp(180);
-        int minuteWidth = Math.max(1, hourWidth / 60);
+        android.util.DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
+        int dialogWidthPx = (int) (displayMetrics.widthPixels * 0.98f);
+        int horizontalChrome = dp(20);
+        int labelWidth = Math.max(dp(92), Math.min(dp(120), (int) (dialogWidthPx * 0.16f)));
+        int stripWidth = Math.max(dp(520), dialogWidthPx - labelWidth - horizontalChrome);
+        int hourWidth = stripWidth / 3;
+        int halfHourWidth = hourWidth / 2;
+        float minuteWidth = hourWidth / 60f;
 
         TextView spacer = new TextView(this);
         spacer.setLayoutParams(new LinearLayout.LayoutParams(labelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
         headerRow.addView(spacer);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 6; i++) {
             TextView hourLabel = new TextView(this);
-            hourLabel.setLayoutParams(new LinearLayout.LayoutParams(hourWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-            hourLabel.setText(getString(R.string.timeline_hour_block, hourFormat.format(new Date(windowStartMs + (i * 60L * 60L * 1000L)))));
-            hourLabel.setTextColor(0xFFA7D0FF);
-            hourLabel.setTextSize(13f);
+            hourLabel.setLayoutParams(new LinearLayout.LayoutParams(halfHourWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+            long slotStartMs = windowStartMs + (i * 30L * 60L * 1000L);
+            hourLabel.setText(hourFormat.format(new Date(slotStartMs)));
+            hourLabel.setTextColor(i % 2 == 0 ? 0xFFA7D0FF : 0xFF6F92B8);
+            hourLabel.setTextSize(i % 2 == 0 ? 13f : 12f);
             hourLabel.setPadding(dp(8), dp(4), dp(8), dp(4));
             headerRow.addView(hourLabel);
         }
 
         for (TimelineChannelPrograms row : rows) {
+            final int rowIndex = focusRows.size();
+            final List<View> rowFocusables = new ArrayList<>();
+
             LinearLayout rowLayout = new LinearLayout(this);
             rowLayout.setOrientation(LinearLayout.HORIZONTAL);
-            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rowParams.topMargin = dp(8);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rowParams.topMargin = dp(6);
             rowLayout.setLayoutParams(rowParams);
 
             TextView channelLabel = new TextView(this);
-            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(labelWidth, dp(72));
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(labelWidth, dp(62));
             channelLabel.setLayoutParams(labelParams);
             channelLabel.setBackgroundColor(0xFF1A2532);
             channelLabel.setGravity(Gravity.CENTER_VERTICAL);
-            channelLabel.setPadding(dp(12), dp(10), dp(12), dp(10));
+            channelLabel.setPadding(dp(8), dp(6), dp(8), dp(6));
             channelLabel.setText(row.channel.name);
             channelLabel.setTextColor(0xFFFFFFFF);
-            channelLabel.setTextSize(14f);
+            channelLabel.setTextSize(12f);
             channelLabel.setMaxLines(2);
             rowLayout.addView(channelLabel);
 
             LinearLayout strip = new LinearLayout(this);
             strip.setOrientation(LinearLayout.HORIZONTAL);
-            strip.setLayoutParams(new LinearLayout.LayoutParams(hourWidth * 3, ViewGroup.LayoutParams.WRAP_CONTENT));
+            strip.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             strip.setBackgroundColor(0xFF101820);
 
             int usedWidth = 0;
@@ -1618,39 +1661,55 @@ public class MainActivity extends FragmentActivity {
                     continue;
                 }
                 hasVisibleProgram = true;
-                int startOffsetMinutes = (int) Math.max(0L, (startMs - windowStartMs) / 60000L);
-                int targetOffsetWidth = startOffsetMinutes * minuteWidth;
+                int visibleStartMinutes = (int) Math.max(0L, (Math.max(windowStartMs, startMs) - windowStartMs) / 60000L);
+                int visibleEndMinutes = (int) Math.max(visibleStartMinutes + 1L, (Math.min(windowEndMs, endMs) - windowStartMs) / 60000L);
+                int targetOffsetWidth = Math.round(visibleStartMinutes * minuteWidth);
                 if (targetOffsetWidth > usedWidth) {
                     View spacerView = new View(this);
-                    spacerView.setLayoutParams(new LinearLayout.LayoutParams(targetOffsetWidth - usedWidth, dp(72)));
+                    spacerView.setLayoutParams(new LinearLayout.LayoutParams(targetOffsetWidth - usedWidth, dp(62)));
                     strip.addView(spacerView);
                     usedWidth = targetOffsetWidth;
                 }
 
-                int durationMinutes = (int) Math.max(20L, (Math.min(windowEndMs, endMs) - Math.max(windowStartMs, startMs)) / 60000L);
-                int blockWidth = Math.max(dp(88), durationMinutes * minuteWidth);
+                int durationMinutes = Math.max(15, visibleEndMinutes - visibleStartMinutes);
+                int blockWidth = Math.max(dp(72), Math.round(durationMinutes * minuteWidth));
+                final int centerMinute = visibleStartMinutes + (durationMinutes / 2);
                 TextView block = new TextView(this);
-                LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(blockWidth, dp(72));
+                LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(blockWidth, dp(62));
                 blockParams.rightMargin = dp(2);
                 block.setLayoutParams(blockParams);
                 block.setFocusable(true);
                 block.setFocusableInTouchMode(true);
-                block.setPadding(dp(8), dp(8), dp(8), dp(8));
+                block.setPadding(dp(8), dp(6), dp(8), dp(6));
                 block.setText((program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title)
-                        + "\n" + shortTime(program.startTime));
+                        + "\n" + shortTime(program.startTime) + " - " + shortTime(program.endTime));
                 block.setTextColor(0xFFFFFFFF);
-                block.setTextSize(13f);
+                block.setTextSize(11f);
                 block.setMaxLines(3);
                 boolean live = program.progress >= 0;
                 applyTimelineBlockState(block, live, false);
                 block.setOnFocusChangeListener((v, hasFocus) -> {
                     applyTimelineBlockState(block, live, hasFocus);
-                    if (hasFocus) {
+                    if (hasFocus && !suppressInitialFocusScroll[0]) {
                         Rect rect = new Rect(0, 0, v.getWidth(), v.getHeight());
                         v.requestRectangleOnScreen(rect, true);
                     }
                 });
+                block.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                        return false;
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        return moveTimelineFocus(focusRows, focusCenters, rowIndex, -1, centerMinute);
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                        return moveTimelineFocus(focusRows, focusCenters, rowIndex, 1, centerMinute);
+                    }
+                    return false;
+                });
                 block.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(row.channel, program));
+                focusCenters.put(block, centerMinute);
+                rowFocusables.add(block);
                 if (initialFocus[0] == null || live) {
                     initialFocus[0] = block;
                 }
@@ -1660,7 +1719,7 @@ public class MainActivity extends FragmentActivity {
 
             if (!hasVisibleProgram) {
                 TextView empty = new TextView(this);
-                empty.setLayoutParams(new LinearLayout.LayoutParams(hourWidth * 3, dp(72)));
+                empty.setLayoutParams(new LinearLayout.LayoutParams(stripWidth, dp(62)));
                 empty.setBackgroundColor(0xFF1E2630);
                 empty.setGravity(Gravity.CENTER_VERTICAL);
                 empty.setPadding(dp(10), dp(8), dp(10), dp(8));
@@ -1669,26 +1728,70 @@ public class MainActivity extends FragmentActivity {
                 strip.addView(empty);
             }
 
+            focusRows.add(rowFocusables);
             rowLayout.addView(strip);
             rowsContainer.addView(rowLayout);
         }
 
-        AlertDialog timelineDialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.title_timeline_guide)
-                .setView(dialogView)
-                .setNeutralButton(R.string.timeline_now_button, (dialogInterface, which) -> openTimelineGuideAroundSelection())
-                .setPositiveButton(R.string.timeline_next_button, (dialogInterface, which) -> {
-                    int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);
-                    openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
-                })
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        android.app.Dialog timelineDialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        timelineDialog.setContentView(dialogView);
+        timelineDialog.setCancelable(true);
         timelineDialog.setOnShowListener(d -> {
+            if (timelineDialog.getWindow() != null) {
+                timelineDialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            }
+            if (timelineVerticalScroll != null) {
+                timelineVerticalScroll.post(() -> timelineVerticalScroll.scrollTo(0, 0));
+            }
             if (initialFocus[0] != null) {
                 initialFocus[0].requestFocus();
+                initialFocus[0].post(() -> suppressInitialFocusScroll[0] = false);
+            } else {
+                suppressInitialFocusScroll[0] = false;
             }
         });
+        timelineDialog.setOnDismissListener(d -> enableImmersiveMode());
+        timelineNowButton.setOnClickListener(v -> {
+            timelineDialog.dismiss();
+            openTimelineGuideAroundSelection();
+        });
+        timelineNextButton.setOnClickListener(v -> {
+            timelineDialog.dismiss();
+            int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);
+            openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
+        });
+        timelineCloseButton.setOnClickListener(v -> timelineDialog.dismiss());
         timelineDialog.show();
+    }
+
+    private boolean moveTimelineFocus(List<List<View>> focusRows, Map<View, Integer> focusCenters, int fromRowIndex, int direction, int preferredCenterMinute) {
+        int rowIndex = fromRowIndex + direction;
+        while (rowIndex >= 0 && rowIndex < focusRows.size()) {
+            List<View> targetRow = focusRows.get(rowIndex);
+            if (targetRow != null && !targetRow.isEmpty()) {
+                View best = null;
+                int bestDistance = Integer.MAX_VALUE;
+                for (View candidate : targetRow) {
+                    if (candidate == null) {
+                        continue;
+                    }
+                    Integer centerMinute = focusCenters.get(candidate);
+                    int distance = centerMinute == null ? Integer.MAX_VALUE : Math.abs(centerMinute - preferredCenterMinute);
+                    if (best == null || distance < bestDistance) {
+                        best = candidate;
+                        bestDistance = distance;
+                    }
+                }
+                if (best != null) {
+                    best.requestFocus();
+                    Rect rect = new Rect(0, 0, best.getWidth(), best.getHeight());
+                    best.requestRectangleOnScreen(rect, true);
+                    return true;
+                }
+            }
+            rowIndex += direction;
+        }
+        return false;
     }
 
     private void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {

@@ -64,13 +64,20 @@ final class EpgRepository {
     }
 
     List<EpgProgram> fetchChannelPrograms(String channelId, int maxItems) throws Exception {
-        JSONArray arr = httpClient.getJsonArray(
+        HttpClient.Response response = httpClient.get(
                 baseUrl + "/api/epg/channel/" + channelId,
                 10000,
                 15000,
-                java.util.Collections.singletonMap("Accept", "application/json"),
-                "cargando guia EPG del canal"
+                java.util.Collections.singletonMap("Accept", "application/json")
         );
+        if (!response.isSuccessful()) {
+            return new ArrayList<>();
+        }
+        String body = response.body == null ? "" : response.body.trim();
+        if (body.isEmpty() || "null".equals(body)) {
+            return new ArrayList<>();
+        }
+        JSONArray arr = httpClient.parseArray(body, "cargando guia EPG del canal");
         List<EpgProgram> programs = new ArrayList<>();
         int limit = Math.min(arr.length(), maxItems);
         for (int i = 0; i < limit; i++) {

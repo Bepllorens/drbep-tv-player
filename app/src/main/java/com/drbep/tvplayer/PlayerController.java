@@ -448,6 +448,16 @@ final class PlayerController {
                         false
                 );
             }
+            if ("hls".equals(streamType) && request.hasFallback()) {
+                return new PlaybackDecision(
+                        request.fallbackPlayUrl,
+                        MimeTypes.APPLICATION_M3U8,
+                        "",
+                        playbackMode,
+                        false,
+                        false
+                );
+            }
             return new PlaybackDecision(
                     request.playUrl,
                     resolveMimeType(request.playUrl, streamInfo, false),

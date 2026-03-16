@@ -73,8 +73,8 @@
     <string name="overlay_playback_route">Ruta playback: %1$s</string>
     <string name="overlay_recent_channels">Recientes: %1$s</string>
     <string name="overlay_recent_channels_empty">Recientes: aun sin historial</string>
-    <string name="overlay_tools_hint">INFO mantenido: herramientas v1.2</string>
-    <string name="tools_menu_title">Herramientas v1.2</string>
+    <string name="overlay_tools_hint">MENU: herramientas  ·  doble MENU: timeline</string>
+    <string name="tools_menu_title">Herramientas v1.3</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>

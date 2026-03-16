@@ -79,6 +79,7 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final List<ReminderItem> reminders = new ArrayList<>();
     private ChannelAdapter channelAdapter;
+    private CatalogRepository catalogRepository;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -118,6 +119,7 @@ public class MainActivity extends FragmentActivity {
         channelList = findViewById(R.id.channelList);
 
         baseUrl = resolveBaseUrl();
+    catalogRepository = new CatalogRepository(baseUrl);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         favoritesOnly = false;
@@ -192,12 +194,12 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_loading_channels));
         ioExecutor.execute(() -> {
             try {
-                CatalogLoadResult result = fetchCatalogChannels();
+                CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
                 uiHandler.post(() -> applyLoadedChannels(result));
             } catch (Exception catalogErr) {
                 Log.w(TAG, "catalog load failed, fallback to /api/channels", catalogErr);
                 try {
-                    CatalogLoadResult fallback = fetchActiveChannels();
+                    CatalogLoadResult fallback = catalogRepository.fetchActiveChannels();
                     uiHandler.post(() -> applyLoadedChannels(fallback));
                 } catch (Exception e) {
                     Log.e(TAG, "load channels failed", e);
@@ -205,210 +207,6 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         });
-    }
-
-    private CatalogLoadResult fetchCatalogChannels() throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/channels/catalog?include_disabled=0");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/json");
-
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("HTTP " + code + " cargando catalogo");
-            }
-
-            String body = readAll(conn.getInputStream());
-            JSONObject payload = new JSONObject(body);
-            JSONArray arr = payload.optJSONArray("channels");
-            if (arr == null) {
-                arr = new JSONArray();
-            }
-
-            List<ChannelItem> parsed = new ArrayList<>(arr.length());
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o == null) {
-                    continue;
-                }
-                String id = o.optString("id", "").trim();
-                if (id.isEmpty() || "null".equalsIgnoreCase(id)) {
-                    long numericID = o.optLong("id", 0L);
-                    if (numericID > 0) {
-                        id = String.valueOf(numericID);
-                    }
-                }
-                String name = o.optString("name", "Canal").trim();
-                if ("0".equals(id) || id.isEmpty() || name.isEmpty()) {
-                    continue;
-                }
-
-                String logo = o.optString("logo", "").trim();
-                String sourceGroup = o.optString("group", "").trim();
-                String playbackUrl = baseUrl + "/live/" + id;
-                String fallbackUrl = buildFallbackPlayUrl(id);
-                String externalId = o.optString("external_id", "").trim();
-                String tvgId = o.optString("tvg_id", "").trim();
-
-                int platformId = (int) o.optLong("platform_id", 0L);
-                String platformName = o.optString("platform_name", "").trim();
-                int sortOrder = o.optInt("sort_order", Integer.MAX_VALUE);
-                if (sortOrder <= 0) {
-                    sortOrder = o.optInt("dial", i + 1);
-                }
-                boolean isVod = o.optBoolean("is_vod", false) || isLikelyVod(externalId, name, tvgId, sourceGroup);
-
-                List<String> customGroups = new ArrayList<>();
-                JSONArray groupsArr = o.optJSONArray("custom_groups");
-                if (groupsArr != null) {
-                    for (int j = 0; j < groupsArr.length(); j++) {
-                        String g = groupsArr.optString(j, "").trim();
-                        if (!g.isEmpty()) {
-                            customGroups.add(g);
-                        }
-                    }
-                }
-
-                parsed.add(new ChannelItem(
-                        id,
-                        name,
-                        logo,
-                        sourceGroup,
-                        playbackUrl,
-                        fallbackUrl,
-                        i,
-                        sortOrder,
-                        isVod,
-                        platformId,
-                        platformName,
-                        customGroups
-                ));
-            }
-
-            long activePlatformID = payload.optLong("active_platform_id", 0L);
-            List<ChannelFilter> parsedFilters = buildFiltersFromCatalog(parsed, activePlatformID);
-            String defaultFilterKey = "all";
-            return new CatalogLoadResult(parsed, parsedFilters, defaultFilterKey);
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
-    }
-
-    private CatalogLoadResult fetchActiveChannels() throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/channels");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/json");
-
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("HTTP " + code + " cargando canales");
-            }
-
-            String body = readAll(conn.getInputStream());
-            JSONArray arr = new JSONArray(body);
-            List<ChannelItem> parsed = new ArrayList<>(arr.length());
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o == null) {
-                    continue;
-                }
-                String id = o.optString("id", "").trim();
-                String name = o.optString("name", "Canal").trim();
-                String logo = o.optString("logo", "").trim();
-                String playUrl = o.optString("play_url", "").trim();
-                String sourceGroup = o.optString("group", "").trim();
-                if (id.isEmpty() || playUrl.isEmpty()) {
-                    continue;
-                }
-                if (playUrl.startsWith("/")) {
-                    playUrl = baseUrl + playUrl;
-                }
-                String fallbackUrl = buildFallbackPlayUrl(id);
-                parsed.add(new ChannelItem(
-                        id,
-                        name,
-                        logo,
-                        sourceGroup,
-                        playUrl,
-                        fallbackUrl,
-                        i,
-                        i + 1,
-                        isLikelyVod("", name, "", sourceGroup),
-                        0,
-                        "Plataforma activa",
-                        new ArrayList<>()
-                ));
-            }
-
-            List<ChannelFilter> parsedFilters = new ArrayList<>();
-            parsedFilters.add(new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
-            return new CatalogLoadResult(parsed, parsedFilters, "all");
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
-    }
-
-    private List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformID) {
-        LinkedHashMap<String, ChannelFilter> byKey = new LinkedHashMap<>();
-        byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
-
-        Map<Integer, String> platformNames = new LinkedHashMap<>();
-        Set<String> customGroupNames = new HashSet<>();
-        for (ChannelItem item : parsed) {
-            if (item.platformId > 0 && !platformNames.containsKey(item.platformId)) {
-                String pName = item.platformName == null ? "" : item.platformName.trim();
-                if (pName.isEmpty()) {
-                    pName = "ID " + item.platformId;
-                }
-                platformNames.put(item.platformId, pName);
-            }
-            for (String g : item.customGroups) {
-                String trimmed = g == null ? "" : g.trim();
-                if (!trimmed.isEmpty()) {
-                    customGroupNames.add(trimmed);
-                }
-            }
-        }
-
-        if (activePlatformID > 0) {
-            int activeID = (int) activePlatformID;
-            String activeName = platformNames.containsKey(activeID) ? platformNames.get(activeID) : ("ID " + activeID);
-            String key = "platform:" + activeID;
-            byKey.put(key, new ChannelFilter(key, "Plataforma activa: " + activeName, FILTER_PLATFORM, activeID, ""));
-        }
-
-        List<Integer> platformIDs = new ArrayList<>(platformNames.keySet());
-        Collections.sort(platformIDs);
-        for (int pid : platformIDs) {
-            String key = "platform:" + pid;
-            if (byKey.containsKey(key)) {
-                continue;
-            }
-            byKey.put(key, new ChannelFilter(key, "Plataforma: " + platformNames.get(pid), FILTER_PLATFORM, pid, ""));
-        }
-
-        List<String> groupNames = new ArrayList<>(customGroupNames);
-        groupNames.sort(String::compareToIgnoreCase);
-        for (String g : groupNames) {
-            String key = "custom-group:" + g.toLowerCase(Locale.ROOT);
-            byKey.put(key, new ChannelFilter(key, "Grupo: " + g, FILTER_CUSTOM_GROUP, 0, g));
-        }
-        byKey.put("vod", new ChannelFilter("vod", "VOD", FILTER_VOD, 0, ""));
-
-        return new ArrayList<>(byKey.values());
     }
 
     private void applyLoadedChannels(CatalogLoadResult result) {
@@ -479,46 +277,6 @@ public class MainActivity extends FragmentActivity {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static boolean isLikelyVod(String externalId, String name, String tvgId, String groupTitle) {
-        String n = safeLower(name);
-        String t = safeLower(tvgId);
-        String g = safeLower(groupTitle);
-        return containsVodToken(n) || containsVodToken(t) || containsVodToken(g);
-    }
-
-    private static boolean containsVodToken(String text) {
-        if (text == null || text.isEmpty()) {
-            return false;
-        }
-        if (text.contains("vodafone")) {
-            return false;
-        }
-        if (text.equals("vod")) {
-            return true;
-        }
-        return text.contains(" vod ")
-                || text.startsWith("vod ")
-                || text.endsWith(" vod")
-                || text.contains("vod/")
-                || text.contains("/vod")
-                || text.contains("vod-")
-                || text.contains("-vod")
-                || text.contains("_vod")
-                || text.contains("vod_")
-                || text.contains("vod:");
-    }
-
-    private String buildFallbackPlayUrl(String id) {
-        if (id == null || id.trim().isEmpty()) {
-            return "";
-        }
-        try {
-            Long.parseLong(id.trim());
-            return baseUrl + "/proxy/manifest/" + id.trim();
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
 
     private void loadEpgNow() {
         ioExecutor.execute(() -> {
@@ -1479,67 +1237,6 @@ public class MainActivity extends FragmentActivity {
             return null;
         }
         return new PlayerController.PlaybackRequest(channelItem.id, channelItem.name, channelItem.playUrl, channelItem.fallbackPlayUrl);
-    }
-
-    private static final class ChannelItem {
-        final String id;
-        final String name;
-        final String logoUrl;
-        final String group;
-        final String playUrl;
-        final String fallbackPlayUrl;
-        final int originalOrder;
-        final int dashboardOrder;
-        final boolean isVod;
-        final int platformId;
-        final String platformName;
-        final List<String> customGroups;
-        boolean favorite;
-        String nowProgram;
-
-        ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, int platformId, String platformName, List<String> customGroups) {
-            this.id = id;
-            this.name = name;
-            this.logoUrl = logoUrl;
-            this.group = group;
-            this.playUrl = playUrl;
-            this.fallbackPlayUrl = fallbackPlayUrl;
-            this.originalOrder = originalOrder;
-            this.dashboardOrder = dashboardOrder;
-            this.isVod = isVod;
-            this.platformId = platformId;
-            this.platformName = platformName;
-            this.customGroups = customGroups;
-            this.nowProgram = "";
-        }
-    }
-
-    private static final class ChannelFilter {
-        final String key;
-        final String label;
-        final int type;
-        final int platformId;
-        final String groupName;
-
-        ChannelFilter(String key, String label, int type, int platformId, String groupName) {
-            this.key = key;
-            this.label = label;
-            this.type = type;
-            this.platformId = platformId;
-            this.groupName = groupName;
-        }
-    }
-
-    private static final class CatalogLoadResult {
-        final List<ChannelItem> channels;
-        final List<ChannelFilter> filters;
-        final String defaultFilterKey;
-
-        CatalogLoadResult(List<ChannelItem> channels, List<ChannelFilter> filters, String defaultFilterKey) {
-            this.channels = channels;
-            this.filters = filters;
-            this.defaultFilterKey = defaultFilterKey;
-        }
     }
 
     private static final class RecordingItem {

@@ -7,10 +7,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.ImageView;
 
@@ -65,7 +68,10 @@ public class MainActivity extends FragmentActivity {
     private TextView overlayCurrentMetaText;
     private TextView overlayPlaybackRouteText;
     private TextView overlayRecentText;
+    private TextView zapChannelText;
+    private TextView zapMetaText;
     private View channelOverlay;
+    private View zapBanner;
     private RecyclerView channelList;
 
     private PlayerController playerController;
@@ -103,6 +109,11 @@ public class MainActivity extends FragmentActivity {
             statusText.setVisibility(View.GONE);
         }
     };
+    private final Runnable hideZapBannerRunnable = () -> {
+        if (zapBanner != null) {
+            zapBanner.setVisibility(View.GONE);
+        }
+    };
     private final Runnable reminderTickRunnable = new Runnable() {
         @Override
         public void run() {
@@ -124,6 +135,9 @@ public class MainActivity extends FragmentActivity {
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
         overlayPlaybackRouteText = findViewById(R.id.overlayPlaybackRouteText);
         overlayRecentText = findViewById(R.id.overlayRecentText);
+        zapBanner = findViewById(R.id.zapBanner);
+        zapChannelText = findViewById(R.id.zapChannelText);
+        zapMetaText = findViewById(R.id.zapMetaText);
         channelOverlay = findViewById(R.id.channelOverlay);
         channelList = findViewById(R.id.channelList);
 
@@ -327,6 +341,7 @@ public class MainActivity extends FragmentActivity {
         hideError();
         showStatus(ch.name);
         updateOverlayPanel();
+        showZapBanner(ch);
     }
 
     private static String safeLower(String value) {
@@ -773,6 +788,9 @@ public class MainActivity extends FragmentActivity {
                     showOverlay();
                 }
                 return true;
+            case KeyEvent.KEYCODE_SEARCH:
+                showChannelSearchDialog();
+                return true;
             case KeyEvent.KEYCODE_MEDIA_RECORD:
                 if (isOverlayVisible() && selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
                     createScheduleFromEndpoint(channels.get(selectedOverlayIndex), false);
@@ -894,6 +912,7 @@ public class MainActivity extends FragmentActivity {
 
     private void showV12ToolsMenu() {
         String[] options = new String[]{
+                getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
                 getString(R.string.tools_menu_playback_diagnostics)
         };
@@ -901,13 +920,76 @@ public class MainActivity extends FragmentActivity {
                 .setTitle(R.string.tools_menu_title)
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        showRecentChannelsDialog();
+                        showChannelSearchDialog();
                     } else if (which == 1) {
+                        showRecentChannelsDialog();
+                    } else if (which == 2) {
                         showPlaybackDiagnosticsDialog();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void showChannelSearchDialog() {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_channel_search, null, false);
+        EditText input = dialogView.findViewById(R.id.channelSearchInput);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.channelSearchResults);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+
+        List<ChannelItem> filteredItems = new ArrayList<>();
+        filteredItems.addAll(allChannels);
+        SearchChannelAdapter adapter = new SearchChannelAdapter(filteredItems);
+        recyclerView.setAdapter(adapter);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.title_search_channels)
+                .setView(dialogView)
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+
+        input.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                filterSearchResults(adapter, s == null ? "" : s.toString());
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+
+        dialog.setOnShowListener(d -> {
+            input.requestFocus();
+            filterSearchResults(adapter, "");
+        });
+        dialog.show();
+    }
+
+    private void filterSearchResults(SearchChannelAdapter adapter, String query) {
+        if (adapter == null) {
+            return;
+        }
+        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        List<ChannelItem> results = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (normalizedQuery.isEmpty()) {
+                results.add(item);
+            } else {
+                String haystack = (item.name + " " + item.group + " " + joinLabels(item.customGroups)).toLowerCase(Locale.ROOT);
+                if (haystack.contains(normalizedQuery)) {
+                    results.add(item);
+                }
+            }
+            if (results.size() >= 25) {
+                break;
+            }
+        }
+        adapter.submitList(results);
     }
 
     private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
@@ -957,6 +1039,26 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void tuneRecentChannel(String channelId) {
+        int index = findChannelIndexById(channelId);
+        if (index < 0) {
+            syncOverlayCoordinator();
+            channelOverlayCoordinator.setSelectedFilterKey("all");
+            channelOverlayCoordinator.setFavoritesOnly(false);
+            channelOverlayCoordinator.refreshVisibleChannels(lastChannelId, channelId);
+            syncOverlayStateFromCoordinator();
+            channelAdapter.notifyDataSetChanged();
+            updateFilterText();
+            index = findChannelIndexById(channelId);
+        }
+        if (index >= 0) {
+            tuneToIndex(index, true);
+        }
+    }
+
+    private void tuneChannelById(String channelId) {
+        if (channelId == null || channelId.trim().isEmpty()) {
+            return;
+        }
         int index = findChannelIndexById(channelId);
         if (index < 0) {
             syncOverlayCoordinator();
@@ -1048,6 +1150,20 @@ public class MainActivity extends FragmentActivity {
             builder.append(label.trim());
         }
         return builder.toString();
+    }
+
+    private void showZapBanner(ChannelItem channelItem) {
+        if (zapBanner == null || zapChannelText == null || zapMetaText == null || channelItem == null) {
+            return;
+        }
+        zapChannelText.setText(channelItem.name);
+        String meta = channelItem.nowProgram == null || channelItem.nowProgram.trim().isEmpty()
+                ? getString(R.string.zap_banner_empty_meta)
+                : channelItem.nowProgram;
+        zapMetaText.setText(meta);
+        zapBanner.setVisibility(View.VISIBLE);
+        uiHandler.removeCallbacks(hideZapBannerRunnable);
+        uiHandler.postDelayed(hideZapBannerRunnable, 2200L);
     }
 
     private String buildGuideMeta(EpgRepository.EpgProgram program) {
@@ -1230,6 +1346,57 @@ public class MainActivity extends FragmentActivity {
                 super(itemView);
                 name = itemView.findViewById(R.id.recordingNameText);
                 meta = itemView.findViewById(R.id.recordingMetaText);
+            }
+        }
+    }
+
+    private final class SearchChannelAdapter extends RecyclerView.Adapter<SearchChannelAdapter.SearchChannelVH> {
+        private final List<ChannelItem> items = new ArrayList<>();
+
+        SearchChannelAdapter(List<ChannelItem> initialItems) {
+            submitList(initialItems);
+        }
+
+        void submitList(List<ChannelItem> newItems) {
+            items.clear();
+            if (newItems != null) {
+                items.addAll(newItems);
+            }
+            notifyDataSetChanged();
+        }
+
+        @NonNull
+        @Override
+        public SearchChannelVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.item_search_channel, parent, false);
+            return new SearchChannelVH(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull SearchChannelVH holder, int position) {
+            ChannelItem item = items.get(position);
+            holder.name.setText(item.favorite ? "★ " + item.name : item.name);
+            String primaryMeta = item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group;
+            if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
+                primaryMeta = getString(R.string.search_channel_action_hint);
+            }
+            holder.meta.setText(getString(R.string.search_channel_meta, primaryMeta, item.isVod ? getString(R.string.channel_badge_vod) : getString(R.string.channel_badge_live)));
+            holder.itemView.setOnClickListener(v -> tuneChannelById(item.id));
+        }
+
+        @Override
+        public int getItemCount() {
+            return items.size();
+        }
+
+        final class SearchChannelVH extends RecyclerView.ViewHolder {
+            final TextView name;
+            final TextView meta;
+
+            SearchChannelVH(@NonNull View itemView) {
+                super(itemView);
+                name = itemView.findViewById(R.id.searchChannelNameText);
+                meta = itemView.findViewById(R.id.searchChannelMetaText);
             }
         }
     }

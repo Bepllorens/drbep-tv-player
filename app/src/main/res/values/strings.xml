@@ -57,8 +57,15 @@
     <string name="overlay_recent_channels_empty">Recientes: aun sin historial</string>
     <string name="overlay_tools_hint">INFO mantenido: herramientas v1.2</string>
     <string name="tools_menu_title">Herramientas v1.2</string>
+    <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>
+    <string name="title_search_channels">Buscar canal</string>
+    <string name="search_hint">Escribe nombre o grupo</string>
+    <string name="search_empty_results">Sin resultados todavia</string>
+    <string name="search_channel_meta">%1$s  ·  %2$s</string>
+    <string name="search_channel_action_hint">Pulsa para sintonizar</string>
+    <string name="zap_banner_empty_meta">Cambiando canal...</string>
     <string name="title_recent_channels">Canales recientes</string>
     <string name="title_playback_diagnostics">Diagnostico de playback</string>
     <string name="recent_channel_item">%1$s  ·  %2$s</string>

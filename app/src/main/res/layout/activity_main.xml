@@ -28,6 +28,37 @@
         android:visibility="gone" />
 
     <LinearLayout
+        android:id="@+id/zapBanner"
+        android:layout_width="360dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginLeft="28dp"
+        android:layout_marginBottom="28dp"
+        android:background="#D9151A22"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/zapChannelText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/zapMetaText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:maxLines="2"
+            android:textColor="#CFE0F4"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/channelOverlay"
         android:layout_width="520dp"
         android:layout_height="match_parent"

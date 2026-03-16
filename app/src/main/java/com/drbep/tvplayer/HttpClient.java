@@ -31,6 +31,10 @@ final class HttpClient {
         return request("GET", url, connectTimeoutMs, readTimeoutMs, headers, null);
     }
 
+    Response delete(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
+        return request("DELETE", url, connectTimeoutMs, readTimeoutMs, headers, null);
+    }
+
     Response postJson(String url, JSONObject payload, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
         byte[] body = payload == null ? new byte[0] : payload.toString().getBytes(StandardCharsets.UTF_8);
         return request("POST", url, connectTimeoutMs, readTimeoutMs, headers, body);

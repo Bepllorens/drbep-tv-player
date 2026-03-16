@@ -3,6 +3,7 @@ package com.drbep.tvplayer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,6 +84,31 @@ final class RecordingsRepository {
             relativePath = item.name;
         }
         return baseUrl + "/recordings/remux/" + encodePath(relativePath);
+    }
+
+    void deleteRecording(RecordingItem item, String basePath) throws Exception {
+        if (item == null) {
+            throw new IllegalArgumentException("recording item missing");
+        }
+        String relativePath = item.path;
+        if (basePath != null && !basePath.trim().isEmpty() && relativePath != null && relativePath.startsWith(basePath)) {
+            relativePath = relativePath.substring(basePath.length());
+            if (relativePath.startsWith("/")) {
+                relativePath = relativePath.substring(1);
+            }
+        }
+        if (relativePath == null || relativePath.trim().isEmpty()) {
+            relativePath = item.name;
+        }
+        HttpClient.Response response = httpClient.delete(
+                baseUrl + "/api/recordings/files?file=" + encodePath(relativePath),
+                10000,
+                20000,
+                java.util.Collections.singletonMap("Accept", "application/json")
+        );
+        if (response.code != HttpURLConnection.HTTP_OK) {
+            throw new IllegalStateException("delete HTTP " + response.code + (response.body == null || response.body.trim().isEmpty() ? "" : ": " + response.body));
+        }
     }
 
     private static String encodePath(String raw) {

@@ -552,6 +552,32 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private void refreshRecordingsPanel() {
+        String keepPath = null;
+        RecordingsRepository.RecordingItem selected = getSelectedRecordingItem();
+        if (selected != null) {
+            keepPath = selected.path;
+        }
+        final String desiredPath = keepPath;
+        showStatus(getString(R.string.status_loading_recordings));
+        ioExecutor.execute(() -> {
+            try {
+                RecordingsRepository.RecordingsResult result = recordingsRepository.fetchRecordings();
+                if (result.items.isEmpty()) {
+                    uiHandler.post(() -> {
+                        hideRecordingsPanel();
+                        showStatus(getString(R.string.status_no_recordings));
+                    });
+                    return;
+                }
+                uiHandler.post(() -> showRecordingsPanel(result, desiredPath));
+            } catch (Exception e) {
+                Log.w(TAG, "refresh recordings failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_recordings)));
+            }
+        });
+    }
+
     private void playRecording(RecordingsRepository.RecordingItem item, String basePath) {
         if (item == null) {
             return;
@@ -560,6 +586,75 @@ public class MainActivity extends FragmentActivity {
         playerController.playRecording(item.name, url);
         hideRecordingsPanel();
         hideOverlay();
+    }
+
+    private RecordingsRepository.RecordingItem getSelectedRecordingItem() {
+        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
+            return null;
+        }
+        if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
+            selectedRecordingIndex = 0;
+        }
+        return currentRecordingsResult.items.get(selectedRecordingIndex);
+    }
+
+    private void showRecordingActionsDialog() {
+        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        if (item == null) {
+            return;
+        }
+        String[] options = new String[]{
+                getString(R.string.recording_action_play),
+                getString(R.string.recording_action_refresh),
+                getString(R.string.recording_action_delete)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_recording_actions)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        playSelectedRecording();
+                    } else if (which == 1) {
+                        refreshRecordingsPanel();
+                    } else if (which == 2) {
+                        confirmDeleteSelectedRecording();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void confirmDeleteSelectedRecording() {
+        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        if (item == null) {
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.recording_action_delete)
+                .setMessage(getString(R.string.recording_delete_confirm, item.name))
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .setPositiveButton(R.string.recording_action_delete, (dialog, which) -> deleteSelectedRecording())
+                .show();
+    }
+
+    private void deleteSelectedRecording() {
+        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        if (item == null || currentRecordingsResult == null) {
+            return;
+        }
+        String basePath = currentRecordingsResult.basePath;
+        showStatus(getString(R.string.recording_action_delete));
+        ioExecutor.execute(() -> {
+            try {
+                recordingsRepository.deleteRecording(item, basePath);
+                uiHandler.post(() -> {
+                    showStatus(getString(R.string.status_recording_deleted));
+                    refreshRecordingsPanel();
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "delete recording failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_delete_recording)));
+            }
+        });
     }
 
     private void checkReminderNotifications() {
@@ -767,6 +862,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result) {
+        showRecordingsPanel(result, null);
+    }
+
+    private void showRecordingsPanel(RecordingsRepository.RecordingsResult result, String preferredPath) {
         if (recordingsPanel == null || recordingsRecyclerView == null) {
             showRecordingsDialog(result);
             return;
@@ -774,6 +873,14 @@ public class MainActivity extends FragmentActivity {
         hideOverlay();
         currentRecordingsResult = result;
         selectedRecordingIndex = 0;
+        if (preferredPath != null && !preferredPath.trim().isEmpty()) {
+            for (int i = 0; i < result.items.size(); i++) {
+                if (preferredPath.equals(result.items.get(i).path)) {
+                    selectedRecordingIndex = i;
+                    break;
+                }
+            }
+        }
         recordingsAdapter = new RecordingsAdapter(result);
         recordingsRecyclerView.setAdapter(recordingsAdapter);
         recordingsRecyclerView.scrollToPosition(selectedRecordingIndex);
@@ -1131,6 +1238,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_INFO:
+                if (isRecordingsPanelVisible()) {
+                    showRecordingActionsDialog();
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
                         openMiniGuideForChannel(channels.get(selectedOverlayIndex));

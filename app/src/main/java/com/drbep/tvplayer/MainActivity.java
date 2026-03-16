@@ -15,6 +15,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.graphics.Rect;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -1555,6 +1556,7 @@ public class MainActivity extends FragmentActivity {
         TextView windowText = dialogView.findViewById(R.id.timelineWindowText);
         LinearLayout headerRow = dialogView.findViewById(R.id.timelineHeaderRow);
         LinearLayout rowsContainer = dialogView.findViewById(R.id.timelineRowsContainer);
+        final View[] initialFocus = new View[1];
 
         long windowEndMs = windowStartMs + TIMELINE_WINDOW_MS;
         SimpleDateFormat dayFormat = new SimpleDateFormat("EEE d MMM", Locale.getDefault());
@@ -1631,14 +1633,27 @@ public class MainActivity extends FragmentActivity {
                 LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(blockWidth, dp(72));
                 blockParams.rightMargin = dp(2);
                 block.setLayoutParams(blockParams);
-                block.setBackgroundColor(program.progress >= 0 ? 0xFF276B49 : 0xFF2B4056);
+                block.setFocusable(true);
+                block.setFocusableInTouchMode(true);
                 block.setPadding(dp(8), dp(8), dp(8), dp(8));
                 block.setText((program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title)
                         + "\n" + shortTime(program.startTime));
                 block.setTextColor(0xFFFFFFFF);
                 block.setTextSize(13f);
                 block.setMaxLines(3);
+                boolean live = program.progress >= 0;
+                applyTimelineBlockState(block, live, false);
+                block.setOnFocusChangeListener((v, hasFocus) -> {
+                    applyTimelineBlockState(block, live, hasFocus);
+                    if (hasFocus) {
+                        Rect rect = new Rect(0, 0, v.getWidth(), v.getHeight());
+                        v.requestRectangleOnScreen(rect, true);
+                    }
+                });
                 block.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(row.channel, program));
+                if (initialFocus[0] == null || live) {
+                    initialFocus[0] = block;
+                }
                 strip.addView(block);
                 usedWidth += blockWidth + dp(2);
             }
@@ -1658,16 +1673,22 @@ public class MainActivity extends FragmentActivity {
             rowsContainer.addView(rowLayout);
         }
 
-        new AlertDialog.Builder(this)
+        AlertDialog timelineDialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.title_timeline_guide)
                 .setView(dialogView)
-                .setNeutralButton(R.string.timeline_now_button, (dialog, which) -> openTimelineGuideAroundSelection())
-                .setPositiveButton(R.string.timeline_next_button, (dialog, which) -> {
+                .setNeutralButton(R.string.timeline_now_button, (dialogInterface, which) -> openTimelineGuideAroundSelection())
+                .setPositiveButton(R.string.timeline_next_button, (dialogInterface, which) -> {
                     int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);
                     openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
                 })
                 .setNegativeButton(R.string.dialog_close, null)
-                .show();
+                .create();
+        timelineDialog.setOnShowListener(d -> {
+            if (initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+            }
+        });
+        timelineDialog.show();
     }
 
     private void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {
@@ -1878,6 +1899,23 @@ public class MainActivity extends FragmentActivity {
 
     private int dp(int value) {
         return Math.round(getResources().getDisplayMetrics().density * value);
+    }
+
+    private void applyTimelineBlockState(TextView block, boolean live, boolean focused) {
+        if (block == null) {
+            return;
+        }
+        int bgColor;
+        if (focused) {
+            bgColor = live ? 0xFF49A06E : 0xFF4A6F98;
+            block.setScaleX(1.03f);
+            block.setScaleY(1.03f);
+        } else {
+            bgColor = live ? 0xFF276B49 : 0xFF2B4056;
+            block.setScaleX(1.0f);
+            block.setScaleY(1.0f);
+        }
+        block.setBackgroundColor(bgColor);
     }
 
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {

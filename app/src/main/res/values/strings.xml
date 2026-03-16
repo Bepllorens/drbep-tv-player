@@ -74,6 +74,12 @@
     <string name="search_empty_results">Sin resultados todavia</string>
     <string name="search_channel_meta">%1$s  ·  %2$s</string>
     <string name="search_channel_action_hint">Pulsa para sintonizar</string>
+    <string name="quick_search_title">Busqueda rapida</string>
+    <string name="quick_search_hint">Escribe con teclado/mando  ·  OK sintoniza  ·  ARRIBA/ABAJO cambia resultado</string>
+    <string name="quick_search_no_results">Sin coincidencias</string>
+    <string name="quick_search_result">%1$s
+%2$s</string>
+    <string name="quick_search_result_index">Resultado %1$d de %2$d</string>
     <string name="zap_banner_empty_meta">Cambiando canal...</string>
     <string name="title_recent_channels">Canales recientes</string>
     <string name="title_playback_diagnostics">Diagnostico de playback</string>

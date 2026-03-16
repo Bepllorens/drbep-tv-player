@@ -72,12 +72,15 @@ public class MainActivity extends FragmentActivity {
     private TextView overlayRecentText;
     private TextView zapChannelText;
     private TextView zapMetaText;
+    private TextView quickSearchQueryText;
+    private TextView quickSearchResultText;
     private TextView recordingDetailTitleText;
     private TextView recordingDetailMetaText;
     private TextView recordingDetailPathText;
     private TextView recordingDetailActionText;
     private View channelOverlay;
     private View zapBanner;
+    private View quickSearchOverlay;
     private View recordingsPanel;
     private RecyclerView channelList;
     private RecyclerView recordingsRecyclerView;
@@ -111,6 +114,9 @@ public class MainActivity extends FragmentActivity {
     private String lastChannelId;
     private String selectedFilterKey = "all";
     private int selectedRecordingIndex = 0;
+    private final StringBuilder quickSearchBuffer = new StringBuilder();
+    private final List<ChannelItem> quickSearchMatches = new ArrayList<>();
+    private int quickSearchSelectionIndex = 0;
     private final Set<String> favoriteChannelIds = new HashSet<>();
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private RecordingsRepository.RecordingsResult currentRecordingsResult;
@@ -127,6 +133,7 @@ public class MainActivity extends FragmentActivity {
             zapBanner.setVisibility(View.GONE);
         }
     };
+    private final Runnable clearQuickSearchRunnable = this::clearQuickSearchOverlay;
     private final Runnable reminderTickRunnable = new Runnable() {
         @Override
         public void run() {
@@ -151,6 +158,9 @@ public class MainActivity extends FragmentActivity {
         zapBanner = findViewById(R.id.zapBanner);
         zapChannelText = findViewById(R.id.zapChannelText);
         zapMetaText = findViewById(R.id.zapMetaText);
+        quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
+        quickSearchQueryText = findViewById(R.id.quickSearchQueryText);
+        quickSearchResultText = findViewById(R.id.quickSearchResultText);
         recordingDetailTitleText = findViewById(R.id.recordingDetailTitleText);
         recordingDetailMetaText = findViewById(R.id.recordingDetailMetaText);
         recordingDetailPathText = findViewById(R.id.recordingDetailPathText);
@@ -779,6 +789,119 @@ public class MainActivity extends FragmentActivity {
         updateRecordingsDetailPanel();
     }
 
+    private boolean isQuickSearchVisible() {
+        return quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE;
+    }
+
+    private void handleQuickSearchCharacter(char value) {
+        if (!Character.isLetterOrDigit(value)) {
+            return;
+        }
+        quickSearchBuffer.append(Character.toLowerCase(value));
+        updateQuickSearchOverlay();
+    }
+
+    private void deleteQuickSearchCharacter() {
+        if (quickSearchBuffer.length() == 0) {
+            clearQuickSearchOverlay();
+            return;
+        }
+        quickSearchBuffer.deleteCharAt(quickSearchBuffer.length() - 1);
+        if (quickSearchBuffer.length() == 0) {
+            clearQuickSearchOverlay();
+            return;
+        }
+        updateQuickSearchOverlay();
+    }
+
+    private void moveQuickSearchSelection(int delta) {
+        if (quickSearchMatches.isEmpty()) {
+            return;
+        }
+        quickSearchSelectionIndex += delta;
+        if (quickSearchSelectionIndex < 0) {
+            quickSearchSelectionIndex = quickSearchMatches.size() - 1;
+        }
+        if (quickSearchSelectionIndex >= quickSearchMatches.size()) {
+            quickSearchSelectionIndex = 0;
+        }
+        updateQuickSearchOverlay();
+    }
+
+    private void tuneQuickSearchSelection() {
+        if (quickSearchMatches.isEmpty()) {
+            return;
+        }
+        if (quickSearchSelectionIndex < 0 || quickSearchSelectionIndex >= quickSearchMatches.size()) {
+            quickSearchSelectionIndex = 0;
+        }
+        tuneChannelById(quickSearchMatches.get(quickSearchSelectionIndex).id);
+        clearQuickSearchOverlay();
+    }
+
+    private void updateQuickSearchOverlay() {
+        if (quickSearchOverlay == null || quickSearchQueryText == null || quickSearchResultText == null) {
+            return;
+        }
+        String query = quickSearchBuffer.toString().trim();
+        if (query.isEmpty()) {
+            clearQuickSearchOverlay();
+            return;
+        }
+        quickSearchMatches.clear();
+        quickSearchMatches.addAll(searchChannels(query, 6));
+        if (quickSearchSelectionIndex >= quickSearchMatches.size()) {
+            quickSearchSelectionIndex = 0;
+        }
+        quickSearchOverlay.setVisibility(View.VISIBLE);
+        quickSearchQueryText.setText(query.toUpperCase(Locale.getDefault()));
+        if (quickSearchMatches.isEmpty()) {
+            quickSearchResultText.setText(getString(R.string.quick_search_no_results));
+        } else {
+            ChannelItem selected = quickSearchMatches.get(quickSearchSelectionIndex);
+            String primaryMeta = selected.nowProgram != null && !selected.nowProgram.trim().isEmpty() ? selected.nowProgram : selected.group;
+            if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
+                primaryMeta = getString(R.string.search_channel_action_hint);
+            }
+            quickSearchResultText.setText(getString(
+                    R.string.quick_search_result,
+                    getString(R.string.quick_search_result_index, quickSearchSelectionIndex + 1, quickSearchMatches.size()) + "  ·  " + selected.name,
+                    primaryMeta
+            ));
+        }
+        uiHandler.removeCallbacks(clearQuickSearchRunnable);
+        uiHandler.postDelayed(clearQuickSearchRunnable, 3200L);
+    }
+
+    private void clearQuickSearchOverlay() {
+        quickSearchBuffer.setLength(0);
+        quickSearchMatches.clear();
+        quickSearchSelectionIndex = 0;
+        if (quickSearchOverlay != null) {
+            quickSearchOverlay.setVisibility(View.GONE);
+        }
+        uiHandler.removeCallbacks(clearQuickSearchRunnable);
+    }
+
+    private List<ChannelItem> searchChannels(String query, int limit) {
+        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        List<ChannelItem> results = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (normalizedQuery.isEmpty()) {
+                results.add(item);
+            } else {
+                String haystack = (item.name + " " + item.group + " " + joinLabels(item.customGroups)).toLowerCase(Locale.ROOT);
+                if (haystack.contains(normalizedQuery)) {
+                    results.add(item);
+                }
+            }
+            if (results.size() >= limit) {
+                break;
+            }
+        }
+        return results;
+    }
+
     private void moveRecordingsSelection(int delta) {
         if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
             return;
@@ -865,10 +988,22 @@ public class MainActivity extends FragmentActivity {
             return super.dispatchKeyEvent(event);
         }
 
+        if (!isRecordingsPanelVisible()) {
+            int unicode = event.getUnicodeChar();
+            if (unicode > 0 && Character.isLetterOrDigit((char) unicode)) {
+                handleQuickSearchCharacter((char) unicode);
+                return true;
+            }
+        }
+
         int keyCode = event.getKeyCode();
         switch (keyCode) {
             case KeyEvent.KEYCODE_MENU:
                 long now = System.currentTimeMillis();
+                if (isQuickSearchVisible()) {
+                    clearQuickSearchOverlay();
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     hideRecordingsPanel();
                     return true;
@@ -886,6 +1021,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_BACK:
+                if (isQuickSearchVisible()) {
+                    clearQuickSearchOverlay();
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     hideRecordingsPanel();
                     return true;
@@ -898,6 +1037,10 @@ public class MainActivity extends FragmentActivity {
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_UP:
             case KeyEvent.KEYCODE_PAGE_UP:
+                if (isQuickSearchVisible()) {
+                    moveQuickSearchSelection(-1);
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     moveRecordingsSelection(-1);
                     return true;
@@ -906,6 +1049,10 @@ public class MainActivity extends FragmentActivity {
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
             case KeyEvent.KEYCODE_PAGE_DOWN:
+                if (isQuickSearchVisible()) {
+                    moveQuickSearchSelection(1);
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     moveRecordingsSelection(1);
                     return true;
@@ -913,6 +1060,10 @@ public class MainActivity extends FragmentActivity {
                 tuneRelative(1);
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
+                if (isQuickSearchVisible()) {
+                    moveQuickSearchSelection(-1);
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     moveRecordingsSelection(-1);
                     return true;
@@ -924,6 +1075,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (isQuickSearchVisible()) {
+                    moveQuickSearchSelection(1);
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     moveRecordingsSelection(1);
                     return true;
@@ -935,6 +1090,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (isQuickSearchVisible()) {
+                    clearQuickSearchOverlay();
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     hideRecordingsPanel();
                     return true;
@@ -955,6 +1114,10 @@ public class MainActivity extends FragmentActivity {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                if (isQuickSearchVisible()) {
+                    tuneQuickSearchSelection();
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     playSelectedRecording();
                     return true;
@@ -978,6 +1141,13 @@ public class MainActivity extends FragmentActivity {
             case KeyEvent.KEYCODE_SEARCH:
                 showChannelSearchDialog();
                 return true;
+            case KeyEvent.KEYCODE_DEL:
+            case KeyEvent.KEYCODE_FORWARD_DEL:
+                if (isQuickSearchVisible()) {
+                    deleteQuickSearchCharacter();
+                    return true;
+                }
+                break;
             case KeyEvent.KEYCODE_MEDIA_RECORD:
                 if (isOverlayVisible() && selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
                     createScheduleFromEndpoint(channels.get(selectedOverlayIndex), false);
@@ -1196,22 +1366,7 @@ public class MainActivity extends FragmentActivity {
         if (adapter == null) {
             return;
         }
-        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
-        List<ChannelItem> results = new ArrayList<>();
-        for (ChannelItem item : allChannels) {
-            if (normalizedQuery.isEmpty()) {
-                results.add(item);
-            } else {
-                String haystack = (item.name + " " + item.group + " " + joinLabels(item.customGroups)).toLowerCase(Locale.ROOT);
-                if (haystack.contains(normalizedQuery)) {
-                    results.add(item);
-                }
-            }
-            if (results.size() >= 25) {
-                break;
-            }
-        }
-        adapter.submitList(results);
+        adapter.submitList(searchChannels(query, 25));
     }
 
     private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {

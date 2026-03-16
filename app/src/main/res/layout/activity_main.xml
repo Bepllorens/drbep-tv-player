@@ -59,6 +59,55 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/quickSearchOverlay"
+        android:layout_width="420dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginLeft="28dp"
+        android:layout_marginTop="98dp"
+        android:background="#E0161D27"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/quick_search_title"
+            android:textAllCaps="true"
+            android:textColor="#9FD0FF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/quickSearchQueryText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/quickSearchResultText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:maxLines="3"
+            android:textColor="#D5E6F8"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/quickSearchHintText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/quick_search_hint"
+            android:textColor="#96AFC8"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/channelOverlay"
         android:layout_width="520dp"
         android:layout_height="match_parent"

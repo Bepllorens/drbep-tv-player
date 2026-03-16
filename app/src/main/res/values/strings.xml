@@ -36,6 +36,13 @@
     <string name="error_unknown_reason">desconocido</string>
     <string name="error_playback_details">Error de reproduccion\n\n%1$s\n\nBase URL: %2$s\n\nPulsa MENU para abrir la lista o reintentar</string>
     <string name="title_guide">Guia: %1$s</string>
+    <string name="title_timeline_guide">Guia timeline</string>
+    <string name="timeline_window_label">%1$s  ·  %2$s - %3$s</string>
+    <string name="timeline_hour_block">%1$s</string>
+    <string name="timeline_no_epg">Sin EPG</string>
+    <string name="timeline_now_button">Ahora</string>
+    <string name="timeline_next_button">+2h</string>
+    <string name="tools_menu_timeline_guide">Guia timeline</string>
     <string name="title_recordings">Grabaciones</string>
     <string name="title_recordings_visual">Grabaciones recientes</string>
     <string name="recordings_panel_hint">BACK o MENU para cerrar</string>

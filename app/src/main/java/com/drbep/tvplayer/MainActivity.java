@@ -11,12 +11,14 @@ import android.content.res.ColorStateList;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
-import android.widget.TextView;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.media3.ui.PlayerView;
@@ -62,6 +64,8 @@ public class MainActivity extends FragmentActivity {
     private static final int FILTER_PLATFORM = 1;
     private static final int FILTER_CUSTOM_GROUP = 2;
     private static final int FILTER_VOD = 3;
+    private static final long TIMELINE_WINDOW_MS = 3L * 60L * 60L * 1000L;
+    private static final long TIMELINE_SHIFT_MS = 2L * 60L * 60L * 1000L;
 
     private PlayerView playerView;
     private TextView errorText;
@@ -122,6 +126,16 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private RecordingsRepository.RecordingsResult currentRecordingsResult;
     private RecordingsAdapter recordingsAdapter;
+
+    private static final class TimelineChannelPrograms {
+        final ChannelItem channel;
+        final List<EpgRepository.EpgProgram> programs;
+
+        TimelineChannelPrograms(ChannelItem channel, List<EpgRepository.EpgProgram> programs) {
+            this.channel = channel;
+            this.programs = programs;
+        }
+    }
 
     private final Runnable hideOverlayRunnable = this::hideOverlay;
     private final Runnable hideStatusRunnable = () -> {
@@ -448,6 +462,53 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "mini guide failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+            }
+        });
+    }
+
+    private void openTimelineGuideAroundSelection() {
+        if (channels.isEmpty()) {
+            return;
+        }
+        int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
+                ? selectedOverlayIndex
+                : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
+        openTimelineGuide(anchorIndex, System.currentTimeMillis());
+    }
+
+    private void openTimelineGuide(int anchorIndex, long windowStartMs) {
+        if (channels.isEmpty()) {
+            return;
+        }
+        if (anchorIndex < 0) {
+            anchorIndex = 0;
+        }
+        if (anchorIndex >= channels.size()) {
+            anchorIndex = channels.size() - 1;
+        }
+        final int selectedIndex = anchorIndex;
+        final long selectedWindowStartMs = windowStartMs;
+        showStatus(getString(R.string.status_loading_guide));
+        ioExecutor.execute(() -> {
+            try {
+                List<TimelineChannelPrograms> rows = new ArrayList<>();
+                int start = Math.max(0, selectedIndex - 2);
+                int end = Math.min(channels.size(), start + 6);
+                for (int i = start; i < end; i++) {
+                    ChannelItem channel = channels.get(i);
+                    List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel.id, 12);
+                    rows.add(new TimelineChannelPrograms(channel, programs));
+                }
+                uiHandler.post(() -> {
+                    if (rows.isEmpty()) {
+                        showStatus(getString(R.string.status_no_epg_for_channel));
+                        return;
+                    }
+                    showTimelineGuideDialog(rows, selectedWindowStartMs);
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "timeline guide failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
@@ -1222,7 +1283,7 @@ public class MainActivity extends FragmentActivity {
                 }
                 if (isOverlayVisible()) {
                     if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
-                        openMiniGuideForChannel(channels.get(selectedOverlayIndex));
+                        openTimelineGuideAroundSelection();
                     }
                 } else {
                     showOverlay();
@@ -1396,21 +1457,24 @@ public class MainActivity extends FragmentActivity {
     private void showV12ToolsMenu() {
         clearQuickSearchOverlay();
         String[] options = new String[]{
+                getString(R.string.tools_menu_timeline_guide),
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
-            getString(R.string.tools_menu_playback_diagnostics),
-            getString(R.string.tools_menu_recordings_panel)
+                getString(R.string.tools_menu_playback_diagnostics),
+                getString(R.string.tools_menu_recordings_panel)
         };
         new AlertDialog.Builder(this)
                 .setTitle(R.string.tools_menu_title)
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        showChannelSearchDialog();
+                        openTimelineGuideAroundSelection();
                     } else if (which == 1) {
-                        showRecentChannelsDialog();
+                        showChannelSearchDialog();
                     } else if (which == 2) {
-                        showPlaybackDiagnosticsDialog();
+                        showRecentChannelsDialog();
                     } else if (which == 3) {
+                        showPlaybackDiagnosticsDialog();
+                    } else if (which == 4) {
                         openRecordingsBrowser();
                     }
                 })
@@ -1482,6 +1546,126 @@ public class MainActivity extends FragmentActivity {
         new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.title_guide, channel.name))
                 .setView(dialogView)
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs) {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_timeline_guide, null, false);
+        TextView windowText = dialogView.findViewById(R.id.timelineWindowText);
+        LinearLayout headerRow = dialogView.findViewById(R.id.timelineHeaderRow);
+        LinearLayout rowsContainer = dialogView.findViewById(R.id.timelineRowsContainer);
+
+        long windowEndMs = windowStartMs + TIMELINE_WINDOW_MS;
+        SimpleDateFormat dayFormat = new SimpleDateFormat("EEE d MMM", Locale.getDefault());
+        SimpleDateFormat hourFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        windowText.setText(getString(
+                R.string.timeline_window_label,
+                dayFormat.format(new Date(windowStartMs)),
+                hourFormat.format(new Date(windowStartMs)),
+                hourFormat.format(new Date(windowEndMs))
+        ));
+
+        int labelWidth = dp(144);
+        int hourWidth = dp(180);
+        int minuteWidth = Math.max(1, hourWidth / 60);
+
+        TextView spacer = new TextView(this);
+        spacer.setLayoutParams(new LinearLayout.LayoutParams(labelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+        headerRow.addView(spacer);
+        for (int i = 0; i < 3; i++) {
+            TextView hourLabel = new TextView(this);
+            hourLabel.setLayoutParams(new LinearLayout.LayoutParams(hourWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+            hourLabel.setText(getString(R.string.timeline_hour_block, hourFormat.format(new Date(windowStartMs + (i * 60L * 60L * 1000L)))));
+            hourLabel.setTextColor(0xFFA7D0FF);
+            hourLabel.setTextSize(13f);
+            hourLabel.setPadding(dp(8), dp(4), dp(8), dp(4));
+            headerRow.addView(hourLabel);
+        }
+
+        for (TimelineChannelPrograms row : rows) {
+            LinearLayout rowLayout = new LinearLayout(this);
+            rowLayout.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rowParams.topMargin = dp(8);
+            rowLayout.setLayoutParams(rowParams);
+
+            TextView channelLabel = new TextView(this);
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(labelWidth, dp(72));
+            channelLabel.setLayoutParams(labelParams);
+            channelLabel.setBackgroundColor(0xFF1A2532);
+            channelLabel.setGravity(Gravity.CENTER_VERTICAL);
+            channelLabel.setPadding(dp(12), dp(10), dp(12), dp(10));
+            channelLabel.setText(row.channel.name);
+            channelLabel.setTextColor(0xFFFFFFFF);
+            channelLabel.setTextSize(14f);
+            channelLabel.setMaxLines(2);
+            rowLayout.addView(channelLabel);
+
+            LinearLayout strip = new LinearLayout(this);
+            strip.setOrientation(LinearLayout.HORIZONTAL);
+            strip.setLayoutParams(new LinearLayout.LayoutParams(hourWidth * 3, ViewGroup.LayoutParams.WRAP_CONTENT));
+            strip.setBackgroundColor(0xFF101820);
+
+            int usedWidth = 0;
+            boolean hasVisibleProgram = false;
+            for (EpgRepository.EpgProgram program : row.programs) {
+                long startMs = parseIsoMillis(program.startTime);
+                long endMs = parseIsoMillis(program.endTime);
+                if (endMs <= windowStartMs || startMs >= windowEndMs || endMs <= startMs) {
+                    continue;
+                }
+                hasVisibleProgram = true;
+                int startOffsetMinutes = (int) Math.max(0L, (startMs - windowStartMs) / 60000L);
+                int targetOffsetWidth = startOffsetMinutes * minuteWidth;
+                if (targetOffsetWidth > usedWidth) {
+                    View spacerView = new View(this);
+                    spacerView.setLayoutParams(new LinearLayout.LayoutParams(targetOffsetWidth - usedWidth, dp(72)));
+                    strip.addView(spacerView);
+                    usedWidth = targetOffsetWidth;
+                }
+
+                int durationMinutes = (int) Math.max(20L, (Math.min(windowEndMs, endMs) - Math.max(windowStartMs, startMs)) / 60000L);
+                int blockWidth = Math.max(dp(88), durationMinutes * minuteWidth);
+                TextView block = new TextView(this);
+                LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(blockWidth, dp(72));
+                blockParams.rightMargin = dp(2);
+                block.setLayoutParams(blockParams);
+                block.setBackgroundColor(program.progress >= 0 ? 0xFF276B49 : 0xFF2B4056);
+                block.setPadding(dp(8), dp(8), dp(8), dp(8));
+                block.setText((program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title)
+                        + "\n" + shortTime(program.startTime));
+                block.setTextColor(0xFFFFFFFF);
+                block.setTextSize(13f);
+                block.setMaxLines(3);
+                block.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(row.channel, program));
+                strip.addView(block);
+                usedWidth += blockWidth + dp(2);
+            }
+
+            if (!hasVisibleProgram) {
+                TextView empty = new TextView(this);
+                empty.setLayoutParams(new LinearLayout.LayoutParams(hourWidth * 3, dp(72)));
+                empty.setBackgroundColor(0xFF1E2630);
+                empty.setGravity(Gravity.CENTER_VERTICAL);
+                empty.setPadding(dp(10), dp(8), dp(10), dp(8));
+                empty.setText(R.string.timeline_no_epg);
+                empty.setTextColor(0xFFBFD0E6);
+                strip.addView(empty);
+            }
+
+            rowLayout.addView(strip);
+            rowsContainer.addView(rowLayout);
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_timeline_guide)
+                .setView(dialogView)
+                .setNeutralButton(R.string.timeline_now_button, (dialog, which) -> openTimelineGuideAroundSelection())
+                .setPositiveButton(R.string.timeline_next_button, (dialog, which) -> {
+                    int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);
+                    openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
+                })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
     }
@@ -1690,6 +1874,10 @@ public class MainActivity extends FragmentActivity {
             return ((long) value) + " " + units[unitIndex];
         }
         return String.format(Locale.US, "%.1f %s", value, units[unitIndex]);
+    }
+
+    private int dp(int value) {
+        return Math.round(getResources().getDisplayMetrics().density * value);
     }
 
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {

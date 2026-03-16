@@ -19,7 +19,7 @@
 
 ## Epic 3. Refactor minimo estructural
 
-- [ ] Crear `PlayerController`
+- [x] Crear `PlayerController`
 - [ ] Crear `CatalogRepository`
 - [ ] Crear `EpgRepository`
 - [ ] Crear `RecordingsRepository`

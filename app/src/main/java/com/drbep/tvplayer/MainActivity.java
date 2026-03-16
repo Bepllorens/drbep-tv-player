@@ -15,12 +15,6 @@ import android.widget.TextView;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
-import androidx.media3.common.C;
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.MimeTypes;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -75,7 +69,7 @@ public class MainActivity extends FragmentActivity {
     private View channelOverlay;
     private RecyclerView channelList;
 
-    private ExoPlayer player;
+    private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
 
@@ -90,13 +84,12 @@ public class MainActivity extends FragmentActivity {
 
     private int currentIndex = -1;
     private int selectedOverlayIndex = 0;
-    private boolean usingPlaybackFallback;
     private boolean favoritesOnly;
     private long lastMenuPressedAtMs;
     private String lastChannelId;
     private String selectedFilterKey = "all";
     private final Set<String> favoriteChannelIds = new HashSet<>();
-    private final Map<String, StreamInfo> streamInfoByChannelId = new HashMap<>();
+    private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
 
     private final Runnable hideOverlayRunnable = this::hideOverlay;
     private final Runnable hideStatusRunnable = () -> {
@@ -164,43 +157,29 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void setupPlayer() {
-        player = new ExoPlayer.Builder(this).build();
-        playerView.setPlayer(player);
-        playerView.setUseController(false);
-        playerView.setKeepScreenOn(true);
-        playerView.setFocusable(true);
-        playerView.setFocusableInTouchMode(true);
-
-        player.addListener(new Player.Listener() {
+        playerController = new PlayerController(this, playerView, baseUrl, ioExecutor, uiHandler, new PlayerController.Host() {
             @Override
-            public void onPlayerError(@NonNull PlaybackException error) {
-                ChannelItem current = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
-                StreamInfo cachedStreamInfo = current == null ? null : streamInfoByChannelId.get(current.id);
-                boolean allowFallback = cachedStreamInfo == null || (!cachedStreamInfo.encrypted && !"dash".equals(safeLower(cachedStreamInfo.type)));
-                if (allowFallback && !usingPlaybackFallback && current != null && current.fallbackPlayUrl != null && !current.fallbackPlayUrl.isEmpty()) {
-                    usingPlaybackFallback = true;
-                    Log.w(TAG, "primary playback failed, retrying fallback URL", error);
-                    showStatus(getString(R.string.status_retry_compat));
-                    playChannel(current, true, true, cachedStreamInfo);
-                    return;
-                }
-                String msg = getString(R.string.error_playback_message, error.getMessage());
-                showError(msg);
-                Log.w(TAG, msg, error);
+            public void showStatus(String text) {
+                MainActivity.this.showStatus(text);
             }
 
             @Override
-            public void onPlaybackStateChanged(int playbackState) {
-                if (playbackState == Player.STATE_BUFFERING) {
-                    showStatus(getString(R.string.status_buffering));
-                } else if (playbackState == Player.STATE_READY) {
-                    hideError();
-                    showStatus(currentIndex >= 0 && currentIndex < channels.size()
-                            ? channels.get(currentIndex).name
-                            : getString(R.string.status_ready));
-                }
+            public void showError(String text) {
+                MainActivity.this.showError(text);
+            }
+
+            @Override
+            public void hideError() {
+                MainActivity.this.hideError();
+            }
+
+            @Override
+            public boolean isChannelCurrent(String channelId) {
+                ChannelItem current = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
+                return current != null && channelId != null && channelId.equals(current.id);
             }
         });
+        playerController.initialize();
     }
 
     private void setupChannelList() {
@@ -486,154 +465,14 @@ public class MainActivity extends FragmentActivity {
 
         ChannelItem ch = channels.get(index);
         saveLastChannelId(ch.id);
-        usingPlaybackFallback = false;
-        StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
-        playChannel(ch, autoPlay, false, cachedStreamInfo);
-        resolveStreamInfoAndReplayIfNeeded(ch, autoPlay);
+        playerController.resetFallbackState();
+        PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
+        PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
+        playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo);
+        playerController.resolveStreamInfoAndReplayIfNeeded(playbackRequest, autoPlay, streamInfoByChannelId);
 
         hideError();
         showStatus(ch.name);
-    }
-
-    private void playChannel(ChannelItem ch, boolean autoPlay, boolean useFallback, StreamInfo streamInfo) {
-        if (ch == null || player == null) {
-            return;
-        }
-        String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
-        String targetUrl = useFallback && ch.fallbackPlayUrl != null && !ch.fallbackPlayUrl.isEmpty()
-                ? ch.fallbackPlayUrl
-                : ch.playUrl;
-        String playUrlLower = ch.playUrl == null ? "" : ch.playUrl.toLowerCase(Locale.ROOT);
-        boolean looksDash = playUrlLower.contains(".mpd");
-        if (!useFallback) {
-            if (streamInfo != null) {
-                if ("widevine".equals(drmType)) {
-                    targetUrl = baseUrl + "/proxy/manifest/" + ch.id;
-                } else if ("clearkey".equals(drmType)) {
-                    targetUrl = baseUrl + "/proxy/manifest/" + ch.id;
-                } else if (streamInfo.encrypted || looksDash) {
-                    targetUrl = baseUrl + "/proxy/manifest/" + ch.id + "?nodrm=1";
-                }
-            } else {
-                // Default path before stream info arrives: use proxy manifest.
-                targetUrl = baseUrl + "/proxy/manifest/" + ch.id;
-            }
-        }
-        usingPlaybackFallback = useFallback;
-        if (targetUrl == null || targetUrl.trim().isEmpty()) {
-            showError(getString(R.string.error_empty_playback_url));
-            return;
-        }
-
-        String mime = inferMimeType(targetUrl);
-        if ((mime == null || mime.trim().isEmpty()) && streamInfo != null && streamInfo.type != null) {
-            String t = safeLower(streamInfo.type);
-            if ("dash".equals(t)) {
-                mime = MimeTypes.APPLICATION_MPD;
-            } else if ("hls".equals(t)) {
-                mime = MimeTypes.APPLICATION_M3U8;
-            }
-        }
-        if ((mime == null || mime.trim().isEmpty()) && looksDash) {
-            mime = MimeTypes.APPLICATION_MPD;
-        }
-        if ((mime == null || mime.trim().isEmpty()) && !useFallback && streamInfo == null && targetUrl.contains("/proxy/manifest/")) {
-            mime = MimeTypes.APPLICATION_MPD;
-        }
-        if ((mime == null || mime.trim().isEmpty()) && (targetUrl.contains("/proxy/manifest/") || targetUrl.contains("/drm/manifest/"))) {
-            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
-            if ("hls".equals(streamType)) {
-                mime = MimeTypes.APPLICATION_M3U8;
-            } else {
-                mime = MimeTypes.APPLICATION_MPD;
-            }
-        }
-        MediaItem.Builder builder = new MediaItem.Builder().setUri(targetUrl);
-        if (mime != null && !mime.trim().isEmpty()) {
-            builder.setMimeType(mime);
-        }
-        if ("widevine".equals(drmType)) {
-            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                    .setLicenseUri(baseUrl + "/api/widevine/" + ch.id)
-                    .build());
-        } else if ("clearkey".equals(drmType)) {
-            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                    .setLicenseUri(baseUrl + "/api/clearkey/" + ch.id)
-                    .build());
-        }
-
-        Log.i(TAG, "playChannel id=" + ch.id + " name=" + ch.name + " drmType=" + drmType + " encrypted=" + (streamInfo != null && streamInfo.encrypted) + " mime=" + (mime == null ? "" : mime) + " target=" + targetUrl + " useFallback=" + useFallback);
-        player.setMediaItem(builder.build());
-        player.prepare();
-        player.setPlayWhenReady(autoPlay);
-
-        String mode = useFallback ? " (modo compat)" : "";
-        showStatus(ch.name + mode);
-    }
-
-    private void resolveStreamInfoAndReplayIfNeeded(ChannelItem ch, boolean autoPlay) {
-        if (ch == null || ch.id == null || ch.id.trim().isEmpty()) {
-            return;
-        }
-        final String channelId = ch.id.trim();
-        final String channelName = ch.name;
-        ioExecutor.execute(() -> {
-            StreamInfo info = streamInfoByChannelId.get(channelId);
-            if (info == null) {
-                info = fetchStreamInfo(channelId);
-                if (info != null) {
-                    streamInfoByChannelId.put(channelId, info);
-                }
-            }
-            if (info == null) {
-                return;
-            }
-            boolean requiresReplay = "widevine".equals(safeLower(info.drmType)) || info.encrypted;
-            if (!requiresReplay) {
-                return;
-            }
-            final StreamInfo resolved = info;
-            uiHandler.post(() -> {
-                ChannelItem current = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
-                if (current == null || !channelId.equals(current.id)) {
-                    return;
-                }
-                playChannel(current, autoPlay, false, resolved);
-                if ("widevine".equals(safeLower(resolved.drmType))) {
-                    showStatus(channelName + " (Widevine)");
-                }
-            });
-        });
-    }
-
-    private StreamInfo fetchStreamInfo(String channelId) {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/stream/" + channelId);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(20000);
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                return null;
-            }
-            JSONObject o = new JSONObject(readAll(conn.getInputStream()));
-            StreamInfo info = new StreamInfo();
-            info.drmType = o.optString("drm_type", "").trim();
-            info.licenseUrl = o.optString("license_url", "").trim();
-            info.type = o.optString("type", "").trim();
-            info.encrypted = o.optBoolean("encrypted", false);
-            return info;
-        } catch (Exception e) {
-            Log.w(TAG, "stream info fetch failed for channel " + channelId, e);
-            return null;
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
     }
 
     private static String safeLower(String value) {
@@ -679,26 +518,6 @@ public class MainActivity extends FragmentActivity {
         } catch (Exception ignored) {
             return "";
         }
-    }
-
-    private String inferMimeType(String url) {
-        String u = url.toLowerCase(Locale.ROOT);
-        if (u.contains(".mpd")) {
-            return MimeTypes.APPLICATION_MPD;
-        }
-        if (u.contains(".m3u8")) {
-            return MimeTypes.APPLICATION_M3U8;
-        }
-        if (u.contains(".mp4")) {
-            return MimeTypes.VIDEO_MP4;
-        }
-        if (u.contains(".ts")) {
-            return MimeTypes.VIDEO_MP2T;
-        }
-        if (u.contains(".mkv")) {
-            return MimeTypes.VIDEO_MATROSKA;
-        }
-        return null;
     }
 
     private void loadEpgNow() {
@@ -1078,16 +897,8 @@ public class MainActivity extends FragmentActivity {
 
         String encoded = encodePath(rel);
         String url = baseUrl + "/recordings/remux/" + encoded;
-        String mime = inferMimeType(url);
-        MediaItem.Builder builder = new MediaItem.Builder().setUri(url);
-        if (mime != null && !mime.trim().isEmpty()) {
-            builder.setMimeType(mime);
-        }
-        player.setMediaItem(builder.build());
-        player.prepare();
-        player.setPlayWhenReady(true);
+        playerController.playRecording(item.name, url);
         hideOverlay();
-        showStatus("Reproduciendo grabacion: " + item.name);
     }
 
     private static String encodePath(String raw) {
@@ -1576,10 +1387,8 @@ public class MainActivity extends FragmentActivity {
                 if (isOverlayVisible()) {
                     tuneToIndex(selectedOverlayIndex, true);
                     hideOverlay();
-                } else if (player != null) {
-                    boolean playing = player.isPlaying();
-                    player.setPlayWhenReady(!playing);
-                    showStatus(getString(playing ? R.string.status_paused : R.string.status_playing));
+                } else if (playerController != null) {
+                    playerController.togglePlayback();
                 }
                 return true;
             case KeyEvent.KEYCODE_INFO:
@@ -1599,10 +1408,8 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                if (player != null) {
-                    boolean playing = player.isPlaying();
-                    player.setPlayWhenReady(!playing);
-                    showStatus(getString(playing ? R.string.status_paused : R.string.status_playing));
+                if (playerController != null) {
+                    playerController.togglePlayback();
                     return true;
                 }
                 break;
@@ -1649,14 +1456,14 @@ public class MainActivity extends FragmentActivity {
     protected void onDestroy() {
         uiHandler.removeCallbacksAndMessages(null);
         ioExecutor.shutdownNow();
-        if (player != null) {
-            player.release();
-            player = null;
+        if (playerController != null) {
+            playerController.release();
+            playerController = null;
         }
         super.onDestroy();
     }
 
-    private static String readAll(InputStream in) throws Exception {
+    static String readAll(InputStream in) throws Exception {
         StringBuilder out = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
             String line;
@@ -1665,6 +1472,13 @@ public class MainActivity extends FragmentActivity {
             }
         }
         return out.toString();
+    }
+
+    private PlayerController.PlaybackRequest toPlaybackRequest(ChannelItem channelItem) {
+        if (channelItem == null) {
+            return null;
+        }
+        return new PlayerController.PlaybackRequest(channelItem.id, channelItem.name, channelItem.playUrl, channelItem.fallbackPlayUrl);
     }
 
     private static final class ChannelItem {
@@ -1698,13 +1512,6 @@ public class MainActivity extends FragmentActivity {
             this.customGroups = customGroups;
             this.nowProgram = "";
         }
-    }
-
-    private static final class StreamInfo {
-        String drmType;
-        String licenseUrl;
-        String type;
-        boolean encrypted;
     }
 
     private static final class ChannelFilter {

@@ -57,6 +57,30 @@ final class PlayerController {
         boolean encrypted;
     }
 
+    static final class PlaybackDiagnostics {
+        final String channelName;
+        final String playbackState;
+        final String routeLabel;
+        final String targetUrl;
+        final String mimeType;
+        final String drmType;
+        final boolean encrypted;
+        final boolean usingFallback;
+        final String lastError;
+
+        PlaybackDiagnostics(String channelName, String playbackState, String routeLabel, String targetUrl, String mimeType, String drmType, boolean encrypted, boolean usingFallback, String lastError) {
+            this.channelName = channelName;
+            this.playbackState = playbackState;
+            this.routeLabel = routeLabel;
+            this.targetUrl = targetUrl;
+            this.mimeType = mimeType;
+            this.drmType = drmType;
+            this.encrypted = encrypted;
+            this.usingFallback = usingFallback;
+            this.lastError = lastError;
+        }
+    }
+
     private static final class PlaybackDecision {
         final String targetUrl;
         final String mimeType;
@@ -103,6 +127,8 @@ final class PlayerController {
     private StreamInfo currentStreamInfo;
     private PlaybackDecision currentPlaybackDecision;
     private boolean usingPlaybackFallback;
+    private String lastPlaybackState = "IDLE";
+    private String lastErrorSummary;
 
     PlayerController(Context context, PlayerView playerView, String baseUrl, ExecutorService ioExecutor, Handler uiHandler, Host host) {
         this.context = context;
@@ -141,12 +167,14 @@ final class PlayerController {
                 }
 
                 String message = context.getString(R.string.error_playback_message, error.getMessage());
+                lastErrorSummary = message;
                 host.showError(message);
                 Log.w(TAG, message, error);
             }
 
             @Override
             public void onPlaybackStateChanged(int playbackState) {
+                lastPlaybackState = playbackStateToString(playbackState);
                 Log.d(TAG, "playbackState=" + playbackStateToString(playbackState)
                         + " channel=" + describeRequest(currentRequest)
                         + " decision=" + describeDecision(currentPlaybackDecision)
@@ -166,6 +194,26 @@ final class PlayerController {
     void resetFallbackState() {
         usingPlaybackFallback = false;
         Log.d(TAG, "compatibility fallback state reset");
+    }
+
+    PlaybackDiagnostics getPlaybackDiagnostics() {
+        String channelName = currentRequest == null ? "" : safeLogValue(currentRequest.channelName);
+        String routeLabel = describeRouteLabel(currentPlaybackDecision);
+        String targetUrl = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.targetUrl);
+        String mimeType = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.mimeType);
+        String drmType = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.drmType);
+        boolean encrypted = currentStreamInfo != null && currentStreamInfo.encrypted;
+        return new PlaybackDiagnostics(
+                channelName,
+                lastPlaybackState,
+                routeLabel,
+                targetUrl,
+                mimeType,
+                drmType,
+                encrypted,
+                usingPlaybackFallback,
+                safeLogValue(lastErrorSummary)
+        );
     }
 
     boolean isPlaying() {
@@ -276,6 +324,7 @@ final class PlayerController {
         currentRequest = request;
         currentStreamInfo = streamInfo;
         usingPlaybackFallback = useFallback;
+        lastErrorSummary = null;
         PlaybackDecision decision = buildPlaybackDecision(request, useFallback, streamInfo);
         currentPlaybackDecision = decision;
         Log.d(TAG, "playChannelInternal channel=" + describeRequest(request)
@@ -459,6 +508,31 @@ final class PlayerController {
                 + ",encrypted=" + streamInfo.encrypted
                 + ",license=" + shortenUrl(streamInfo.licenseUrl)
                 + "}";
+    }
+
+    private String describeRouteLabel(PlaybackDecision decision) {
+        if (decision == null) {
+            return context.getString(R.string.diagnostics_state_idle);
+        }
+        if (decision.useFallback) {
+            return context.getString(R.string.diagnostics_route_compat);
+        }
+        if ("widevine".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
+            return context.getString(R.string.diagnostics_route_proxy_drm);
+        }
+        if (decision.targetUrl != null && decision.targetUrl.contains("?nodrm=1")) {
+            return context.getString(R.string.diagnostics_route_proxy_clear);
+        }
+        if (decision.targetUrl != null && decision.targetUrl.contains("/proxy/manifest/")) {
+            return context.getString(R.string.diagnostics_route_proxy_auto);
+        }
+        if (MimeTypes.APPLICATION_M3U8.equals(decision.mimeType)) {
+            return context.getString(R.string.diagnostics_route_direct_hls);
+        }
+        if (MimeTypes.APPLICATION_MPD.equals(decision.mimeType)) {
+            return context.getString(R.string.diagnostics_route_direct_dash);
+        }
+        return context.getString(R.string.diagnostics_route_direct_generic);
     }
 
     private static String playbackStateToString(int state) {

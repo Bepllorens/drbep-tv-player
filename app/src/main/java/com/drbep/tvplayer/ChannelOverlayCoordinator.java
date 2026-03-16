@@ -54,6 +54,14 @@ final class ChannelOverlayCoordinator {
         return selectedFilterKey;
     }
 
+    void setSelectedFilterKey(String selectedFilterKey) {
+        this.selectedFilterKey = selectedFilterKey;
+    }
+
+    void setFavoritesOnly(boolean favoritesOnly) {
+        this.favoritesOnly = favoritesOnly;
+    }
+
     void applyLoadedChannels(CatalogLoadResult result, String lastChannelId) {
         allChannels.clear();
         allChannels.addAll(result.channels);
@@ -185,6 +193,10 @@ final class ChannelOverlayCoordinator {
             }
         }
         return -1;
+    }
+
+    void refreshVisibleChannels(String keepCurrentChannelId, String keepSelectedChannelId) {
+        rebuildVisibleChannels(keepCurrentChannelId, keepSelectedChannelId);
     }
 
     private void applyFavoritesAndSort(List<ChannelItem> target) {

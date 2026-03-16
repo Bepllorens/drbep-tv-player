@@ -35,6 +35,20 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/channelBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="#334060"
+            android:paddingLeft="8dp"
+            android:paddingTop="3dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="3dp"
+            android:textColor="#EAF1FF"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
             android:id="@+id/channelMeta"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

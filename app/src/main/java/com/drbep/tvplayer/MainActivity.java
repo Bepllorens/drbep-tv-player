@@ -51,6 +51,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_FAVORITES = "favorite_channel_ids";
     private static final String PREF_REMINDERS = "channel_reminders";
+    private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
     private static final int FILTER_ALL = 0;
     private static final int FILTER_PLATFORM = 1;
     private static final int FILTER_CUSTOM_GROUP = 2;
@@ -60,6 +61,10 @@ public class MainActivity extends FragmentActivity {
     private TextView errorText;
     private TextView statusText;
     private TextView filterText;
+    private TextView overlayCurrentChannelText;
+    private TextView overlayCurrentMetaText;
+    private TextView overlayPlaybackRouteText;
+    private TextView overlayRecentText;
     private View channelOverlay;
     private RecyclerView channelList;
 
@@ -76,6 +81,7 @@ public class MainActivity extends FragmentActivity {
     private EpgRepository epgRepository;
     private RecordingsRepository recordingsRepository;
     private ReminderStore reminderStore;
+    private RecentChannelsStore recentChannelsStore;
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
     private HttpClient httpClient;
@@ -114,6 +120,10 @@ public class MainActivity extends FragmentActivity {
         errorText = findViewById(R.id.errorText);
         statusText = findViewById(R.id.statusText);
         filterText = findViewById(R.id.filterText);
+        overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
+        overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
+        overlayPlaybackRouteText = findViewById(R.id.overlayPlaybackRouteText);
+        overlayRecentText = findViewById(R.id.overlayRecentText);
         channelOverlay = findViewById(R.id.channelOverlay);
         channelList = findViewById(R.id.channelList);
 
@@ -124,6 +134,7 @@ public class MainActivity extends FragmentActivity {
     httpClient = new HttpClient();
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
+        recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
@@ -184,6 +195,7 @@ public class MainActivity extends FragmentActivity {
             favoriteChannelIds.addAll(storedFavorites);
         }
         reminderStore.load();
+        recentChannelsStore.load();
 
         setupPlayer();
         setupChannelList();
@@ -305,6 +317,7 @@ public class MainActivity extends FragmentActivity {
 
         ChannelItem ch = channels.get(index);
         saveLastChannelId(ch.id);
+        recentChannelsStore.add(ch.id, ch.name);
         playerController.resetFallbackState();
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
         PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
@@ -313,6 +326,7 @@ public class MainActivity extends FragmentActivity {
 
         hideError();
         showStatus(ch.name);
+        updateOverlayPanel();
     }
 
     private static String safeLower(String value) {
@@ -332,6 +346,7 @@ public class MainActivity extends FragmentActivity {
                         item.nowProgram = epgNowByChannelId.getOrDefault(item.id, "");
                     }
                     channelAdapter.notifyDataSetChanged();
+                    updateOverlayPanel();
                 });
             } catch (Exception e) {
                 Log.w(TAG, "load epg now failed", e);
@@ -666,6 +681,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showOverlay() {
+        updateOverlayPanel();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, OVERLAY_HIDE_MS);
     }
 
@@ -679,6 +695,7 @@ public class MainActivity extends FragmentActivity {
         }
         statusText.setText(text);
         statusText.setVisibility(View.VISIBLE);
+        updateOverlayPanel();
         uiHandler.removeCallbacks(hideStatusRunnable);
         uiHandler.postDelayed(hideStatusRunnable, STATUS_HIDE_MS);
     }
@@ -807,6 +824,10 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     public boolean onKeyLongPress(int keyCode, @NonNull KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_INFO) {
+            showV12ToolsMenu();
+            return true;
+        }
         if (isOverlayVisible() && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
             showChannelActionMenu();
             return true;
@@ -865,6 +886,175 @@ public class MainActivity extends FragmentActivity {
         selectedFilterKey = channelOverlayCoordinator.getSelectedFilterKey();
     }
 
+    private void updateOverlayPanel() {
+        if (overlayCurrentChannelText == null || overlayCurrentMetaText == null || overlayPlaybackRouteText == null || overlayRecentText == null) {
+            return;
+        }
+        ChannelItem currentChannel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
+        if (currentChannel == null) {
+            overlayCurrentChannelText.setText(getString(R.string.status_ready));
+            overlayCurrentMetaText.setText(getString(R.string.overlay_current_program_empty));
+        } else {
+            overlayCurrentChannelText.setText(currentChannel.name);
+            String currentProgram = currentChannel.nowProgram == null || currentChannel.nowProgram.trim().isEmpty()
+                    ? getString(R.string.overlay_current_program_empty)
+                    : getString(R.string.overlay_current_program, currentChannel.nowProgram);
+            overlayCurrentMetaText.setText(currentProgram);
+        }
+
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        String routeLabel = diagnostics == null || diagnostics.routeLabel == null || diagnostics.routeLabel.trim().isEmpty()
+                ? getString(R.string.diagnostics_state_idle)
+                : diagnostics.routeLabel;
+        overlayPlaybackRouteText.setText(getString(R.string.overlay_playback_route, routeLabel));
+
+        List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        if (items.isEmpty()) {
+            overlayRecentText.setText(getString(R.string.overlay_recent_channels_empty));
+            return;
+        }
+        List<String> names = new ArrayList<>();
+        int max = Math.min(4, items.size());
+        for (int i = 0; i < max; i++) {
+            names.add(items.get(i).channelName);
+        }
+        overlayRecentText.setText(getString(R.string.overlay_recent_channels, joinLabels(names)));
+    }
+
+    private void showV12ToolsMenu() {
+        String[] options = new String[]{
+                getString(R.string.tools_menu_recent_channels),
+                getString(R.string.tools_menu_playback_diagnostics)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.tools_menu_title)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        showRecentChannelsDialog();
+                    } else if (which == 1) {
+                        showPlaybackDiagnosticsDialog();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void showRecentChannelsDialog() {
+        List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        if (items.isEmpty()) {
+            showStatus(getString(R.string.overlay_recent_channels_empty));
+            return;
+        }
+        List<String> labels = new ArrayList<>();
+        SimpleDateFormat format = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        for (RecentChannelsStore.RecentChannelItem item : items) {
+            labels.add(getString(R.string.recent_channel_item, item.channelName, format.format(new Date(item.watchedAt))));
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_recent_channels)
+                .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                    if (which >= 0 && which < items.size()) {
+                        tuneRecentChannel(items.get(which).channelId);
+                    }
+                })
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void tuneRecentChannel(String channelId) {
+        int index = findChannelIndexById(channelId);
+        if (index < 0) {
+            syncOverlayCoordinator();
+            channelOverlayCoordinator.setSelectedFilterKey("all");
+            channelOverlayCoordinator.setFavoritesOnly(false);
+            channelOverlayCoordinator.refreshVisibleChannels(lastChannelId, channelId);
+            syncOverlayStateFromCoordinator();
+            channelAdapter.notifyDataSetChanged();
+            updateFilterText();
+            index = findChannelIndexById(channelId);
+        }
+        if (index >= 0) {
+            tuneToIndex(index, true);
+        }
+    }
+
+    private void showPlaybackDiagnosticsDialog() {
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        if (diagnostics == null || (diagnostics.channelName == null || diagnostics.channelName.trim().isEmpty()) && (diagnostics.targetUrl == null || diagnostics.targetUrl.trim().isEmpty())) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.title_playback_diagnostics)
+                    .setMessage(getString(R.string.diagnostics_none))
+                    .setNegativeButton(R.string.dialog_close, null)
+                    .show();
+            return;
+        }
+
+        StringBuilder message = new StringBuilder();
+        appendDiagnosticLine(message, getString(R.string.diagnostics_channel, safeText(diagnostics.channelName)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_state, safeText(diagnostics.playbackState)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_route, safeText(diagnostics.routeLabel)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_target, safeText(diagnostics.targetUrl)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_mime, fallbackUnknown(diagnostics.mimeType)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_drm, fallbackUnknown(diagnostics.drmType)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_encrypted, getString(diagnostics.encrypted ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_fallback, getString(diagnostics.usingFallback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        if (diagnostics.lastError != null && !diagnostics.lastError.trim().isEmpty()) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_last_error, diagnostics.lastError));
+        }
+        appendDiagnosticLine(message, getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_playback_diagnostics)
+                .setMessage(message.toString().trim())
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private String buildRecentDiagnosticsSummary() {
+        List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        if (items.isEmpty()) {
+            return getString(R.string.diagnostics_value_unknown);
+        }
+        List<String> labels = new ArrayList<>();
+        int max = Math.min(5, items.size());
+        for (int i = 0; i < max; i++) {
+            labels.add(items.get(i).channelName);
+        }
+        return joinLabels(labels);
+    }
+
+    private static void appendDiagnosticLine(StringBuilder builder, String line) {
+        if (line == null || line.trim().isEmpty()) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append("\n\n");
+        }
+        builder.append(line);
+    }
+
+    private String fallbackUnknown(String value) {
+        return value == null || value.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : value;
+    }
+
+    private static String safeText(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String joinLabels(List<String> labels) {
+        StringBuilder builder = new StringBuilder();
+        for (String label : labels) {
+            if (label == null || label.trim().isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append("  ·  ");
+            }
+            builder.append(label.trim());
+        }
+        return builder.toString();
+    }
+
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {
         @NonNull
         @Override
@@ -877,6 +1067,8 @@ public class MainActivity extends FragmentActivity {
         public void onBindViewHolder(@NonNull ChannelVH holder, int position) {
             ChannelItem ch = channels.get(position);
             holder.name.setText(ch.favorite ? "★ " + ch.name : ch.name);
+            holder.badge.setText(getString(ch.isVod ? R.string.channel_badge_vod : R.string.channel_badge_live));
+            holder.badge.setBackgroundColor(ch.isVod ? 0xAA704C18 : 0xAA204A8A);
             if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
                 holder.meta.setText(ch.nowProgram);
             } else if (ch.group != null && !ch.group.trim().isEmpty()) {
@@ -917,12 +1109,14 @@ public class MainActivity extends FragmentActivity {
 
         class ChannelVH extends RecyclerView.ViewHolder {
             TextView name;
+            TextView badge;
             TextView meta;
             ImageView logo;
 
             ChannelVH(@NonNull View itemView) {
                 super(itemView);
                 name = itemView.findViewById(R.id.channelName);
+                badge = itemView.findViewById(R.id.channelBadge);
                 meta = itemView.findViewById(R.id.channelMeta);
                 logo = itemView.findViewById(R.id.channelLogo);
             }

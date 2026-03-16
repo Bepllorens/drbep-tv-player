@@ -23,7 +23,7 @@
 - [x] Crear `CatalogRepository`
 - [x] Crear `EpgRepository`
 - [x] Crear `RecordingsRepository`
-- [ ] Crear `ReminderStore`
+- [x] Crear `ReminderStore`
 - [ ] Reducir `MainActivity` por debajo de 1000 lineas
 
 ## Epic 4. Robustez playback y API

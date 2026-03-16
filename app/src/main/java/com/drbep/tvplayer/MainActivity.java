@@ -19,7 +19,6 @@ import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -76,11 +75,11 @@ public class MainActivity extends FragmentActivity {
     private final List<ChannelItem> allChannels = new ArrayList<>();
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
-    private final List<ReminderItem> reminders = new ArrayList<>();
     private ChannelAdapter channelAdapter;
     private CatalogRepository catalogRepository;
     private EpgRepository epgRepository;
     private RecordingsRepository recordingsRepository;
+    private ReminderStore reminderStore;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -124,6 +123,7 @@ public class MainActivity extends FragmentActivity {
     epgRepository = new EpgRepository(baseUrl);
         recordingsRepository = new RecordingsRepository(baseUrl);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         favoritesOnly = false;
         lastMenuPressedAtMs = 0L;
@@ -131,7 +131,7 @@ public class MainActivity extends FragmentActivity {
         if (storedFavorites != null) {
             favoriteChannelIds.addAll(storedFavorites);
         }
-        loadReminders();
+        reminderStore.load();
 
         setupPlayer();
         setupChannelList();
@@ -498,9 +498,8 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String title = program.title == null || program.title.trim().isEmpty() ? "Programa" : program.title;
-        ReminderItem item = new ReminderItem(ch.id, ch.name, title, startAt, false);
-        reminders.add(item);
-        saveReminders();
+        ReminderStore.ReminderItem item = new ReminderStore.ReminderItem(ch.id, ch.name, title, startAt, false);
+        reminderStore.addReminder(item);
         showStatus(getString(R.string.status_reminder_created));
     }
 
@@ -544,82 +543,14 @@ public class MainActivity extends FragmentActivity {
         hideOverlay();
     }
 
-    private void loadReminders() {
-        reminders.clear();
-        if (prefs == null) {
-            return;
-        }
-        String raw = prefs.getString(PREF_REMINDERS, "[]");
-        if (raw == null || raw.trim().isEmpty()) {
-            return;
-        }
-        try {
-            JSONArray arr = new JSONArray(raw);
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o == null) {
-                    continue;
-                }
-                reminders.add(new ReminderItem(
-                        o.optString("channel_id", ""),
-                        o.optString("channel_name", ""),
-                        o.optString("title", "Programa"),
-                        o.optLong("start_at", 0L),
-                        o.optBoolean("notified", false)
-                ));
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "load reminders failed", e);
-        }
-    }
-
-    private void saveReminders() {
-        if (prefs == null) {
-            return;
-        }
-        JSONArray arr = new JSONArray();
-        for (ReminderItem item : reminders) {
-            JSONObject o = new JSONObject();
-            try {
-                o.put("channel_id", item.channelId);
-                o.put("channel_name", item.channelName);
-                o.put("title", item.title);
-                o.put("start_at", item.startAtMillis);
-                o.put("notified", item.notified);
-                arr.put(o);
-            } catch (Exception ignored) {
-            }
-        }
-        prefs.edit().putString(PREF_REMINDERS, arr.toString()).apply();
-    }
-
     private void checkReminderNotifications() {
-        long now = System.currentTimeMillis();
-        boolean changed = false;
-        List<ReminderItem> toRemove = new ArrayList<>();
-        for (ReminderItem item : reminders) {
-            if (item == null) {
-                continue;
-            }
-            if (item.notified) {
-                if (now > item.startAtMillis + 10 * 60 * 1000L) {
-                    toRemove.add(item);
-                    changed = true;
-                }
-                continue;
-            }
-            long delta = item.startAtMillis - now;
-            if (delta <= 60 * 1000L && delta >= -60 * 1000L) {
-                item.notified = true;
-                changed = true;
-                showStatus("Recordatorio: " + item.channelName + " - " + item.title);
-            }
+        if (reminderStore == null) {
+            return;
         }
-        if (!toRemove.isEmpty()) {
-            reminders.removeAll(toRemove);
-        }
-        if (changed) {
-            saveReminders();
+        List<ReminderStore.ReminderItem> dueItems = reminderStore.collectDueNotifications(System.currentTimeMillis());
+        if (!dueItems.isEmpty()) {
+            ReminderStore.ReminderItem lastDueItem = dueItems.get(dueItems.size() - 1);
+            showStatus("Recordatorio: " + lastDueItem.channelName + " - " + lastDueItem.title);
         }
     }
 
@@ -1100,22 +1031,6 @@ public class MainActivity extends FragmentActivity {
             return null;
         }
         return new PlayerController.PlaybackRequest(channelItem.id, channelItem.name, channelItem.playUrl, channelItem.fallbackPlayUrl);
-    }
-
-    private static final class ReminderItem {
-        final String channelId;
-        final String channelName;
-        final String title;
-        final long startAtMillis;
-        boolean notified;
-
-        ReminderItem(String channelId, String channelName, String title, long startAtMillis, boolean notified) {
-            this.channelId = channelId;
-            this.channelName = channelName;
-            this.title = title;
-            this.startAtMillis = startAtMillis;
-            this.notified = notified;
-        }
     }
 
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {

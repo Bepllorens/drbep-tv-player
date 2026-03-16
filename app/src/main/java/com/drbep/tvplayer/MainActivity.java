@@ -371,27 +371,12 @@ public class MainActivity extends FragmentActivity {
         ioExecutor.execute(() -> {
             try {
                 List<EpgRepository.EpgProgram> items = epgRepository.fetchChannelPrograms(ch.id, 8);
-                List<String> lines = new ArrayList<>();
-                for (EpgRepository.EpgProgram program : items) {
-                    String start = shortTime(program.startTime);
-                    String end = shortTime(program.endTime);
-                    lines.add(start + " - " + end + "  " + program.title);
-                }
-
                 uiHandler.post(() -> {
-                    if (lines.isEmpty()) {
+                    if (items.isEmpty()) {
                         showStatus(getString(R.string.status_no_epg_for_channel));
                         return;
                     }
-                    new AlertDialog.Builder(MainActivity.this)
-                            .setTitle(getString(R.string.title_guide, ch.name))
-                            .setItems(lines.toArray(new String[0]), (d, index) -> {
-                                if (index >= 0 && index < items.size()) {
-                                    channelActionsCoordinator.showProgramActionMenu(ch, items.get(index));
-                                }
-                            })
-                            .setNegativeButton(R.string.dialog_close, null)
-                            .show();
+                    showMiniGuideDialog(ch, items);
                 });
             } catch (Exception e) {
                 Log.w(TAG, "mini guide failed", e);
@@ -491,21 +476,7 @@ public class MainActivity extends FragmentActivity {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_recordings)));
                     return;
                 }
-
-                List<String> labels = new ArrayList<>();
-                for (RecordingsRepository.RecordingItem item : result.items) {
-                    labels.add(item.name + (item.modified.isEmpty() ? "" : "  ·  " + item.modified));
-                }
-
-                uiHandler.post(() -> new AlertDialog.Builder(MainActivity.this)
-                        .setTitle(R.string.title_recordings)
-                        .setItems(labels.toArray(new String[0]), (dialog, which) -> {
-                            if (which >= 0 && which < result.items.size()) {
-                                playRecording(result.items.get(which), result.basePath);
-                            }
-                        })
-                        .setNegativeButton(R.string.dialog_close, null)
-                        .show());
+                uiHandler.post(() -> showRecordingsDialog(result));
             } catch (Exception e) {
                 Log.w(TAG, "open recordings failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_recordings)));
@@ -939,6 +910,30 @@ public class MainActivity extends FragmentActivity {
                 .show();
     }
 
+    private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setAdapter(new GuideProgramAdapter(channel, items));
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.title_guide, channel.name))
+                .setView(dialogView)
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setAdapter(new RecordingsAdapter(result));
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_recordings_visual)
+                .setView(dialogView)
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
     private void showRecentChannelsDialog() {
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
         if (items.isEmpty()) {
@@ -1055,6 +1050,39 @@ public class MainActivity extends FragmentActivity {
         return builder.toString();
     }
 
+    private String buildGuideMeta(EpgRepository.EpgProgram program) {
+        if (program == null) {
+            return getString(R.string.status_open_program_actions);
+        }
+        if (program.progress >= 0) {
+            return getString(R.string.guide_program_progress, program.progress, getString(R.string.status_open_program_actions));
+        }
+        return getString(R.string.guide_program_meta, getString(R.string.status_open_program_actions));
+    }
+
+    private String buildRecordingMeta(RecordingsRepository.RecordingItem item) {
+        String modified = item == null || item.modified == null || item.modified.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : item.modified;
+        String sizeLabel = (item == null || item.size <= 0L) ? getString(R.string.recording_size_unknown) : humanReadableSize(item.size);
+        return getString(R.string.recording_meta, modified, sizeLabel);
+    }
+
+    private static String humanReadableSize(long sizeBytes) {
+        if (sizeBytes <= 0L) {
+            return "0 B";
+        }
+        String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
+        double value = sizeBytes;
+        int unitIndex = 0;
+        while (value >= 1024d && unitIndex < units.length - 1) {
+            value = value / 1024d;
+            unitIndex++;
+        }
+        if (unitIndex == 0) {
+            return ((long) value) + " " + units[unitIndex];
+        }
+        return String.format(Locale.US, "%.1f %s", value, units[unitIndex]);
+    }
+
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {
         @NonNull
         @Override
@@ -1119,6 +1147,89 @@ public class MainActivity extends FragmentActivity {
                 badge = itemView.findViewById(R.id.channelBadge);
                 meta = itemView.findViewById(R.id.channelMeta);
                 logo = itemView.findViewById(R.id.channelLogo);
+            }
+        }
+    }
+
+    private final class GuideProgramAdapter extends RecyclerView.Adapter<GuideProgramAdapter.GuideProgramVH> {
+        private final ChannelItem channel;
+        private final List<EpgRepository.EpgProgram> items;
+
+        GuideProgramAdapter(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
+            this.channel = channel;
+            this.items = items;
+        }
+
+        @NonNull
+        @Override
+        public GuideProgramVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.item_epg_program, parent, false);
+            return new GuideProgramVH(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull GuideProgramVH holder, int position) {
+            EpgRepository.EpgProgram program = items.get(position);
+            holder.time.setText(shortTime(program.startTime) + " - " + shortTime(program.endTime));
+            holder.title.setText(program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title);
+            holder.meta.setText(buildGuideMeta(program));
+            holder.itemView.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(channel, program));
+        }
+
+        @Override
+        public int getItemCount() {
+            return items.size();
+        }
+
+        final class GuideProgramVH extends RecyclerView.ViewHolder {
+            final TextView time;
+            final TextView title;
+            final TextView meta;
+
+            GuideProgramVH(@NonNull View itemView) {
+                super(itemView);
+                time = itemView.findViewById(R.id.programTimeText);
+                title = itemView.findViewById(R.id.programTitleText);
+                meta = itemView.findViewById(R.id.programMetaText);
+            }
+        }
+    }
+
+    private final class RecordingsAdapter extends RecyclerView.Adapter<RecordingsAdapter.RecordingVH> {
+        private final RecordingsRepository.RecordingsResult result;
+
+        RecordingsAdapter(RecordingsRepository.RecordingsResult result) {
+            this.result = result;
+        }
+
+        @NonNull
+        @Override
+        public RecordingVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.item_recording, parent, false);
+            return new RecordingVH(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull RecordingVH holder, int position) {
+            RecordingsRepository.RecordingItem item = result.items.get(position);
+            holder.name.setText(item.name);
+            holder.meta.setText(buildRecordingMeta(item));
+            holder.itemView.setOnClickListener(v -> playRecording(item, result.basePath));
+        }
+
+        @Override
+        public int getItemCount() {
+            return result.items.size();
+        }
+
+        final class RecordingVH extends RecyclerView.ViewHolder {
+            final TextView name;
+            final TextView meta;
+
+            RecordingVH(@NonNull View itemView) {
+                super(itemView);
+                name = itemView.findViewById(R.id.recordingNameText);
+                meta = itemView.findViewById(R.id.recordingMetaText);
             }
         }
     }

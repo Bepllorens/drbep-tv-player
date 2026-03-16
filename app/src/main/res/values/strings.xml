@@ -24,6 +24,8 @@
     <string name="status_reminder_created">Recordatorio creado</string>
     <string name="status_no_recordings">No hay grabaciones</string>
     <string name="status_failed_load_recordings">No se pudieron cargar grabaciones</string>
+    <string name="status_open_program_actions">Pulsa para grabar o crear recordatorio</string>
+    <string name="status_open_recording_actions">Pulsa para reproducir la grabacion</string>
     <string name="status_no_channels_for_filter">Sin canales para el filtro seleccionado</string>
     <string name="status_searching_next_program">Buscando proximo programa...</string>
     <string name="status_searching_current_program">Buscando programa actual...</string>
@@ -35,6 +37,7 @@
     <string name="error_playback_details">Error de reproduccion\n\n%1$s\n\nBase URL: %2$s\n\nPulsa MENU para abrir la lista o reintentar</string>
     <string name="title_guide">Guia: %1$s</string>
     <string name="title_recordings">Grabaciones</string>
+    <string name="title_recordings_visual">Grabaciones recientes</string>
     <string name="label_program_default">Programa</string>
     <string name="status_reminder_due">Recordatorio: %1$s - %2$s</string>
     <string name="status_filter_changed">Filtro activo: %1$s</string>
@@ -59,6 +62,10 @@
     <string name="title_recent_channels">Canales recientes</string>
     <string name="title_playback_diagnostics">Diagnostico de playback</string>
     <string name="recent_channel_item">%1$s  ·  %2$s</string>
+    <string name="guide_program_progress">En curso: %1$d%%  ·  %2$s</string>
+    <string name="guide_program_meta">Programado  ·  %1$s</string>
+    <string name="recording_meta">%1$s  ·  %2$s</string>
+    <string name="recording_size_unknown">tamano desconocido</string>
     <string name="diagnostics_none">Sin datos de playback todavia</string>
     <string name="diagnostics_channel">Canal: %1$s</string>
     <string name="diagnostics_state">Estado: %1$s</string>

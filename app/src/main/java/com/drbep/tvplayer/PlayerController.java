@@ -127,9 +127,14 @@ final class PlayerController {
             public void onPlayerError(@NonNull PlaybackException error) {
                 PlaybackRequest request = currentRequest;
                 PlaybackDecision decision = currentPlaybackDecision;
+                Log.w(TAG, "onPlayerError channel=" + describeRequest(request)
+                        + " decision=" + describeDecision(decision)
+                        + " streamInfo=" + describeStreamInfo(currentStreamInfo)
+                    + " errorCode=" + PlaybackException.getErrorCodeName(error.errorCode)
+                        + " message=" + safeLogValue(error.getMessage()), error);
                 if (decision != null && decision.allowCompatibilityFallback && !usingPlaybackFallback && request != null && request.hasFallback()) {
                     usingPlaybackFallback = true;
-                    Log.w(TAG, "primary playback failed, retrying fallback URL", error);
+                    Log.w(TAG, "retrying compatibility fallback for channel=" + describeRequest(request));
                     host.showStatus(context.getString(R.string.status_retry_compat));
                     playChannelInternal(request, true, true, currentStreamInfo);
                     return;
@@ -142,6 +147,10 @@ final class PlayerController {
 
             @Override
             public void onPlaybackStateChanged(int playbackState) {
+                Log.d(TAG, "playbackState=" + playbackStateToString(playbackState)
+                        + " channel=" + describeRequest(currentRequest)
+                        + " decision=" + describeDecision(currentPlaybackDecision)
+                        + " playWhenReady=" + (player != null && player.getPlayWhenReady()));
                 if (playbackState == Player.STATE_BUFFERING) {
                     host.showStatus(context.getString(R.string.status_buffering));
                 } else if (playbackState == Player.STATE_READY) {
@@ -156,6 +165,7 @@ final class PlayerController {
 
     void resetFallbackState() {
         usingPlaybackFallback = false;
+        Log.d(TAG, "compatibility fallback state reset");
     }
 
     boolean isPlaying() {
@@ -172,6 +182,9 @@ final class PlayerController {
     }
 
     void playChannel(PlaybackRequest request, boolean autoPlay, StreamInfo streamInfo) {
+        Log.d(TAG, "playChannel request=" + describeRequest(request)
+                + " autoPlay=" + autoPlay
+                + " initialStreamInfo=" + describeStreamInfo(streamInfo));
         playChannelInternal(request, autoPlay, false, streamInfo);
     }
 
@@ -183,13 +196,18 @@ final class PlayerController {
         final String channelId = request.channelId.trim();
         ioExecutor.execute(() -> {
             StreamInfo info = streamInfoCache.get(channelId);
+            boolean fromCache = info != null;
             if (info == null) {
                 info = fetchStreamInfo(channelId);
                 if (info != null) {
                     streamInfoCache.put(channelId, info);
                 }
             }
+            Log.d(TAG, "resolveStreamInfo channelId=" + channelId
+                    + " fromCache=" + fromCache
+                    + " streamInfo=" + describeStreamInfo(info));
             if (info == null) {
+                Log.d(TAG, "resolveStreamInfo aborted: no stream info for channelId=" + channelId);
                 return;
             }
 
@@ -197,12 +215,19 @@ final class PlayerController {
             StreamInfo resolved = info;
             uiHandler.post(() -> {
                 if (!host.isChannelCurrent(channelId)) {
+                    Log.d(TAG, "resolveStreamInfo ignored because channel changed: channelId=" + channelId);
                     return;
                 }
                 PlaybackDecision resolvedDecision = buildPlaybackDecision(request, false, resolved);
                 if (!requiresReplay && resolvedDecision.isEquivalentTo(currentPlaybackDecision)) {
+                    Log.d(TAG, "resolveStreamInfo no replay needed channel=" + describeRequest(request)
+                            + " resolvedDecision=" + describeDecision(resolvedDecision));
                     return;
                 }
+                Log.i(TAG, "resolveStreamInfo replaying channel=" + describeRequest(request)
+                        + " requiresReplay=" + requiresReplay
+                        + " previousDecision=" + describeDecision(currentPlaybackDecision)
+                        + " resolvedDecision=" + describeDecision(resolvedDecision));
                 playChannelInternal(request, autoPlay, false, resolved);
                 if ("widevine".equals(safeLower(resolved.drmType))) {
                     host.showStatus(context.getString(R.string.status_channel_widevine, request.channelName));
@@ -215,6 +240,10 @@ final class PlayerController {
         if (player == null || recordingUrl == null || recordingUrl.trim().isEmpty()) {
             return;
         }
+
+        Log.i(TAG, "playRecording name=" + safeLogValue(recordingName)
+                + " url=" + shortenUrl(recordingUrl)
+                + " mime=" + safeLogValue(inferMimeType(recordingUrl)));
 
         String mimeType = inferMimeType(recordingUrl);
         MediaItem.Builder builder = new MediaItem.Builder().setUri(recordingUrl);
@@ -249,6 +278,11 @@ final class PlayerController {
         usingPlaybackFallback = useFallback;
         PlaybackDecision decision = buildPlaybackDecision(request, useFallback, streamInfo);
         currentPlaybackDecision = decision;
+        Log.d(TAG, "playChannelInternal channel=" + describeRequest(request)
+            + " autoPlay=" + autoPlay
+            + " requestedFallback=" + useFallback
+            + " decision=" + describeDecision(decision)
+            + " streamInfo=" + describeStreamInfo(streamInfo));
 
         if (decision.targetUrl == null || decision.targetUrl.trim().isEmpty()) {
             host.showError(context.getString(R.string.error_empty_playback_url));
@@ -269,7 +303,9 @@ final class PlayerController {
                     .build());
         }
 
-        Log.i(TAG, "playChannel id=" + request.channelId + " name=" + request.channelName + " drmType=" + decision.drmType + " encrypted=" + (streamInfo != null && streamInfo.encrypted) + " mime=" + (decision.mimeType == null ? "" : decision.mimeType) + " target=" + decision.targetUrl + " useFallback=" + useFallback + " allowFallback=" + decision.allowCompatibilityFallback);
+        Log.i(TAG, "preparePlayback channel=" + describeRequest(request)
+            + " decision=" + describeDecision(decision)
+            + " streamInfo=" + describeStreamInfo(streamInfo));
         player.setMediaItem(builder.build());
         player.prepare();
         player.setPlayWhenReady(autoPlay);
@@ -377,6 +413,7 @@ final class PlayerController {
         try {
             HttpClient.Response response = httpClient.get(baseUrl + "/api/stream/" + channelId, 5000, 20000, java.util.Collections.singletonMap("Accept", "application/json"));
             if (!response.isSuccessful()) {
+                Log.d(TAG, "fetchStreamInfo non-success channelId=" + channelId + " code=" + response.code);
                 return null;
             }
 
@@ -386,11 +423,71 @@ final class PlayerController {
             info.licenseUrl = jsonObject.optString("license_url", "").trim();
             info.type = jsonObject.optString("type", "").trim();
             info.encrypted = jsonObject.optBoolean("encrypted", false);
+            Log.d(TAG, "fetchStreamInfo success channelId=" + channelId + " streamInfo=" + describeStreamInfo(info));
             return info;
         } catch (Exception e) {
             Log.w(TAG, "stream info fetch failed for channel " + channelId, e);
             return null;
         }
+    }
+
+    private static String describeRequest(PlaybackRequest request) {
+        if (request == null) {
+            return "null";
+        }
+        return "{" + request.channelId + "," + safeLogValue(request.channelName) + "}";
+    }
+
+    private static String describeDecision(PlaybackDecision decision) {
+        if (decision == null) {
+            return "null";
+        }
+        return "{target=" + shortenUrl(decision.targetUrl)
+                + ",mime=" + safeLogValue(decision.mimeType)
+                + ",drm=" + safeLogValue(decision.drmType)
+                + ",fallback=" + decision.useFallback
+                + ",allowCompat=" + decision.allowCompatibilityFallback
+                + "}";
+    }
+
+    private static String describeStreamInfo(StreamInfo streamInfo) {
+        if (streamInfo == null) {
+            return "null";
+        }
+        return "{drm=" + safeLogValue(streamInfo.drmType)
+                + ",type=" + safeLogValue(streamInfo.type)
+                + ",encrypted=" + streamInfo.encrypted
+                + ",license=" + shortenUrl(streamInfo.licenseUrl)
+                + "}";
+    }
+
+    private static String playbackStateToString(int state) {
+        switch (state) {
+            case Player.STATE_IDLE:
+                return "IDLE";
+            case Player.STATE_BUFFERING:
+                return "BUFFERING";
+            case Player.STATE_READY:
+                return "READY";
+            case Player.STATE_ENDED:
+                return "ENDED";
+            default:
+                return String.valueOf(state);
+        }
+    }
+
+    private static String shortenUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return "";
+        }
+        if (url.length() <= 120) {
+            return url;
+        }
+        return url.substring(0, 117) + "...";
+    }
+
+    private static String safeLogValue(String value) {
+        return value == null ? "" : value;
     }
 
     private static String inferMimeType(String url) {

@@ -33,7 +33,7 @@
 - [x] Centralizar cliente HTTP comun
 - [x] Unificar parseo y manejo de errores JSON
 - [x] Revisar decision entre URL directa, proxy y fallback
-- [ ] Mejorar logs de diagnostico de playback
+- [x] Mejorar logs de diagnostico de playback
 - [ ] Validar DASH, HLS, Widevine y ClearKey con casos reales
 
 ## Epic 5. Validacion de release

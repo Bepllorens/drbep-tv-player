@@ -27,7 +27,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -81,6 +80,7 @@ public class MainActivity extends FragmentActivity {
     private ChannelAdapter channelAdapter;
     private CatalogRepository catalogRepository;
     private EpgRepository epgRepository;
+    private RecordingsRepository recordingsRepository;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -122,6 +122,7 @@ public class MainActivity extends FragmentActivity {
         baseUrl = resolveBaseUrl();
     catalogRepository = new CatalogRepository(baseUrl);
     epgRepository = new EpgRepository(baseUrl);
+        recordingsRepository = new RecordingsRepository(baseUrl);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         favoritesOnly = false;
@@ -506,50 +507,23 @@ public class MainActivity extends FragmentActivity {
     private void openRecordingsBrowser() {
         showStatus(getString(R.string.status_loading_recordings));
         ioExecutor.execute(() -> {
-            HttpURLConnection conn = null;
             try {
-                URL url = new URL(baseUrl + "/api/recordings/files");
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(20000);
-                conn.setRequestProperty("Accept", "application/json");
-
-                int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) {
-                    throw new IllegalStateException("recordings HTTP " + code);
-                }
-
-                JSONObject body = new JSONObject(readAll(conn.getInputStream()));
-                String basePath = body.optString("path", "");
-                JSONArray files = body.optJSONArray("files");
-                if (files == null || files.length() == 0) {
+                RecordingsRepository.RecordingsResult result = recordingsRepository.fetchRecordings();
+                if (result.items.isEmpty()) {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_recordings)));
                     return;
                 }
 
-                List<RecordingItem> items = new ArrayList<>();
                 List<String> labels = new ArrayList<>();
-                for (int i = 0; i < files.length(); i++) {
-                    JSONObject f = files.optJSONObject(i);
-                    if (f == null) {
-                        continue;
-                    }
-                    RecordingItem item = new RecordingItem(
-                            f.optString("name", ""),
-                            f.optString("path", ""),
-                            f.optLong("size", 0L),
-                            f.optString("modified", "")
-                    );
-                    items.add(item);
+                for (RecordingsRepository.RecordingItem item : result.items) {
                     labels.add(item.name + (item.modified.isEmpty() ? "" : "  ·  " + item.modified));
                 }
 
                 uiHandler.post(() -> new AlertDialog.Builder(MainActivity.this)
                         .setTitle(R.string.title_recordings)
                         .setItems(labels.toArray(new String[0]), (dialog, which) -> {
-                            if (which >= 0 && which < items.size()) {
-                                playRecording(items.get(which), basePath);
+                            if (which >= 0 && which < result.items.size()) {
+                                playRecording(result.items.get(which), result.basePath);
                             }
                         })
                         .setNegativeButton(R.string.dialog_close, null)
@@ -557,55 +531,17 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, "open recordings failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_recordings)));
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
             }
         });
     }
 
-    private void playRecording(RecordingItem item, String basePath) {
+    private void playRecording(RecordingsRepository.RecordingItem item, String basePath) {
         if (item == null) {
             return;
         }
-        String rel = item.path;
-        if (basePath != null && !basePath.trim().isEmpty() && rel != null && rel.startsWith(basePath)) {
-            rel = rel.substring(basePath.length());
-            if (rel.startsWith("/")) {
-                rel = rel.substring(1);
-            }
-        }
-        if (rel == null || rel.trim().isEmpty()) {
-            rel = item.name;
-        }
-
-        String encoded = encodePath(rel);
-        String url = baseUrl + "/recordings/remux/" + encoded;
+        String url = recordingsRepository.buildPlaybackUrl(item, basePath);
         playerController.playRecording(item.name, url);
         hideOverlay();
-    }
-
-    private static String encodePath(String raw) {
-        if (raw == null || raw.isEmpty()) {
-            return "";
-        }
-        String[] parts = raw.split("/");
-        StringBuilder out = new StringBuilder();
-        for (String p : parts) {
-            if (p == null || p.isEmpty()) {
-                continue;
-            }
-            if (out.length() > 0) {
-                out.append('/');
-            }
-            try {
-                out.append(URLEncoder.encode(p, "UTF-8").replace("+", "%20"));
-            } catch (Exception ignored) {
-                out.append(p);
-            }
-        }
-        return out.toString();
     }
 
     private void loadReminders() {
@@ -1164,20 +1100,6 @@ public class MainActivity extends FragmentActivity {
             return null;
         }
         return new PlayerController.PlaybackRequest(channelItem.id, channelItem.name, channelItem.playUrl, channelItem.fallbackPlayUrl);
-    }
-
-    private static final class RecordingItem {
-        final String name;
-        final String path;
-        final long size;
-        final String modified;
-
-        RecordingItem(String name, String path, long size, String modified) {
-            this.name = name;
-            this.path = path;
-            this.size = size;
-            this.modified = modified;
-        }
     }
 
     private static final class ReminderItem {

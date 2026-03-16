@@ -40,14 +40,14 @@ final class ChannelActionsCoordinator {
         }
 
         String[] options = new String[]{
-                "Sintonizar",
-                favorite ? "Quitar de favoritos" : "Añadir a favoritos",
-                "Mini guia",
-                "Grabar programa en emision",
-                "Grabar proximo programa",
-                "Crear recordatorio (ahora)",
-                "Crear recordatorio (proximo)",
-                "Ver grabaciones"
+                context.getString(R.string.menu_tune_channel),
+                context.getString(favorite ? R.string.menu_remove_favorite : R.string.menu_add_favorite),
+                context.getString(R.string.menu_mini_guide),
+                context.getString(R.string.menu_record_current_program),
+                context.getString(R.string.menu_record_next_program),
+                context.getString(R.string.menu_create_current_reminder),
+                context.getString(R.string.menu_create_next_reminder),
+                context.getString(R.string.menu_view_recordings)
         };
 
         new AlertDialog.Builder(context)
@@ -91,8 +91,11 @@ final class ChannelActionsCoordinator {
             return;
         }
 
-        String title = program.title == null || program.title.trim().isEmpty() ? "Programa" : program.title;
-        String[] options = new String[]{"Grabar", "Recordatorio"};
+        String title = program.title == null || program.title.trim().isEmpty() ? context.getString(R.string.label_program_default) : program.title;
+        String[] options = new String[]{
+                context.getString(R.string.menu_record),
+                context.getString(R.string.menu_reminder)
+        };
         new AlertDialog.Builder(context)
                 .setTitle(title)
                 .setItems(options, (dialog, which) -> {

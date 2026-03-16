@@ -35,4 +35,26 @@
     <string name="error_playback_details">Error de reproduccion\n\n%1$s\n\nBase URL: %2$s\n\nPulsa MENU para abrir lista/reintentar</string>
     <string name="title_guide">Guia: %1$s</string>
     <string name="title_recordings">Grabaciones</string>
+    <string name="label_program_default">Programa</string>
+    <string name="status_reminder_due">Recordatorio: %1$s - %2$s</string>
+    <string name="status_filter_changed">Filtro: %1$s</string>
+    <string name="status_favorite_removed">Eliminado de favoritos</string>
+    <string name="status_favorite_added">Añadido a favoritos</string>
+    <string name="status_favorites_only_empty">Solo favoritos activado (sin favoritos)</string>
+    <string name="status_favorites_only_on">Solo favoritos: ON</string>
+    <string name="status_favorites_only_off">Solo favoritos: OFF</string>
+    <string name="status_channel_widevine">%1$s (Widevine)</string>
+    <string name="status_playing_recording">Reproduciendo grabacion: %1$s</string>
+    <string name="status_channel_compat">%1$s (modo compat)</string>
+    <string name="menu_tune_channel">Sintonizar</string>
+    <string name="menu_remove_favorite">Quitar de favoritos</string>
+    <string name="menu_add_favorite">Añadir a favoritos</string>
+    <string name="menu_mini_guide">Mini guia</string>
+    <string name="menu_record_current_program">Grabar programa en emision</string>
+    <string name="menu_record_next_program">Grabar proximo programa</string>
+    <string name="menu_create_current_reminder">Crear recordatorio (ahora)</string>
+    <string name="menu_create_next_reminder">Crear recordatorio (proximo)</string>
+    <string name="menu_view_recordings">Ver grabaciones</string>
+    <string name="menu_record">Grabar</string>
+    <string name="menu_reminder">Recordatorio</string>
 </resources>

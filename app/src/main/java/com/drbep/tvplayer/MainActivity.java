@@ -484,7 +484,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_failed_create_reminder));
             return;
         }
-        String title = program.title == null || program.title.trim().isEmpty() ? "Programa" : program.title;
+        String title = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title;
         ReminderStore.ReminderItem item = new ReminderStore.ReminderItem(ch.id, ch.name, title, startAt, false);
         reminderStore.addReminder(item);
         showStatus(getString(R.string.status_reminder_created));
@@ -537,7 +537,7 @@ public class MainActivity extends FragmentActivity {
         List<ReminderStore.ReminderItem> dueItems = reminderStore.collectDueNotifications(System.currentTimeMillis());
         if (!dueItems.isEmpty()) {
             ReminderStore.ReminderItem lastDueItem = dueItems.get(dueItems.size() - 1);
-            showStatus("Recordatorio: " + lastDueItem.channelName + " - " + lastDueItem.title);
+            showStatus(getString(R.string.status_reminder_due, lastDueItem.channelName, lastDueItem.title));
         }
     }
 
@@ -744,7 +744,7 @@ public class MainActivity extends FragmentActivity {
 
         ChannelFilter filter = getSelectedFilter();
         if (filter != null) {
-            showStatus("Filtro: " + filter.label);
+            showStatus(getString(R.string.status_filter_changed, filter.label));
         }
         showOverlay();
     }
@@ -758,7 +758,7 @@ public class MainActivity extends FragmentActivity {
             filterText.setText(getString(R.string.filter_all_label));
             return;
         }
-        filterText.setText("Filtro: " + filter.label);
+        filterText.setText(getString(R.string.status_filter_changed, filter.label));
     }
 
     private void saveFavorites() {
@@ -777,10 +777,10 @@ public class MainActivity extends FragmentActivity {
 
         if (favoriteChannelIds.contains(selectedID)) {
             favoriteChannelIds.remove(selectedID);
-            showStatus("Eliminado de favoritos");
+            showStatus(getString(R.string.status_favorite_removed));
         } else {
             favoriteChannelIds.add(selectedID);
-            showStatus("Añadido a favoritos");
+            showStatus(getString(R.string.status_favorite_added));
         }
         saveFavorites();
 
@@ -801,14 +801,14 @@ public class MainActivity extends FragmentActivity {
         channelAdapter.notifyDataSetChanged();
 
         if (channels.isEmpty() && favoritesOnly) {
-            showStatus("Solo favoritos activado (sin favoritos)");
+            showStatus(getString(R.string.status_favorites_only_empty));
             return;
         }
 
         if (selectedOverlayIndex >= 0) {
             channelList.scrollToPosition(selectedOverlayIndex);
         }
-        showStatus(favoritesOnly ? "Solo favoritos: ON" : "Solo favoritos: OFF");
+        showStatus(getString(favoritesOnly ? R.string.status_favorites_only_on : R.string.status_favorites_only_off));
         showOverlay();
     }
 

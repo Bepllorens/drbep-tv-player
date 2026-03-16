@@ -172,7 +172,7 @@ final class PlayerController {
                 }
                 playChannelInternal(request, autoPlay, false, resolved);
                 if ("widevine".equals(safeLower(resolved.drmType))) {
-                    host.showStatus(request.channelName + " (Widevine)");
+                    host.showStatus(context.getString(R.string.status_channel_widevine, request.channelName));
                 }
             });
         });
@@ -196,7 +196,7 @@ final class PlayerController {
         player.prepare();
         player.setPlayWhenReady(true);
         host.hideError();
-        host.showStatus("Reproduciendo grabacion: " + recordingName);
+        host.showStatus(context.getString(R.string.status_playing_recording, recordingName));
     }
 
     void release() {
@@ -276,8 +276,9 @@ final class PlayerController {
         player.prepare();
         player.setPlayWhenReady(autoPlay);
 
-        String mode = useFallback ? " (modo compat)" : "";
-        host.showStatus(request.channelName + mode);
+        host.showStatus(useFallback
+            ? context.getString(R.string.status_channel_compat, request.channelName)
+            : request.channelName);
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {

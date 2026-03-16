@@ -853,6 +853,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showOverlay() {
+        clearQuickSearchOverlay();
+        hideRecordingsPanel();
         updateOverlayPanel();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, OVERLAY_HIDE_MS);
     }
@@ -870,6 +872,7 @@ public class MainActivity extends FragmentActivity {
             showRecordingsDialog(result);
             return;
         }
+        clearQuickSearchOverlay();
         hideOverlay();
         currentRecordingsResult = result;
         selectedRecordingIndex = 0;
@@ -1213,6 +1216,14 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (isQuickSearchVisible()) {
+                    tuneQuickSearchSelection();
+                    return true;
+                }
+                if (isRecordingsPanelVisible()) {
+                    showRecordingActionsDialog();
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     cycleFilter(1);
                 } else {
@@ -1238,6 +1249,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_INFO:
+                if (isQuickSearchVisible()) {
+                    showChannelSearchDialog();
+                    return true;
+                }
                 if (isRecordingsPanelVisible()) {
                     showRecordingActionsDialog();
                     return true;
@@ -1251,6 +1266,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_SEARCH:
+                if (isQuickSearchVisible()) {
+                    showChannelSearchDialog();
+                    return true;
+                }
                 showChannelSearchDialog();
                 return true;
             case KeyEvent.KEYCODE_DEL:
@@ -1412,6 +1431,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showV12ToolsMenu() {
+        clearQuickSearchOverlay();
         String[] options = new String[]{
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
@@ -1436,6 +1456,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showChannelSearchDialog() {
+        clearQuickSearchOverlay();
+        hideOverlay();
+        hideRecordingsPanel();
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_channel_search, null, false);
         EditText input = dialogView.findViewById(R.id.channelSearchInput);
         RecyclerView recyclerView = dialogView.findViewById(R.id.channelSearchResults);

@@ -39,16 +39,9 @@ final class ChannelActionsCoordinator {
             return;
         }
 
-        String[] options = new String[]{
-                context.getString(R.string.menu_tune_channel),
-                context.getString(favorite ? R.string.menu_remove_favorite : R.string.menu_add_favorite),
-                context.getString(R.string.menu_mini_guide),
-                context.getString(R.string.menu_record_current_program),
-                context.getString(R.string.menu_record_next_program),
-                context.getString(R.string.menu_create_current_reminder),
-                context.getString(R.string.menu_create_next_reminder),
-                context.getString(R.string.menu_view_recordings)
-        };
+        String[] options = context.getResources().getStringArray(
+            favorite ? R.array.channel_action_menu_favorite_on : R.array.channel_action_menu_favorite_off
+        );
 
         new AlertDialog.Builder(context)
                 .setTitle(channelItem.name)
@@ -92,10 +85,7 @@ final class ChannelActionsCoordinator {
         }
 
         String title = program.title == null || program.title.trim().isEmpty() ? context.getString(R.string.label_program_default) : program.title;
-        String[] options = new String[]{
-                context.getString(R.string.menu_record),
-                context.getString(R.string.menu_reminder)
-        };
+        String[] options = context.getResources().getStringArray(R.array.program_action_menu_options);
         new AlertDialog.Builder(context)
                 .setTitle(title)
                 .setItems(options, (dialog, which) -> {

@@ -13,7 +13,7 @@
 
 - [x] Mover strings estaticos de layouts a recursos
 - [x] Mover mensajes base de estado y error a `strings.xml`
-- [ ] Extraer menus de acciones de canal a arrays de recursos
+- [x] Extraer menus de acciones de canal a arrays de recursos
 - [x] Extraer textos de favoritos, filtros y recordatorios restantes
 - [ ] Revisar copy para distancia de visionado en TV
 

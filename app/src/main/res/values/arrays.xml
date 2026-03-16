@@ -1,0 +1,28 @@
+<resources>
+    <string-array name="channel_action_menu_favorite_off">
+        <item>@string/menu_tune_channel</item>
+        <item>@string/menu_add_favorite</item>
+        <item>@string/menu_mini_guide</item>
+        <item>@string/menu_record_current_program</item>
+        <item>@string/menu_record_next_program</item>
+        <item>@string/menu_create_current_reminder</item>
+        <item>@string/menu_create_next_reminder</item>
+        <item>@string/menu_view_recordings</item>
+    </string-array>
+
+    <string-array name="channel_action_menu_favorite_on">
+        <item>@string/menu_tune_channel</item>
+        <item>@string/menu_remove_favorite</item>
+        <item>@string/menu_mini_guide</item>
+        <item>@string/menu_record_current_program</item>
+        <item>@string/menu_record_next_program</item>
+        <item>@string/menu_create_current_reminder</item>
+        <item>@string/menu_create_next_reminder</item>
+        <item>@string/menu_view_recordings</item>
+    </string-array>
+
+    <string-array name="program_action_menu_options">
+        <item>@string/menu_record</item>
+        <item>@string/menu_reminder</item>
+    </string-array>
+</resources>

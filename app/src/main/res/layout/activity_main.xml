@@ -167,6 +167,41 @@
             android:overScrollMode="never" />
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/recordingsPanel"
+        android:layout_width="560dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#EF171B22"
+        android:orientation="vertical"
+        android:padding="18dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/title_recordings_visual"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="12dp"
+            android:text="@string/recordings_panel_hint"
+            android:textColor="#B8C8D8"
+            android:textSize="13sp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recordingsRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:overScrollMode="never" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/errorText"
         android:layout_width="match_parent"

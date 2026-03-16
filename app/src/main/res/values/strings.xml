@@ -38,11 +38,15 @@
     <string name="title_guide">Guia: %1$s</string>
     <string name="title_recordings">Grabaciones</string>
     <string name="title_recordings_visual">Grabaciones recientes</string>
+    <string name="recordings_panel_hint">BACK o MENU para cerrar</string>
     <string name="label_program_default">Programa</string>
     <string name="status_reminder_due">Recordatorio: %1$s - %2$s</string>
     <string name="status_filter_changed">Filtro activo: %1$s</string>
     <string name="status_favorite_removed">Eliminado de favoritos</string>
     <string name="status_favorite_added">Añadido a favoritos</string>
+    <string name="status_favorite_moved_up">Favorito movido arriba</string>
+    <string name="status_favorite_moved_down">Favorito movido abajo</string>
+    <string name="status_favorite_move_unavailable">No se puede mover mas</string>
     <string name="status_favorites_only_empty">Solo favoritos activado (sin favoritos)</string>
     <string name="status_favorites_only_on">Solo favoritos: ON</string>
     <string name="status_favorites_only_off">Solo favoritos: OFF</string>
@@ -60,6 +64,7 @@
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>
+    <string name="tools_menu_recordings_panel">Panel de grabaciones</string>
     <string name="title_search_channels">Buscar canal</string>
     <string name="search_hint">Escribe nombre o grupo</string>
     <string name="search_empty_results">Sin resultados todavia</string>
@@ -100,6 +105,8 @@
     <string name="menu_tune_channel">Sintonizar</string>
     <string name="menu_remove_favorite">Quitar de favoritos</string>
     <string name="menu_add_favorite">Añadir a favoritos</string>
+    <string name="menu_favorite_move_up">Mover favorito arriba</string>
+    <string name="menu_favorite_move_down">Mover favorito abajo</string>
     <string name="menu_mini_guide">Mini guia</string>
     <string name="menu_record_current_program">Grabar programa en emision</string>
     <string name="menu_record_next_program">Grabar proximo programa</string>

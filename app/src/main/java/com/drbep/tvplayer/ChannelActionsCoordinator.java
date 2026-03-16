@@ -9,6 +9,8 @@ final class ChannelActionsCoordinator {
 
         void toggleFavoriteSelected();
 
+        void moveFavoriteSelected(int delta);
+
         void openMiniGuide(ChannelItem channelItem);
 
         void scheduleCurrentProgram(ChannelItem channelItem);
@@ -46,6 +48,43 @@ final class ChannelActionsCoordinator {
         new AlertDialog.Builder(context)
                 .setTitle(channelItem.name)
                 .setItems(options, (dialog, which) -> {
+                    if (favorite) {
+                        switch (which) {
+                            case 0:
+                                host.tuneSelectedChannel();
+                                break;
+                            case 1:
+                                host.toggleFavoriteSelected();
+                                break;
+                            case 2:
+                                host.moveFavoriteSelected(-1);
+                                break;
+                            case 3:
+                                host.moveFavoriteSelected(1);
+                                break;
+                            case 4:
+                                host.openMiniGuide(channelItem);
+                                break;
+                            case 5:
+                                host.scheduleCurrentProgram(channelItem);
+                                break;
+                            case 6:
+                                host.scheduleNextProgram(channelItem);
+                                break;
+                            case 7:
+                                host.createCurrentReminder(channelItem);
+                                break;
+                            case 8:
+                                host.createNextReminder(channelItem);
+                                break;
+                            case 9:
+                                host.openRecordings();
+                                break;
+                            default:
+                                break;
+                        }
+                        return;
+                    }
                     switch (which) {
                         case 0:
                             host.tuneSelectedChannel();

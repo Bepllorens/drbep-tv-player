@@ -53,6 +53,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREFS = "drbep_tv_prefs";
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_FAVORITES = "favorite_channel_ids";
+    private static final String PREF_FAVORITE_ORDER = "favorite_order_ids";
     private static final String PREF_REMINDERS = "channel_reminders";
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
     private static final int FILTER_ALL = 0;
@@ -72,7 +73,9 @@ public class MainActivity extends FragmentActivity {
     private TextView zapMetaText;
     private View channelOverlay;
     private View zapBanner;
+    private View recordingsPanel;
     private RecyclerView channelList;
+    private RecyclerView recordingsRecyclerView;
 
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
@@ -88,6 +91,7 @@ public class MainActivity extends FragmentActivity {
     private RecordingsRepository recordingsRepository;
     private ReminderStore reminderStore;
     private RecentChannelsStore recentChannelsStore;
+    private FavoriteOrderStore favoriteOrderStore;
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
     private HttpClient httpClient;
@@ -139,7 +143,9 @@ public class MainActivity extends FragmentActivity {
         zapChannelText = findViewById(R.id.zapChannelText);
         zapMetaText = findViewById(R.id.zapMetaText);
         channelOverlay = findViewById(R.id.channelOverlay);
+        recordingsPanel = findViewById(R.id.recordingsPanel);
         channelList = findViewById(R.id.channelList);
+        recordingsRecyclerView = findViewById(R.id.recordingsRecyclerView);
 
         baseUrl = resolveBaseUrl();
     catalogRepository = new CatalogRepository(baseUrl);
@@ -149,7 +155,8 @@ public class MainActivity extends FragmentActivity {
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
         recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
-        channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds);
+        favoriteOrderStore = new FavoriteOrderStore(prefs, PREF_FAVORITE_ORDER);
+        channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
             public void tuneSelectedChannel() {
@@ -159,6 +166,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void toggleFavoriteSelected() {
                 MainActivity.this.toggleFavoriteSelected();
+            }
+
+            @Override
+            public void moveFavoriteSelected(int delta) {
+                MainActivity.this.moveFavoriteSelected(delta);
             }
 
             @Override
@@ -210,9 +222,12 @@ public class MainActivity extends FragmentActivity {
         }
         reminderStore.load();
         recentChannelsStore.load();
+        favoriteOrderStore.load();
+        favoriteOrderStore.syncToFavorites(favoriteChannelIds);
 
         setupPlayer();
         setupChannelList();
+        setupRecordingsPanel();
         enableImmersiveMode();
         loadChannels();
         uiHandler.postDelayed(reminderTickRunnable, 30000L);
@@ -269,6 +284,12 @@ public class MainActivity extends FragmentActivity {
         channelAdapter = new ChannelAdapter();
         channelList.setLayoutManager(new LinearLayoutManager(this));
         channelList.setAdapter(channelAdapter);
+    }
+
+    private void setupRecordingsPanel() {
+        if (recordingsRecyclerView != null) {
+            recordingsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        }
     }
 
     private void loadChannels() {
@@ -491,7 +512,7 @@ public class MainActivity extends FragmentActivity {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_recordings)));
                     return;
                 }
-                uiHandler.post(() -> showRecordingsDialog(result));
+                uiHandler.post(() -> showRecordingsPanel(result));
             } catch (Exception e) {
                 Log.w(TAG, "open recordings failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_recordings)));
@@ -505,6 +526,7 @@ public class MainActivity extends FragmentActivity {
         }
         String url = recordingsRepository.buildPlaybackUrl(item, basePath);
         playerController.playRecording(item.name, url);
+        hideRecordingsPanel();
         hideOverlay();
     }
 
@@ -626,6 +648,7 @@ public class MainActivity extends FragmentActivity {
         if (prefs != null) {
             prefs.edit().putStringSet(PREF_FAVORITES, new HashSet<>(favoriteChannelIds)).apply();
         }
+        favoriteOrderStore.syncToFavorites(favoriteChannelIds);
     }
 
     private void toggleFavoriteSelected() {
@@ -636,11 +659,43 @@ public class MainActivity extends FragmentActivity {
         boolean added = channelOverlayCoordinator.toggleFavoriteSelected();
         syncOverlayStateFromCoordinator();
         showStatus(getString(added ? R.string.status_favorite_added : R.string.status_favorite_removed));
+        String selectedId = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? channels.get(selectedOverlayIndex).id : null;
+        if (added) {
+            favoriteOrderStore.addIfMissing(selectedId);
+        } else {
+            favoriteOrderStore.remove(selectedId);
+        }
         saveFavorites();
         channelAdapter.notifyDataSetChanged();
         if (selectedOverlayIndex >= 0) {
             channelList.scrollToPosition(selectedOverlayIndex);
         }
+        showOverlay();
+    }
+
+    private void moveFavoriteSelected(int delta) {
+        if (channels.isEmpty() || selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
+            return;
+        }
+        ChannelItem selected = channels.get(selectedOverlayIndex);
+        if (!selected.favorite) {
+            showStatus(getString(R.string.status_favorite_move_unavailable));
+            return;
+        }
+        boolean moved = favoriteOrderStore.move(selected.id, delta);
+        if (!moved) {
+            showStatus(getString(R.string.status_favorite_move_unavailable));
+            return;
+        }
+        syncOverlayCoordinator();
+        String currentId = currentIndex >= 0 && currentIndex < channels.size() ? channels.get(currentIndex).id : "";
+        channelOverlayCoordinator.refreshVisibleChannels(currentId, selected.id);
+        syncOverlayStateFromCoordinator();
+        channelAdapter.notifyDataSetChanged();
+        if (selectedOverlayIndex >= 0) {
+            channelList.scrollToPosition(selectedOverlayIndex);
+        }
+        showStatus(getString(delta < 0 ? R.string.status_favorite_moved_up : R.string.status_favorite_moved_down));
         showOverlay();
     }
 
@@ -666,6 +721,10 @@ public class MainActivity extends FragmentActivity {
         return channelOverlayCoordinator.isOverlayVisible(channelOverlay);
     }
 
+    private boolean isRecordingsPanelVisible() {
+        return recordingsPanel != null && recordingsPanel.getVisibility() == View.VISIBLE;
+    }
+
     private void showOverlay() {
         updateOverlayPanel();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, OVERLAY_HIDE_MS);
@@ -673,6 +732,22 @@ public class MainActivity extends FragmentActivity {
 
     private void hideOverlay() {
         channelOverlayCoordinator.hideOverlay(channelOverlay);
+    }
+
+    private void showRecordingsPanel(RecordingsRepository.RecordingsResult result) {
+        if (recordingsPanel == null || recordingsRecyclerView == null) {
+            showRecordingsDialog(result);
+            return;
+        }
+        hideOverlay();
+        recordingsRecyclerView.setAdapter(new RecordingsAdapter(result));
+        recordingsPanel.setVisibility(View.VISIBLE);
+    }
+
+    private void hideRecordingsPanel() {
+        if (recordingsPanel != null) {
+            recordingsPanel.setVisibility(View.GONE);
+        }
     }
 
     private void showStatus(String text) {
@@ -714,6 +789,10 @@ public class MainActivity extends FragmentActivity {
         switch (keyCode) {
             case KeyEvent.KEYCODE_MENU:
                 long now = System.currentTimeMillis();
+                if (isRecordingsPanelVisible()) {
+                    hideRecordingsPanel();
+                    return true;
+                }
                 if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
                     lastMenuPressedAtMs = 0L;
                     toggleFavoritesOnlyMode();
@@ -727,6 +806,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return true;
             case KeyEvent.KEYCODE_BACK:
+                if (isRecordingsPanelVisible()) {
+                    hideRecordingsPanel();
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     hideOverlay();
                     return true;
@@ -914,7 +997,8 @@ public class MainActivity extends FragmentActivity {
         String[] options = new String[]{
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
-                getString(R.string.tools_menu_playback_diagnostics)
+            getString(R.string.tools_menu_playback_diagnostics),
+            getString(R.string.tools_menu_recordings_panel)
         };
         new AlertDialog.Builder(this)
                 .setTitle(R.string.tools_menu_title)
@@ -925,6 +1009,8 @@ public class MainActivity extends FragmentActivity {
                         showRecentChannelsDialog();
                     } else if (which == 2) {
                         showPlaybackDiagnosticsDialog();
+                    } else if (which == 3) {
+                        openRecordingsBrowser();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)

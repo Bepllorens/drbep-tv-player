@@ -14,17 +14,19 @@ final class ChannelOverlayCoordinator {
     private final List<ChannelItem> allChannels;
     private final List<ChannelFilter> filters;
     private final Set<String> favoriteChannelIds;
+    private final FavoriteOrderStore favoriteOrderStore;
 
     private int currentIndex;
     private int selectedOverlayIndex;
     private boolean favoritesOnly;
     private String selectedFilterKey;
 
-    ChannelOverlayCoordinator(List<ChannelItem> channels, List<ChannelItem> allChannels, List<ChannelFilter> filters, Set<String> favoriteChannelIds) {
+    ChannelOverlayCoordinator(List<ChannelItem> channels, List<ChannelItem> allChannels, List<ChannelFilter> filters, Set<String> favoriteChannelIds, FavoriteOrderStore favoriteOrderStore) {
         this.channels = channels;
         this.allChannels = allChannels;
         this.filters = filters;
         this.favoriteChannelIds = favoriteChannelIds;
+        this.favoriteOrderStore = favoriteOrderStore;
         this.currentIndex = -1;
         this.selectedOverlayIndex = 0;
         this.favoritesOnly = false;
@@ -204,6 +206,26 @@ final class ChannelOverlayCoordinator {
             item.favorite = favoriteChannelIds.contains(item.id);
         }
         target.sort((a, b) -> {
+            if (a.favorite && !b.favorite) {
+                return -1;
+            }
+            if (!a.favorite && b.favorite) {
+                return 1;
+            }
+            if (a.favorite && b.favorite && favoriteOrderStore != null) {
+                List<String> orderedIds = favoriteOrderStore.getOrderedIds();
+                int indexA = orderedIds.indexOf(a.id);
+                int indexB = orderedIds.indexOf(b.id);
+                if (indexA >= 0 && indexB >= 0 && indexA != indexB) {
+                    return Integer.compare(indexA, indexB);
+                }
+                if (indexA >= 0 && indexB < 0) {
+                    return -1;
+                }
+                if (indexA < 0 && indexB >= 0) {
+                    return 1;
+                }
+            }
             int byDashboardOrder = Integer.compare(a.dashboardOrder, b.dashboardOrder);
             if (byDashboardOrder != 0) {
                 return byDashboardOrder;

@@ -13,6 +13,8 @@
     <string-array name="channel_action_menu_favorite_on">
         <item>@string/menu_tune_channel</item>
         <item>@string/menu_remove_favorite</item>
+        <item>@string/menu_favorite_move_up</item>
+        <item>@string/menu_favorite_move_down</item>
         <item>@string/menu_mini_guide</item>
         <item>@string/menu_record_current_program</item>
         <item>@string/menu_record_next_program</item>

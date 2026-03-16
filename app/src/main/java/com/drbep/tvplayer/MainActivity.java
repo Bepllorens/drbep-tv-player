@@ -1429,7 +1429,13 @@ public class MainActivity extends FragmentActivity {
 
         List<ChannelItem> filteredItems = new ArrayList<>();
         filteredItems.addAll(allChannels);
-        SearchChannelAdapter adapter = new SearchChannelAdapter(filteredItems);
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        SearchChannelAdapter adapter = new SearchChannelAdapter(filteredItems, item -> {
+            tuneChannelById(item.id);
+            if (dialogHolder[0] != null) {
+                dialogHolder[0].dismiss();
+            }
+        });
         recyclerView.setAdapter(adapter);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
@@ -1437,6 +1443,7 @@ public class MainActivity extends FragmentActivity {
                 .setView(dialogView)
                 .setNegativeButton(R.string.dialog_close, null)
                 .create();
+        dialogHolder[0] = dialog;
 
         input.addTextChangedListener(new TextWatcher() {
             @Override
@@ -1864,9 +1871,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private final class SearchChannelAdapter extends RecyclerView.Adapter<SearchChannelAdapter.SearchChannelVH> {
-        private final List<ChannelItem> items = new ArrayList<>();
+        interface OnChannelChosenListener {
+            void onChannelChosen(ChannelItem item);
+        }
 
-        SearchChannelAdapter(List<ChannelItem> initialItems) {
+        private final List<ChannelItem> items = new ArrayList<>();
+        private final OnChannelChosenListener listener;
+
+        SearchChannelAdapter(List<ChannelItem> initialItems, OnChannelChosenListener listener) {
+            this.listener = listener;
             submitList(initialItems);
         }
 
@@ -1894,7 +1907,11 @@ public class MainActivity extends FragmentActivity {
                 primaryMeta = getString(R.string.search_channel_action_hint);
             }
             holder.meta.setText(getString(R.string.search_channel_meta, primaryMeta, item.isVod ? getString(R.string.channel_badge_vod) : getString(R.string.channel_badge_live)));
-            holder.itemView.setOnClickListener(v -> tuneChannelById(item.id));
+            holder.itemView.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onChannelChosen(item);
+                }
+            });
         }
 
         @Override

@@ -80,6 +80,7 @@ public class MainActivity extends FragmentActivity {
     private EpgRepository epgRepository;
     private RecordingsRepository recordingsRepository;
     private ReminderStore reminderStore;
+    private ChannelActionsCoordinator channelActionsCoordinator;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -124,6 +125,57 @@ public class MainActivity extends FragmentActivity {
         recordingsRepository = new RecordingsRepository(baseUrl);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
+        channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
+            @Override
+            public void tuneSelectedChannel() {
+                MainActivity.this.tuneSelectedChannel();
+            }
+
+            @Override
+            public void toggleFavoriteSelected() {
+                MainActivity.this.toggleFavoriteSelected();
+            }
+
+            @Override
+            public void openMiniGuide(ChannelItem channelItem) {
+                MainActivity.this.openMiniGuideForChannel(channelItem);
+            }
+
+            @Override
+            public void scheduleCurrentProgram(ChannelItem channelItem) {
+                MainActivity.this.createScheduleFromEndpoint(channelItem, false);
+            }
+
+            @Override
+            public void scheduleNextProgram(ChannelItem channelItem) {
+                MainActivity.this.createScheduleFromEndpoint(channelItem, true);
+            }
+
+            @Override
+            public void createCurrentReminder(ChannelItem channelItem) {
+                MainActivity.this.createReminderFromEndpoint(channelItem, false);
+            }
+
+            @Override
+            public void createNextReminder(ChannelItem channelItem) {
+                MainActivity.this.createReminderFromEndpoint(channelItem, true);
+            }
+
+            @Override
+            public void openRecordings() {
+                MainActivity.this.openRecordingsBrowser();
+            }
+
+            @Override
+            public void scheduleProgram(ChannelItem channelItem, EpgRepository.EpgProgram program) {
+                MainActivity.this.scheduleProgram(channelItem, program);
+            }
+
+            @Override
+            public void createReminder(ChannelItem channelItem, EpgRepository.EpgProgram program) {
+                MainActivity.this.createReminder(channelItem, program);
+            }
+        });
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         favoritesOnly = false;
         lastMenuPressedAtMs = 0L;
@@ -306,53 +358,7 @@ public class MainActivity extends FragmentActivity {
         }
         ChannelItem ch = channels.get(selectedOverlayIndex);
         boolean fav = favoriteChannelIds.contains(ch.id);
-
-        String[] options = new String[]{
-                "Sintonizar",
-                fav ? "Quitar de favoritos" : "Añadir a favoritos",
-                "Mini guia",
-                "Grabar programa en emision",
-                "Grabar proximo programa",
-                "Crear recordatorio (ahora)",
-                "Crear recordatorio (proximo)",
-                "Ver grabaciones"
-        };
-
-        new AlertDialog.Builder(this)
-                .setTitle(ch.name)
-                .setItems(options, (dialog, which) -> {
-                    switch (which) {
-                        case 0:
-                            tuneToIndex(selectedOverlayIndex, true);
-                            hideOverlay();
-                            break;
-                        case 1:
-                            toggleFavoriteSelected();
-                            break;
-                        case 2:
-                            openMiniGuideForChannel(ch);
-                            break;
-                        case 3:
-                            createScheduleFromEndpoint(ch, false);
-                            break;
-                        case 4:
-                            createScheduleFromEndpoint(ch, true);
-                            break;
-                        case 5:
-                            createReminderFromEndpoint(ch, false);
-                            break;
-                        case 6:
-                            createReminderFromEndpoint(ch, true);
-                            break;
-                        case 7:
-                            openRecordingsBrowser();
-                            break;
-                        default:
-                            break;
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        channelActionsCoordinator.showChannelActionMenu(ch, fav);
     }
 
     private void openMiniGuideForChannel(ChannelItem ch) {
@@ -379,7 +385,7 @@ public class MainActivity extends FragmentActivity {
                             .setTitle(getString(R.string.title_guide, ch.name))
                             .setItems(lines.toArray(new String[0]), (d, index) -> {
                                 if (index >= 0 && index < items.size()) {
-                                    showProgramActionMenu(ch, items.get(index));
+                                    channelActionsCoordinator.showProgramActionMenu(ch, items.get(index));
                                 }
                             })
                             .setNegativeButton(R.string.dialog_close, null)
@@ -390,25 +396,6 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
-    }
-
-    private void showProgramActionMenu(ChannelItem ch, EpgRepository.EpgProgram program) {
-        if (ch == null || program == null) {
-            return;
-        }
-        String title = program.title == null || program.title.trim().isEmpty() ? "Programa" : program.title;
-        String[] options = new String[]{"Grabar", "Recordatorio"};
-        new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        scheduleProgram(ch, program);
-                    } else if (which == 1) {
-                        createReminder(ch, program);
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
     }
 
     private void createScheduleFromEndpoint(ChannelItem ch, boolean next) {
@@ -592,6 +579,11 @@ public class MainActivity extends FragmentActivity {
         }
         int next = (currentIndex < 0) ? 0 : currentIndex + delta;
         tuneToIndex(next, true);
+    }
+
+    private void tuneSelectedChannel() {
+        tuneToIndex(selectedOverlayIndex, true);
+        hideOverlay();
     }
 
     private void moveOverlaySelection(int delta) {

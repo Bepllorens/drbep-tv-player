@@ -3,13 +3,7 @@ package com.drbep.tvplayer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,27 +33,20 @@ final class RecordingsRepository {
     }
 
     private final String baseUrl;
+    private final HttpClient httpClient;
 
     RecordingsRepository(String baseUrl) {
         this.baseUrl = baseUrl;
+        this.httpClient = new HttpClient();
     }
 
     RecordingsResult fetchRecordings() throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/recordings/files");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(20000);
-            conn.setRequestProperty("Accept", "application/json");
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/recordings/files", 10000, 20000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (!response.isSuccessful()) {
+            throw new IllegalStateException("recordings HTTP " + response.code);
+        }
 
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("recordings HTTP " + code);
-            }
-
-            JSONObject body = new JSONObject(readAll(conn.getInputStream()));
+        JSONObject body = new JSONObject(response.body);
             String basePath = body.optString("path", "");
             JSONArray files = body.optJSONArray("files");
             List<RecordingItem> items = new ArrayList<>();
@@ -78,11 +65,6 @@ final class RecordingsRepository {
                 }
             }
             return new RecordingsResult(basePath, items);
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
     }
 
     String buildPlaybackUrl(RecordingItem item, String basePath) {
@@ -122,16 +104,5 @@ final class RecordingsRepository {
             }
         }
         return out.toString();
-    }
-
-    private static String readAll(InputStream inputStream) throws Exception {
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line);
-            }
-        }
-        return output.toString();
     }
 }

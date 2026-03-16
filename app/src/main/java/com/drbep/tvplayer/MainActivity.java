@@ -21,11 +21,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -82,6 +78,7 @@ public class MainActivity extends FragmentActivity {
     private ReminderStore reminderStore;
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
+    private HttpClient httpClient;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -124,6 +121,7 @@ public class MainActivity extends FragmentActivity {
     catalogRepository = new CatalogRepository(baseUrl);
     epgRepository = new EpgRepository(baseUrl);
         recordingsRepository = new RecordingsRepository(baseUrl);
+    httpClient = new HttpClient();
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds);
@@ -426,16 +424,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         ioExecutor.execute(() -> {
-            HttpURLConnection conn = null;
             try {
-                URL url = new URL(baseUrl + "/api/recordings/schedule");
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(15000);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setDoOutput(true);
-
                 JSONObject req = new JSONObject();
                 req.put("channel_id", Long.parseLong(ch.id));
                 req.put("channel_name", ch.name);
@@ -445,21 +434,20 @@ public class MainActivity extends FragmentActivity {
                 req.put("start_time", program.startTime == null ? "" : program.startTime);
                 req.put("end_time", program.endTime == null ? "" : program.endTime);
 
-                byte[] payload = req.toString().getBytes(StandardCharsets.UTF_8);
-                conn.getOutputStream().write(payload);
-
-                int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) {
-                    throw new IllegalStateException("schedule HTTP " + code);
+                HttpClient.Response response = httpClient.postJson(
+                        baseUrl + "/api/recordings/schedule",
+                        req,
+                        10000,
+                        15000,
+                        java.util.Collections.singletonMap("Content-Type", "application/json")
+                );
+                if (!response.isSuccessful()) {
+                    throw new IllegalStateException("schedule HTTP " + response.code);
                 }
                 uiHandler.post(() -> showStatus(getString(R.string.status_recording_scheduled)));
             } catch (Exception e) {
                 Log.w(TAG, "schedule program failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_schedule_recording)));
-            } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
             }
         });
     }
@@ -859,18 +847,6 @@ public class MainActivity extends FragmentActivity {
         }
         super.onDestroy();
     }
-
-    static String readAll(InputStream in) throws Exception {
-        StringBuilder out = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                out.append(line);
-            }
-        }
-        return out.toString();
-    }
-
     private PlayerController.PlaybackRequest toPlaybackRequest(ChannelItem channelItem) {
         if (channelItem == null) {
             return null;

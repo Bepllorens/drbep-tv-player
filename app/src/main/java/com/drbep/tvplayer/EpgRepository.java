@@ -3,12 +3,6 @@ package com.drbep.tvplayer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -32,27 +26,20 @@ final class EpgRepository {
     }
 
     private final String baseUrl;
+    private final HttpClient httpClient;
 
     EpgRepository(String baseUrl) {
         this.baseUrl = baseUrl;
+        this.httpClient = new HttpClient();
     }
 
     Map<String, String> fetchNowPrograms() throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/epg/now");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/json");
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/now", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (!response.isSuccessful()) {
+            return new HashMap<>();
+        }
 
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                return new HashMap<>();
-            }
-
-            JSONArray arr = new JSONArray(readAll(conn.getInputStream()));
+        JSONArray arr = new JSONArray(response.body);
             Map<String, String> updates = new HashMap<>();
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject item = arr.optJSONObject(i);
@@ -74,28 +61,15 @@ final class EpgRepository {
                 updates.put(channelId, title);
             }
             return updates;
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
     }
 
     List<EpgProgram> fetchChannelPrograms(String channelId, int maxItems) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/epg/channel/" + channelId);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("EPG HTTP " + code);
-            }
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/channel/" + channelId, 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (!response.isSuccessful()) {
+            throw new IllegalStateException("EPG HTTP " + response.code);
+        }
 
-            JSONArray arr = new JSONArray(readAll(conn.getInputStream()));
+        JSONArray arr = new JSONArray(response.body);
             List<EpgProgram> programs = new ArrayList<>();
             int limit = Math.min(arr.length(), maxItems);
             for (int i = 0; i < limit; i++) {
@@ -106,35 +80,17 @@ final class EpgRepository {
                 programs.add(fromJson(item));
             }
             return programs;
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
     }
 
     EpgProgram fetchProgramForChannel(String channelId, boolean next) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/epg/channel/" + channelId + (next ? "/next" : "/current"));
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            if (code == 404) {
-                return null;
-            }
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("EPG HTTP " + code);
-            }
-            return fromJson(new JSONObject(readAll(conn.getInputStream())));
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/channel/" + channelId + (next ? "/next" : "/current"), 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (response.code == 404) {
+            return null;
         }
+        if (!response.isSuccessful()) {
+            throw new IllegalStateException("EPG HTTP " + response.code);
+        }
+        return fromJson(new JSONObject(response.body));
     }
 
     private static EpgProgram fromJson(JSONObject item) {
@@ -145,16 +101,5 @@ final class EpgRepository {
                 item.optString("end_time", ""),
                 item.optInt("progress", -1)
         );
-    }
-
-    private static String readAll(InputStream inputStream) throws Exception {
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line);
-            }
-        }
-        return output.toString();
     }
 }

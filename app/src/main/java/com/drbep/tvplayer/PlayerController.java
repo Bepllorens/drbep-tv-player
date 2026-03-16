@@ -15,8 +15,6 @@ import androidx.media3.ui.PlayerView;
 
 import org.json.JSONObject;
 
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -65,6 +63,7 @@ final class PlayerController {
     private final ExecutorService ioExecutor;
     private final Handler uiHandler;
     private final Host host;
+    private final HttpClient httpClient;
 
     private ExoPlayer player;
     private PlaybackRequest currentRequest;
@@ -78,6 +77,7 @@ final class PlayerController {
         this.ioExecutor = ioExecutor;
         this.uiHandler = uiHandler;
         this.host = host;
+        this.httpClient = new HttpClient();
     }
 
     void initialize() {
@@ -282,20 +282,13 @@ final class PlayerController {
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {
-        HttpURLConnection conn = null;
         try {
-            URL url = new URL(baseUrl + "/api/stream/" + channelId);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(20000);
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
+            HttpClient.Response response = httpClient.get(baseUrl + "/api/stream/" + channelId, 5000, 20000, java.util.Collections.singletonMap("Accept", "application/json"));
+            if (!response.isSuccessful()) {
                 return null;
             }
 
-            JSONObject jsonObject = new JSONObject(MainActivity.readAll(conn.getInputStream()));
+            JSONObject jsonObject = new JSONObject(response.body);
             StreamInfo info = new StreamInfo();
             info.drmType = jsonObject.optString("drm_type", "").trim();
             info.licenseUrl = jsonObject.optString("license_url", "").trim();
@@ -305,10 +298,6 @@ final class PlayerController {
         } catch (Exception e) {
             Log.w(TAG, "stream info fetch failed for channel " + channelId, e);
             return null;
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
         }
     }
 

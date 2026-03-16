@@ -3,12 +3,6 @@ package com.drbep.tvplayer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -25,27 +19,20 @@ final class CatalogRepository {
     private static final int FILTER_VOD = 3;
 
     private final String baseUrl;
+    private final HttpClient httpClient;
 
     CatalogRepository(String baseUrl) {
         this.baseUrl = baseUrl;
+        this.httpClient = new HttpClient();
     }
 
     CatalogLoadResult fetchCatalogChannels() throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/channels/catalog?include_disabled=0");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/json");
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/channels/catalog?include_disabled=0", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (!response.isSuccessful()) {
+            throw new IllegalStateException("HTTP " + response.code + " cargando catalogo");
+        }
 
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("HTTP " + code + " cargando catalogo");
-            }
-
-            JSONObject payload = new JSONObject(readAll(conn.getInputStream()));
+        JSONObject payload = new JSONObject(response.body);
             JSONArray channelsArray = payload.optJSONArray("channels");
             if (channelsArray == null) {
                 channelsArray = new JSONArray();
@@ -114,29 +101,15 @@ final class CatalogRepository {
 
             long activePlatformId = payload.optLong("active_platform_id", 0L);
             return new CatalogLoadResult(parsed, buildFiltersFromCatalog(parsed, activePlatformId), "all");
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
     }
 
     CatalogLoadResult fetchActiveChannels() throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(baseUrl + "/api/channels");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/json");
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/channels", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (!response.isSuccessful()) {
+            throw new IllegalStateException("HTTP " + response.code + " cargando canales");
+        }
 
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("HTTP " + code + " cargando canales");
-            }
-
-            JSONArray channelsArray = new JSONArray(readAll(conn.getInputStream()));
+        JSONArray channelsArray = new JSONArray(response.body);
             List<ChannelItem> parsed = new ArrayList<>(channelsArray.length());
             for (int i = 0; i < channelsArray.length(); i++) {
                 JSONObject channel = channelsArray.optJSONObject(i);
@@ -175,11 +148,6 @@ final class CatalogRepository {
             List<ChannelFilter> filters = new ArrayList<>();
             filters.add(new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
             return new CatalogLoadResult(parsed, filters, "all");
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
     }
 
     private List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId) {
@@ -273,17 +241,6 @@ final class CatalogRepository {
 
     private static String safeLower(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private static String readAll(InputStream inputStream) throws Exception {
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line);
-            }
-        }
-        return output.toString();
     }
 }
 

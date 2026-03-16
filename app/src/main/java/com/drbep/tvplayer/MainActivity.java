@@ -143,7 +143,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String resolveBaseUrl() {
-        String raw = BuildConfig.FORCE_FIRESTICK_URL ? BuildConfig.FIRESTICK_LOCKED_URL : BuildConfig.PLAYER_URL;
+        String raw = BuildConfig.PLAYER_URL;
+        if (BuildConfig.FORCE_FIRESTICK_URL && BuildConfig.FIRESTICK_LOCKED_URL != null && !BuildConfig.FIRESTICK_LOCKED_URL.trim().isEmpty()) {
+            raw = BuildConfig.FIRESTICK_LOCKED_URL;
+        }
         if (raw == null || raw.trim().isEmpty()) {
             return "http://127.0.0.1:8080";
         }
@@ -177,11 +180,11 @@ public class MainActivity extends FragmentActivity {
                 if (allowFallback && !usingPlaybackFallback && current != null && current.fallbackPlayUrl != null && !current.fallbackPlayUrl.isEmpty()) {
                     usingPlaybackFallback = true;
                     Log.w(TAG, "primary playback failed, retrying fallback URL", error);
-                    showStatus("Reintentando modo compat...");
+                    showStatus(getString(R.string.status_retry_compat));
                     playChannel(current, true, true, cachedStreamInfo);
                     return;
                 }
-                String msg = "Error de reproduccion: " + error.getMessage();
+                String msg = getString(R.string.error_playback_message, error.getMessage());
                 showError(msg);
                 Log.w(TAG, msg, error);
             }
@@ -189,12 +192,12 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_BUFFERING) {
-                    showStatus("Buffering...");
+                    showStatus(getString(R.string.status_buffering));
                 } else if (playbackState == Player.STATE_READY) {
                     hideError();
                     showStatus(currentIndex >= 0 && currentIndex < channels.size()
                             ? channels.get(currentIndex).name
-                            : "Listo");
+                            : getString(R.string.status_ready));
                 }
             }
         });
@@ -207,7 +210,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void loadChannels() {
-        showStatus("Cargando canales...");
+        showStatus(getString(R.string.status_loading_channels));
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = fetchCatalogChannels();
@@ -219,7 +222,7 @@ public class MainActivity extends FragmentActivity {
                     uiHandler.post(() -> applyLoadedChannels(fallback));
                 } catch (Exception e) {
                     Log.e(TAG, "load channels failed", e);
-                    uiHandler.post(() -> showError("No se pudieron cargar canales: " + e.getMessage()));
+                    uiHandler.post(() -> showError(getString(R.string.error_load_channels, e.getMessage())));
                 }
             }
         });
@@ -450,7 +453,7 @@ public class MainActivity extends FragmentActivity {
         updateFilterText();
 
         if (channels.isEmpty()) {
-            showError("No hay canales disponibles para este filtro");
+            showError(getString(R.string.error_no_channels_for_filter));
             return;
         }
 
@@ -518,7 +521,7 @@ public class MainActivity extends FragmentActivity {
         }
         usingPlaybackFallback = useFallback;
         if (targetUrl == null || targetUrl.trim().isEmpty()) {
-            showError("URL de reproduccion vacia");
+            showError(getString(R.string.error_empty_playback_url));
             return;
         }
 
@@ -805,7 +808,7 @@ public class MainActivity extends FragmentActivity {
                             break;
                     }
                 })
-                .setNegativeButton("Cancelar", null)
+                .setNegativeButton(R.string.dialog_cancel, null)
                 .show();
     }
 
@@ -813,7 +816,7 @@ public class MainActivity extends FragmentActivity {
         if (ch == null) {
             return;
         }
-        showStatus("Cargando guia...");
+        showStatus(getString(R.string.status_loading_guide));
         ioExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
@@ -845,22 +848,22 @@ public class MainActivity extends FragmentActivity {
 
                 uiHandler.post(() -> {
                     if (lines.isEmpty()) {
-                        showStatus("No hay EPG para este canal");
+                        showStatus(getString(R.string.status_no_epg_for_channel));
                         return;
                     }
                     new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("Guia: " + ch.name)
+                            .setTitle(getString(R.string.title_guide, ch.name))
                             .setItems(lines.toArray(new String[0]), (d, index) -> {
                                 if (index >= 0 && index < items.size()) {
                                     showProgramActionMenu(ch, items.get(index));
                                 }
                             })
-                            .setNegativeButton("Cerrar", null)
+                            .setNegativeButton(R.string.dialog_close, null)
                             .show();
                 });
             } catch (Exception e) {
                 Log.w(TAG, "mini guide failed", e);
-                uiHandler.post(() -> showStatus("No se pudo cargar guia"));
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
             } finally {
                 if (conn != null) {
                     conn.disconnect();
@@ -884,7 +887,7 @@ public class MainActivity extends FragmentActivity {
                         createReminder(ch, program);
                     }
                 })
-                .setNegativeButton("Cancelar", null)
+                .setNegativeButton(R.string.dialog_cancel, null)
                 .show();
     }
 
@@ -901,7 +904,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String suffix = next ? "/next" : "/current";
-        showStatus(next ? "Buscando proximo programa..." : "Buscando programa actual...");
+        showStatus(getString(next ? R.string.status_searching_next_program : R.string.status_searching_current_program));
         ioExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
@@ -913,7 +916,7 @@ public class MainActivity extends FragmentActivity {
                 conn.setRequestProperty("Accept", "application/json");
                 int code = conn.getResponseCode();
                 if (code == 404) {
-                    uiHandler.post(() -> showStatus("Sin programa en EPG"));
+                    uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;
                 }
                 if (code < 200 || code >= 300) {
@@ -929,7 +932,7 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "fetch program failed", e);
-                uiHandler.post(() -> showStatus("No se pudo obtener programa"));
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
             } finally {
                 if (conn != null) {
                     conn.disconnect();
@@ -969,10 +972,10 @@ public class MainActivity extends FragmentActivity {
                 if (code < 200 || code >= 300) {
                     throw new IllegalStateException("schedule HTTP " + code);
                 }
-                uiHandler.post(() -> showStatus("Grabacion programada"));
+                uiHandler.post(() -> showStatus(getString(R.string.status_recording_scheduled)));
             } catch (Exception e) {
                 Log.w(TAG, "schedule program failed", e);
-                uiHandler.post(() -> showStatus("No se pudo programar grabacion"));
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_schedule_recording)));
             } finally {
                 if (conn != null) {
                     conn.disconnect();
@@ -987,17 +990,17 @@ public class MainActivity extends FragmentActivity {
         }
         long startAt = parseIsoMillis(program.optString("start_time", ""));
         if (startAt <= 0) {
-            showStatus("No se pudo crear recordatorio");
+            showStatus(getString(R.string.status_failed_create_reminder));
             return;
         }
         ReminderItem item = new ReminderItem(ch.id, ch.name, program.optString("title", "Programa"), startAt, false);
         reminders.add(item);
         saveReminders();
-        showStatus("Recordatorio creado");
+        showStatus(getString(R.string.status_reminder_created));
     }
 
     private void openRecordingsBrowser() {
-        showStatus("Cargando grabaciones...");
+        showStatus(getString(R.string.status_loading_recordings));
         ioExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
@@ -1017,7 +1020,7 @@ public class MainActivity extends FragmentActivity {
                 String basePath = body.optString("path", "");
                 JSONArray files = body.optJSONArray("files");
                 if (files == null || files.length() == 0) {
-                    uiHandler.post(() -> showStatus("No hay grabaciones"));
+                    uiHandler.post(() -> showStatus(getString(R.string.status_no_recordings)));
                     return;
                 }
 
@@ -1039,17 +1042,17 @@ public class MainActivity extends FragmentActivity {
                 }
 
                 uiHandler.post(() -> new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("Grabaciones")
+                        .setTitle(R.string.title_recordings)
                         .setItems(labels.toArray(new String[0]), (dialog, which) -> {
                             if (which >= 0 && which < items.size()) {
                                 playRecording(items.get(which), basePath);
                             }
                         })
-                        .setNegativeButton("Cerrar", null)
+                        .setNegativeButton(R.string.dialog_close, null)
                         .show());
             } catch (Exception e) {
                 Log.w(TAG, "open recordings failed", e);
-                uiHandler.post(() -> showStatus("No se pudieron cargar grabaciones"));
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_recordings)));
             } finally {
                 if (conn != null) {
                     conn.disconnect();
@@ -1373,7 +1376,7 @@ public class MainActivity extends FragmentActivity {
         updateFilterText();
 
         if (channels.isEmpty()) {
-            showStatus("Sin canales para el filtro seleccionado");
+            showStatus(getString(R.string.status_no_channels_for_filter));
             showOverlay();
             return;
         }
@@ -1397,7 +1400,7 @@ public class MainActivity extends FragmentActivity {
         }
         ChannelFilter filter = getSelectedFilter();
         if (filter == null) {
-            filterText.setText("Filtro: Todos");
+            filterText.setText(getString(R.string.filter_all_label));
             return;
         }
         filterText.setText("Filtro: " + filter.label);
@@ -1489,12 +1492,11 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         errorText.setVisibility(View.VISIBLE);
-        errorText.setText(
-                "Error de reproduccion\n\n" +
-                        (reason == null ? "desconocido" : reason) +
-                        "\n\nBase URL: " + baseUrl +
-                        "\n\nPulsa MENU para abrir lista/reintentar"
-        );
+        errorText.setText(getString(
+            R.string.error_playback_details,
+            reason == null ? getString(R.string.error_unknown_reason) : reason,
+            baseUrl
+        ));
     }
 
     private void hideError() {
@@ -1577,7 +1579,7 @@ public class MainActivity extends FragmentActivity {
                 } else if (player != null) {
                     boolean playing = player.isPlaying();
                     player.setPlayWhenReady(!playing);
-                    showStatus(playing ? "Pausado" : "Reproduciendo");
+                    showStatus(getString(playing ? R.string.status_paused : R.string.status_playing));
                 }
                 return true;
             case KeyEvent.KEYCODE_INFO:
@@ -1600,7 +1602,7 @@ public class MainActivity extends FragmentActivity {
                 if (player != null) {
                     boolean playing = player.isPlaying();
                     player.setPlayWhenReady(!playing);
-                    showStatus(playing ? "Pausado" : "Reproduciendo");
+                    showStatus(getString(playing ? R.string.status_paused : R.string.status_playing));
                     return true;
                 }
                 break;

@@ -41,7 +41,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="8dp"
-            android:text="Canales"
+            android:text="@string/channels_title"
             android:textColor="#FFFFFF"
             android:textSize="20sp" />
 
@@ -52,7 +52,7 @@
             android:paddingLeft="8dp"
             android:paddingRight="8dp"
             android:paddingBottom="6dp"
-            android:text="Filtro: Todos"
+            android:text="@string/filter_all_label"
             android:textColor="#A7D0FF"
             android:textSize="15sp" />
 
@@ -62,7 +62,7 @@
             android:paddingLeft="8dp"
             android:paddingRight="8dp"
             android:paddingBottom="10dp"
-            android:text="Usa ←/→ para cambiar plataforma o grupo"
+            android:text="@string/filter_navigation_hint"
             android:textColor="#B0B0B0"
             android:textSize="13sp" />
 

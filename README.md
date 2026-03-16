@@ -32,10 +32,30 @@ export ANDROID_SDK_ROOT=/opt/android-sdk
 ./gradlew assembleDebug -PplayerUrl="http://TU_IP:8080/player.html"
 ```
 
+Release segura por defecto:
+
+```bash
+cd /opt/drbep-tv-player
+export ANDROID_SDK_ROOT=/opt/android-sdk
+./gradlew assembleRelease -PreleasePlayerUrl="https://tu-dominio/player.html"
+```
+
+Notas:
+
+- `debug` permite `cleartext` para pruebas locales.
+- `release` fuerza una configuracion de red mas cerrada y no usa una IP LAN hardcodeada por defecto.
+- Si quieres fijar una URL especifica para Fire Stick en `debug`, usa `-PdebugForceFirestickUrl=true -PdebugFirestickLockedUrl="http://IP:8080/player.html"`.
+
 APK output:
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
+```
+
+Release output:
+
+```text
+app/build/outputs/apk/release/app-release.apk
 ```
 
 ## Install on TV (ADB)

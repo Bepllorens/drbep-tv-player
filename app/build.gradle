@@ -12,10 +12,26 @@ def allowInsecureSsl = (project.findProperty('allowInsecureSsl') ?: 'true').toSt
 def forceFirestickUrl = (project.findProperty('forceFirestickUrl') ?: 'false').toString().toBoolean()
 def firestickLockedUrl = (project.findProperty('firestickLockedUrl') ?: 'http://192.168.93.223:8080/player.html').toString()
 
-def escapedPlayerUrl = playerUrl
+def debugPlayerUrl = (project.findProperty('debugPlayerUrl') ?: playerUrl).toString()
+def debugAllowInsecureSsl = (project.findProperty('debugAllowInsecureSsl') ?: allowInsecureSsl.toString()).toString().toBoolean()
+def debugForceFirestickUrl = (project.findProperty('debugForceFirestickUrl') ?: forceFirestickUrl.toString()).toString().toBoolean()
+def debugFirestickLockedUrl = (project.findProperty('debugFirestickLockedUrl') ?: firestickLockedUrl).toString()
+
+def releasePlayerUrl = (project.findProperty('releasePlayerUrl') ?: 'https://iptv.bepllorens.com/player.html').toString()
+def releaseAllowInsecureSsl = (project.findProperty('releaseAllowInsecureSsl') ?: 'false').toString().toBoolean()
+def releaseForceFirestickUrl = (project.findProperty('releaseForceFirestickUrl') ?: 'false').toString().toBoolean()
+def releaseFirestickLockedUrl = (project.findProperty('releaseFirestickLockedUrl') ?: '').toString()
+
+def escapedDebugPlayerUrl = debugPlayerUrl
         .replace('\\', '\\\\')
         .replace('"', '\\"')
-def escapedFirestickLockedUrl = firestickLockedUrl
+def escapedDebugFirestickLockedUrl = debugFirestickLockedUrl
+    .replace('\\', '\\\\')
+    .replace('"', '\\"')
+def escapedReleasePlayerUrl = releasePlayerUrl
+    .replace('\\', '\\\\')
+    .replace('"', '\\"')
+def escapedReleaseFirestickLockedUrl = releaseFirestickLockedUrl
         .replace('\\', '\\\\')
         .replace('"', '\\"')
 
@@ -30,15 +46,22 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "PLAYER_URL", "\"${escapedPlayerUrl}\""
-        buildConfigField "boolean", "ALLOW_INSECURE_SSL", allowInsecureSsl.toString()
-        buildConfigField "boolean", "FORCE_FIRESTICK_URL", forceFirestickUrl.toString()
-        buildConfigField "String", "FIRESTICK_LOCKED_URL", "\"${escapedFirestickLockedUrl}\""
     }
 
     buildTypes {
+        debug {
+            buildConfigField "String", "PLAYER_URL", "\"${escapedDebugPlayerUrl}\""
+            buildConfigField "boolean", "ALLOW_INSECURE_SSL", debugAllowInsecureSsl.toString()
+            buildConfigField "boolean", "FORCE_FIRESTICK_URL", debugForceFirestickUrl.toString()
+            buildConfigField "String", "FIRESTICK_LOCKED_URL", "\"${escapedDebugFirestickLockedUrl}\""
+        }
         release {
-            minifyEnabled false
+            buildConfigField "String", "PLAYER_URL", "\"${escapedReleasePlayerUrl}\""
+            buildConfigField "boolean", "ALLOW_INSECURE_SSL", releaseAllowInsecureSsl.toString()
+            buildConfigField "boolean", "FORCE_FIRESTICK_URL", releaseForceFirestickUrl.toString()
+            buildConfigField "String", "FIRESTICK_LOCKED_URL", "\"${escapedReleaseFirestickLockedUrl}\""
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

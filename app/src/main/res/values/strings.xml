@@ -13,6 +13,8 @@
     <string name="status_loading_guide">Cargando guia...</string>
     <string name="status_loading_recordings">Cargando grabaciones...</string>
     <string name="status_loading_scheduled_recordings">Cargando grabaciones programadas...</string>
+    <string name="status_canceling_scheduled_recording">Cancelando grabacion programada...</string>
+    <string name="status_updating_scheduled_recording">Actualizando horario de grabacion...</string>
     <string name="status_paused">Pausado</string>
     <string name="status_playing">Reproduciendo</string>
     <string name="status_no_epg_for_channel">No hay EPG para este canal</string>
@@ -28,6 +30,11 @@
     <string name="status_failed_load_recordings">No se pudieron cargar grabaciones</string>
     <string name="status_failed_load_scheduled_recordings">No se pudieron cargar las programadas</string>
     <string name="status_recording_not_playable">Esta grabacion aun no se puede reproducir</string>
+    <string name="status_scheduled_recording_canceled">Grabacion programada cancelada</string>
+    <string name="status_failed_cancel_scheduled_recording">No se pudo cancelar la grabacion programada</string>
+    <string name="status_scheduled_recording_updated">Horario de grabacion actualizado</string>
+    <string name="status_failed_update_scheduled_recording">No se pudo actualizar el horario</string>
+    <string name="status_invalid_scheduled_recording_window">El nuevo horario no es valido</string>
     <string name="status_open_program_actions">Pulsa para grabar o crear recordatorio</string>
     <string name="status_open_recording_actions">Pulsa para reproducir la grabacion</string>
     <string name="status_no_channels_for_filter">Sin canales para el filtro seleccionado</string>
@@ -57,7 +64,14 @@
     <string name="recordings_detail_empty">Selecciona una grabacion</string>
     <string name="recordings_path">Ruta: %1$s</string>
     <string name="title_recording_actions">Acciones de grabacion</string>
+    <string name="title_recording_edit_time">Editar horario</string>
     <string name="recording_action_play">Reproducir</string>
+    <string name="recording_action_edit_time">Editar hora</string>
+    <string name="recording_action_cancel">Cancelar programacion</string>
+    <string name="recording_action_shift_earlier">Mover 15 min antes</string>
+    <string name="recording_action_shift_later">Mover 15 min despues</string>
+    <string name="recording_action_extend">Alargar 15 min</string>
+    <string name="recording_action_shorten">Acortar 15 min</string>
     <string name="recording_action_refresh">Refrescar lista</string>
     <string name="recording_action_switch_completed">Ver completadas</string>
     <string name="recording_action_switch_scheduled">Ver programadas</string>

@@ -653,6 +653,86 @@ public class MainActivity extends FragmentActivity {
         loadRecordingsPanel(scheduledMode, selected == null ? null : selected.id);
     }
 
+    private void cancelSelectedScheduledRecording() {
+        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        if (item == null || item.playable) {
+            return;
+        }
+        showStatus(getString(R.string.status_canceling_scheduled_recording));
+        ioExecutor.execute(() -> {
+            try {
+                recordingsRepository.deleteScheduledRecording(item.id);
+                uiHandler.post(() -> {
+                    showStatus(getString(R.string.status_scheduled_recording_canceled));
+                    refreshRecordingsPanel();
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "cancel scheduled recording failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_cancel_scheduled_recording)));
+            }
+        });
+    }
+
+    private void showScheduledRecordingEditDialog() {
+        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        if (item == null || item.playable) {
+            return;
+        }
+        String[] options = new String[]{
+                getString(R.string.recording_action_shift_earlier),
+                getString(R.string.recording_action_shift_later),
+                getString(R.string.recording_action_extend),
+                getString(R.string.recording_action_shorten)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_recording_edit_time)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        adjustSelectedScheduledRecording(-15L * 60L * 1000L, -15L * 60L * 1000L);
+                    } else if (which == 1) {
+                        adjustSelectedScheduledRecording(15L * 60L * 1000L, 15L * 60L * 1000L);
+                    } else if (which == 2) {
+                        adjustSelectedScheduledRecording(0L, 15L * 60L * 1000L);
+                    } else if (which == 3) {
+                        adjustSelectedScheduledRecording(0L, -15L * 60L * 1000L);
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void adjustSelectedScheduledRecording(long startDeltaMs, long endDeltaMs) {
+        RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        if (item == null || item.playable) {
+            return;
+        }
+        long startMs = parseIsoMillis(item.startTime);
+        long endMs = parseIsoMillis(item.endTime);
+        if (startMs <= 0L || endMs <= 0L) {
+            showStatus(getString(R.string.status_failed_update_scheduled_recording));
+            return;
+        }
+        long updatedStart = startMs + startDeltaMs;
+        long updatedEnd = endMs + endDeltaMs;
+        if (updatedEnd <= updatedStart) {
+            showStatus(getString(R.string.status_invalid_scheduled_recording_window));
+            return;
+        }
+        showStatus(getString(R.string.status_updating_scheduled_recording));
+        ioExecutor.execute(() -> {
+            try {
+                recordingsRepository.updateScheduledRecording(item.id, formatIsoMillis(updatedStart), formatIsoMillis(updatedEnd));
+                uiHandler.post(() -> {
+                    showStatus(getString(R.string.status_scheduled_recording_updated));
+                    refreshRecordingsPanel();
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "update scheduled recording failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_update_scheduled_recording)));
+            }
+        });
+    }
+
     private void playRecording(RecordingsRepository.RecordingItem item, String basePath) {
         if (item == null || !item.playable) {
             showStatus(getString(R.string.status_recording_not_playable));
@@ -684,6 +764,11 @@ public class MainActivity extends FragmentActivity {
         if (item.playable) {
             options.add(getString(R.string.recording_action_play));
             actions.add(this::playSelectedRecording);
+        } else {
+            options.add(getString(R.string.recording_action_edit_time));
+            actions.add(this::showScheduledRecordingEditDialog);
+            options.add(getString(R.string.recording_action_cancel));
+            actions.add(this::cancelSelectedScheduledRecording);
         }
         options.add(getString(R.string.recording_action_refresh));
         actions.add(this::refreshRecordingsPanel);
@@ -737,6 +822,11 @@ public class MainActivity extends FragmentActivity {
         }
         SimpleDateFormat out = new SimpleDateFormat("HH:mm", Locale.getDefault());
         return out.format(new Date(ms));
+    }
+
+    private static String formatIsoMillis(long value) {
+        SimpleDateFormat out = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US);
+        return out.format(new Date(value));
     }
 
     private void tuneRelative(int delta) {
@@ -1082,7 +1172,7 @@ public class MainActivity extends FragmentActivity {
         }
         RecordingsRepository.RecordingItem item = currentRecordingsResult.items.get(selectedRecordingIndex);
         if (!item.playable) {
-            showStatus(getString(R.string.status_recording_not_playable));
+            showRecordingActionsDialog();
             return;
         }
         playRecording(item, currentRecordingsResult.basePath);

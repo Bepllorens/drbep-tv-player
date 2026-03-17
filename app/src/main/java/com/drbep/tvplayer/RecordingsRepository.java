@@ -5,6 +5,7 @@ import org.json.JSONObject;
 
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 final class RecordingsRepository {
@@ -132,6 +133,37 @@ final class RecordingsRepository {
             }
         }
         return new RecordingsResult("", items, true);
+    }
+
+    void deleteScheduledRecording(String recordingId) throws Exception {
+        if (recordingId == null || recordingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("recording id vacio");
+        }
+        HttpClient.Response response = httpClient.delete(
+                baseUrl + "/api/recordings/scheduled?id=" + URLEncoder.encode(recordingId.trim(), "UTF-8"),
+                10000,
+                15000,
+                Collections.singletonMap("Accept", "application/json")
+        );
+        httpClient.requireSuccess(response, "cancelando grabacion programada");
+    }
+
+    void updateScheduledRecording(String recordingId, String startTime, String endTime) throws Exception {
+        if (recordingId == null || recordingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("recording id vacio");
+        }
+        JSONObject payload = new JSONObject();
+        payload.put("id", Long.parseLong(recordingId.trim()));
+        payload.put("start_time", startTime == null ? "" : startTime.trim());
+        payload.put("end_time", endTime == null ? "" : endTime.trim());
+        HttpClient.Response response = httpClient.putJson(
+                baseUrl + "/api/recordings/scheduled",
+                payload,
+                10000,
+                15000,
+                Collections.singletonMap("Content-Type", "application/json")
+        );
+        httpClient.requireSuccess(response, "actualizando grabacion programada");
     }
 
     String buildPlaybackUrl(RecordingItem item, String basePath) {

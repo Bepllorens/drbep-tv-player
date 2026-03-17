@@ -9,26 +9,44 @@ import java.util.List;
 
 final class RecordingsRepository {
     static final class RecordingItem {
+        final String id;
         final String name;
         final String path;
         final long size;
         final String modified;
+        final String channelName;
+        final String programTitle;
+        final String poster;
+        final String status;
+        final String startTime;
+        final String endTime;
+        final boolean playable;
 
-        RecordingItem(String name, String path, long size, String modified) {
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable) {
+            this.id = id;
             this.name = name;
             this.path = path;
             this.size = size;
             this.modified = modified;
+            this.channelName = channelName;
+            this.programTitle = programTitle;
+            this.poster = poster;
+            this.status = status;
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.playable = playable;
         }
     }
 
     static final class RecordingsResult {
         final String basePath;
         final List<RecordingItem> items;
+        final boolean scheduledMode;
 
-        RecordingsResult(String basePath, List<RecordingItem> items) {
+        RecordingsResult(String basePath, List<RecordingItem> items, boolean scheduledMode) {
             this.basePath = basePath;
             this.items = items;
+            this.scheduledMode = scheduledMode;
         }
     }
 
@@ -40,7 +58,7 @@ final class RecordingsRepository {
         this.httpClient = new HttpClient();
     }
 
-    RecordingsResult fetchRecordings() throws Exception {
+    RecordingsResult fetchCompletedRecordings() throws Exception {
         JSONObject body = httpClient.getJsonObject(
                 baseUrl + "/api/recordings/files",
                 10000,
@@ -57,15 +75,63 @@ final class RecordingsRepository {
                 if (file == null) {
                     continue;
                 }
+                String path = file.optString("path", "");
+                String name = file.optString("name", "");
                 items.add(new RecordingItem(
-                        file.optString("name", ""),
-                        file.optString("path", ""),
+                        path.isEmpty() ? name : path,
+                        name,
+                        path,
                         file.optLong("size", 0L),
-                        file.optString("modified", "")
+                        file.optString("modified", ""),
+                        file.optString("channel_name", ""),
+                        file.optString("program_title", ""),
+                        file.optString("poster", ""),
+                        "completed",
+                        "",
+                        "",
+                        true
                 ));
             }
         }
-        return new RecordingsResult(basePath, items);
+        return new RecordingsResult(basePath, items, false);
+    }
+
+    RecordingsResult fetchScheduledRecordings() throws Exception {
+        JSONObject body = httpClient.getJsonObject(
+                baseUrl + "/api/recordings/scheduled",
+                10000,
+                20000,
+                java.util.Collections.singletonMap("Accept", "application/json"),
+                "cargando grabaciones programadas"
+        );
+        JSONArray records = body.optJSONArray("records");
+        List<RecordingItem> items = new ArrayList<>();
+        if (records != null) {
+            for (int i = 0; i < records.length(); i++) {
+                JSONObject record = records.optJSONObject(i);
+                if (record == null) {
+                    continue;
+                }
+                String id = String.valueOf(record.optLong("id", 0L));
+                String programTitle = record.optString("program_title", "");
+                String channelName = record.optString("channel_name", "");
+                items.add(new RecordingItem(
+                        id,
+                        programTitle == null || programTitle.trim().isEmpty() ? channelName : programTitle,
+                        "",
+                        0L,
+                        record.optString("updated_at", ""),
+                        channelName,
+                        programTitle,
+                        record.optString("poster", ""),
+                        record.optString("status", "scheduled"),
+                        record.optString("start_time", ""),
+                        record.optString("end_time", ""),
+                        false
+                ));
+            }
+        }
+        return new RecordingsResult("", items, true);
     }
 
     String buildPlaybackUrl(RecordingItem item, String basePath) {

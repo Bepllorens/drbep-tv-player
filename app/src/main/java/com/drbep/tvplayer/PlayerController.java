@@ -11,6 +11,7 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.ui.PlayerView;
 
 import org.json.JSONObject;
@@ -38,13 +39,19 @@ final class PlayerController {
         final String playUrl;
         final String fallbackPlayUrl;
         final String playbackMode;
+        final String drmScheme;
+        final String drmLicenseUrl;
+        final boolean directPlayback;
 
-        PlaybackRequest(String channelId, String channelName, String playUrl, String fallbackPlayUrl, String playbackMode) {
+        PlaybackRequest(String channelId, String channelName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback) {
             this.channelId = channelId;
             this.channelName = channelName;
             this.playUrl = playUrl;
             this.fallbackPlayUrl = fallbackPlayUrl;
             this.playbackMode = playbackMode;
+            this.drmScheme = drmScheme == null ? "" : drmScheme.trim();
+            this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
+            this.directPlayback = directPlayback;
         }
 
         boolean hasFallback() {
@@ -129,6 +136,7 @@ final class PlayerController {
     private final Host host;
     private final HttpClient httpClient;
 
+    private DefaultTrackSelector trackSelector;
     private ExoPlayer player;
     private PlaybackRequest currentRequest;
     private StreamInfo currentStreamInfo;
@@ -148,7 +156,13 @@ final class PlayerController {
     }
 
     void initialize() {
-        player = new ExoPlayer.Builder(context).build();
+        trackSelector = new DefaultTrackSelector(context);
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setForceHighestSupportedBitrate(true));
+
+        player = new ExoPlayer.Builder(context)
+                .setTrackSelector(trackSelector)
+                .build();
         playerView.setPlayer(player);
         playerView.setUseController(false);
         playerView.setKeepScreenOn(true);
@@ -246,7 +260,7 @@ final class PlayerController {
     }
 
     void resolveStreamInfoAndReplayIfNeeded(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache) {
-        if (request == null || request.channelId == null || request.channelId.trim().isEmpty()) {
+        if (request == null || request.directPlayback || request.channelId == null || request.channelId.trim().isEmpty()) {
             return;
         }
 
@@ -352,12 +366,18 @@ final class PlayerController {
             builder.setMimeType(decision.mimeType);
         }
         if ("widevine".equals(decision.drmType)) {
+            String licenseUrl = request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
+                    ? request.drmLicenseUrl
+                    : baseUrl + "/api/widevine/" + request.channelId;
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                    .setLicenseUri(baseUrl + "/api/widevine/" + request.channelId)
+                    .setLicenseUri(licenseUrl)
                     .build());
         } else if ("clearkey".equals(decision.drmType)) {
+            String licenseUrl = request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
+                    ? request.drmLicenseUrl
+                    : baseUrl + "/api/clearkey/" + request.channelId;
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                    .setLicenseUri(baseUrl + "/api/clearkey/" + request.channelId)
+                    .setLicenseUri(licenseUrl)
                     .build());
         }
 
@@ -379,6 +399,17 @@ final class PlayerController {
         boolean looksDash = playUrlLower.contains(".mpd");
         String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
         String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
+
+        if (request.directPlayback) {
+            return new PlaybackDecision(
+                    request.playUrl,
+                    resolveMimeType(request.playUrl, streamInfo, false),
+                    safeLower(request.drmScheme),
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
 
         if (useFallback) {
             return new PlaybackDecision(

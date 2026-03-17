@@ -80,6 +80,9 @@ public class MainActivity extends FragmentActivity {
     private TextView zapMetaText;
     private TextView quickSearchQueryText;
     private TextView quickSearchResultText;
+    private TextView recordingsSectionText;
+    private TextView versionBadgeText;
+    private ImageView recordingDetailPosterImage;
     private TextView recordingDetailTitleText;
     private TextView recordingDetailMetaText;
     private TextView recordingDetailPathText;
@@ -120,6 +123,7 @@ public class MainActivity extends FragmentActivity {
     private String lastChannelId;
     private String selectedFilterKey = "all";
     private int selectedRecordingIndex = 0;
+    private boolean recordingsScheduledMode;
     private final StringBuilder quickSearchBuffer = new StringBuilder();
     private final List<ChannelItem> quickSearchMatches = new ArrayList<>();
     private int quickSearchSelectionIndex = 0;
@@ -177,6 +181,9 @@ public class MainActivity extends FragmentActivity {
         quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
         quickSearchQueryText = findViewById(R.id.quickSearchQueryText);
         quickSearchResultText = findViewById(R.id.quickSearchResultText);
+        recordingsSectionText = findViewById(R.id.recordingsSectionText);
+        versionBadgeText = findViewById(R.id.versionBadgeText);
+        recordingDetailPosterImage = findViewById(R.id.recordingDetailPosterImage);
         recordingDetailTitleText = findViewById(R.id.recordingDetailTitleText);
         recordingDetailMetaText = findViewById(R.id.recordingDetailMetaText);
         recordingDetailPathText = findViewById(R.id.recordingDetailPathText);
@@ -185,6 +192,10 @@ public class MainActivity extends FragmentActivity {
         recordingsPanel = findViewById(R.id.recordingsPanel);
         channelList = findViewById(R.id.channelList);
         recordingsRecyclerView = findViewById(R.id.recordingsRecyclerView);
+
+        if (versionBadgeText != null) {
+            versionBadgeText.setText("v" + BuildConfig.VERSION_NAME);
+        }
 
         baseUrl = resolveBaseUrl();
     catalogRepository = new CatalogRepository(baseUrl);
@@ -404,7 +415,9 @@ public class MainActivity extends FragmentActivity {
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
         PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
         playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo);
-        playerController.resolveStreamInfoAndReplayIfNeeded(playbackRequest, autoPlay, streamInfoByChannelId);
+        if (playbackRequest != null && !playbackRequest.directPlayback) {
+            playerController.resolveStreamInfoAndReplayIfNeeded(playbackRequest, autoPlay, streamInfoByChannelId);
+        }
 
         hideError();
         showStatus(ch.name);
@@ -598,54 +611,55 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openRecordingsBrowser() {
-        showStatus(getString(R.string.status_loading_recordings));
+        loadRecordingsPanel(recordingsScheduledMode, null);
+    }
+
+    private void loadRecordingsPanel(boolean scheduledMode, String preferredId) {
+        recordingsScheduledMode = scheduledMode;
+        showStatus(getString(scheduledMode ? R.string.status_loading_scheduled_recordings : R.string.status_loading_recordings));
+        final String desiredId = preferredId;
         ioExecutor.execute(() -> {
             try {
-                RecordingsRepository.RecordingsResult result = recordingsRepository.fetchRecordings();
+                RecordingsRepository.RecordingsResult result = scheduledMode
+                        ? recordingsRepository.fetchScheduledRecordings()
+                        : recordingsRepository.fetchCompletedRecordings();
                 if (result.items.isEmpty()) {
-                    uiHandler.post(() -> showStatus(getString(R.string.status_no_recordings)));
+                    uiHandler.post(() -> {
+                        if (isRecordingsPanelVisible()) {
+                            hideRecordingsPanel();
+                        }
+                        showStatus(getString(scheduledMode ? R.string.status_no_scheduled_recordings : R.string.status_no_recordings));
+                    });
                     return;
                 }
-                uiHandler.post(() -> showRecordingsPanel(result));
+                uiHandler.post(() -> showRecordingsPanel(result, desiredId));
             } catch (Exception e) {
-                Log.w(TAG, "open recordings failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_recordings)));
+                Log.w(TAG, scheduledMode ? "open scheduled recordings failed" : "open recordings failed", e);
+                uiHandler.post(() -> showStatus(getString(scheduledMode ? R.string.status_failed_load_scheduled_recordings : R.string.status_failed_load_recordings)));
             }
         });
     }
 
     private void refreshRecordingsPanel() {
-        String keepPath = null;
         RecordingsRepository.RecordingItem selected = getSelectedRecordingItem();
-        if (selected != null) {
-            keepPath = selected.path;
+        loadRecordingsPanel(recordingsScheduledMode, selected == null ? null : selected.id);
+    }
+
+    private void switchRecordingsMode(boolean scheduledMode) {
+        if (recordingsScheduledMode == scheduledMode && isRecordingsPanelVisible()) {
+            return;
         }
-        final String desiredPath = keepPath;
-        showStatus(getString(R.string.status_loading_recordings));
-        ioExecutor.execute(() -> {
-            try {
-                RecordingsRepository.RecordingsResult result = recordingsRepository.fetchRecordings();
-                if (result.items.isEmpty()) {
-                    uiHandler.post(() -> {
-                        hideRecordingsPanel();
-                        showStatus(getString(R.string.status_no_recordings));
-                    });
-                    return;
-                }
-                uiHandler.post(() -> showRecordingsPanel(result, desiredPath));
-            } catch (Exception e) {
-                Log.w(TAG, "refresh recordings failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_recordings)));
-            }
-        });
+        RecordingsRepository.RecordingItem selected = getSelectedRecordingItem();
+        loadRecordingsPanel(scheduledMode, selected == null ? null : selected.id);
     }
 
     private void playRecording(RecordingsRepository.RecordingItem item, String basePath) {
-        if (item == null) {
+        if (item == null || !item.playable) {
+            showStatus(getString(R.string.status_recording_not_playable));
             return;
         }
         String url = recordingsRepository.buildPlaybackUrl(item, basePath);
-        playerController.playRecording(item.name, url);
+        playerController.playRecording(buildRecordingTitle(item), url);
         hideRecordingsPanel();
         hideOverlay();
     }
@@ -665,19 +679,19 @@ public class MainActivity extends FragmentActivity {
         if (item == null) {
             return;
         }
-        String[] options = new String[]{
-                getString(R.string.recording_action_play),
-                getString(R.string.recording_action_refresh)
-        };
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        if (item.playable) {
+            options.add(getString(R.string.recording_action_play));
+            actions.add(this::playSelectedRecording);
+        }
+        options.add(getString(R.string.recording_action_refresh));
+        actions.add(this::refreshRecordingsPanel);
+        options.add(getString(recordingsScheduledMode ? R.string.recording_action_switch_completed : R.string.recording_action_switch_scheduled));
+        actions.add(() -> switchRecordingsMode(!recordingsScheduledMode));
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_recording_actions)
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        playSelectedRecording();
-                    } else if (which == 1) {
-                        refreshRecordingsPanel();
-                    }
-                })
+                .setItems(options.toArray(new String[0]), (dialog, which) -> actions.get(which).run())
                 .setNegativeButton(R.string.dialog_cancel, null)
                 .show();
     }
@@ -892,7 +906,7 @@ public class MainActivity extends FragmentActivity {
         showRecordingsPanel(result, null);
     }
 
-    private void showRecordingsPanel(RecordingsRepository.RecordingsResult result, String preferredPath) {
+    private void showRecordingsPanel(RecordingsRepository.RecordingsResult result, String preferredId) {
         if (recordingsPanel == null || recordingsRecyclerView == null) {
             showRecordingsDialog(result);
             return;
@@ -900,10 +914,11 @@ public class MainActivity extends FragmentActivity {
         clearQuickSearchOverlay();
         hideOverlay();
         currentRecordingsResult = result;
+        recordingsScheduledMode = result.scheduledMode;
         selectedRecordingIndex = 0;
-        if (preferredPath != null && !preferredPath.trim().isEmpty()) {
+        if (preferredId != null && !preferredId.trim().isEmpty()) {
             for (int i = 0; i < result.items.size(); i++) {
-                if (preferredPath.equals(result.items.get(i).path)) {
+                if (preferredId.equals(result.items.get(i).id)) {
                     selectedRecordingIndex = i;
                     break;
                 }
@@ -1065,28 +1080,45 @@ public class MainActivity extends FragmentActivity {
         if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
             selectedRecordingIndex = 0;
         }
-        playRecording(currentRecordingsResult.items.get(selectedRecordingIndex), currentRecordingsResult.basePath);
+        RecordingsRepository.RecordingItem item = currentRecordingsResult.items.get(selectedRecordingIndex);
+        if (!item.playable) {
+            showStatus(getString(R.string.status_recording_not_playable));
+            return;
+        }
+        playRecording(item, currentRecordingsResult.basePath);
     }
 
     private void updateRecordingsDetailPanel() {
-        if (recordingDetailTitleText == null || recordingDetailMetaText == null || recordingDetailPathText == null || recordingDetailActionText == null) {
+        if (recordingsSectionText == null || recordingDetailPosterImage == null || recordingDetailTitleText == null || recordingDetailMetaText == null || recordingDetailPathText == null || recordingDetailActionText == null) {
             return;
         }
         if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
+            recordingsSectionText.setText(getString(recordingsScheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
             recordingDetailTitleText.setText(getString(R.string.recordings_detail_empty));
             recordingDetailMetaText.setText("");
             recordingDetailPathText.setText("");
-            recordingDetailActionText.setText(getString(R.string.recordings_panel_action_hint));
+            recordingDetailActionText.setText(getString(recordingsScheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
+            recordingDetailPathText.setVisibility(View.GONE);
+            recordingDetailPosterImage.setVisibility(View.GONE);
+            Glide.with(this).clear(recordingDetailPosterImage);
             return;
         }
         if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
             selectedRecordingIndex = 0;
         }
         RecordingsRepository.RecordingItem item = currentRecordingsResult.items.get(selectedRecordingIndex);
-        recordingDetailTitleText.setText(item.name);
+        recordingsSectionText.setText(getString(currentRecordingsResult.scheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
+        recordingDetailTitleText.setText(buildRecordingTitle(item));
         recordingDetailMetaText.setText(buildRecordingMeta(item));
-        recordingDetailPathText.setText(getString(R.string.recordings_path, item.path == null ? "" : item.path));
-        recordingDetailActionText.setText(getString(R.string.recordings_panel_action_hint));
+        if (item.playable) {
+            recordingDetailPathText.setVisibility(View.VISIBLE);
+            recordingDetailPathText.setText(getString(R.string.recordings_path, item.path == null ? "" : item.path));
+        } else {
+            recordingDetailPathText.setVisibility(View.GONE);
+            recordingDetailPathText.setText("");
+        }
+        recordingDetailActionText.setText(getString(currentRecordingsResult.scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
+        bindRecordingPoster(recordingDetailPosterImage, item.poster);
     }
 
     private void showStatus(String text) {
@@ -1141,7 +1173,7 @@ public class MainActivity extends FragmentActivity {
                     return true;
                 }
                 if (isRecordingsPanelVisible()) {
-                    hideRecordingsPanel();
+                    switchRecordingsMode(false);
                     return true;
                 }
                 if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
@@ -1250,7 +1282,7 @@ public class MainActivity extends FragmentActivity {
                     return true;
                 }
                 if (isRecordingsPanelVisible()) {
-                    showRecordingActionsDialog();
+                    switchRecordingsMode(true);
                     return true;
                 }
                 if (isOverlayVisible()) {
@@ -1406,7 +1438,10 @@ public class MainActivity extends FragmentActivity {
                 channelItem.name,
                 channelItem.playUrl,
                 channelItem.fallbackPlayUrl,
-                playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id)
+                playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id),
+                channelItem.drmScheme,
+                channelItem.drmLicenseUrl,
+                channelItem.directPlayback
         );
     }
 
@@ -1977,10 +2012,56 @@ public class MainActivity extends FragmentActivity {
         return getString(R.string.guide_program_meta, getString(R.string.status_open_program_actions));
     }
 
+    private String buildRecordingTitle(RecordingsRepository.RecordingItem item) {
+        if (item == null) {
+            return getString(R.string.recordings_detail_empty);
+        }
+        if (item.programTitle != null && !item.programTitle.trim().isEmpty()) {
+            return item.programTitle.trim();
+        }
+        if (item.name != null && !item.name.trim().isEmpty()) {
+            return item.name.trim();
+        }
+        return getString(R.string.recordings_detail_empty);
+    }
+
     private String buildRecordingMeta(RecordingsRepository.RecordingItem item) {
-        String modified = item == null || item.modified == null || item.modified.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : item.modified;
-        String sizeLabel = (item == null || item.size <= 0L) ? getString(R.string.recording_size_unknown) : humanReadableSize(item.size);
-        return getString(R.string.recording_meta, modified, sizeLabel);
+        if (item == null) {
+            return getString(R.string.diagnostics_value_unknown);
+        }
+        if (!item.playable) {
+            String start = shortTime(item.startTime);
+            String end = shortTime(item.endTime);
+            String status = item.status == null || item.status.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : item.status.trim();
+            String baseMeta = getString(R.string.recording_meta_scheduled, start, end, status);
+            if (item.channelName != null && !item.channelName.trim().isEmpty()) {
+                return item.channelName.trim() + "  ·  " + baseMeta;
+            }
+            return baseMeta;
+        }
+        String modified = item.modified == null || item.modified.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : item.modified;
+        String sizeLabel = item.size <= 0L ? getString(R.string.recording_size_unknown) : humanReadableSize(item.size);
+        String baseMeta = getString(R.string.recording_meta, modified, sizeLabel);
+        if (item.channelName != null && !item.channelName.trim().isEmpty()) {
+            return item.channelName.trim() + "  ·  " + baseMeta;
+        }
+        return baseMeta;
+    }
+
+    private void bindRecordingPoster(ImageView imageView, String posterUrl) {
+        if (imageView == null) {
+            return;
+        }
+        if (posterUrl == null || posterUrl.trim().isEmpty()) {
+            imageView.setVisibility(View.GONE);
+            Glide.with(this).clear(imageView);
+            return;
+        }
+        imageView.setVisibility(View.VISIBLE);
+        Glide.with(this)
+                .load(posterUrl.trim())
+                .centerCrop()
+                .into(imageView);
     }
 
     private static String humanReadableSize(long sizeBytes) {
@@ -2170,7 +2251,7 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void onBindViewHolder(@NonNull RecordingVH holder, int position) {
             RecordingsRepository.RecordingItem item = result.items.get(position);
-            holder.name.setText(item.name);
+            holder.name.setText(buildRecordingTitle(item));
             holder.meta.setText(buildRecordingMeta(item));
             boolean selected = position == selectedRecordingIndex;
             holder.itemView.setBackgroundColor(selected ? 0xFF80542A : 0xFF2C2419);

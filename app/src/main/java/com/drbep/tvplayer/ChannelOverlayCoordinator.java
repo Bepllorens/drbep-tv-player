@@ -274,7 +274,10 @@ final class ChannelOverlayCoordinator {
             return false;
         }
         if (filter.type == 3) {
-            return item.isVod;
+            return item.isVod && !item.isAdultVod;
+        }
+        if (filter.type == 4) {
+            return item.isAdultVod;
         }
         return true;
     }

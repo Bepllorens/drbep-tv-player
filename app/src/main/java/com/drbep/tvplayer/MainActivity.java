@@ -1438,6 +1438,16 @@ public class MainActivity extends FragmentActivity {
                     createScheduleFromEndpoint(channels.get(currentIndex), false);
                 }
                 return true;
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                if (playerController != null && playerController.seekTimeshiftBack()) {
+                    return true;
+                }
+                break;
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                if (playerController != null && playerController.seekTimeshiftForward()) {
+                    return true;
+                }
+                break;
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
                 if (playerController != null) {
                     playerController.togglePlayback();
@@ -1523,6 +1533,7 @@ public class MainActivity extends FragmentActivity {
         return new PlayerController.PlaybackRequest(
                 channelItem.id,
                 channelItem.name,
+                channelItem.platformName,
                 channelItem.playUrl,
                 channelItem.fallbackPlayUrl,
                 playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id),

@@ -93,6 +93,11 @@
     <string name="status_playing_recording">Reproduciendo grabacion: %1$s</string>
     <string name="status_channel_compat">%1$s (modo compat)</string>
     <string name="status_playback_mode_changed">Modo playback: %1$s</string>
+    <string name="status_seek_back">Retroceso 30s</string>
+    <string name="status_seek_forward">Avance 30s</string>
+    <string name="timeshift_status_unavailable">Timeshift no disponible en este stream</string>
+    <string name="timeshift_status_live">Timeshift: Live</string>
+    <string name="timeshift_status_delayed">Timeshift: -%1$d:%2$02d</string>
     <string name="overlay_now_playing">Ahora en reproduccion</string>
     <string name="overlay_current_program">Emision actual: %1$s</string>
     <string name="overlay_current_program_empty">Emision actual: sin datos EPG</string>
@@ -100,7 +105,7 @@
     <string name="overlay_recent_channels">Recientes: %1$s</string>
     <string name="overlay_recent_channels_empty">Recientes: aun sin historial</string>
     <string name="overlay_tools_hint">MENU: herramientas  ·  doble MENU: timeline</string>
-    <string name="tools_menu_title">Herramientas v1.3</string>
+    <string name="tools_menu_title">Herramientas v1.3.2</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>

@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Handler;
 import android.util.Log;
 
@@ -10,6 +11,7 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.Timeline;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.ui.PlayerView;
@@ -22,6 +24,10 @@ import java.util.concurrent.ExecutorService;
 
 final class PlayerController {
     private static final String TAG = "PlayerController";
+    private static final String PREFS = "drbep_tv_prefs";
+    private static final long TIMESHIFT_MAX_BACK_MS = 2L * 60L * 60L * 1000L;
+    private static final long TIMESHIFT_SEEK_STEP_MS = 30_000L;
+
 
     interface Host {
         void showStatus(String text);
@@ -36,6 +42,7 @@ final class PlayerController {
     static final class PlaybackRequest {
         final String channelId;
         final String channelName;
+        final String platformName;
         final String playUrl;
         final String fallbackPlayUrl;
         final String playbackMode;
@@ -43,9 +50,10 @@ final class PlayerController {
         final String drmLicenseUrl;
         final boolean directPlayback;
 
-        PlaybackRequest(String channelId, String channelName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback) {
+        PlaybackRequest(String channelId, String channelName, String platformName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback) {
             this.channelId = channelId;
             this.channelName = channelName;
+            this.platformName = platformName == null ? "" : platformName.trim();
             this.playUrl = playUrl;
             this.fallbackPlayUrl = fallbackPlayUrl;
             this.playbackMode = playbackMode;
@@ -135,6 +143,7 @@ final class PlayerController {
     private final Handler uiHandler;
     private final Host host;
     private final HttpClient httpClient;
+    private final SharedPreferences prefs;
 
     private DefaultTrackSelector trackSelector;
     private ExoPlayer player;
@@ -153,6 +162,7 @@ final class PlayerController {
         this.uiHandler = uiHandler;
         this.host = host;
         this.httpClient = new HttpClient();
+        this.prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
     void initialize() {
@@ -162,6 +172,8 @@ final class PlayerController {
 
         player = new ExoPlayer.Builder(context)
                 .setTrackSelector(trackSelector)
+                .setSeekBackIncrementMs(TIMESHIFT_SEEK_STEP_MS)
+                .setSeekForwardIncrementMs(TIMESHIFT_SEEK_STEP_MS)
                 .build();
         playerView.setPlayer(player);
         playerView.setUseController(false);
@@ -249,6 +261,10 @@ final class PlayerController {
         }
         boolean playing = player.isPlaying();
         player.setPlayWhenReady(!playing);
+        if (isTimeshiftAvailable()) {
+            host.showStatus(getTimeshiftStatusLabel());
+            return;
+        }
         host.showStatus(context.getString(playing ? R.string.status_paused : R.string.status_playing));
     }
 
@@ -337,6 +353,49 @@ final class PlayerController {
             player.release();
             player = null;
         }
+    }
+
+    boolean isTimeshiftSupportedForCurrentChannel() {
+        return isTimeshiftAvailable();
+    }
+
+    boolean seekTimeshiftBack() {
+        if (isTimeshiftAvailable()) {
+            return seekTimeshiftBy(-TIMESHIFT_SEEK_STEP_MS);
+        }
+        if (player == null || !player.isCurrentMediaItemSeekable()) {
+            return false;
+        }
+        player.seekBack();
+        host.showStatus(context.getString(R.string.status_seek_back));
+        return true;
+    }
+
+    boolean seekTimeshiftForward() {
+        if (isTimeshiftAvailable()) {
+            return seekTimeshiftBy(TIMESHIFT_SEEK_STEP_MS);
+        }
+        if (player == null || !player.isCurrentMediaItemSeekable()) {
+            return false;
+        }
+        player.seekForward();
+        host.showStatus(context.getString(R.string.status_seek_forward));
+        return true;
+    }
+
+    boolean resumeTimeshiftLive() {
+        if (!isTimeshiftAvailable() || player == null) {
+            host.showStatus(context.getString(R.string.timeshift_status_unavailable));
+            return false;
+        }
+        player.seekToDefaultPosition();
+        player.play();
+        host.showStatus(context.getString(R.string.timeshift_status_live));
+        return true;
+    }
+
+    void showTimeshiftStatus() {
+        host.showStatus(getTimeshiftStatusLabel());
     }
 
     private void playChannelInternal(PlaybackRequest request, boolean autoPlay, boolean useFallback, StreamInfo streamInfo) {
@@ -536,6 +595,71 @@ final class PlayerController {
                     : MimeTypes.APPLICATION_MPD;
         }
         return mimeType;
+    }
+
+    private boolean seekTimeshiftBy(long deltaMs) {
+        TimeshiftWindow window = getTimeshiftWindow();
+        if (window == null || player == null) {
+            host.showStatus(context.getString(R.string.timeshift_status_unavailable));
+            return false;
+        }
+        long target = Math.max(window.startMs, Math.min(window.endMs, player.getCurrentPosition() + deltaMs));
+        player.seekTo(target);
+        player.play();
+        host.showStatus(formatTimeshiftOffset(window.endMs - target));
+        return true;
+    }
+
+    private boolean isTimeshiftAvailable() {
+        return player != null
+                && currentRequest != null
+                && safeLower(currentRequest.platformName).contains("movistar")
+                && player.isCurrentMediaItemSeekable();
+    }
+
+    private String getTimeshiftStatusLabel() {
+        TimeshiftWindow window = getTimeshiftWindow();
+        if (window == null) {
+            return context.getString(R.string.timeshift_status_unavailable);
+        }
+        long offsetMs = Math.max(0L, window.endMs - window.currentMs);
+        if (offsetMs < 1500L) {
+            return context.getString(R.string.timeshift_status_live);
+        }
+        return formatTimeshiftOffset(offsetMs);
+    }
+
+    private String formatTimeshiftOffset(long offsetMs) {
+        long totalSeconds = Math.max(0L, Math.round(offsetMs / 1000f));
+        long mins = totalSeconds / 60L;
+        long secs = totalSeconds % 60L;
+        return context.getString(R.string.timeshift_status_delayed, mins, secs);
+    }
+
+    private TimeshiftWindow getTimeshiftWindow() {
+        if (!isTimeshiftAvailable() || player == null) {
+            return null;
+        }
+        long durationMs = player.getDuration();
+        if (durationMs == C.TIME_UNSET || durationMs <= 0L) {
+            return null;
+        }
+        long endMs = durationMs;
+        long startMs = Math.max(0L, endMs - TIMESHIFT_MAX_BACK_MS);
+        long currentMs = Math.max(startMs, Math.min(endMs, player.getCurrentPosition()));
+        return new TimeshiftWindow(startMs, endMs, currentMs);
+    }
+
+    private static final class TimeshiftWindow {
+        final long startMs;
+        final long endMs;
+        final long currentMs;
+
+        TimeshiftWindow(long startMs, long endMs, long currentMs) {
+            this.startMs = startMs;
+            this.endMs = endMs;
+            this.currentMs = currentMs;
+        }
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {

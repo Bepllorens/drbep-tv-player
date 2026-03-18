@@ -106,5 +106,57 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
         </ScrollView>
+
+        <LinearLayout
+            android:id="@+id/timelineProgramDetailPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#D018202A"
+            android:orientation="horizontal"
+            android:padding="10dp">
+
+            <ImageView
+                android:id="@+id/timelineProgramPosterImage"
+                android:layout_width="84dp"
+                android:layout_height="120dp"
+                android:layout_marginEnd="12dp"
+                android:background="#16202A"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/timelineProgramTitleText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxLines="2"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/timelineProgramMetaText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="#CFE0F4"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/timelineProgramDescText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:maxLines="4"
+                    android:textColor="#B7C9DB"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>

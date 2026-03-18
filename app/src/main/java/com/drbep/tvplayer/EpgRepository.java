@@ -12,13 +12,15 @@ final class EpgRepository {
     static final class EpgProgram {
         final String title;
         final String icon;
+        final String description;
         final String startTime;
         final String endTime;
         final int progress;
 
-        EpgProgram(String title, String icon, String startTime, String endTime, int progress) {
+        EpgProgram(String title, String icon, String description, String startTime, String endTime, int progress) {
             this.title = title;
             this.icon = icon;
+            this.description = description;
             this.startTime = startTime;
             this.endTime = endTime;
             this.progress = progress;
@@ -102,6 +104,7 @@ final class EpgRepository {
         return new EpgProgram(
                 item.optString("title", "Sin titulo"),
                 item.optString("icon", ""),
+                item.optString("description", ""),
                 item.optString("start_time", ""),
                 item.optString("end_time", ""),
                 item.optInt("progress", -1)

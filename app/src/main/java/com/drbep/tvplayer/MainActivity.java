@@ -9,13 +9,20 @@ import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.text.Editable;
+import android.util.LruCache;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -28,7 +35,11 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.json.JSONObject;
 
+import com.caverock.androidsvg.SVG;
+
+import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -81,7 +92,9 @@ public class MainActivity extends FragmentActivity {
     private TextView quickSearchQueryText;
     private TextView quickSearchResultText;
     private TextView recordingsSectionText;
+    private TextView recordingsSummaryText;
     private TextView versionBadgeText;
+    private TextView hdrBadgeText;
     private ImageView recordingDetailPosterImage;
     private TextView recordingDetailTitleText;
     private TextView recordingDetailMetaText;
@@ -102,6 +115,7 @@ public class MainActivity extends FragmentActivity {
     private final List<ChannelItem> allChannels = new ArrayList<>();
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
+    private final LruCache<String, Drawable> channelLogoCache = new LruCache<>(96);
     private ChannelAdapter channelAdapter;
     private CatalogRepository catalogRepository;
     private EpgRepository epgRepository;
@@ -148,6 +162,11 @@ public class MainActivity extends FragmentActivity {
             statusText.setVisibility(View.GONE);
         }
     };
+    private final Runnable hideHdrBadgeRunnable = () -> {
+        if (hdrBadgeText != null) {
+            hdrBadgeText.setVisibility(View.GONE);
+        }
+    };
     private final Runnable hideZapBannerRunnable = () -> {
         if (zapBanner != null) {
             zapBanner.setVisibility(View.GONE);
@@ -182,7 +201,9 @@ public class MainActivity extends FragmentActivity {
         quickSearchQueryText = findViewById(R.id.quickSearchQueryText);
         quickSearchResultText = findViewById(R.id.quickSearchResultText);
         recordingsSectionText = findViewById(R.id.recordingsSectionText);
+        recordingsSummaryText = findViewById(R.id.recordingsSummaryText);
         versionBadgeText = findViewById(R.id.versionBadgeText);
+        hdrBadgeText = findViewById(R.id.hdrBadgeText);
         recordingDetailPosterImage = findViewById(R.id.recordingDetailPosterImage);
         recordingDetailTitleText = findViewById(R.id.recordingDetailTitleText);
         recordingDetailMetaText = findViewById(R.id.recordingDetailMetaText);
@@ -332,6 +353,11 @@ public class MainActivity extends FragmentActivity {
             public boolean isChannelCurrent(String channelId) {
                 ChannelItem current = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
                 return current != null && channelId != null && channelId.equals(current.id);
+            }
+
+            @Override
+            public void showHdrBadge(String label) {
+                MainActivity.this.showHdrBadge(label);
             }
         });
         playerController.initialize();
@@ -1176,13 +1202,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateRecordingsDetailPanel() {
-        if (recordingsSectionText == null || recordingDetailPosterImage == null || recordingDetailTitleText == null || recordingDetailMetaText == null || recordingDetailPathText == null || recordingDetailActionText == null) {
+        if (recordingsSectionText == null || recordingsSummaryText == null || recordingDetailPosterImage == null || recordingDetailTitleText == null || recordingDetailMetaText == null || recordingDetailPathText == null || recordingDetailActionText == null) {
             return;
         }
         if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
             recordingsSectionText.setText(getString(recordingsScheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
+            recordingsSummaryText.setText(buildRecordingsSummary(currentRecordingsResult));
             recordingDetailTitleText.setText(getString(R.string.recordings_detail_empty));
             recordingDetailMetaText.setText("");
+            recordingDetailMetaText.setTextColor(0xFFF2D5AF);
             recordingDetailPathText.setText("");
             recordingDetailActionText.setText(getString(recordingsScheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
             recordingDetailPathText.setVisibility(View.GONE);
@@ -1195,8 +1223,10 @@ public class MainActivity extends FragmentActivity {
         }
         RecordingsRepository.RecordingItem item = currentRecordingsResult.items.get(selectedRecordingIndex);
         recordingsSectionText.setText(getString(currentRecordingsResult.scheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
+        recordingsSummaryText.setText(buildRecordingsSummary(currentRecordingsResult));
         recordingDetailTitleText.setText(buildRecordingTitle(item));
         recordingDetailMetaText.setText(buildRecordingMeta(item));
+        recordingDetailMetaText.setTextColor(recordingMetaColor(item));
         if (item.playable) {
             recordingDetailPathText.setVisibility(View.VISIBLE);
             recordingDetailPathText.setText(getString(R.string.recordings_path, item.path == null ? "" : item.path));
@@ -1206,6 +1236,16 @@ public class MainActivity extends FragmentActivity {
         }
         recordingDetailActionText.setText(getString(currentRecordingsResult.scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
         bindRecordingPoster(recordingDetailPosterImage, item.poster);
+    }
+
+    private void showHdrBadge(String label) {
+        if (hdrBadgeText == null) {
+            return;
+        }
+        hdrBadgeText.setText(label == null || label.trim().isEmpty() ? getString(R.string.status_hdr_detected) : label.trim());
+        hdrBadgeText.setVisibility(View.VISIBLE);
+        uiHandler.removeCallbacks(hideHdrBadgeRunnable);
+        uiHandler.postDelayed(hideHdrBadgeRunnable, 2000L);
     }
 
     private void showStatus(String text) {
@@ -1263,13 +1303,21 @@ public class MainActivity extends FragmentActivity {
                     switchRecordingsMode(false);
                     return true;
                 }
-                if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
-                    lastMenuPressedAtMs = 0L;
-                    if (isOverlayVisible()) {
+                if (isOverlayVisible()) {
+                    if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
+                        lastMenuPressedAtMs = 0L;
                         if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
                             openTimelineGuideAroundSelection();
                         }
-                    } else if (currentIndex >= 0 && currentIndex < channels.size()) {
+                        return true;
+                    }
+                    lastMenuPressedAtMs = now;
+                    showChannelActionMenu();
+                    return true;
+                }
+                if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
+                    lastMenuPressedAtMs = 0L;
+                    if (currentIndex >= 0 && currentIndex < channels.size()) {
                         openTimelineGuide(currentIndex, System.currentTimeMillis());
                     } else {
                         showOverlay();
@@ -1802,9 +1850,7 @@ public class MainActivity extends FragmentActivity {
             logoParams.rightMargin = dp(8);
             channelLogo.setLayoutParams(logoParams);
             channelLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            if (row.channel.logoUrl != null && !row.channel.logoUrl.trim().isEmpty()) {
-                Glide.with(this).load(row.channel.logoUrl.trim()).into(channelLogo);
-            }
+            bindChannelLogo(channelLogo, row.channel.logoUrl, row.channel.name, 26, 26);
             channelLabel.addView(channelLogo);
 
             TextView channelNameText = new TextView(this);
@@ -2220,7 +2266,7 @@ public class MainActivity extends FragmentActivity {
         if (!item.playable) {
             String start = shortTime(item.startTime);
             String end = shortTime(item.endTime);
-            String status = item.status == null || item.status.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : item.status.trim();
+            String status = humanizeRecordingStatus(item.status);
             String baseMeta = getString(R.string.recording_meta_scheduled, start, end, status);
             if (item.channelName != null && !item.channelName.trim().isEmpty()) {
                 return item.channelName.trim() + "  ·  " + baseMeta;
@@ -2234,6 +2280,235 @@ public class MainActivity extends FragmentActivity {
             return item.channelName.trim() + "  ·  " + baseMeta;
         }
         return baseMeta;
+    }
+
+    private String buildRecordingsSummary(RecordingsRepository.RecordingsResult result) {
+        if (result == null || result.items == null || result.items.isEmpty()) {
+            if (result != null && result.scheduledMode) {
+                return getString(R.string.recordings_summary_scheduled, 0, 0, 0, 0);
+            }
+            return getString(R.string.recordings_summary_completed, 0);
+        }
+        if (!result.scheduledMode) {
+            return getString(R.string.recordings_summary_completed, result.items.size());
+        }
+        int scheduled = 0;
+        int recording = 0;
+        int issue = 0;
+        for (RecordingsRepository.RecordingItem item : result.items) {
+            String status = item == null ? "" : safeLower(item.status);
+            switch (status) {
+                case "recording":
+                case "running":
+                case "in_progress":
+                    recording++;
+                    break;
+                case "failed":
+                case "error":
+                case "cancelled":
+                case "canceled":
+                    issue++;
+                    break;
+                default:
+                    scheduled++;
+                    break;
+            }
+        }
+        return getString(R.string.recordings_summary_scheduled, result.items.size(), scheduled, recording, issue);
+    }
+
+    private String humanizeRecordingStatus(String status) {
+        switch (safeLower(status)) {
+            case "scheduled":
+            case "pending":
+                return getString(R.string.recording_status_scheduled);
+            case "recording":
+            case "running":
+            case "in_progress":
+                return getString(R.string.recording_status_recording);
+            case "completed":
+            case "done":
+                return getString(R.string.recording_status_completed);
+            case "failed":
+            case "error":
+                return getString(R.string.recording_status_failed);
+            case "cancelled":
+            case "canceled":
+                return getString(R.string.recording_status_canceled);
+            default:
+                return getString(R.string.recording_status_unknown);
+        }
+    }
+
+    private int recordingMetaColor(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.playable) {
+            return 0xFFF2D5AF;
+        }
+        switch (safeLower(item.status)) {
+            case "recording":
+            case "running":
+            case "in_progress":
+                return 0xFF8DE1A5;
+            case "failed":
+            case "error":
+                return 0xFFFF9C9C;
+            case "cancelled":
+            case "canceled":
+                return 0xFFC7D2E2;
+            default:
+                return 0xFF9BD0FF;
+        }
+    }
+
+    private void bindChannelLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
+        if (imageView == null) {
+            return;
+        }
+        Drawable fallback = buildChannelLogoFallback(channelName, widthDp, heightDp);
+        String trimmedLogoUrl = logoUrl == null ? "" : logoUrl.trim();
+        if (trimmedLogoUrl.isEmpty()) {
+            Glide.with(imageView.getContext()).clear(imageView);
+            imageView.setTag(null);
+            imageView.setImageDrawable(fallback);
+            return;
+        }
+        imageView.setTag(trimmedLogoUrl);
+        if (isSvgLogoUrl(trimmedLogoUrl)) {
+            bindSvgChannelLogo(imageView, trimmedLogoUrl, fallback, widthDp, heightDp);
+            return;
+        }
+        Glide.with(imageView.getContext())
+                .load(trimmedLogoUrl)
+                .fitCenter()
+                .placeholder(fallback)
+                .error(fallback)
+                .into(imageView);
+    }
+
+    private boolean isSvgLogoUrl(String logoUrl) {
+        if (logoUrl == null) {
+            return false;
+        }
+        String normalized = logoUrl.trim().toLowerCase(Locale.US);
+        return normalized.contains(".svg") || normalized.contains("format=svg");
+    }
+
+    private void bindSvgChannelLogo(ImageView imageView, String logoUrl, Drawable fallback, int widthDp, int heightDp) {
+        Glide.with(imageView.getContext()).clear(imageView);
+        Drawable cached = channelLogoCache.get(logoUrl);
+        if (cached != null) {
+            imageView.setImageDrawable(cached);
+            return;
+        }
+        imageView.setImageDrawable(fallback);
+        ioExecutor.execute(() -> {
+            Drawable loaded = loadSvgDrawable(logoUrl, widthDp, heightDp);
+            if (loaded != null) {
+                channelLogoCache.put(logoUrl, loaded);
+            }
+            uiHandler.post(() -> {
+                Object tag = imageView.getTag();
+                if (!(tag instanceof String) || !logoUrl.equals(tag)) {
+                    return;
+                }
+                imageView.setImageDrawable(loaded != null ? loaded : fallback);
+            });
+        });
+    }
+
+    private Drawable loadSvgDrawable(String logoUrl, int widthDp, int heightDp) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(logoUrl).openConnection();
+            connection.setConnectTimeout(8000);
+            connection.setReadTimeout(8000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("User-Agent", "DRBEP-TVPlayer/1.3.2");
+            connection.connect();
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                return null;
+            }
+            try (InputStream stream = connection.getInputStream()) {
+                SVG svg = SVG.getFromInputStream(stream);
+                int widthPx = Math.max(1, dp(widthDp));
+                int heightPx = Math.max(1, dp(heightDp));
+                svg.setDocumentWidth(widthPx);
+                svg.setDocumentHeight(heightPx);
+                Bitmap bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap);
+                svg.renderToCanvas(canvas);
+                return new BitmapDrawable(getResources(), bitmap);
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "Failed to render SVG logo: " + logoUrl, e);
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private Drawable buildChannelLogoFallback(String channelName, int widthDp, int heightDp) {
+        float density = getResources().getDisplayMetrics().density;
+        int widthPx = Math.max(1, Math.round(widthDp * density));
+        int heightPx = Math.max(1, Math.round(heightDp * density));
+        Bitmap bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        bgPaint.setColor(0xFF243547);
+        canvas.drawRect(0, 0, widthPx, heightPx, bgPaint);
+
+        String initials = buildChannelInitials(channelName);
+        Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        textPaint.setColor(0xFFF7FAFF);
+        textPaint.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setTextSize(heightPx * (initials.length() >= 3 ? 0.34f : 0.46f));
+
+        Paint.FontMetrics metrics = textPaint.getFontMetrics();
+        float centerY = (heightPx - metrics.ascent - metrics.descent) / 2f;
+        canvas.drawText(initials, widthPx / 2f, centerY, textPaint);
+
+        return new BitmapDrawable(getResources(), bitmap);
+    }
+
+    private String buildChannelInitials(String channelName) {
+        String normalized = channelName == null ? "" : channelName.trim().toUpperCase(Locale.getDefault());
+        if (normalized.isEmpty()) {
+            return "TV";
+        }
+        String[] rawTokens = normalized.split("[^A-Z0-9]+");
+        List<String> tokens = new ArrayList<>();
+        for (String token : rawTokens) {
+            if (!token.isEmpty()) {
+                tokens.add(token);
+            }
+        }
+        if (tokens.isEmpty()) {
+            return "TV";
+        }
+
+        StringBuilder out = new StringBuilder();
+        for (String token : tokens) {
+            if (token.chars().allMatch(Character::isDigit)) {
+                out.append(token.charAt(0));
+                break;
+            }
+            if (out.length() >= 2) {
+                break;
+            }
+            out.append(token.charAt(0));
+        }
+        if (out.length() == 0) {
+            out.append(tokens.get(0).charAt(0));
+        }
+        if (out.length() == 1 && tokens.size() > 1 && !tokens.get(1).chars().allMatch(Character::isDigit)) {
+            out.append(tokens.get(1).charAt(0));
+        }
+        return out.length() > 3 ? out.substring(0, 3) : out.toString();
     }
 
     private void bindRecordingPoster(ImageView imageView, String posterUrl) {
@@ -2312,12 +2587,7 @@ public class MainActivity extends FragmentActivity {
                 holder.meta.setText("");
             }
 
-            Glide.with(holder.logo.getContext())
-                    .load(ch.logoUrl)
-                    .centerCrop()
-                    .placeholder(android.R.color.transparent)
-                    .error(android.R.color.transparent)
-                    .into(holder.logo);
+            bindChannelLogo(holder.logo, ch.logoUrl, ch.name, 38, 38);
 
             boolean selected = (position == selectedOverlayIndex);
             boolean tuned = (position == currentIndex);
@@ -2441,6 +2711,7 @@ public class MainActivity extends FragmentActivity {
             RecordingsRepository.RecordingItem item = result.items.get(position);
             holder.name.setText(buildRecordingTitle(item));
             holder.meta.setText(buildRecordingMeta(item));
+            holder.meta.setTextColor(recordingMetaColor(item));
             boolean selected = position == selectedRecordingIndex;
             holder.itemView.setBackgroundColor(selected ? 0xFF80542A : 0xFF2C2419);
             holder.itemView.setOnClickListener(v -> {

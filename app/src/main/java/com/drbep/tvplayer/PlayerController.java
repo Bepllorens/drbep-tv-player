@@ -7,6 +7,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.media3.common.C;
+import androidx.media3.common.ColorInfo;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
@@ -37,6 +38,8 @@ final class PlayerController {
         void hideError();
 
         boolean isChannelCurrent(String channelId);
+
+        void showHdrBadge(String label);
     }
 
     static final class PlaybackRequest {
@@ -153,6 +156,7 @@ final class PlayerController {
     private boolean usingPlaybackFallback;
     private String lastPlaybackState = "IDLE";
     private String lastErrorSummary;
+    private String lastHdrBadgeChannelId;
 
     PlayerController(Context context, PlayerView playerView, String baseUrl, ExecutorService ioExecutor, Handler uiHandler, Host host) {
         this.context = context;
@@ -219,6 +223,7 @@ final class PlayerController {
                     host.showStatus(currentRequest != null && currentRequest.channelName != null && !currentRequest.channelName.trim().isEmpty()
                             ? currentRequest.channelName
                             : context.getString(R.string.status_ready));
+                    maybeShowHdrBadge();
                 }
             }
         });
@@ -407,6 +412,7 @@ final class PlayerController {
         currentStreamInfo = streamInfo;
         usingPlaybackFallback = useFallback;
         lastErrorSummary = null;
+        lastHdrBadgeChannelId = null;
         PlaybackDecision decision = buildPlaybackDecision(request, useFallback, streamInfo);
         currentPlaybackDecision = decision;
         Log.d(TAG, "playChannelInternal channel=" + describeRequest(request)
@@ -595,6 +601,31 @@ final class PlayerController {
                     : MimeTypes.APPLICATION_MPD;
         }
         return mimeType;
+    }
+
+    private void maybeShowHdrBadge() {
+        if (player == null || currentRequest == null || currentRequest.channelId == null) {
+            return;
+        }
+        if (currentRequest.channelId.equals(lastHdrBadgeChannelId)) {
+            return;
+        }
+        androidx.media3.common.Format format = player.getVideoFormat();
+        if (format == null) {
+            return;
+        }
+        ColorInfo colorInfo = format.colorInfo;
+        if (colorInfo == null) {
+            return;
+        }
+        int transfer = colorInfo.colorTransfer;
+        if (transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG) {
+            lastHdrBadgeChannelId = currentRequest.channelId;
+            String label = transfer == C.COLOR_TRANSFER_HLG
+                    ? context.getString(R.string.status_hlg_detected)
+                    : context.getString(R.string.status_hdr10_detected);
+            host.showHdrBadge(label);
+        }
     }
 
     private boolean seekTimeshiftBy(long deltaMs) {

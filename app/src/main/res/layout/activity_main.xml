@@ -241,6 +241,24 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/hdrBadgeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="28dp"
+        android:layout_marginRight="24dp"
+        android:background="#E0A86A00"
+        android:paddingLeft="12dp"
+        android:paddingTop="6dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="6dp"
+        android:text="HDR"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/versionBadgeText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -276,9 +294,18 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/recordingsSummaryText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
+            android:textColor="#9BD0FF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
             android:layout_marginBottom="12dp"
             android:text="@string/recordings_panel_hint"
             android:textColor="#B8C8D8"

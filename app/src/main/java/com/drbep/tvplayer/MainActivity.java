@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.text.Editable;
 import android.util.LruCache;
@@ -14,6 +15,7 @@ import android.text.TextWatcher;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.graphics.Bitmap;
@@ -64,6 +66,7 @@ public class MainActivity extends FragmentActivity {
     private static final String TAG = "DRBEP-TV-Native";
     private static final long OVERLAY_HIDE_MS = 6000L;
     private static final long STATUS_HIDE_MS = 2500L;
+    private static final long TOUCH_CONTROLS_HIDE_MS = 3000L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final String PREFS = "drbep_tv_prefs";
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
@@ -83,6 +86,8 @@ public class MainActivity extends FragmentActivity {
     private TextView errorText;
     private TextView statusText;
     private TextView filterText;
+    private TextView touchPrevFilterButton;
+    private TextView touchNextFilterButton;
     private TextView overlayCurrentChannelText;
     private TextView overlayCurrentMetaText;
     private TextView overlayPlaybackRouteText;
@@ -95,6 +100,15 @@ public class MainActivity extends FragmentActivity {
     private TextView recordingsSummaryText;
     private TextView versionBadgeText;
     private TextView hdrBadgeText;
+    private View touchControlsBar;
+    private TextView touchListButton;
+    private TextView touchGuideButton;
+    private TextView touchInfoButton;
+    private TextView touchToolsButton;
+    private TextView touchRewindButton;
+    private TextView touchPlayPauseButton;
+    private TextView touchForwardButton;
+    private View playbackGestureLayer;
     private ImageView recordingDetailPosterImage;
     private TextView recordingDetailTitleText;
     private TextView recordingDetailMetaText;
@@ -145,6 +159,9 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private RecordingsRepository.RecordingsResult currentRecordingsResult;
     private RecordingsAdapter recordingsAdapter;
+    private boolean touchDeviceMode;
+    private float touchGestureDownX = Float.NaN;
+    private float touchGestureDownY = Float.NaN;
 
     private static final class TimelineChannelPrograms {
         final ChannelItem channel;
@@ -160,6 +177,11 @@ public class MainActivity extends FragmentActivity {
     private final Runnable hideStatusRunnable = () -> {
         if (statusText != null) {
             statusText.setVisibility(View.GONE);
+        }
+    };
+    private final Runnable hideTouchControlsRunnable = () -> {
+        if (touchDeviceMode && touchControlsBar != null && !isOverlayVisible() && !isRecordingsPanelVisible()) {
+            touchControlsBar.setVisibility(View.GONE);
         }
     };
     private final Runnable hideHdrBadgeRunnable = () -> {
@@ -190,6 +212,8 @@ public class MainActivity extends FragmentActivity {
         errorText = findViewById(R.id.errorText);
         statusText = findViewById(R.id.statusText);
         filterText = findViewById(R.id.filterText);
+        touchPrevFilterButton = findViewById(R.id.touchPrevFilterButton);
+        touchNextFilterButton = findViewById(R.id.touchNextFilterButton);
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
         overlayPlaybackRouteText = findViewById(R.id.overlayPlaybackRouteText);
@@ -204,6 +228,15 @@ public class MainActivity extends FragmentActivity {
         recordingsSummaryText = findViewById(R.id.recordingsSummaryText);
         versionBadgeText = findViewById(R.id.versionBadgeText);
         hdrBadgeText = findViewById(R.id.hdrBadgeText);
+        touchControlsBar = findViewById(R.id.touchControlsBar);
+        touchListButton = findViewById(R.id.touchListButton);
+        touchGuideButton = findViewById(R.id.touchGuideButton);
+        touchInfoButton = findViewById(R.id.touchInfoButton);
+        touchToolsButton = findViewById(R.id.touchToolsButton);
+        touchRewindButton = findViewById(R.id.touchRewindButton);
+        touchPlayPauseButton = findViewById(R.id.touchPlayPauseButton);
+        touchForwardButton = findViewById(R.id.touchForwardButton);
+        playbackGestureLayer = findViewById(R.id.playbackGestureLayer);
         recordingDetailPosterImage = findViewById(R.id.recordingDetailPosterImage);
         recordingDetailTitleText = findViewById(R.id.recordingDetailTitleText);
         recordingDetailMetaText = findViewById(R.id.recordingDetailMetaText);
@@ -302,10 +335,12 @@ public class MainActivity extends FragmentActivity {
         favoriteOrderStore.load();
         playbackModeStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
+        touchDeviceMode = detectTouchDeviceMode();
 
         setupPlayer();
         setupChannelList();
         setupRecordingsPanel();
+        setupTouchControls();
         enableImmersiveMode();
         loadChannels();
         uiHandler.postDelayed(reminderTickRunnable, 30000L);
@@ -374,6 +409,159 @@ public class MainActivity extends FragmentActivity {
             recordingsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         }
         updateRecordingsDetailPanel();
+    }
+
+    private boolean detectTouchDeviceMode() {
+        PackageManager pm = getPackageManager();
+        boolean hasTouchscreen = pm != null && pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+        boolean hasLeanback = pm != null && pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        return hasTouchscreen && !hasLeanback;
+    }
+
+    private void setupTouchControls() {
+        if (touchControlsBar == null) {
+            return;
+        }
+        if (!touchDeviceMode) {
+            touchControlsBar.setVisibility(View.GONE);
+            if (touchPrevFilterButton != null) {
+                touchPrevFilterButton.setVisibility(View.GONE);
+            }
+            if (touchNextFilterButton != null) {
+                touchNextFilterButton.setVisibility(View.GONE);
+            }
+            return;
+        }
+        touchControlsBar.setVisibility(View.VISIBLE);
+        scheduleTouchControlsAutoHide();
+        if (touchPrevFilterButton != null) {
+            touchPrevFilterButton.setVisibility(View.VISIBLE);
+            touchPrevFilterButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                cycleFilter(-1);
+            });
+        }
+        if (touchNextFilterButton != null) {
+            touchNextFilterButton.setVisibility(View.VISIBLE);
+            touchNextFilterButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                cycleFilter(1);
+            });
+        }
+
+        if (touchListButton != null) {
+            touchListButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                if (isOverlayVisible()) {
+                    hideOverlay();
+                } else {
+                    showOverlay();
+                }
+            });
+        }
+        if (touchGuideButton != null) {
+            touchGuideButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                openTimelineGuideAroundSelection();
+            });
+        }
+        if (touchInfoButton != null) {
+            touchInfoButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                openCurrentProgramInfoFromTouch();
+            });
+        }
+        if (touchToolsButton != null) {
+            touchToolsButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                showV12ToolsMenu();
+            });
+        }
+        if (touchPlayPauseButton != null) {
+            touchPlayPauseButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                if (playerController != null) {
+                    playerController.togglePlayback();
+                }
+            });
+        }
+        if (touchRewindButton != null) {
+            touchRewindButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                if (playerController == null || !playerController.seekTimeshiftBack()) {
+                    showStatus(getString(R.string.status_touch_seek_unavailable));
+                }
+            });
+        }
+        if (touchForwardButton != null) {
+            touchForwardButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                if (playerController == null || !playerController.seekTimeshiftForward()) {
+                    showStatus(getString(R.string.status_touch_seek_unavailable));
+                }
+            });
+        }
+        if (playbackGestureLayer != null) {
+            playbackGestureLayer.setOnTouchListener((v, event) -> handlePlayerSurfaceTouch(event));
+        }
+    }
+
+    private void showTouchControlsTemporarily() {
+        if (!touchDeviceMode || touchControlsBar == null) {
+            return;
+        }
+        touchControlsBar.setVisibility(View.VISIBLE);
+        scheduleTouchControlsAutoHide();
+    }
+
+    private void scheduleTouchControlsAutoHide() {
+        uiHandler.removeCallbacks(hideTouchControlsRunnable);
+        if (touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
+            uiHandler.postDelayed(hideTouchControlsRunnable, TOUCH_CONTROLS_HIDE_MS);
+        }
+    }
+
+    private boolean handlePlayerSurfaceTouch(MotionEvent event) {
+        if (!touchDeviceMode || event == null) {
+            return false;
+        }
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                showTouchControlsTemporarily();
+                if (isOverlayVisible() || isRecordingsPanelVisible() || (quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE)) {
+                    touchGestureDownX = Float.NaN;
+                    touchGestureDownY = Float.NaN;
+                    return false;
+                }
+                touchGestureDownX = event.getX();
+                touchGestureDownY = event.getY();
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                touchGestureDownX = Float.NaN;
+                touchGestureDownY = Float.NaN;
+                return true;
+            case MotionEvent.ACTION_UP:
+                if (Float.isNaN(touchGestureDownX) || Float.isNaN(touchGestureDownY)) {
+                    return true;
+                }
+                float deltaX = event.getX() - touchGestureDownX;
+                float deltaY = event.getY() - touchGestureDownY;
+                touchGestureDownX = Float.NaN;
+                touchGestureDownY = Float.NaN;
+
+                float minSwipeDistancePx = dpToPx(72f);
+                float maxOffAxisPx = dpToPx(56f);
+                if (Math.abs(deltaX) >= minSwipeDistancePx && Math.abs(deltaY) <= maxOffAxisPx && Math.abs(deltaX) > Math.abs(deltaY)) {
+                    tuneRelative(deltaX > 0 ? 1 : -1);
+                }
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private float dpToPx(float dp) {
+        return dp * getResources().getDisplayMetrics().density;
     }
 
     private void loadChannels() {
@@ -549,6 +737,85 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
+    }
+
+    private void openCurrentProgramInfoFromTouch() {
+        ChannelItem channel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
+        if (channel == null) {
+            showStatus(getString(R.string.status_no_program_in_epg));
+            return;
+        }
+        showStatus(getString(R.string.status_searching_current_program));
+        ioExecutor.execute(() -> {
+            try {
+                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(channel.id, false);
+                if (program == null) {
+                    uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
+                    return;
+                }
+                uiHandler.post(() -> showCurrentProgramInfoDialog(channel, program));
+            } catch (Exception e) {
+                Log.w(TAG, "touch info current program failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
+            }
+        });
+    }
+
+    private void showCurrentProgramInfoDialog(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if (channel == null || program == null) {
+            return;
+        }
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(18);
+        container.setPadding(padding, padding, padding, padding);
+
+        ImageView posterView = new ImageView(this);
+        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(220));
+        posterView.setLayoutParams(posterParams);
+        posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        container.addView(posterView);
+        bindProgramPoster(posterView, program.icon);
+
+        TextView titleView = new TextView(this);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = dp(14);
+        titleView.setLayoutParams(titleParams);
+        titleView.setText(program.title == null || program.title.trim().isEmpty() ? channel.name : program.title);
+        titleView.setTextColor(0xFFFFFFFF);
+        titleView.setTextSize(20f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        container.addView(titleView);
+
+        TextView metaView = new TextView(this);
+        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        metaParams.topMargin = dp(8);
+        metaView.setLayoutParams(metaParams);
+        metaView.setText(channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime));
+        metaView.setTextColor(0xFF9BD0FF);
+        metaView.setTextSize(14f);
+        container.addView(metaView);
+
+        TextView descView = new TextView(this);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        descParams.topMargin = dp(12);
+        descView.setLayoutParams(descParams);
+        String description = program.description == null || program.description.trim().isEmpty()
+                ? getString(R.string.timeline_program_desc_empty)
+                : program.description.trim();
+        descView.setText(description);
+        descView.setTextColor(0xFFD5E6F8);
+        descView.setTextSize(15f);
+        container.addView(descView);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.title_touch_program_info))
+                .setView(container)
+                .setPositiveButton(R.string.menu_record, (d, which) -> scheduleProgram(channel, program))
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+        dialog.setOnDismissListener(d -> Glide.with(this).clear(posterView));
+        dialog.show();
     }
 
     private void createScheduleFromEndpoint(ChannelItem ch, boolean next) {
@@ -2511,7 +2778,15 @@ public class MainActivity extends FragmentActivity {
         return out.length() > 3 ? out.substring(0, 3) : out.toString();
     }
 
+    private void bindProgramPoster(ImageView imageView, String posterUrl) {
+        bindPoster(imageView, posterUrl, true);
+    }
+
     private void bindRecordingPoster(ImageView imageView, String posterUrl) {
+        bindPoster(imageView, posterUrl, false);
+    }
+
+    private void bindPoster(ImageView imageView, String posterUrl, boolean fitInside) {
         if (imageView == null) {
             return;
         }
@@ -2521,6 +2796,15 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         imageView.setVisibility(View.VISIBLE);
+        if (fitInside) {
+            imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            Glide.with(this)
+                    .load(posterUrl.trim())
+                    .fitCenter()
+                    .into(imageView);
+            return;
+        }
+        imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         Glide.with(this)
                 .load(posterUrl.trim())
                 .centerCrop()

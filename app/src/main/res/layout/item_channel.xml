@@ -11,19 +11,19 @@
         android:layout_height="wrap_content"
         android:background="@drawable/channel_row_card_bg"
         android:gravity="center_vertical"
-        android:minHeight="64dp"
+        android:minHeight="@dimen/channel_row_min_height"
         android:orientation="horizontal"
-        android:paddingLeft="10dp"
-        android:paddingTop="6dp"
-        android:paddingRight="10dp"
-        android:paddingBottom="6dp">
+        android:paddingLeft="@dimen/channel_row_padding_horizontal"
+        android:paddingTop="@dimen/channel_row_padding_vertical"
+        android:paddingRight="@dimen/channel_row_padding_horizontal"
+        android:paddingBottom="@dimen/channel_row_padding_vertical">
 
         <FrameLayout
-            android:layout_width="46dp"
-            android:layout_height="46dp"
+            android:layout_width="@dimen/channel_logo_plate_size"
+            android:layout_height="@dimen/channel_logo_plate_size"
             android:layout_marginRight="8dp"
             android:background="@drawable/channel_logo_plate_bg"
-            android:padding="4dp">
+            android:padding="@dimen/channel_logo_plate_padding">
 
             <ImageView
                 android:id="@+id/channelLogo"
@@ -46,7 +46,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="#FFFFFF"
-                android:textSize="17sp"
+                android:textSize="@dimen/channel_name_text_size"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -78,7 +78,7 @@
                     android:ellipsize="end"
                     android:maxLines="1"
                     android:textColor="#D7E3EE"
-                    android:textSize="11sp" />
+                    android:textSize="@dimen/channel_meta_text_size" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

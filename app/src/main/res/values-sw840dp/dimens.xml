@@ -1,0 +1,8 @@
+<resources>
+    <dimen name="touch_controls_margin_bottom">0dp</dimen>
+    <dimen name="touch_controls_translation_y">12dp</dimen>
+    <dimen name="channel_overlay_width">560dp</dimen>
+    <dimen name="recordings_panel_width">720dp</dimen>
+    <dimen name="quick_search_width">480dp</dimen>
+    <dimen name="touch_button_padding_horizontal">18dp</dimen>
+</resources>

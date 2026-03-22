@@ -3,6 +3,8 @@
     <string name="channels_title">Canales</string>
     <string name="filter_all_label">Filtro activo: Todos</string>
     <string name="filter_navigation_hint">Usa IZQ/DER para cambiar el filtro</string>
+    <string name="filter_prev_button">‹</string>
+    <string name="filter_next_button">›</string>
     <string name="channel_logo_content_description">Logo del canal</string>
     <string name="dialog_cancel">Cancelar</string>
     <string name="dialog_close">Cerrar</string>
@@ -116,6 +118,14 @@
     <string name="overlay_recent_channels">Recientes: %1$s</string>
     <string name="overlay_recent_channels_empty">Recientes: aun sin historial</string>
     <string name="overlay_tools_hint">MENU: acciones canal  ·  doble MENU: timeline</string>
+    <string name="touch_button_list">Lista</string>
+    <string name="touch_button_guide">Guia</string>
+    <string name="touch_button_tools">Tools</string>
+    <string name="touch_button_info">Info</string>
+    <string name="touch_button_rewind">-30s</string>
+    <string name="touch_button_play_pause">Play/Pause</string>
+    <string name="touch_button_forward">+30s</string>
+    <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="tools_menu_title">Herramientas v1.3.2</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
@@ -179,6 +189,7 @@
     <string name="menu_create_next_reminder">Crear recordatorio (proximo)</string>
     <string name="menu_view_recordings">Ver grabaciones</string>
     <string name="menu_record">Grabar</string>
+    <string name="title_touch_program_info">Programa en emision</string>
     <string name="menu_reminder">Recordatorio</string>
     <string name="title_playback_mode">Preferencia de playback</string>
     <string name="playback_mode_auto">Auto</string>

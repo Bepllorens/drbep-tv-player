@@ -249,6 +249,7 @@ public class MainActivity extends FragmentActivity {
 
         if (versionBadgeText != null) {
             versionBadgeText.setText("v" + BuildConfig.VERSION_NAME);
+            versionBadgeText.setOnClickListener(v -> showAboutDialog());
         }
 
         baseUrl = resolveBaseUrl();
@@ -759,6 +760,14 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
             }
         });
+    }
+
+    private void showAboutDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.title_about_app, BuildConfig.VERSION_NAME))
+                .setMessage(getString(R.string.message_about_app))
+                .setPositiveButton(R.string.dialog_close, null)
+                .show();
     }
 
     private void showCurrentProgramInfoDialog(ChannelItem channel, EpgRepository.EpgProgram program) {

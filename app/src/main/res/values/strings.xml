@@ -190,6 +190,8 @@
     <string name="menu_view_recordings">Ver grabaciones</string>
     <string name="menu_record">Grabar</string>
     <string name="title_touch_program_info">Programa en emision</string>
+    <string name="title_about_app">Acerca de DRBEP TV Player v%1$s</string>
+    <string name="message_about_app">Esta aplicacion ha sido desarrollada por Bep Llorens sin animo de lucro y con fines didacticos. Su uso esta orientado a pruebas, aprendizaje y entornos controlados. El usuario es el unico responsable de verificar que dispone de autorizacion para acceder, reproducir o grabar los contenidos que utilice desde la app. Las marcas, nombres comerciales, logotipos y contenidos audiovisuales pertenecen a sus respectivos titulares. Esta aplicacion se ofrece tal cual, sin garantias de disponibilidad continua, compatibilidad universal ni idoneidad para un fin concreto.</string>
     <string name="menu_reminder">Recordatorio</string>
     <string name="title_playback_mode">Preferencia de playback</string>
     <string name="playback_mode_auto">Auto</string>

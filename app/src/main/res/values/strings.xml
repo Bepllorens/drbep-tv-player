@@ -8,8 +8,11 @@
     <string name="filter_search_button">Buscar</string>
     <string name="overlay_search_hint">Buscar en la lista</string>
     <string name="overlay_recent_button">Recientes</string>
+    <string name="overlay_recent_button_count">Recientes (%1$d)</string>
     <string name="overlay_favorites_button_on">Favoritos ON</string>
     <string name="overlay_favorites_button_off">Favoritos</string>
+    <string name="overlay_favorites_button_on_count">Fav ON (%1$d)</string>
+    <string name="overlay_favorites_button_off_count">Favoritos (%1$d)</string>
     <string name="overlay_favorite_toggle_on">★</string>
     <string name="overlay_favorite_toggle_off">☆</string>
     <string name="overlay_no_results">Sin canales para este filtro</string>
@@ -150,6 +153,7 @@
     <string name="touch_button_play_pause">Play/Pause</string>
     <string name="touch_button_forward">+30s</string>
     <string name="touch_previous_unavailable">No hay un canal anterior reciente</string>
+    <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="tools_menu_title">Herramientas v1.3.2</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
@@ -173,6 +177,7 @@
     <string name="quick_search_result_index">Resultado %1$d de %2$d</string>
     <string name="zap_banner_empty_meta">Cambiando canal...</string>
     <string name="title_recent_channels">Canales recientes</string>
+    <string name="title_favorite_channels">Canales favoritos</string>
     <string name="title_playback_diagnostics">Diagnostico de playback</string>
     <string name="recent_channel_item">%1$s  ·  %2$s</string>
     <string name="guide_program_progress">En curso: %1$d%%  ·  %2$s</string>

@@ -556,14 +556,19 @@ public class MainActivity extends FragmentActivity {
             touchRecentButton.setVisibility(View.VISIBLE);
             touchRecentButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
-                showRecentChannelsDialog();
+                showRecentChannelsQuickDialog();
             });
         }
         if (touchFavoritesButton != null) {
             touchFavoritesButton.setVisibility(View.VISIBLE);
             touchFavoritesButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
+                showFavoriteChannelsQuickDialog();
+            });
+            touchFavoritesButton.setOnLongClickListener(v -> {
+                showTouchControlsTemporarily();
                 toggleFavoritesOnlyMode();
+                return true;
             });
         }
         if (overlaySearchInput != null) {
@@ -1056,10 +1061,17 @@ public class MainActivity extends FragmentActivity {
         selectedOverlayIndex = index;
         channelAdapter.notifyDataSetChanged();
         channelList.scrollToPosition(index);
+        playChannelItem(channels.get(index), autoPlay);
+    }
 
-        ChannelItem ch = channels.get(index);
+    private void playChannelItem(ChannelItem ch, boolean autoPlay) {
+        if (ch == null) {
+            return;
+        }
         saveLastChannelId(ch.id);
-        recentChannelsStore.add(ch.id, ch.name);
+        if (recentChannelsStore != null) {
+            recentChannelsStore.add(ch.id, ch.name);
+        }
         playerController.resetFallbackState();
         updateTimeshiftBar();
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
@@ -1597,6 +1609,18 @@ public class MainActivity extends FragmentActivity {
         channelAdapter.notifyDataSetChanged();
         channelList.scrollToPosition(selectedOverlayIndex);
         showOverlay();
+    }
+
+    private ChannelItem findChannelItemById(String channelID) {
+        if (channelID == null || channelID.trim().isEmpty()) {
+            return null;
+        }
+        for (ChannelItem item : allChannels) {
+            if (item != null && channelID.equals(item.id)) {
+                return item;
+            }
+        }
+        return null;
     }
 
     private int findChannelIndexById(String channelID) {
@@ -2447,8 +2471,14 @@ public class MainActivity extends FragmentActivity {
                     ? getString(R.string.overlay_no_results_search, query.trim())
                     : getString(R.string.overlay_no_results));
         }
+        if (touchRecentButton != null) {
+            touchRecentButton.setText(getString(R.string.overlay_recent_button_count, buildRecentQuickChannels().size()));
+        }
         if (touchFavoritesButton != null) {
-            touchFavoritesButton.setText(getString(favoritesOnly ? R.string.overlay_favorites_button_on : R.string.overlay_favorites_button_off));
+            int favoriteCount = buildFavoriteQuickChannels().size();
+            touchFavoritesButton.setText(getString(
+                    favoritesOnly ? R.string.overlay_favorites_button_on_count : R.string.overlay_favorites_button_off_count,
+                    favoriteCount));
         }
     }
 
@@ -2491,7 +2521,7 @@ public class MainActivity extends FragmentActivity {
         if (overlayCurrentChannelText == null || overlayCurrentMetaText == null || overlayPlaybackRouteText == null || overlayRecentText == null) {
             return;
         }
-        ChannelItem currentChannel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
+        ChannelItem currentChannel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : findChannelItemById(lastChannelId);
         if (currentChannel == null) {
             overlayCurrentChannelText.setText(getString(R.string.status_ready));
             overlayCurrentMetaText.setText(getString(R.string.overlay_current_program_empty));
@@ -2935,25 +2965,132 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showRecentChannelsDialog() {
-        List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
-        if (items.isEmpty()) {
-            showStatus(getString(R.string.overlay_recent_channels_empty));
+        showRecentChannelsQuickDialog();
+    }
+
+    private void showRecentChannelsQuickDialog() {
+        showQuickChannelListDialog(
+                getString(R.string.title_recent_channels),
+                buildRecentQuickChannels(),
+                getString(R.string.overlay_recent_channels_empty)
+        );
+    }
+
+    private void showFavoriteChannelsQuickDialog() {
+        List<ChannelItem> favorites = buildFavoriteQuickChannels();
+        if (favorites.isEmpty()) {
+            showStatus(getString(R.string.status_no_favorites_saved));
             return;
         }
-        List<String> labels = new ArrayList<>();
-        SimpleDateFormat format = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        for (RecentChannelsStore.RecentChannelItem item : items) {
-            labels.add(getString(R.string.recent_channel_item, item.channelName, format.format(new Date(item.watchedAt))));
+        showQuickChannelListDialog(
+                getString(R.string.title_favorite_channels),
+                favorites,
+                getString(R.string.status_no_favorites_saved)
+        );
+    }
+
+    private void showQuickChannelListDialog(String title, List<ChannelItem> items, String emptyMessage) {
+        if (items == null || items.isEmpty()) {
+            showStatus(emptyMessage == null || emptyMessage.trim().isEmpty()
+                    ? getString(R.string.overlay_no_results)
+                    : emptyMessage);
+            return;
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_recent_channels)
-                .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+        clearQuickSearchOverlay();
+        hideOverlay();
+        hideRecordingsPanel();
+        List<String> labels = new ArrayList<>();
+        for (ChannelItem item : items) {
+            labels.add(buildQuickChannelLabel(item));
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
                     if (which >= 0 && which < items.size()) {
-                        tuneRecentChannel(items.get(which).channelId);
+                        ChannelItem selectedItem = items.get(which);
+                        Log.d(TAG, "quick access choose index=" + which + " id=" + (selectedItem == null ? "null" : selectedItem.id) + " name=" + (selectedItem == null ? "null" : selectedItem.name));
+                        uiHandler.post(() -> tuneQuickAccessChannel(selectedItem));
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
-                .show();
+                .create();
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+    }
+
+    private void tuneQuickAccessChannel(ChannelItem item) {
+        Log.d(TAG, "tuneQuickAccessChannel item=" + (item == null ? "null" : item.id + "/" + item.name));
+        if (item == null || item.id == null || item.id.trim().isEmpty()) {
+            return;
+        }
+        showStatus(item.name == null || item.name.trim().isEmpty() ? getString(R.string.status_ready) : item.name.trim());
+        tuneChannelById(item.id);
+    }
+
+    private String buildQuickChannelLabel(ChannelItem item) {
+        if (item == null) {
+            return getString(R.string.label_program_default);
+        }
+        String name = item.name == null || item.name.trim().isEmpty() ? getString(R.string.label_program_default) : item.name.trim();
+        String meta = item.nowProgram;
+        if (meta == null || meta.trim().isEmpty()) {
+            meta = item.group;
+        }
+        if (meta == null || meta.trim().isEmpty()) {
+            return name;
+        }
+        return name + "  ·  " + meta.trim();
+    }
+
+    private List<ChannelItem> buildRecentQuickChannels() {
+        List<ChannelItem> recentItems = new ArrayList<>();
+        List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        if (items.isEmpty()) {
+            return recentItems;
+        }
+        Map<String, ChannelItem> byId = new LinkedHashMap<>();
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.id != null && !item.id.trim().isEmpty() && !byId.containsKey(item.id)) {
+                byId.put(item.id, item);
+            }
+        }
+        for (RecentChannelsStore.RecentChannelItem recent : items) {
+            if (recent == null || recent.channelId == null || recent.channelId.trim().isEmpty()) {
+                continue;
+            }
+            ChannelItem match = byId.get(recent.channelId);
+            if (match != null) {
+                recentItems.add(match);
+            }
+        }
+        return recentItems;
+    }
+
+    private List<ChannelItem> buildFavoriteQuickChannels() {
+        List<ChannelItem> favorites = new ArrayList<>();
+        if (favoriteChannelIds.isEmpty()) {
+            return favorites;
+        }
+        Map<String, ChannelItem> byId = new LinkedHashMap<>();
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.id != null && !item.id.trim().isEmpty() && !byId.containsKey(item.id)) {
+                byId.put(item.id, item);
+            }
+        }
+        List<String> orderedIds = favoriteOrderStore == null ? new ArrayList<>() : favoriteOrderStore.getOrderedIds();
+        Set<String> addedIds = new HashSet<>();
+        for (String favoriteId : orderedIds) {
+            ChannelItem match = byId.get(favoriteId);
+            if (match != null && favoriteChannelIds.contains(favoriteId) && addedIds.add(favoriteId)) {
+                favorites.add(match);
+            }
+        }
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.id != null && favoriteChannelIds.contains(item.id) && addedIds.add(item.id)) {
+                favorites.add(item);
+            }
+        }
+        return favorites;
     }
 
     private void tunePreviousChannel() {
@@ -2977,39 +3114,44 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void tuneRecentChannel(String channelId) {
-        int index = findChannelIndexById(channelId);
-        if (index < 0) {
-            syncOverlayCoordinator();
-            channelOverlayCoordinator.setSelectedFilterKey("all");
-            channelOverlayCoordinator.setFavoritesOnly(false);
-            channelOverlayCoordinator.refreshVisibleChannels(lastChannelId, channelId);
-            syncOverlayStateFromCoordinator();
-            channelAdapter.notifyDataSetChanged();
-            updateFilterText();
-            index = findChannelIndexById(channelId);
-        }
-        if (index >= 0) {
-            tuneToIndex(index, true);
-        }
+        tuneChannelById(channelId);
     }
 
     private void tuneChannelById(String channelId) {
+        Log.d(TAG, "tuneChannelById channelId=" + channelId + " currentFilter=" + selectedFilterKey + " favoritesOnly=" + favoritesOnly);
         if (channelId == null || channelId.trim().isEmpty()) {
             return;
         }
         int index = findChannelIndexById(channelId);
+        Log.d(TAG, "tuneChannelById initialIndex=" + index + " visibleSize=" + channels.size() + " allSize=" + allChannels.size());
         if (index < 0) {
             syncOverlayCoordinator();
+            channelOverlayCoordinator.setSearchQuery("");
             channelOverlayCoordinator.setSelectedFilterKey("all");
             channelOverlayCoordinator.setFavoritesOnly(false);
-            channelOverlayCoordinator.refreshVisibleChannels(lastChannelId, channelId);
+            channelOverlayCoordinator.refreshVisibleChannels(channelId, channelId);
             syncOverlayStateFromCoordinator();
+            clearOverlaySearchQuery();
             channelAdapter.notifyDataSetChanged();
             updateFilterText();
+            updateOverlaySearchState();
             index = findChannelIndexById(channelId);
+            Log.d(TAG, "tuneChannelById afterRefresh index=" + index + " visibleSize=" + channels.size() + " selectedFilter=" + selectedFilterKey + " favoritesOnly=" + favoritesOnly);
         }
         if (index >= 0) {
+            Log.d(TAG, "tuneChannelById finalIndex=" + index + " -> tuneToIndex");
             tuneToIndex(index, true);
+        } else {
+            ChannelItem directItem = findChannelItemById(channelId);
+            if (directItem != null) {
+                Log.d(TAG, "tuneChannelById directFallback id=" + directItem.id + " name=" + directItem.name);
+                currentIndex = -1;
+                selectedOverlayIndex = -1;
+                channelAdapter.notifyDataSetChanged();
+                playChannelItem(directItem, true);
+            } else {
+                Log.d(TAG, "tuneChannelById unresolved channelId=" + channelId);
+            }
         }
     }
 

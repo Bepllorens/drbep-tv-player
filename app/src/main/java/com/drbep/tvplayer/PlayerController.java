@@ -171,6 +171,14 @@ final class PlayerController {
     private String lastPlaybackState = "IDLE";
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
+    private boolean forceLiveEdgeOnNextReady;
+    private final Runnable forceLiveEdgeRunnable = () -> {
+        if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
+            player.seekToDefaultPosition();
+            player.play();
+            Log.d(TAG, "forced delayed live edge for channel=" + describeRequest(currentRequest));
+        }
+    };
 
     PlayerController(Context context, PlayerView playerView, String baseUrl, ExecutorService ioExecutor, Handler uiHandler, Host host) {
         this.context = context;
@@ -233,6 +241,14 @@ final class PlayerController {
                 if (playbackState == Player.STATE_BUFFERING) {
                     host.showStatus(context.getString(R.string.status_buffering));
                 } else if (playbackState == Player.STATE_READY) {
+                    if (forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
+                        player.seekToDefaultPosition();
+                        player.play();
+                        uiHandler.removeCallbacks(forceLiveEdgeRunnable);
+                        uiHandler.postDelayed(forceLiveEdgeRunnable, 900L);
+                        forceLiveEdgeOnNextReady = false;
+                        Log.d(TAG, "forced live edge on ready for channel=" + describeRequest(currentRequest));
+                    }
                     host.hideError();
                     host.showStatus(currentRequest != null && currentRequest.channelName != null && !currentRequest.channelName.trim().isEmpty()
                             ? currentRequest.channelName
@@ -245,6 +261,8 @@ final class PlayerController {
 
     void resetFallbackState() {
         usingPlaybackFallback = false;
+        forceLiveEdgeOnNextReady = false;
+        uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         Log.d(TAG, "compatibility fallback state reset");
     }
 
@@ -360,6 +378,7 @@ final class PlayerController {
         currentRequest = null;
         currentStreamInfo = null;
         usingPlaybackFallback = false;
+        uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         player.setMediaItem(builder.build());
         player.prepare();
         player.setPlayWhenReady(true);
@@ -443,11 +462,15 @@ final class PlayerController {
             return;
         }
 
+        uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         currentRequest = request;
         currentStreamInfo = streamInfo;
         usingPlaybackFallback = useFallback;
         lastErrorSummary = null;
         lastHdrBadgeChannelId = null;
+        forceLiveEdgeOnNextReady = request != null
+                && request.platformName != null
+                && request.platformName.toLowerCase(Locale.ROOT).contains("movistar");
         PlaybackDecision decision = buildPlaybackDecision(request, useFallback, streamInfo);
         currentPlaybackDecision = decision;
         Log.d(TAG, "playChannelInternal channel=" + describeRequest(request)
@@ -710,7 +733,17 @@ final class PlayerController {
         if (durationMs == C.TIME_UNSET || durationMs <= 0L) {
             return null;
         }
-        long endMs = durationMs;
+        long liveEdgeMs = durationMs;
+        Timeline timeline = player.getCurrentTimeline();
+        if (!timeline.isEmpty()) {
+            Timeline.Window window = new Timeline.Window();
+            timeline.getWindow(player.getCurrentMediaItemIndex(), window);
+            long defaultPositionMs = window.getDefaultPositionMs();
+            if (defaultPositionMs != C.TIME_UNSET && defaultPositionMs > 0L) {
+                liveEdgeMs = Math.min(durationMs, Math.max(defaultPositionMs, player.getCurrentPosition()));
+            }
+        }
+        long endMs = liveEdgeMs;
         long startMs = Math.max(0L, endMs - TIMESHIFT_MAX_BACK_MS);
         long currentMs = Math.max(startMs, Math.min(endMs, player.getCurrentPosition()));
         return new TimeshiftWindow(startMs, endMs, currentMs);

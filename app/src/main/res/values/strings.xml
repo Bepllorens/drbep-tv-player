@@ -125,6 +125,14 @@
     <string name="touch_button_guide">Guia</string>
     <string name="touch_button_previous">Anterior</string>
     <string name="touch_button_tools">Tools</string>
+    <string name="touch_button_rotate_free">Giro libre</string>
+    <string name="touch_button_rotate_locked">Giro fijo</string>
+    <string name="status_orientation_locked">Orientacion bloqueada</string>
+    <string name="status_orientation_unlocked">Orientacion libre</string>
+    <string name="status_brightness_level">Brillo %1$d%%</string>
+    <string name="status_volume_level">Volumen %1$d%%</string>
+    <string name="playback_state_live">LIVE</string>
+    <string name="playback_state_timeshift">TIMESHIFT -%1$d:%2$02d</string>
     <string name="touch_button_info">Info</string>
     <string name="touch_button_rewind">-30s</string>
     <string name="touch_button_play_pause">Play/Pause</string>

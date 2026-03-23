@@ -2,11 +2,13 @@ package com.drbep.tvplayer;
 
 import android.net.Uri;
 import android.os.Build;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.text.Editable;
@@ -16,6 +18,7 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
@@ -31,6 +34,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
 import androidx.media3.ui.PlayerView;
@@ -70,6 +74,7 @@ public class MainActivity extends FragmentActivity {
     private static final long STATUS_HIDE_MS = 2500L;
     private static final long TOUCH_CONTROLS_HIDE_MS = 3000L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
+    private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
     private static final String PREFS = "drbep_tv_prefs";
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_FAVORITES = "favorite_channel_ids";
@@ -77,6 +82,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_PLAYBACK_MODES = "playback_mode_by_channel";
     private static final String PREF_REMINDERS = "channel_reminders";
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
+    private static final String PREF_TABLET_ORIENTATION_LOCK = "tablet_orientation_lock";
     private static final int FILTER_ALL = 0;
     private static final int FILTER_PLATFORM = 1;
     private static final int FILTER_CUSTOM_GROUP = 2;
@@ -104,6 +110,7 @@ public class MainActivity extends FragmentActivity {
     private TextView recordingsSummaryText;
     private TextView versionBadgeText;
     private TextView hdrBadgeText;
+    private TextView liveStateBadgeText;
     private View touchControlsBar;
     private View timeshiftBarContainer;
     private TextView touchListButton;
@@ -111,6 +118,7 @@ public class MainActivity extends FragmentActivity {
     private TextView touchPreviousButton;
     private TextView touchInfoButton;
     private TextView touchToolsButton;
+    private TextView touchRotateButton;
     private TextView touchRewindButton;
     private TextView touchPlayPauseButton;
     private TextView touchForwardButton;
@@ -150,6 +158,7 @@ public class MainActivity extends FragmentActivity {
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
     private HttpClient httpClient;
+    private AudioManager audioManager;
     private String baseUrl;
     private SharedPreferences prefs;
 
@@ -172,6 +181,10 @@ public class MainActivity extends FragmentActivity {
     private float touchGestureDownX = Float.NaN;
     private float touchGestureDownY = Float.NaN;
     private boolean timeshiftSeekUserDragging;
+    private boolean tabletOrientationLocked;
+    private float tabletBrightnessLevel = 0.5f;
+    private float touchGestureLastY = Float.NaN;
+    private boolean touchGestureVerticalHandled;
 
     private static final class TimelineChannelPrograms {
         final ChannelItem channel;
@@ -243,6 +256,7 @@ public class MainActivity extends FragmentActivity {
         recordingsSummaryText = findViewById(R.id.recordingsSummaryText);
         versionBadgeText = findViewById(R.id.versionBadgeText);
         hdrBadgeText = findViewById(R.id.hdrBadgeText);
+        liveStateBadgeText = findViewById(R.id.liveStateBadgeText);
         touchControlsBar = findViewById(R.id.touchControlsBar);
         timeshiftBarContainer = findViewById(R.id.timeshiftBarContainer);
         touchListButton = findViewById(R.id.touchListButton);
@@ -250,6 +264,7 @@ public class MainActivity extends FragmentActivity {
         touchPreviousButton = findViewById(R.id.touchPreviousButton);
         touchInfoButton = findViewById(R.id.touchInfoButton);
         touchToolsButton = findViewById(R.id.touchToolsButton);
+        touchRotateButton = findViewById(R.id.touchRotateButton);
         touchRewindButton = findViewById(R.id.touchRewindButton);
         touchPlayPauseButton = findViewById(R.id.touchPlayPauseButton);
         touchForwardButton = findViewById(R.id.touchForwardButton);
@@ -286,6 +301,7 @@ public class MainActivity extends FragmentActivity {
     epgRepository = new EpgRepository(baseUrl);
         recordingsRepository = new RecordingsRepository(baseUrl);
     httpClient = new HttpClient();
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
         recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
@@ -366,6 +382,9 @@ public class MainActivity extends FragmentActivity {
         playbackModeStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
         touchDeviceMode = detectTouchDeviceMode();
+        tabletOrientationLocked = prefs.getBoolean(PREF_TABLET_ORIENTATION_LOCK, false);
+        initializeTabletBrightness();
+        applyTabletOrientationMode();
 
         setupPlayer();
         setupChannelList();
@@ -560,6 +579,14 @@ public class MainActivity extends FragmentActivity {
                 showV12ToolsMenu();
             });
         }
+        if (touchRotateButton != null) {
+            touchRotateButton.setVisibility(View.VISIBLE);
+            touchRotateButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                toggleTabletOrientationLock();
+            });
+            updateTouchRotateButtonLabel();
+        }
         if (touchPlayPauseButton != null) {
             touchPlayPauseButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
@@ -638,6 +665,7 @@ public class MainActivity extends FragmentActivity {
 
     private void updateTimeshiftBar() {
         if (!touchDeviceMode || timeshiftBarContainer == null || timeshiftSeekBar == null || timeshiftStatusText == null || playerController == null) {
+            updatePlaybackStateBadge(null);
             return;
         }
         if (timeshiftLiveButton != null) {
@@ -645,11 +673,13 @@ public class MainActivity extends FragmentActivity {
         }
         if (touchControlsBar == null || touchControlsBar.getVisibility() != View.VISIBLE || isOverlayVisible() || isRecordingsPanelVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
+            updatePlaybackStateBadge(playerController.getTimeshiftState());
             return;
         }
         PlayerController.TimeshiftState state = playerController.getTimeshiftState();
         if (state == null) {
             timeshiftBarContainer.setVisibility(View.GONE);
+            updatePlaybackStateBadge(null);
             return;
         }
         timeshiftBarContainer.setVisibility(View.VISIBLE);
@@ -662,6 +692,7 @@ public class MainActivity extends FragmentActivity {
             timeshiftSeekBar.setProgress(progress);
             timeshiftStatusText.setText(state.label);
         }
+        updatePlaybackStateBadge(state);
     }
 
     private String formatTimeshiftPreviewLabel(PlayerController.TimeshiftState state, long targetMs) {
@@ -669,7 +700,7 @@ public class MainActivity extends FragmentActivity {
             return getString(R.string.timeshift_status_unavailable);
         }
         long offsetMs = Math.max(0L, state.endMs - targetMs);
-        if (offsetMs < 1500L) {
+        if (offsetMs < LIVE_BADGE_THRESHOLD_MS) {
             return getString(R.string.timeshift_status_live);
         }
         long totalSeconds = Math.max(0L, Math.round(offsetMs / 1000f));
@@ -701,24 +732,47 @@ public class MainActivity extends FragmentActivity {
         }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                showTouchControlsTemporarily();
                 if (isOverlayVisible()) {
                     hideOverlay();
                     touchGestureDownX = Float.NaN;
                     touchGestureDownY = Float.NaN;
+                    touchGestureLastY = Float.NaN;
+                    touchGestureVerticalHandled = false;
                     return true;
                 }
                 if (isRecordingsPanelVisible() || (quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE)) {
                     touchGestureDownX = Float.NaN;
                     touchGestureDownY = Float.NaN;
+                    touchGestureLastY = Float.NaN;
+                    touchGestureVerticalHandled = false;
                     return false;
                 }
                 touchGestureDownX = event.getX();
                 touchGestureDownY = event.getY();
+                touchGestureLastY = event.getY();
+                touchGestureVerticalHandled = false;
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                if (Float.isNaN(touchGestureDownX) || Float.isNaN(touchGestureDownY) || Float.isNaN(touchGestureLastY)) {
+                    return true;
+                }
+                float totalDeltaX = event.getX() - touchGestureDownX;
+                float totalDeltaY = event.getY() - touchGestureDownY;
+                float stepDeltaY = event.getY() - touchGestureLastY;
+                touchGestureLastY = event.getY();
+                float moveMinSwipeDistancePx = dpToPx(28f);
+                float moveMaxOffAxisPx = dpToPx(96f);
+                if (Math.abs(totalDeltaY) >= moveMinSwipeDistancePx && Math.abs(totalDeltaX) <= moveMaxOffAxisPx && Math.abs(totalDeltaY) > Math.abs(totalDeltaX)) {
+                    handleVerticalGesture(touchGestureDownX, stepDeltaY, getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels);
+                    touchGestureVerticalHandled = true;
+                    return true;
+                }
                 return true;
             case MotionEvent.ACTION_CANCEL:
                 touchGestureDownX = Float.NaN;
                 touchGestureDownY = Float.NaN;
+                touchGestureLastY = Float.NaN;
+                touchGestureVerticalHandled = false;
                 return true;
             case MotionEvent.ACTION_UP:
                 if (Float.isNaN(touchGestureDownX) || Float.isNaN(touchGestureDownY)) {
@@ -726,13 +780,26 @@ public class MainActivity extends FragmentActivity {
                 }
                 float deltaX = event.getX() - touchGestureDownX;
                 float deltaY = event.getY() - touchGestureDownY;
+                boolean verticalHandled = touchGestureVerticalHandled;
                 touchGestureDownX = Float.NaN;
                 touchGestureDownY = Float.NaN;
+                touchGestureLastY = Float.NaN;
+                touchGestureVerticalHandled = false;
 
                 float minSwipeDistancePx = dpToPx(72f);
                 float maxOffAxisPx = dpToPx(56f);
+                float tapSlopPx = dpToPx(18f);
+                if (Math.abs(deltaX) <= tapSlopPx && Math.abs(deltaY) <= tapSlopPx) {
+                    showTouchControlsTemporarily();
+                    return true;
+                }
                 if (Math.abs(deltaX) >= minSwipeDistancePx && Math.abs(deltaY) <= maxOffAxisPx && Math.abs(deltaX) > Math.abs(deltaY)) {
                     tuneRelative(deltaX > 0 ? 1 : -1);
+                    return true;
+                }
+                if (!verticalHandled && Math.abs(deltaY) >= minSwipeDistancePx && Math.abs(deltaX) <= maxOffAxisPx && Math.abs(deltaY) > Math.abs(deltaX)) {
+                    handleVerticalGesture(event.getX(), deltaY, getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels);
+                    return true;
                 }
                 return true;
             default:
@@ -742,6 +809,119 @@ public class MainActivity extends FragmentActivity {
 
     private float dpToPx(float dp) {
         return dp * getResources().getDisplayMetrics().density;
+    }
+
+    private void handleVerticalGesture(float startX, float deltaY, int widthPx, int heightPx) {
+        if (Float.isNaN(startX) || widthPx <= 0 || heightPx <= 0) {
+            return;
+        }
+        float gestureSpanPx = Math.max(dpToPx(140f), heightPx * 0.35f);
+        float normalized = Math.max(-1f, Math.min(1f, (-deltaY) / gestureSpanPx));
+        if (Math.abs(normalized) < 0.02f) {
+            return;
+        }
+        if (startX < widthPx * 0.5f) {
+            adjustTabletBrightness(normalized);
+            return;
+        }
+        if (startX >= widthPx * 0.5f) {
+            adjustTabletVolume(normalized);
+        }
+    }
+
+    private void initializeTabletBrightness() {
+        WindowManager.LayoutParams params = getWindow().getAttributes();
+        if (params != null && params.screenBrightness >= 0f) {
+            tabletBrightnessLevel = params.screenBrightness;
+        } else {
+            tabletBrightnessLevel = 0.5f;
+        }
+    }
+
+    private void adjustTabletBrightness(float deltaNormalized) {
+        tabletBrightnessLevel = Math.max(0.1f, Math.min(1f, tabletBrightnessLevel + (deltaNormalized * 0.9f)));
+        WindowManager.LayoutParams params = getWindow().getAttributes();
+        params.screenBrightness = tabletBrightnessLevel;
+        getWindow().setAttributes(params);
+        showStatus(getString(R.string.status_brightness_level, Math.round(tabletBrightnessLevel * 100f)));
+        Log.d(TAG, "tablet brightness gesture level=" + tabletBrightnessLevel);
+    }
+
+    private void adjustTabletVolume(float deltaNormalized) {
+        if (audioManager == null) {
+            return;
+        }
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        if (maxVolume <= 0) {
+            return;
+        }
+        int currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        int deltaSteps = Math.max(1, Math.round(Math.abs(deltaNormalized) * maxVolume));
+        int updated = currentVolume + (deltaNormalized >= 0f ? deltaSteps : -deltaSteps);
+        updated = Math.max(0, Math.min(maxVolume, updated));
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, updated, 0);
+        showStatus(getString(R.string.status_volume_level, Math.round((updated * 100f) / (float) maxVolume)));
+        Log.d(TAG, "tablet volume gesture level=" + updated + "/" + maxVolume);
+    }
+
+    private void toggleTabletOrientationLock() {
+        tabletOrientationLocked = !tabletOrientationLocked;
+        if (prefs != null) {
+            prefs.edit().putBoolean(PREF_TABLET_ORIENTATION_LOCK, tabletOrientationLocked).apply();
+        }
+        applyTabletOrientationMode();
+        updateTouchRotateButtonLabel();
+        showStatus(getString(tabletOrientationLocked ? R.string.status_orientation_locked : R.string.status_orientation_unlocked));
+    }
+
+    private void applyTabletOrientationMode() {
+        if (!touchDeviceMode) {
+            return;
+        }
+        if (tabletOrientationLocked) {
+            setRequestedOrientation(resolveCurrentLandscapeOrientation());
+        } else {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        }
+    }
+
+    private int resolveCurrentLandscapeOrientation() {
+        int rotation = getWindowManager().getDefaultDisplay().getRotation();
+        if (rotation == Surface.ROTATION_270) {
+            return ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+        }
+        return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+    }
+
+    private void updateTouchRotateButtonLabel() {
+        if (touchRotateButton == null) {
+            return;
+        }
+        touchRotateButton.setText(getString(tabletOrientationLocked ? R.string.touch_button_rotate_locked : R.string.touch_button_rotate_free));
+    }
+
+    private void updatePlaybackStateBadge(PlayerController.TimeshiftState state) {
+        if (liveStateBadgeText == null || !touchDeviceMode) {
+            return;
+        }
+        if (state == null) {
+            liveStateBadgeText.setText(getString(R.string.playback_state_live));
+            liveStateBadgeText.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xCC1F7A3C));
+            liveStateBadgeText.setVisibility(View.VISIBLE);
+            return;
+        }
+        long offsetMs = Math.max(0L, state.endMs - state.currentMs);
+        if (offsetMs < LIVE_BADGE_THRESHOLD_MS) {
+            liveStateBadgeText.setText(getString(R.string.playback_state_live));
+            liveStateBadgeText.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xCC1F7A3C));
+        } else {
+            long totalSeconds = Math.round(offsetMs / 1000f);
+            long mins = totalSeconds / 60L;
+            long secs = totalSeconds % 60L;
+            liveStateBadgeText.setText(getString(R.string.playback_state_timeshift, mins, secs));
+            liveStateBadgeText.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xCC9A5A00));
+        }
+        liveStateBadgeText.setVisibility(View.VISIBLE);
     }
 
     private void loadChannels() {
@@ -806,6 +986,7 @@ public class MainActivity extends FragmentActivity {
         saveLastChannelId(ch.id);
         recentChannelsStore.add(ch.id, ch.name);
         playerController.resetFallbackState();
+        updateTimeshiftBar();
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
         PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
         playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo);

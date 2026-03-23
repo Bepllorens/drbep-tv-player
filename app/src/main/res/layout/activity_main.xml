@@ -73,6 +73,23 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/liveStateBadgeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginLeft="24dp"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/channel_overlay_chip_bg"
+        android:paddingLeft="12dp"
+        android:paddingTop="6dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="6dp"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -610,6 +627,22 @@
             android:paddingRight="@dimen/touch_button_padding_horizontal"
             android:paddingBottom="@dimen/touch_button_padding_vertical"
             android:text="@string/touch_button_tools"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/touchRotateButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:background="@drawable/channel_overlay_chip_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingLeft="@dimen/touch_button_padding_horizontal"
+            android:paddingTop="@dimen/touch_button_padding_vertical"
+            android:paddingRight="@dimen/touch_button_padding_horizontal"
+            android:paddingBottom="@dimen/touch_button_padding_vertical"
+            android:text="@string/touch_button_rotate_free"
             android:textColor="#FFFFFF"
             android:textStyle="bold" />
 

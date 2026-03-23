@@ -117,6 +117,22 @@ final class PlayerController {
         }
     }
 
+    static final class PlaybackSeekState {
+        final long startMs;
+        final long endMs;
+        final long currentMs;
+        final String label;
+        final boolean liveCapable;
+
+        PlaybackSeekState(long startMs, long endMs, long currentMs, String label, boolean liveCapable) {
+            this.startMs = startMs;
+            this.endMs = endMs;
+            this.currentMs = currentMs;
+            this.label = label;
+            this.liveCapable = liveCapable;
+        }
+    }
+
     private static final class PlaybackDecision {
         final String targetUrl;
         final String mimeType;
@@ -444,16 +460,38 @@ final class PlayerController {
         return new TimeshiftState(window.startMs, window.endMs, window.currentMs, getTimeshiftStatusLabel());
     }
 
+    PlaybackSeekState getPlaybackSeekState() {
+        if (player == null || !player.isCurrentMediaItemSeekable()) {
+            return null;
+        }
+        TimeshiftWindow timeshiftWindow = getTimeshiftWindow();
+        if (timeshiftWindow != null) {
+            return new PlaybackSeekState(
+                    timeshiftWindow.startMs,
+                    timeshiftWindow.endMs,
+                    timeshiftWindow.currentMs,
+                    getTimeshiftStatusLabel(),
+                    true
+            );
+        }
+        long durationMs = player.getDuration();
+        if (durationMs == C.TIME_UNSET || durationMs <= 0L) {
+            return null;
+        }
+        long currentMs = Math.max(0L, Math.min(durationMs, player.getCurrentPosition()));
+        return new PlaybackSeekState(0L, durationMs, currentMs, formatPlaybackProgressLabel(currentMs, durationMs), false);
+    }
+
     boolean seekTimeshiftTo(long targetPositionMs) {
-        TimeshiftWindow window = getTimeshiftWindow();
-        if (window == null || player == null) {
+        PlaybackSeekState state = getPlaybackSeekState();
+        if (state == null || player == null) {
             host.showStatus(context.getString(R.string.timeshift_status_unavailable));
             return false;
         }
-        long target = Math.max(window.startMs, Math.min(window.endMs, targetPositionMs));
+        long target = Math.max(state.startMs, Math.min(state.endMs, targetPositionMs));
         player.seekTo(target);
         player.play();
-        host.showStatus(formatTimeshiftOffset(window.endMs - target));
+        host.showStatus(state.liveCapable ? formatTimeshiftOffset(state.endMs - target) : formatPlaybackProgressLabel(target, state.endMs));
         return true;
     }
 
@@ -723,6 +761,21 @@ final class PlayerController {
         long mins = totalSeconds / 60L;
         long secs = totalSeconds % 60L;
         return context.getString(R.string.timeshift_status_delayed, mins, secs);
+    }
+
+    private String formatPlaybackProgressLabel(long currentMs, long durationMs) {
+        return formatClockLabel(currentMs) + " / " + formatClockLabel(durationMs);
+    }
+
+    private String formatClockLabel(long valueMs) {
+        long totalSeconds = Math.max(0L, Math.round(valueMs / 1000f));
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0L) {
+            return String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds);
+        }
+        return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds);
     }
 
     private TimeshiftWindow getTimeshiftWindow() {

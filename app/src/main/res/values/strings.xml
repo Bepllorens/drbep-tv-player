@@ -37,6 +37,8 @@
     <string name="status_failed_create_reminder">No se pudo crear recordatorio</string>
     <string name="status_reminder_created">Recordatorio creado</string>
     <string name="status_no_recordings">No hay grabaciones</string>
+    <string name="status_recordings_showing_scheduled">No hay completadas, mostrando programadas</string>
+    <string name="status_recordings_showing_completed">No hay programadas, mostrando completadas</string>
     <string name="status_no_scheduled_recordings">No hay grabaciones programadas</string>
     <string name="status_failed_load_recordings">No se pudieron cargar grabaciones</string>
     <string name="status_failed_load_scheduled_recordings">No se pudieron cargar las programadas</string>
@@ -73,6 +75,7 @@
     <string name="title_recordings_completed">Grabaciones completadas</string>
     <string name="title_recordings_scheduled">Grabaciones programadas</string>
     <string name="recordings_panel_hint">BACK cierra  ·  IZQ/DER cambia vista  ·  MENU acciones/refrescar</string>
+    <string name="recordings_panel_hint_touch">Toca vista, refresca o una grabacion para abrir acciones</string>
     <string name="recordings_panel_action_hint">OK reproduce  ·  MENU acciones  ·  ARRIBA/ABAJO navega</string>
     <string name="recordings_panel_action_hint_scheduled">OK detalle  ·  MENU acciones  ·  ARRIBA/ABAJO navega</string>
     <string name="recordings_detail_empty">Selecciona una grabacion</string>
@@ -131,7 +134,9 @@
     <string name="touch_button_list">Lista</string>
     <string name="touch_button_guide">Guia</string>
     <string name="touch_button_previous">Anterior</string>
-    <string name="touch_button_tools">Tools</string>
+    <string name="touch_button_tools">Grab</string>
+    <string name="touch_button_recordings">Grab</string>
+    <string name="touch_button_tools_hint">Pulsacion larga: Tools</string>
     <string name="touch_button_rotate_free">Giro libre</string>
     <string name="touch_button_rotate_locked">Giro fijo</string>
     <string name="status_orientation_locked">Orientacion bloqueada</string>

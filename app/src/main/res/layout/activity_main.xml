@@ -507,12 +507,64 @@
             android:textSize="@dimen/player_status_text_size"
             android:textStyle="bold" />
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/recordingsCompletedButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:background="@drawable/channel_overlay_chip_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="@string/recording_action_switch_completed"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/recordingsScheduledButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/channel_overlay_chip_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="@string/recording_action_switch_scheduled"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/recordingsRefreshButton"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginLeft="8dp"
+                android:background="@drawable/channel_overlay_chip_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:minWidth="92dp"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp"
+                android:text="@string/recording_action_refresh"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/recordingsHintText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
-            android:text="@string/recordings_panel_hint"
+            android:text="@string/recordings_panel_hint_touch"
             android:textColor="#B8C8D8"
             android:textSize="@dimen/overlay_title_text_size" />
 
@@ -585,7 +637,7 @@
             android:overScrollMode="never" />
     </LinearLayout>
 
-    <LinearLayout
+    <HorizontalScrollView
         android:id="@+id/touchControlsBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -593,13 +645,18 @@
         android:layout_marginBottom="@dimen/touch_controls_margin_bottom"
         android:translationY="@dimen/touch_controls_translation_y"
         android:background="#AA11161D"
-        android:gravity="center"
-        android:orientation="horizontal"
         android:paddingLeft="@dimen/touch_controls_padding_horizontal"
         android:paddingTop="@dimen/touch_controls_padding_vertical"
         android:paddingRight="@dimen/touch_controls_padding_horizontal"
         android:paddingBottom="@dimen/touch_controls_padding_vertical"
+        android:scrollbars="none"
         android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
 
         <TextView
             android:id="@+id/touchListButton"
@@ -743,7 +800,8 @@
             android:text="@string/touch_button_forward"
             android:textColor="#FFFFFF"
             android:textStyle="bold" />
-    </LinearLayout>
+        </LinearLayout>
+    </HorizontalScrollView>
 
     <TextView
         android:id="@+id/errorText"

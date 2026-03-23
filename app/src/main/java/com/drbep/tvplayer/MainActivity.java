@@ -115,6 +115,10 @@ public class MainActivity extends FragmentActivity {
     private TextView quickSearchResultText;
     private TextView recordingsSectionText;
     private TextView recordingsSummaryText;
+    private TextView recordingsHintText;
+    private TextView recordingsCompletedButton;
+    private TextView recordingsScheduledButton;
+    private TextView recordingsRefreshButton;
     private TextView versionBadgeText;
     private TextView hdrBadgeText;
     private TextView liveStateBadgeText;
@@ -264,6 +268,10 @@ public class MainActivity extends FragmentActivity {
         quickSearchResultText = findViewById(R.id.quickSearchResultText);
         recordingsSectionText = findViewById(R.id.recordingsSectionText);
         recordingsSummaryText = findViewById(R.id.recordingsSummaryText);
+        recordingsHintText = findViewById(R.id.recordingsHintText);
+        recordingsCompletedButton = findViewById(R.id.recordingsCompletedButton);
+        recordingsScheduledButton = findViewById(R.id.recordingsScheduledButton);
+        recordingsRefreshButton = findViewById(R.id.recordingsRefreshButton);
         versionBadgeText = findViewById(R.id.versionBadgeText);
         hdrBadgeText = findViewById(R.id.hdrBadgeText);
         liveStateBadgeText = findViewById(R.id.liveStateBadgeText);
@@ -297,6 +305,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 return false;
             });
+        }
+        if (recordingsPanel != null) {
+            recordingsPanel.setClickable(true);
+            recordingsPanel.setOnTouchListener((v, event) -> true);
         }
         recordingsRecyclerView = findViewById(R.id.recordingsRecyclerView);
         timeshiftSeekBar = findViewById(R.id.timeshiftSeekBar);
@@ -467,6 +479,15 @@ public class MainActivity extends FragmentActivity {
         if (recordingsRecyclerView != null) {
             recordingsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         }
+        if (recordingsCompletedButton != null) {
+            recordingsCompletedButton.setOnClickListener(v -> switchRecordingsMode(false));
+        }
+        if (recordingsScheduledButton != null) {
+            recordingsScheduledButton.setOnClickListener(v -> switchRecordingsMode(true));
+        }
+        if (recordingsRefreshButton != null) {
+            recordingsRefreshButton.setOnClickListener(v -> refreshRecordingsPanel());
+        }
         updateRecordingsDetailPanel();
     }
 
@@ -598,9 +619,15 @@ public class MainActivity extends FragmentActivity {
             });
         }
         if (touchToolsButton != null) {
+            touchToolsButton.setText("Grab");
             touchToolsButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
+                openRecordingsBrowser();
+            });
+            touchToolsButton.setOnLongClickListener(v -> {
+                showTouchControlsTemporarily();
                 showV12ToolsMenu();
+                return true;
             });
         }
         if (touchRotateButton != null) {
@@ -654,13 +681,13 @@ public class MainActivity extends FragmentActivity {
                     if (!fromUser || playerController == null) {
                         return;
                     }
-                    PlayerController.TimeshiftState state = playerController.getTimeshiftState();
+                    PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
                     if (state == null || timeshiftStatusText == null) {
                         return;
                     }
                     long range = Math.max(1L, state.endMs - state.startMs);
                     long target = state.startMs + Math.round((progress / 1000f) * range);
-                    timeshiftStatusText.setText(formatTimeshiftPreviewLabel(state, target));
+                    timeshiftStatusText.setText(formatPlaybackPreviewLabel(state, target));
                 }
 
                 @Override
@@ -672,7 +699,7 @@ public class MainActivity extends FragmentActivity {
                 @Override
                 public void onStopTrackingTouch(SeekBar seekBar) {
                     if (playerController != null) {
-                        PlayerController.TimeshiftState state = playerController.getTimeshiftState();
+                        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
                         if (state != null) {
                             long range = Math.max(1L, state.endMs - state.startMs);
                             long target = state.startMs + Math.round((seekBar.getProgress() / 1000f) * range);
@@ -700,7 +727,7 @@ public class MainActivity extends FragmentActivity {
             updatePlaybackStateBadge(playerController.getTimeshiftState());
             return;
         }
-        PlayerController.TimeshiftState state = playerController.getTimeshiftState();
+        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
         if (state == null) {
             timeshiftBarContainer.setVisibility(View.GONE);
             updatePlaybackStateBadge(null);
@@ -708,7 +735,7 @@ public class MainActivity extends FragmentActivity {
         }
         timeshiftBarContainer.setVisibility(View.VISIBLE);
         if (timeshiftLiveButton != null) {
-            timeshiftLiveButton.setVisibility(View.VISIBLE);
+            timeshiftLiveButton.setVisibility(state.liveCapable ? View.VISIBLE : View.GONE);
         }
         if (!timeshiftSeekUserDragging) {
             long range = Math.max(1L, state.endMs - state.startMs);
@@ -716,21 +743,35 @@ public class MainActivity extends FragmentActivity {
             timeshiftSeekBar.setProgress(progress);
             timeshiftStatusText.setText(state.label);
         }
-        updatePlaybackStateBadge(state);
+        updatePlaybackStateBadge(playerController.getTimeshiftState());
     }
 
-    private String formatTimeshiftPreviewLabel(PlayerController.TimeshiftState state, long targetMs) {
+    private String formatPlaybackPreviewLabel(PlayerController.PlaybackSeekState state, long targetMs) {
         if (state == null) {
             return getString(R.string.timeshift_status_unavailable);
         }
-        long offsetMs = Math.max(0L, state.endMs - targetMs);
-        if (offsetMs < LIVE_BADGE_THRESHOLD_MS) {
-            return getString(R.string.timeshift_status_live);
+        if (state.liveCapable) {
+            long offsetMs = Math.max(0L, state.endMs - targetMs);
+            if (offsetMs < LIVE_BADGE_THRESHOLD_MS) {
+                return getString(R.string.timeshift_status_live);
+            }
+            long totalSeconds = Math.max(0L, Math.round(offsetMs / 1000f));
+            long mins = totalSeconds / 60L;
+            long secs = totalSeconds % 60L;
+            return getString(R.string.timeshift_status_delayed, mins, secs);
         }
-        long totalSeconds = Math.max(0L, Math.round(offsetMs / 1000f));
-        long mins = totalSeconds / 60L;
-        long secs = totalSeconds % 60L;
-        return getString(R.string.timeshift_status_delayed, mins, secs);
+        return formatDurationLabel(targetMs) + " / " + formatDurationLabel(state.endMs);
+    }
+
+    private String formatDurationLabel(long valueMs) {
+        long totalSeconds = Math.max(0L, Math.round(valueMs / 1000f));
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0L) {
+            return String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds);
+        }
+        return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds);
     }
 
     private void showTouchControlsTemporarily() {
@@ -764,7 +805,16 @@ public class MainActivity extends FragmentActivity {
                     touchGestureVerticalHandled = false;
                     return true;
                 }
-                if (isRecordingsPanelVisible() || (quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE)) {
+                if (isRecordingsPanelVisible()) {
+                    hideRecordingsPanel();
+                    showTouchControlsTemporarily();
+                    touchGestureDownX = Float.NaN;
+                    touchGestureDownY = Float.NaN;
+                    touchGestureLastY = Float.NaN;
+                    touchGestureVerticalHandled = false;
+                    return true;
+                }
+                if (quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE) {
                     touchGestureDownX = Float.NaN;
                     touchGestureDownY = Float.NaN;
                     touchGestureLastY = Float.NaN;
@@ -1295,6 +1345,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openRecordingsBrowser() {
+        Log.d(TAG, "openRecordingsBrowser scheduledMode=" + recordingsScheduledMode);
         loadRecordingsPanel(recordingsScheduledMode, null);
     }
 
@@ -1304,19 +1355,32 @@ public class MainActivity extends FragmentActivity {
         final String desiredId = preferredId;
         ioExecutor.execute(() -> {
             try {
-                RecordingsRepository.RecordingsResult result = scheduledMode
+                RecordingsRepository.RecordingsResult primaryResult = scheduledMode
                         ? recordingsRepository.fetchScheduledRecordings()
                         : recordingsRepository.fetchCompletedRecordings();
-                if (result.items.isEmpty()) {
+                RecordingsRepository.RecordingsResult alternateResult = scheduledMode
+                        ? recordingsRepository.fetchCompletedRecordings()
+                        : recordingsRepository.fetchScheduledRecordings();
+                if (!primaryResult.items.isEmpty()) {
+                    Log.d(TAG, "loadRecordingsPanel primary scheduled=" + primaryResult.scheduledMode + " count=" + primaryResult.items.size());
+                    uiHandler.post(() -> showRecordingsPanel(primaryResult, desiredId));
+                    return;
+                }
+                if (!alternateResult.items.isEmpty()) {
+                    Log.d(TAG, "loadRecordingsPanel alternate scheduled=" + alternateResult.scheduledMode + " count=" + alternateResult.items.size());
                     uiHandler.post(() -> {
-                        if (isRecordingsPanelVisible()) {
-                            hideRecordingsPanel();
-                        }
-                        showStatus(getString(scheduledMode ? R.string.status_no_scheduled_recordings : R.string.status_no_recordings));
+                        showStatus(getString(scheduledMode
+                                ? R.string.status_recordings_showing_completed
+                                : R.string.status_recordings_showing_scheduled));
+                        showRecordingsPanel(alternateResult, desiredId);
                     });
                     return;
                 }
-                uiHandler.post(() -> showRecordingsPanel(result, desiredId));
+                Log.d(TAG, "loadRecordingsPanel both empty scheduledMode=" + scheduledMode);
+                uiHandler.post(() -> {
+                    showRecordingsPanel(primaryResult, desiredId);
+                    showStatus(getString(scheduledMode ? R.string.status_no_scheduled_recordings : R.string.status_no_recordings));
+                });
             } catch (Exception e) {
                 Log.w(TAG, scheduledMode ? "open scheduled recordings failed" : "open recordings failed", e);
                 uiHandler.post(() -> showStatus(getString(scheduledMode ? R.string.status_failed_load_scheduled_recordings : R.string.status_failed_load_recordings)));
@@ -1713,11 +1777,13 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         }
+        Log.d(TAG, "showRecordingsPanel scheduled=" + result.scheduledMode + " count=" + result.items.size());
         recordingsAdapter = new RecordingsAdapter(result);
         recordingsRecyclerView.setAdapter(recordingsAdapter);
         recordingsRecyclerView.scrollToPosition(selectedRecordingIndex);
         updateRecordingsDetailPanel();
         recordingsPanel.setVisibility(View.VISIBLE);
+        Log.d(TAG, "recordingsPanel visible=" + (recordingsPanel.getVisibility() == View.VISIBLE));
     }
 
     private void hideRecordingsPanel() {
@@ -1881,6 +1947,7 @@ public class MainActivity extends FragmentActivity {
         if (recordingsSectionText == null || recordingsSummaryText == null || recordingDetailPosterImage == null || recordingDetailTitleText == null || recordingDetailMetaText == null || recordingDetailPathText == null || recordingDetailActionText == null) {
             return;
         }
+        updateRecordingsPanelButtons();
         if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
             recordingsSectionText.setText(getString(recordingsScheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
             recordingsSummaryText.setText(buildRecordingsSummary(currentRecordingsResult));
@@ -1912,6 +1979,21 @@ public class MainActivity extends FragmentActivity {
         }
         recordingDetailActionText.setText(getString(currentRecordingsResult.scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
         bindRecordingPoster(recordingDetailPosterImage, item.poster);
+    }
+
+    private void updateRecordingsPanelButtons() {
+        if (recordingsCompletedButton != null) {
+            recordingsCompletedButton.setBackgroundTintList(ColorStateList.valueOf(recordingsScheduledMode ? 0xFF2B3642 : 0xFF2A7C86));
+        }
+        if (recordingsScheduledButton != null) {
+            recordingsScheduledButton.setBackgroundTintList(ColorStateList.valueOf(recordingsScheduledMode ? 0xFF2A7C86 : 0xFF2B3642));
+        }
+        if (recordingsRefreshButton != null) {
+            recordingsRefreshButton.setBackgroundTintList(ColorStateList.valueOf(0xFF2B3642));
+        }
+        if (recordingsHintText != null) {
+            recordingsHintText.setText(getString(R.string.recordings_panel_hint_touch));
+        }
     }
 
     private void showHdrBadge(String label) {

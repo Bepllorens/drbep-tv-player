@@ -12,9 +12,13 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.text.Editable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.util.LruCache;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -97,10 +101,13 @@ public class MainActivity extends FragmentActivity {
     private TextView touchPrevFilterButton;
     private TextView touchNextFilterButton;
     private TextView touchSearchButton;
+    private TextView touchRecentButton;
+    private TextView touchFavoritesButton;
     private EditText overlaySearchInput;
     private TextView overlayCurrentChannelText;
     private TextView overlayCurrentMetaText;
     private TextView overlayPlaybackRouteText;
+    private TextView overlayEmptyText;
     private TextView overlayRecentText;
     private TextView zapChannelText;
     private TextView zapMetaText;
@@ -241,10 +248,13 @@ public class MainActivity extends FragmentActivity {
         touchPrevFilterButton = findViewById(R.id.touchPrevFilterButton);
         touchNextFilterButton = findViewById(R.id.touchNextFilterButton);
         touchSearchButton = findViewById(R.id.touchSearchButton);
+        touchRecentButton = findViewById(R.id.touchRecentButton);
+        touchFavoritesButton = findViewById(R.id.touchFavoritesButton);
         overlaySearchInput = findViewById(R.id.overlaySearchInput);
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
         overlayPlaybackRouteText = findViewById(R.id.overlayPlaybackRouteText);
+        overlayEmptyText = findViewById(R.id.overlayEmptyText);
         overlayRecentText = findViewById(R.id.overlayRecentText);
         zapBanner = findViewById(R.id.zapBanner);
         zapChannelText = findViewById(R.id.zapChannelText);
@@ -519,6 +529,20 @@ public class MainActivity extends FragmentActivity {
             touchSearchButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
                 focusOverlaySearchInput();
+            });
+        }
+        if (touchRecentButton != null) {
+            touchRecentButton.setVisibility(View.VISIBLE);
+            touchRecentButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                showRecentChannelsDialog();
+            });
+        }
+        if (touchFavoritesButton != null) {
+            touchFavoritesButton.setVisibility(View.VISIBLE);
+            touchFavoritesButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                toggleFavoritesOnlyMode();
             });
         }
         if (overlaySearchInput != null) {
@@ -949,6 +973,7 @@ public class MainActivity extends FragmentActivity {
         syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
         updateFilterText();
+        updateOverlaySearchState();
 
         if (channels.isEmpty()) {
             showError(getString(R.string.error_no_channels_for_filter));
@@ -1535,6 +1560,7 @@ public class MainActivity extends FragmentActivity {
         syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
         updateFilterText();
+        updateOverlaySearchState();
 
         if (channels.isEmpty()) {
             showStatus(getString(R.string.status_no_channels_for_filter));
@@ -1582,6 +1608,7 @@ public class MainActivity extends FragmentActivity {
         }
         saveFavorites();
         channelAdapter.notifyDataSetChanged();
+        updateOverlaySearchState();
         if (selectedOverlayIndex >= 0) {
             channelList.scrollToPosition(selectedOverlayIndex);
         }
@@ -1619,6 +1646,7 @@ public class MainActivity extends FragmentActivity {
         boolean nowFavoritesOnly = channelOverlayCoordinator.toggleFavoritesOnlyMode();
         syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
+        updateOverlaySearchState();
 
         if (channels.isEmpty() && nowFavoritesOnly) {
             showStatus(getString(R.string.status_favorites_only_empty));
@@ -1644,6 +1672,7 @@ public class MainActivity extends FragmentActivity {
         clearQuickSearchOverlay();
         hideRecordingsPanel();
         updateOverlayPanel();
+        updateOverlaySearchState();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, touchDeviceMode ? 0L : OVERLAY_HIDE_MS);
     }
 
@@ -1651,6 +1680,15 @@ public class MainActivity extends FragmentActivity {
         uiHandler.removeCallbacks(hideOverlayRunnable);
         clearOverlaySearchQuery();
         channelOverlayCoordinator.hideOverlay(channelOverlay);
+        if (touchDeviceMode) {
+            uiHandler.removeCallbacks(hideTouchControlsRunnable);
+            if (touchControlsBar != null) {
+                touchControlsBar.setVisibility(View.GONE);
+            }
+            if (timeshiftBarContainer != null) {
+                timeshiftBarContainer.setVisibility(View.GONE);
+            }
+        }
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result) {
@@ -2303,9 +2341,48 @@ public class MainActivity extends FragmentActivity {
         syncOverlayStateFromCoordinator();
         channelAdapter.notifyDataSetChanged();
         updateFilterText();
+        updateOverlaySearchState();
         if (!channels.isEmpty() && selectedOverlayIndex >= 0) {
             channelList.scrollToPosition(selectedOverlayIndex);
         }
+    }
+
+    private void updateOverlaySearchState() {
+        if (overlayEmptyText != null) {
+            String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
+            boolean hasQuery = query != null && !query.trim().isEmpty();
+            overlayEmptyText.setVisibility(channels.isEmpty() ? View.VISIBLE : View.GONE);
+            overlayEmptyText.setText(hasQuery
+                    ? getString(R.string.overlay_no_results_search, query.trim())
+                    : getString(R.string.overlay_no_results));
+        }
+        if (touchFavoritesButton != null) {
+            touchFavoritesButton.setText(getString(favoritesOnly ? R.string.overlay_favorites_button_on : R.string.overlay_favorites_button_off));
+        }
+    }
+
+    private CharSequence buildHighlightedText(String value, String query, boolean favorite) {
+        String base = value == null ? "" : value;
+        String prefix = favorite ? "★ " : "";
+        SpannableStringBuilder builder = new SpannableStringBuilder(prefix + base);
+        if (query == null || query.trim().isEmpty() || base.isEmpty()) {
+            return builder;
+        }
+        String lowerBase = base.toLowerCase(Locale.ROOT);
+        String lowerQuery = query.trim().toLowerCase(Locale.ROOT);
+        int start = 0;
+        while (start < lowerBase.length()) {
+            int index = lowerBase.indexOf(lowerQuery, start);
+            if (index < 0) {
+                break;
+            }
+            int spanStart = prefix.length() + index;
+            int spanEnd = spanStart + lowerQuery.length();
+            builder.setSpan(new ForegroundColorSpan(0xFF9BD0FF), spanStart, spanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            builder.setSpan(new StyleSpan(Typeface.BOLD), spanStart, spanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            start = index + lowerQuery.length();
+        }
+        return builder;
     }
 
     private void syncOverlayCoordinator() {
@@ -3313,18 +3390,25 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void onBindViewHolder(@NonNull ChannelVH holder, int position) {
             ChannelItem ch = channels.get(position);
-            holder.name.setText(ch.favorite ? "★ " + ch.name : ch.name);
+            String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
+            holder.name.setText(buildHighlightedText(ch.name, query, ch.favorite));
             holder.badge.setText(getString(ch.isVod ? R.string.channel_badge_vod : R.string.channel_badge_live));
             holder.badge.setBackgroundTintList(ColorStateList.valueOf(ch.isVod ? 0xAA7A4A19 : 0xAA215D8A));
             if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
-                holder.meta.setText(ch.nowProgram);
+                holder.meta.setText(buildHighlightedText(ch.nowProgram, query, false));
             } else if (ch.group != null && !ch.group.trim().isEmpty()) {
-                holder.meta.setText(ch.group);
+                holder.meta.setText(buildHighlightedText(ch.group, query, false));
             } else {
                 holder.meta.setText("");
             }
 
             bindChannelLogo(holder.logo, ch.logoUrl, ch.name, 38, 38);
+            holder.favoriteToggle.setText(getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off));
+            holder.favoriteToggle.setTextColor(ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF);
+            holder.favoriteToggle.setOnClickListener(v -> {
+                selectedOverlayIndex = position;
+                toggleFavoriteSelected();
+            });
 
             boolean selected = (position == selectedOverlayIndex);
             boolean tuned = (position == currentIndex);
@@ -3354,6 +3438,7 @@ public class MainActivity extends FragmentActivity {
             TextView name;
             TextView badge;
             TextView meta;
+            TextView favoriteToggle;
             ImageView logo;
 
             ChannelVH(@NonNull View itemView) {
@@ -3362,6 +3447,7 @@ public class MainActivity extends FragmentActivity {
                 name = itemView.findViewById(R.id.channelName);
                 badge = itemView.findViewById(R.id.channelBadge);
                 meta = itemView.findViewById(R.id.channelMeta);
+                favoriteToggle = itemView.findViewById(R.id.channelFavoriteToggle);
                 logo = itemView.findViewById(R.id.channelLogo);
             }
         }

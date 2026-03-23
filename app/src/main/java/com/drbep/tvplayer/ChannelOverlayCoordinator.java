@@ -218,13 +218,7 @@ final class ChannelOverlayCoordinator {
             item.favorite = favoriteChannelIds.contains(item.id);
         }
         target.sort((a, b) -> {
-            if (a.favorite && !b.favorite) {
-                return -1;
-            }
-            if (!a.favorite && b.favorite) {
-                return 1;
-            }
-            if (a.favorite && b.favorite && favoriteOrderStore != null) {
+            if (favoritesOnly && a.favorite && b.favorite && favoriteOrderStore != null) {
                 List<String> orderedIds = favoriteOrderStore.getOrderedIds();
                 int indexA = orderedIds.indexOf(a.id);
                 int indexB = orderedIds.indexOf(b.id);

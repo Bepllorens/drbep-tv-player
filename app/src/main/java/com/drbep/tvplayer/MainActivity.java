@@ -18,6 +18,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -28,6 +29,7 @@ import android.graphics.drawable.Drawable;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -88,6 +90,8 @@ public class MainActivity extends FragmentActivity {
     private TextView filterText;
     private TextView touchPrevFilterButton;
     private TextView touchNextFilterButton;
+    private TextView touchSearchButton;
+    private EditText overlaySearchInput;
     private TextView overlayCurrentChannelText;
     private TextView overlayCurrentMetaText;
     private TextView overlayPlaybackRouteText;
@@ -101,13 +105,17 @@ public class MainActivity extends FragmentActivity {
     private TextView versionBadgeText;
     private TextView hdrBadgeText;
     private View touchControlsBar;
+    private View timeshiftBarContainer;
     private TextView touchListButton;
     private TextView touchGuideButton;
+    private TextView touchPreviousButton;
     private TextView touchInfoButton;
     private TextView touchToolsButton;
     private TextView touchRewindButton;
     private TextView touchPlayPauseButton;
     private TextView touchForwardButton;
+    private TextView timeshiftStatusText;
+    private TextView timeshiftLiveButton;
     private View playbackGestureLayer;
     private ImageView recordingDetailPosterImage;
     private TextView recordingDetailTitleText;
@@ -120,6 +128,7 @@ public class MainActivity extends FragmentActivity {
     private View recordingsPanel;
     private RecyclerView channelList;
     private RecyclerView recordingsRecyclerView;
+    private SeekBar timeshiftSeekBar;
 
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
@@ -162,6 +171,7 @@ public class MainActivity extends FragmentActivity {
     private boolean touchDeviceMode;
     private float touchGestureDownX = Float.NaN;
     private float touchGestureDownY = Float.NaN;
+    private boolean timeshiftSeekUserDragging;
 
     private static final class TimelineChannelPrograms {
         final ChannelItem channel;
@@ -182,6 +192,9 @@ public class MainActivity extends FragmentActivity {
     private final Runnable hideTouchControlsRunnable = () -> {
         if (touchDeviceMode && touchControlsBar != null && !isOverlayVisible() && !isRecordingsPanelVisible()) {
             touchControlsBar.setVisibility(View.GONE);
+        }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
         }
     };
     private final Runnable hideHdrBadgeRunnable = () -> {
@@ -214,6 +227,8 @@ public class MainActivity extends FragmentActivity {
         filterText = findViewById(R.id.filterText);
         touchPrevFilterButton = findViewById(R.id.touchPrevFilterButton);
         touchNextFilterButton = findViewById(R.id.touchNextFilterButton);
+        touchSearchButton = findViewById(R.id.touchSearchButton);
+        overlaySearchInput = findViewById(R.id.overlaySearchInput);
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
         overlayPlaybackRouteText = findViewById(R.id.overlayPlaybackRouteText);
@@ -229,13 +244,17 @@ public class MainActivity extends FragmentActivity {
         versionBadgeText = findViewById(R.id.versionBadgeText);
         hdrBadgeText = findViewById(R.id.hdrBadgeText);
         touchControlsBar = findViewById(R.id.touchControlsBar);
+        timeshiftBarContainer = findViewById(R.id.timeshiftBarContainer);
         touchListButton = findViewById(R.id.touchListButton);
         touchGuideButton = findViewById(R.id.touchGuideButton);
+        touchPreviousButton = findViewById(R.id.touchPreviousButton);
         touchInfoButton = findViewById(R.id.touchInfoButton);
         touchToolsButton = findViewById(R.id.touchToolsButton);
         touchRewindButton = findViewById(R.id.touchRewindButton);
         touchPlayPauseButton = findViewById(R.id.touchPlayPauseButton);
         touchForwardButton = findViewById(R.id.touchForwardButton);
+        timeshiftStatusText = findViewById(R.id.timeshiftStatusText);
+        timeshiftLiveButton = findViewById(R.id.timeshiftLiveButton);
         playbackGestureLayer = findViewById(R.id.playbackGestureLayer);
         recordingDetailPosterImage = findViewById(R.id.recordingDetailPosterImage);
         recordingDetailTitleText = findViewById(R.id.recordingDetailTitleText);
@@ -245,7 +264,17 @@ public class MainActivity extends FragmentActivity {
         channelOverlay = findViewById(R.id.channelOverlay);
         recordingsPanel = findViewById(R.id.recordingsPanel);
         channelList = findViewById(R.id.channelList);
+        if (channelOverlay != null) {
+            channelOverlay.setClickable(true);
+            channelOverlay.setOnTouchListener((v, event) -> {
+                if (touchDeviceMode) {
+                    uiHandler.removeCallbacks(hideOverlayRunnable);
+                }
+                return false;
+            });
+        }
         recordingsRecyclerView = findViewById(R.id.recordingsRecyclerView);
+        timeshiftSeekBar = findViewById(R.id.timeshiftSeekBar);
 
         if (versionBadgeText != null) {
             versionBadgeText.setText("v" + BuildConfig.VERSION_NAME);
@@ -425,6 +454,9 @@ public class MainActivity extends FragmentActivity {
         }
         if (!touchDeviceMode) {
             touchControlsBar.setVisibility(View.GONE);
+            if (timeshiftBarContainer != null) {
+                timeshiftBarContainer.setVisibility(View.GONE);
+            }
             if (touchPrevFilterButton != null) {
                 touchPrevFilterButton.setVisibility(View.GONE);
             }
@@ -434,6 +466,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         touchControlsBar.setVisibility(View.VISIBLE);
+        updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
         if (touchPrevFilterButton != null) {
             touchPrevFilterButton.setVisibility(View.VISIBLE);
@@ -447,6 +480,49 @@ public class MainActivity extends FragmentActivity {
             touchNextFilterButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
                 cycleFilter(1);
+            });
+        }
+        if (filterText != null) {
+            filterText.setClickable(true);
+            filterText.setFocusable(true);
+            filterText.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                cycleFilter(1);
+            });
+            filterText.setOnLongClickListener(v -> {
+                showTouchControlsTemporarily();
+                cycleFilter(-1);
+                return true;
+            });
+        }
+        if (touchSearchButton != null) {
+            touchSearchButton.setVisibility(View.VISIBLE);
+            touchSearchButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                focusOverlaySearchInput();
+            });
+        }
+        if (overlaySearchInput != null) {
+            overlaySearchInput.setVisibility(View.VISIBLE);
+            overlaySearchInput.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                }
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    applyOverlaySearchQuery(s == null ? "" : s.toString());
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {
+                }
+            });
+            overlaySearchInput.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) {
+                    showTouchControlsTemporarily();
+                    uiHandler.removeCallbacks(hideOverlayRunnable);
+                }
             });
         }
 
@@ -464,6 +540,12 @@ public class MainActivity extends FragmentActivity {
             touchGuideButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
                 openTimelineGuideAroundSelection();
+            });
+        }
+        if (touchPreviousButton != null) {
+            touchPreviousButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                tunePreviousChannel();
             });
         }
         if (touchInfoButton != null) {
@@ -505,6 +587,95 @@ public class MainActivity extends FragmentActivity {
         if (playbackGestureLayer != null) {
             playbackGestureLayer.setOnTouchListener((v, event) -> handlePlayerSurfaceTouch(event));
         }
+        if (timeshiftLiveButton != null) {
+            timeshiftLiveButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                if (playerController == null || !playerController.resumeTimeshiftLive()) {
+                    showStatus(getString(R.string.timeshift_status_unavailable));
+                }
+                updateTimeshiftBar();
+            });
+        }
+        if (timeshiftSeekBar != null) {
+            timeshiftSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    if (!fromUser || playerController == null) {
+                        return;
+                    }
+                    PlayerController.TimeshiftState state = playerController.getTimeshiftState();
+                    if (state == null || timeshiftStatusText == null) {
+                        return;
+                    }
+                    long range = Math.max(1L, state.endMs - state.startMs);
+                    long target = state.startMs + Math.round((progress / 1000f) * range);
+                    timeshiftStatusText.setText(formatTimeshiftPreviewLabel(state, target));
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+                    timeshiftSeekUserDragging = true;
+                    showTouchControlsTemporarily();
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                    if (playerController != null) {
+                        PlayerController.TimeshiftState state = playerController.getTimeshiftState();
+                        if (state != null) {
+                            long range = Math.max(1L, state.endMs - state.startMs);
+                            long target = state.startMs + Math.round((seekBar.getProgress() / 1000f) * range);
+                            playerController.seekTimeshiftTo(target);
+                        }
+                    }
+                    timeshiftSeekUserDragging = false;
+                    updateTimeshiftBar();
+                    scheduleTouchControlsAutoHide();
+                }
+            });
+        }
+    }
+
+    private void updateTimeshiftBar() {
+        if (!touchDeviceMode || timeshiftBarContainer == null || timeshiftSeekBar == null || timeshiftStatusText == null || playerController == null) {
+            return;
+        }
+        if (timeshiftLiveButton != null) {
+            timeshiftLiveButton.setVisibility(View.GONE);
+        }
+        if (touchControlsBar == null || touchControlsBar.getVisibility() != View.VISIBLE || isOverlayVisible() || isRecordingsPanelVisible()) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+            return;
+        }
+        PlayerController.TimeshiftState state = playerController.getTimeshiftState();
+        if (state == null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+            return;
+        }
+        timeshiftBarContainer.setVisibility(View.VISIBLE);
+        if (timeshiftLiveButton != null) {
+            timeshiftLiveButton.setVisibility(View.VISIBLE);
+        }
+        if (!timeshiftSeekUserDragging) {
+            long range = Math.max(1L, state.endMs - state.startMs);
+            int progress = (int) Math.max(0L, Math.min(1000L, Math.round(((state.currentMs - state.startMs) * 1000f) / range)));
+            timeshiftSeekBar.setProgress(progress);
+            timeshiftStatusText.setText(state.label);
+        }
+    }
+
+    private String formatTimeshiftPreviewLabel(PlayerController.TimeshiftState state, long targetMs) {
+        if (state == null) {
+            return getString(R.string.timeshift_status_unavailable);
+        }
+        long offsetMs = Math.max(0L, state.endMs - targetMs);
+        if (offsetMs < 1500L) {
+            return getString(R.string.timeshift_status_live);
+        }
+        long totalSeconds = Math.max(0L, Math.round(offsetMs / 1000f));
+        long mins = totalSeconds / 60L;
+        long secs = totalSeconds % 60L;
+        return getString(R.string.timeshift_status_delayed, mins, secs);
     }
 
     private void showTouchControlsTemporarily() {
@@ -512,11 +683,13 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         touchControlsBar.setVisibility(View.VISIBLE);
+        updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
     }
 
     private void scheduleTouchControlsAutoHide() {
         uiHandler.removeCallbacks(hideTouchControlsRunnable);
+        updateTimeshiftBar();
         if (touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
             uiHandler.postDelayed(hideTouchControlsRunnable, TOUCH_CONTROLS_HIDE_MS);
         }
@@ -529,7 +702,13 @@ public class MainActivity extends FragmentActivity {
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 showTouchControlsTemporarily();
-                if (isOverlayVisible() || isRecordingsPanelVisible() || (quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE)) {
+                if (isOverlayVisible()) {
+                    hideOverlay();
+                    touchGestureDownX = Float.NaN;
+                    touchGestureDownY = Float.NaN;
+                    return true;
+                }
+                if (isRecordingsPanelVisible() || (quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE)) {
                     touchGestureDownX = Float.NaN;
                     touchGestureDownY = Float.NaN;
                     return false;
@@ -1284,10 +1463,12 @@ public class MainActivity extends FragmentActivity {
         clearQuickSearchOverlay();
         hideRecordingsPanel();
         updateOverlayPanel();
-        channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, OVERLAY_HIDE_MS);
+        channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, touchDeviceMode ? 0L : OVERLAY_HIDE_MS);
     }
 
     private void hideOverlay() {
+        uiHandler.removeCallbacks(hideOverlayRunnable);
+        clearOverlaySearchQuery();
         channelOverlayCoordinator.hideOverlay(channelOverlay);
     }
 
@@ -1893,6 +2074,59 @@ public class MainActivity extends FragmentActivity {
                 .show();
     }
 
+    private void focusOverlaySearchInput() {
+        if (overlaySearchInput == null) {
+            return;
+        }
+        overlaySearchInput.setVisibility(View.VISIBLE);
+        overlaySearchInput.requestFocus();
+        overlaySearchInput.setSelection(overlaySearchInput.getText() == null ? 0 : overlaySearchInput.getText().length());
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.showSoftInput(overlaySearchInput, InputMethodManager.SHOW_IMPLICIT);
+        }
+    }
+
+    private void hideOverlaySearchKeyboard() {
+        if (overlaySearchInput == null) {
+            return;
+        }
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(overlaySearchInput.getWindowToken(), 0);
+        }
+        overlaySearchInput.clearFocus();
+    }
+
+    private void clearOverlaySearchQuery() {
+        if (overlaySearchInput == null) {
+            syncOverlayCoordinator();
+            channelOverlayCoordinator.setSearchQuery("");
+            return;
+        }
+        if (overlaySearchInput.getText() != null && overlaySearchInput.getText().length() > 0) {
+            overlaySearchInput.setText("");
+        } else {
+            syncOverlayCoordinator();
+            channelOverlayCoordinator.setSearchQuery("");
+        }
+        hideOverlaySearchKeyboard();
+    }
+
+    private void applyOverlaySearchQuery(String query) {
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.setSearchQuery(query);
+        String currentId = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : lastChannelId;
+        String selectedId = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) ? channels.get(selectedOverlayIndex).id : currentId;
+        channelOverlayCoordinator.refreshVisibleChannels(currentId, selectedId);
+        syncOverlayStateFromCoordinator();
+        channelAdapter.notifyDataSetChanged();
+        updateFilterText();
+        if (!channels.isEmpty() && selectedOverlayIndex >= 0) {
+            channelList.scrollToPosition(selectedOverlayIndex);
+        }
+    }
+
     private void syncOverlayCoordinator() {
         channelOverlayCoordinator.syncState(currentIndex, selectedOverlayIndex, favoritesOnly, selectedFilterKey);
     }
@@ -2373,6 +2607,26 @@ public class MainActivity extends FragmentActivity {
                 .show();
     }
 
+    private void tunePreviousChannel() {
+        List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        if (items.isEmpty()) {
+            showStatus(getString(R.string.touch_previous_unavailable));
+            return;
+        }
+        String currentId = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : lastChannelId;
+        for (RecentChannelsStore.RecentChannelItem item : items) {
+            if (item == null || item.channelId == null || item.channelId.trim().isEmpty()) {
+                continue;
+            }
+            if (currentId != null && currentId.equals(item.channelId)) {
+                continue;
+            }
+            tuneRecentChannel(item.channelId);
+            return;
+        }
+        showStatus(getString(R.string.touch_previous_unavailable));
+    }
+
     private void tuneRecentChannel(String channelId) {
         int index = findChannelIndexById(channelId);
         if (index < 0) {
@@ -2666,7 +2920,16 @@ public class MainActivity extends FragmentActivity {
             return false;
         }
         String normalized = logoUrl.trim().toLowerCase(Locale.US);
-        return normalized.contains(".svg") || normalized.contains("format=svg");
+        if (normalized.contains("format=svg")) {
+            return true;
+        }
+        if (normalized.contains(".svg.png") || normalized.contains(".svg.jpg") || normalized.contains(".svg.jpeg") || normalized.contains(".svg.webp")) {
+            return false;
+        }
+        return normalized.endsWith(".svg")
+                || normalized.contains(".svg?")
+                || normalized.contains(".svg&")
+                || normalized.contains("/svg/");
     }
 
     private void bindSvgChannelLogo(ImageView imageView, String logoUrl, Drawable fallback, int widthDp, int heightDp) {

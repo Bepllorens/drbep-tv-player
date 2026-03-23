@@ -103,6 +103,20 @@ final class PlayerController {
         }
     }
 
+    static final class TimeshiftState {
+        final long startMs;
+        final long endMs;
+        final long currentMs;
+        final String label;
+
+        TimeshiftState(long startMs, long endMs, long currentMs, String label) {
+            this.startMs = startMs;
+            this.endMs = endMs;
+            this.currentMs = currentMs;
+            this.label = label;
+        }
+    }
+
     private static final class PlaybackDecision {
         final String targetUrl;
         final String mimeType;
@@ -401,6 +415,27 @@ final class PlayerController {
 
     void showTimeshiftStatus() {
         host.showStatus(getTimeshiftStatusLabel());
+    }
+
+    TimeshiftState getTimeshiftState() {
+        TimeshiftWindow window = getTimeshiftWindow();
+        if (window == null) {
+            return null;
+        }
+        return new TimeshiftState(window.startMs, window.endMs, window.currentMs, getTimeshiftStatusLabel());
+    }
+
+    boolean seekTimeshiftTo(long targetPositionMs) {
+        TimeshiftWindow window = getTimeshiftWindow();
+        if (window == null || player == null) {
+            host.showStatus(context.getString(R.string.timeshift_status_unavailable));
+            return false;
+        }
+        long target = Math.max(window.startMs, Math.min(window.endMs, targetPositionMs));
+        player.seekTo(target);
+        player.play();
+        host.showStatus(formatTimeshiftOffset(window.endMs - target));
+        return true;
     }
 
     private void playChannelInternal(PlaybackRequest request, boolean autoPlay, boolean useFallback, StreamInfo streamInfo) {

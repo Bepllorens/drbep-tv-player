@@ -5,6 +5,8 @@
     <string name="filter_navigation_hint">Usa IZQ/DER para cambiar el filtro</string>
     <string name="filter_prev_button">‹</string>
     <string name="filter_next_button">›</string>
+    <string name="filter_search_button">Buscar</string>
+    <string name="overlay_search_hint">Buscar en la lista</string>
     <string name="channel_logo_content_description">Logo del canal</string>
     <string name="dialog_cancel">Cancelar</string>
     <string name="dialog_close">Cerrar</string>
@@ -108,6 +110,7 @@
     <string name="timeshift_status_unavailable">Timeshift no disponible en este stream</string>
     <string name="timeshift_status_live">Timeshift: Live</string>
     <string name="timeshift_status_delayed">Timeshift: -%1$d:%2$02d</string>
+    <string name="timeshift_live_button">Live</string>
     <string name="status_hdr_detected">HDR</string>
     <string name="status_hdr10_detected">HDR10</string>
     <string name="status_hlg_detected">HLG</string>
@@ -120,11 +123,13 @@
     <string name="overlay_tools_hint">MENU: acciones canal  ·  doble MENU: timeline</string>
     <string name="touch_button_list">Lista</string>
     <string name="touch_button_guide">Guia</string>
+    <string name="touch_button_previous">Anterior</string>
     <string name="touch_button_tools">Tools</string>
     <string name="touch_button_info">Info</string>
     <string name="touch_button_rewind">-30s</string>
     <string name="touch_button_play_pause">Play/Pause</string>
     <string name="touch_button_forward">+30s</string>
+    <string name="touch_previous_unavailable">No hay un canal anterior reciente</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="tools_menu_title">Herramientas v1.3.2</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
@@ -139,6 +144,10 @@
     <string name="quick_search_title">Busqueda rapida</string>
     <string name="quick_search_hint">Escribe con teclado/mando  ·  OK sintoniza  ·  ARRIBA/ABAJO cambia resultado</string>
     <string name="quick_search_no_results">Sin coincidencias</string>
+    <string name="search_channel_dialog_title">Buscar canal</string>
+    <string name="search_channel_dialog_hint">Escribe el nombre del canal</string>
+    <string name="search_channel_dialog_action">Buscar</string>
+    <string name="search_channel_results_title">Resultados para %1$s</string>
     <string name="quick_search_result">%1$s
 %2$s</string>
     <string name="quick_search_result_index">Resultado %1$d de %2$d</string>

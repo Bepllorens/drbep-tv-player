@@ -20,6 +20,7 @@ final class ChannelOverlayCoordinator {
     private int selectedOverlayIndex;
     private boolean favoritesOnly;
     private String selectedFilterKey;
+    private String searchQuery;
 
     ChannelOverlayCoordinator(List<ChannelItem> channels, List<ChannelItem> allChannels, List<ChannelFilter> filters, Set<String> favoriteChannelIds, FavoriteOrderStore favoriteOrderStore) {
         this.channels = channels;
@@ -31,6 +32,7 @@ final class ChannelOverlayCoordinator {
         this.selectedOverlayIndex = 0;
         this.favoritesOnly = false;
         this.selectedFilterKey = "all";
+        this.searchQuery = "";
     }
 
     void syncState(int currentIndex, int selectedOverlayIndex, boolean favoritesOnly, String selectedFilterKey) {
@@ -62,6 +64,14 @@ final class ChannelOverlayCoordinator {
 
     void setFavoritesOnly(boolean favoritesOnly) {
         this.favoritesOnly = favoritesOnly;
+    }
+
+    void setSearchQuery(String searchQuery) {
+        this.searchQuery = searchQuery == null ? "" : searchQuery.trim();
+    }
+
+    String getSearchQuery() {
+        return searchQuery;
     }
 
     void applyLoadedChannels(CatalogLoadResult result, String lastChannelId) {
@@ -175,7 +185,9 @@ final class ChannelOverlayCoordinator {
         }
         overlayView.setVisibility(View.VISIBLE);
         uiHandler.removeCallbacks(hideOverlayRunnable);
-        uiHandler.postDelayed(hideOverlayRunnable, overlayHideMs);
+        if (overlayHideMs > 0L) {
+            uiHandler.postDelayed(hideOverlayRunnable, overlayHideMs);
+        }
     }
 
     void hideOverlay(View overlayView) {
@@ -242,6 +254,9 @@ final class ChannelOverlayCoordinator {
             if (!channelMatchesCurrentFilter(item)) {
                 continue;
             }
+            if (!channelMatchesSearch(item)) {
+                continue;
+            }
             if (!favoritesOnly || item.favorite) {
                 channels.add(item);
             }
@@ -280,6 +295,27 @@ final class ChannelOverlayCoordinator {
             return item.isAdultVod;
         }
         return true;
+    }
+
+    private boolean channelMatchesSearch(ChannelItem item) {
+        if (item == null) {
+            return false;
+        }
+        String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase();
+        if (query.isEmpty()) {
+            return true;
+        }
+        String name = item.name == null ? "" : item.name.toLowerCase();
+        String group = item.group == null ? "" : item.group.toLowerCase();
+        if (name.contains(query) || group.contains(query)) {
+            return true;
+        }
+        for (String label : item.customGroups) {
+            if (label != null && label.toLowerCase().contains(query)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ChannelFilter getSelectedFilter() {

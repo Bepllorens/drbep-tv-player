@@ -18,6 +18,60 @@
         android:layout_height="match_parent"
         android:background="@android:color/transparent" />
 
+    <LinearLayout
+        android:id="@+id/timeshiftBarContainer"
+        android:layout_width="620dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="78dp"
+        android:background="#C8121820"
+        android:orientation="vertical"
+        android:paddingLeft="14dp"
+        android:paddingTop="10dp"
+        android:paddingRight="14dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/timeshiftStatusText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#DFF0FF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/timeshiftLiveButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/channel_overlay_chip_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:paddingLeft="10dp"
+                android:paddingTop="4dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="4dp"
+                android:text="@string/timeshift_live_button"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <SeekBar
+            android:id="@+id/timeshiftSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:max="1000"
+            android:progress="1000" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
@@ -223,48 +277,84 @@
 
                 <TextView
                     android:id="@+id/touchPrevFilterButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="52dp"
+                    android:layout_height="44dp"
                     android:background="@drawable/channel_overlay_chip_bg"
                     android:clickable="true"
                     android:focusable="true"
-                    android:paddingLeft="8dp"
-                    android:paddingTop="4dp"
-                    android:paddingRight="8dp"
-                    android:paddingBottom="4dp"
+                    android:gravity="center"
                     android:text="@string/filter_prev_button"
                     android:textColor="#FFFFFF"
+                    android:textSize="20sp"
                     android:textStyle="bold"
                     android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/filterText"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginLeft="6dp"
-                    android:layout_marginRight="6dp"
+                    android:layout_height="44dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_marginRight="8dp"
                     android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
                     android:text="@string/filter_all_label"
                     android:textColor="#F3FAFF"
                     android:textSize="@dimen/filter_text_size"
                     android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/touchNextFilterButton"
+                    android:id="@+id/touchSearchButton"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginRight="8dp"
                     android:background="@drawable/channel_overlay_chip_bg"
                     android:clickable="true"
                     android:focusable="true"
-                    android:paddingLeft="8dp"
-                    android:paddingTop="4dp"
-                    android:paddingRight="8dp"
-                    android:paddingBottom="4dp"
-                    android:text="@string/filter_next_button"
+                    android:gravity="center"
+                    android:minWidth="68dp"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
+                    android:text="@string/filter_search_button"
                     android:textColor="#FFFFFF"
                     android:textStyle="bold"
                     android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/touchNextFilterButton"
+                    android:layout_width="52dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="@string/filter_next_button"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
             </LinearLayout>
+
+            <EditText
+                android:id="@+id/overlaySearchInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/channel_overlay_chip_bg"
+                android:hint="@string/overlay_search_hint"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:paddingLeft="10dp"
+                android:paddingTop="8dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="8dp"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#8FB5D4"
+                android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
@@ -472,6 +562,22 @@
             android:paddingRight="@dimen/touch_button_padding_horizontal"
             android:paddingBottom="@dimen/touch_button_padding_vertical"
             android:text="@string/touch_button_guide"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/touchPreviousButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:background="@drawable/channel_overlay_chip_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingLeft="@dimen/touch_button_padding_horizontal"
+            android:paddingTop="@dimen/touch_button_padding_vertical"
+            android:paddingRight="@dimen/touch_button_padding_horizontal"
+            android:paddingBottom="@dimen/touch_button_padding_vertical"
+            android:text="@string/touch_button_previous"
             android:textColor="#FFFFFF"
             android:textStyle="bold" />
 

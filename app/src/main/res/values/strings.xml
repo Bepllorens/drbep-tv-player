@@ -205,6 +205,7 @@
     <string name="diagnostics_playback_mode">Modo canal: %1$s</string>
     <string name="channel_badge_live">TV</string>
     <string name="channel_badge_vod">VOD</string>
+    <string name="channel_badge_vod_adult">ADULT</string>
     <string name="menu_tune_channel">Sintonizar</string>
     <string name="menu_remove_favorite">Quitar de favoritos</string>
     <string name="menu_add_favorite">Añadir a favoritos</string>

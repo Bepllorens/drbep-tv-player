@@ -1735,6 +1735,15 @@ public class MainActivity extends FragmentActivity {
     private void showOverlay() {
         clearQuickSearchOverlay();
         hideRecordingsPanel();
+        if (touchDeviceMode) {
+            uiHandler.removeCallbacks(hideTouchControlsRunnable);
+            if (touchControlsBar != null) {
+                touchControlsBar.setVisibility(View.GONE);
+            }
+            if (timeshiftBarContainer != null) {
+                timeshiftBarContainer.setVisibility(View.GONE);
+            }
+        }
         updateOverlayPanel();
         updateOverlaySearchState();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, touchDeviceMode ? 0L : OVERLAY_HIDE_MS);
@@ -3474,8 +3483,6 @@ public class MainActivity extends FragmentActivity {
             ChannelItem ch = channels.get(position);
             String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
             holder.name.setText(buildHighlightedText(ch.name, query, ch.favorite));
-            holder.badge.setText(getString(ch.isVod ? R.string.channel_badge_vod : R.string.channel_badge_live));
-            holder.badge.setBackgroundTintList(ColorStateList.valueOf(ch.isVod ? 0xAA7A4A19 : 0xAA215D8A));
             if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
                 holder.meta.setText(buildHighlightedText(ch.nowProgram, query, false));
             } else if (ch.group != null && !ch.group.trim().isEmpty()) {
@@ -3518,7 +3525,6 @@ public class MainActivity extends FragmentActivity {
         class ChannelVH extends RecyclerView.ViewHolder {
             View card;
             TextView name;
-            TextView badge;
             TextView meta;
             TextView favoriteToggle;
             ImageView logo;
@@ -3527,7 +3533,6 @@ public class MainActivity extends FragmentActivity {
                 super(itemView);
                 card = itemView.findViewById(R.id.channelCard);
                 name = itemView.findViewById(R.id.channelName);
-                badge = itemView.findViewById(R.id.channelBadge);
                 meta = itemView.findViewById(R.id.channelMeta);
                 favoriteToggle = itemView.findViewById(R.id.channelFavoriteToggle);
                 logo = itemView.findViewById(R.id.channelLogo);

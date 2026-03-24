@@ -103,6 +103,10 @@ public class MainActivity extends FragmentActivity {
     private TextView touchSearchButton;
     private TextView touchRecentButton;
     private TextView touchFavoritesButton;
+    private TextView quickTvButton;
+    private TextView quickVodButton;
+    private TextView quickAdultButton;
+    private TextView quickGrabButton;
     private EditText overlaySearchInput;
     private TextView overlayCurrentChannelText;
     private TextView overlayCurrentMetaText;
@@ -254,6 +258,10 @@ public class MainActivity extends FragmentActivity {
         touchSearchButton = findViewById(R.id.touchSearchButton);
         touchRecentButton = findViewById(R.id.touchRecentButton);
         touchFavoritesButton = findViewById(R.id.touchFavoritesButton);
+        quickTvButton = findViewById(R.id.quickTvButton);
+        quickVodButton = findViewById(R.id.quickVodButton);
+        quickAdultButton = findViewById(R.id.quickAdultButton);
+        quickGrabButton = findViewById(R.id.quickGrabButton);
         overlaySearchInput = findViewById(R.id.overlaySearchInput);
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
@@ -578,6 +586,21 @@ public class MainActivity extends FragmentActivity {
                 showTouchControlsTemporarily();
                 toggleFavoritesOnlyMode();
                 return true;
+            });
+        }
+        if (quickTvButton != null) {
+            quickTvButton.setOnClickListener(v -> applyQuickOverlayTarget("tv"));
+        }
+        if (quickVodButton != null) {
+            quickVodButton.setOnClickListener(v -> applyQuickOverlayTarget("vod"));
+        }
+        if (quickAdultButton != null) {
+            quickAdultButton.setOnClickListener(v -> applyQuickOverlayTarget("vod-adult"));
+        }
+        if (quickGrabButton != null) {
+            quickGrabButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                openRecordingsBrowser();
             });
         }
         if (overlaySearchInput != null) {
@@ -2528,6 +2551,85 @@ public class MainActivity extends FragmentActivity {
                     favoritesOnly ? R.string.overlay_favorites_button_on_count : R.string.overlay_favorites_button_off_count,
                     favoriteCount));
         }
+        updateQuickAccessButtons();
+    }
+
+    private void applyQuickOverlayTarget(String targetKey) {
+        showTouchControlsTemporarily();
+        if ("grab".equals(targetKey)) {
+            openRecordingsBrowser();
+            return;
+        }
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.setSearchQuery("");
+        channelOverlayCoordinator.setFavoritesOnly(false);
+        String filterKey = targetKey;
+        if ("tv".equals(targetKey)) {
+            filterKey = findPreferredTvFilterKey();
+        }
+        channelOverlayCoordinator.setSelectedFilterKey(filterKey);
+        String currentId = lastChannelId == null ? "" : lastChannelId;
+        channelOverlayCoordinator.refreshVisibleChannels(currentId, currentId);
+        syncOverlayStateFromCoordinator();
+        clearOverlaySearchQuery();
+        channelAdapter.notifyDataSetChanged();
+        updateFilterText();
+        updateOverlaySearchState();
+        showOverlay();
+    }
+
+    private String findPreferredTvFilterKey() {
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type == 1) {
+                return filter.key;
+            }
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type == 2) {
+                return filter.key;
+            }
+        }
+        return "all";
+    }
+
+    private int countItemsForQuickTarget(String targetKey) {
+        if ("grab".equals(targetKey)) {
+            return currentRecordingsResult == null || currentRecordingsResult.items == null ? 0 : currentRecordingsResult.items.size();
+        }
+        int total = 0;
+        for (ChannelItem item : allChannels) {
+            if (item == null) {
+                continue;
+            }
+            if ("vod".equals(targetKey) && item.isVod && !item.isAdultVod) {
+                total++;
+            } else if ("vod-adult".equals(targetKey) && item.isAdultVod) {
+                total++;
+            } else if ("tv".equals(targetKey) && !item.isVod) {
+                total++;
+            }
+        }
+        return total;
+    }
+
+    private void styleQuickAccessButton(TextView view, boolean active, String label) {
+        if (view == null) {
+            return;
+        }
+        view.setText(label);
+        view.setBackgroundTintList(ColorStateList.valueOf(active ? 0xFF2A7C86 : 0xFF2A3440));
+        view.setTextColor(0xFFFFFFFF);
+    }
+
+    private void updateQuickAccessButtons() {
+        String activeTvKey = findPreferredTvFilterKey();
+        boolean tvActive = !favoritesOnly && (selectedFilterKey == null || selectedFilterKey.equals(activeTvKey) || ("all".equals(selectedFilterKey) && "all".equals(activeTvKey)));
+        boolean vodActive = !favoritesOnly && "vod".equals(selectedFilterKey);
+        boolean adultActive = !favoritesOnly && "vod-adult".equals(selectedFilterKey);
+        styleQuickAccessButton(quickTvButton, tvActive, getString(R.string.overlay_quick_tv, countItemsForQuickTarget("tv")));
+        styleQuickAccessButton(quickVodButton, vodActive, getString(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")));
+        styleQuickAccessButton(quickAdultButton, adultActive, getString(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")));
+        styleQuickAccessButton(quickGrabButton, isRecordingsPanelVisible(), getString(R.string.overlay_quick_grab));
     }
 
     private CharSequence buildHighlightedText(String value, String query, boolean favorite) {

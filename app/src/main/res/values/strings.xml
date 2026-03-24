@@ -8,6 +8,10 @@
     <string name="filter_search_button">Buscar</string>
     <string name="overlay_search_hint">Buscar en la lista</string>
     <string name="overlay_recent_button">Recientes</string>
+    <string name="overlay_quick_tv">TV (%1$d)</string>
+    <string name="overlay_quick_vod">VOD (%1$d)</string>
+    <string name="overlay_quick_adult">Adult (%1$d)</string>
+    <string name="overlay_quick_grab">Grab</string>
     <string name="overlay_recent_button_count">Recientes (%1$d)</string>
     <string name="overlay_favorites_button_on">Favoritos ON</string>
     <string name="overlay_favorites_button_off">Favoritos</string>

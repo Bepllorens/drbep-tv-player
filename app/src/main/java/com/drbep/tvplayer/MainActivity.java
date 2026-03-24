@@ -118,6 +118,17 @@ public class MainActivity extends FragmentActivity {
     private TextView touchHomeRecentButton;
     private TextView touchHomeFavoritesButton;
     private TextView touchHomeListButton;
+    private TextView touchHomeMultiButton;
+    private View multiViewContainer;
+    private TextView multiViewCloseButton;
+    private final PlayerView[] multiPlayerViews = new PlayerView[4];
+    private final View[] multiTiles = new View[4];
+    private final TextView[] multiLabels = new TextView[4];
+    private final List<PlayerController> multiPlayerControllers = new ArrayList<>();
+    private final List<ChannelItem> multiViewChannels = new ArrayList<>();
+    private final String[] multiViewChannelIds = new String[4];
+    private int multiViewActiveIndex = 0;
+    private boolean mainWasPlayingBeforeMultiView;
     private EditText overlaySearchInput;
     private TextView overlayCurrentChannelText;
     private TextView overlayCurrentMetaText;
@@ -289,6 +300,21 @@ public class MainActivity extends FragmentActivity {
         touchHomeRecentButton = findViewById(R.id.touchHomeRecentButton);
         touchHomeFavoritesButton = findViewById(R.id.touchHomeFavoritesButton);
         touchHomeListButton = findViewById(R.id.touchHomeListButton);
+        touchHomeMultiButton = findViewById(R.id.touchHomeMultiButton);
+        multiViewContainer = findViewById(R.id.multiViewContainer);
+        multiViewCloseButton = findViewById(R.id.multiViewCloseButton);
+        multiPlayerViews[0] = findViewById(R.id.multiPlayerView1);
+        multiPlayerViews[1] = findViewById(R.id.multiPlayerView2);
+        multiPlayerViews[2] = findViewById(R.id.multiPlayerView3);
+        multiPlayerViews[3] = findViewById(R.id.multiPlayerView4);
+        multiTiles[0] = findViewById(R.id.multiTile1);
+        multiTiles[1] = findViewById(R.id.multiTile2);
+        multiTiles[2] = findViewById(R.id.multiTile3);
+        multiTiles[3] = findViewById(R.id.multiTile4);
+        multiLabels[0] = findViewById(R.id.multiLabel1);
+        multiLabels[1] = findViewById(R.id.multiLabel2);
+        multiLabels[2] = findViewById(R.id.multiLabel3);
+        multiLabels[3] = findViewById(R.id.multiLabel4);
         overlaySearchInput = findViewById(R.id.overlaySearchInput);
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
@@ -669,6 +695,22 @@ public class MainActivity extends FragmentActivity {
                 showOverlay();
             });
         }
+        if (touchHomeMultiButton != null) {
+            touchHomeMultiButton.setOnClickListener(v -> openMultiView());
+        }
+        if (multiViewCloseButton != null) {
+            multiViewCloseButton.setOnClickListener(v -> closeMultiView());
+        }
+        for (int i = 0; i < multiTiles.length; i++) {
+            final int slot = i;
+            if (multiTiles[i] != null) {
+                multiTiles[i].setOnClickListener(v -> focusMultiViewSlot(slot));
+                multiTiles[i].setOnLongClickListener(v -> {
+                    showMultiViewChannelPicker(slot);
+                    return true;
+                });
+            }
+        }
         if (overlaySearchInput != null) {
             overlaySearchInput.setVisibility(View.VISIBLE);
             overlaySearchInput.addTextChangedListener(new TextWatcher() {
@@ -906,6 +948,14 @@ public class MainActivity extends FragmentActivity {
         }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                if (isMultiViewVisible()) {
+                    closeMultiView();
+                    touchGestureDownX = Float.NaN;
+                    touchGestureDownY = Float.NaN;
+                    touchGestureLastY = Float.NaN;
+                    touchGestureVerticalHandled = false;
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     hideOverlay();
                     touchGestureDownX = Float.NaN;
@@ -1938,9 +1988,14 @@ public class MainActivity extends FragmentActivity {
         return recordingsPanel != null && recordingsPanel.getVisibility() == View.VISIBLE;
     }
 
+    private boolean isMultiViewVisible() {
+        return multiViewContainer != null && multiViewContainer.getVisibility() == View.VISIBLE;
+    }
+
     private void showOverlay() {
         clearQuickSearchOverlay();
         hideRecordingsPanel();
+        closeMultiView();
         if (touchDeviceMode) {
             uiHandler.removeCallbacks(hideTouchControlsRunnable);
             if (touchControlsBar != null) {
@@ -1987,6 +2042,7 @@ public class MainActivity extends FragmentActivity {
         }
         clearQuickSearchOverlay();
         hideOverlay();
+        closeMultiView();
         if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
         }
@@ -2797,7 +2853,7 @@ public class MainActivity extends FragmentActivity {
         if (touchHomeHub == null) {
             return;
         }
-        boolean visible = touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE && !isOverlayVisible() && !isRecordingsPanelVisible();
+        boolean visible = touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE && !isOverlayVisible() && !isRecordingsPanelVisible() && !isMultiViewVisible();
         touchHomeHub.setVisibility(visible ? View.VISIBLE : View.GONE);
         if (!visible) {
             return;
@@ -2810,13 +2866,14 @@ public class MainActivity extends FragmentActivity {
             int count = favoritesOnly ? buildFavoriteQuickChannels().size() : channels.size();
             touchHomeSubtitleText.setText(getString(R.string.touch_home_subtitle, label, count));
         }
-        styleHomeHubButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
-        styleHomeHubButton(touchHomeVodButton, !favoritesOnly && "vod".equals(selectedFilterKey), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
-        styleHomeHubButton(touchHomeAdultButton, !favoritesOnly && "vod-adult".equals(selectedFilterKey), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
-        styleHomeHubButton(touchHomeGrabButton, false, getString(R.string.touch_home_button_grab));
-        styleHomeHubButton(touchHomeRecentButton, false, getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()));
-        styleHomeHubButton(touchHomeFavoritesButton, favoritesOnly, getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
-        styleHomeHubButton(touchHomeListButton, false, getString(R.string.touch_home_button_list));
+        styleHomeHubPrimaryButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
+        styleHomeHubPrimaryButton(touchHomeVodButton, !favoritesOnly && "vod".equals(selectedFilterKey), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
+        styleHomeHubPrimaryButton(touchHomeAdultButton, !favoritesOnly && "vod-adult".equals(selectedFilterKey), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+        styleHomeHubPrimaryButton(touchHomeGrabButton, false, getString(R.string.touch_home_button_grab));
+        styleHomeHubSecondaryButton(touchHomeRecentButton, false, getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()));
+        styleHomeHubSecondaryButton(touchHomeFavoritesButton, favoritesOnly, getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
+        styleHomeHubSecondaryButton(touchHomeListButton, false, getString(R.string.touch_home_button_list));
+        styleHomeHubSecondaryButton(touchHomeMultiButton, isMultiViewVisible(), getString(R.string.touch_home_button_multi));
     }
 
     private boolean isTvHubActive() {
@@ -2839,13 +2896,274 @@ public class MainActivity extends FragmentActivity {
         return getString(R.string.touch_home_filter_all);
     }
 
-    private void styleHomeHubButton(TextView view, boolean active, String label) {
+    private void styleHomeHubPrimaryButton(TextView view, boolean active, String label) {
+        styleHomeHubButton(view, active, label, 0xFF244252, 0xFF1F90A2);
+    }
+
+    private void styleHomeHubSecondaryButton(TextView view, boolean active, String label) {
+        styleHomeHubButton(view, active, label, 0xFF4C3427, 0xFFB46B29);
+    }
+
+    private void styleHomeHubButton(TextView view, boolean active, String label, int inactiveColor, int activeColor) {
         if (view == null) {
             return;
         }
         view.setText(label);
-        view.setBackgroundTintList(ColorStateList.valueOf(active ? 0xFF2A7C86 : 0xFF263341));
+        view.setBackgroundTintList(ColorStateList.valueOf(active ? activeColor : inactiveColor));
         view.setTextColor(0xFFFFFFFF);
+    }
+
+    private void openMultiView() {
+        if (!touchDeviceMode) {
+            return;
+        }
+        List<ChannelItem> selected = buildMultiViewChannels();
+        if (selected.size() < 2) {
+            showStatus(getString(R.string.status_multiview_not_enough_channels));
+            return;
+        }
+        hideOverlay();
+        hideRecordingsPanel();
+        clearQuickSearchOverlay();
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
+        }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+        }
+        mainWasPlayingBeforeMultiView = playerController != null && playerController.isPlaying();
+        if (playerController != null) {
+            playerController.setMuted(true);
+            playerController.setPlayWhenReady(false);
+        }
+        ensureMultiViewControllers();
+        multiViewChannels.clear();
+        multiViewChannels.addAll(selected);
+        for (int i = 0; i < multiViewChannelIds.length; i++) {
+            multiViewChannelIds[i] = i < selected.size() ? selected.get(i).id : null;
+        }
+        multiViewActiveIndex = 0;
+        for (int i = 0; i < multiTiles.length; i++) {
+            if (multiTiles[i] == null || multiLabels[i] == null) {
+                continue;
+            }
+            if (i < selected.size()) {
+                ChannelItem item = selected.get(i);
+                multiTiles[i].setVisibility(View.VISIBLE);
+                multiLabels[i].setText(item.name);
+                PlayerController controller = multiPlayerControllers.get(i);
+                controller.setMuted(i != multiViewActiveIndex);
+                PlayerController.PlaybackRequest request = toPlaybackRequest(item);
+                PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(item.id);
+                controller.playChannel(request, true, cachedStreamInfo);
+                if (request != null && !request.directPlayback) {
+                    controller.resolveStreamInfoAndReplayIfNeeded(request, true, streamInfoByChannelId);
+                }
+            } else {
+                multiTiles[i].setVisibility(View.INVISIBLE);
+                multiLabels[i].setText("");
+            }
+        }
+        updateMultiViewFocus();
+        if (multiViewContainer != null) {
+            multiViewContainer.setVisibility(View.VISIBLE);
+        }
+        showStatus(getString(R.string.multiview_title));
+    }
+
+    private void closeMultiView() {
+        if (multiViewContainer != null && multiViewContainer.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        if (multiViewContainer != null) {
+            multiViewContainer.setVisibility(View.GONE);
+        }
+        releaseMultiViewControllers();
+        multiViewChannels.clear();
+        for (int i = 0; i < multiViewChannelIds.length; i++) {
+            multiViewChannelIds[i] = null;
+        }
+        if (playerController != null) {
+            playerController.setMuted(false);
+            playerController.setPlayWhenReady(mainWasPlayingBeforeMultiView);
+        }
+        mainWasPlayingBeforeMultiView = false;
+        updateTouchHomeHub();
+    }
+
+    private void ensureMultiViewControllers() {
+        if (!multiPlayerControllers.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < multiPlayerViews.length; i++) {
+            final int slot = i;
+            PlayerView mv = multiPlayerViews[i];
+            if (mv == null) {
+                continue;
+            }
+            PlayerController controller = new PlayerController(this, mv, baseUrl, ioExecutor, uiHandler, new PlayerController.Host() {
+                @Override
+                public void showStatus(String text) {
+                }
+
+                @Override
+                public void showError(String text) {
+                }
+
+                @Override
+                public void hideError() {
+                }
+
+                @Override
+                public boolean isChannelCurrent(String channelId) {
+                    return channelId != null && channelId.equals(multiViewChannelIds[slot]);
+                }
+
+                @Override
+                public void showHdrBadge(String label) {
+                }
+            });
+            controller.initialize();
+            multiPlayerControllers.add(controller);
+        }
+    }
+
+    private void releaseMultiViewControllers() {
+        for (PlayerController controller : multiPlayerControllers) {
+            if (controller != null) {
+                controller.release();
+            }
+        }
+        multiPlayerControllers.clear();
+    }
+
+    private List<ChannelItem> buildMultiViewChannels() {
+        List<ChannelItem> selected = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        if (currentIndex >= 0 && currentIndex < channels.size()) {
+            ChannelItem current = channels.get(currentIndex);
+            if (current != null && !current.isVod && current.id != null && added.add(current.id)) {
+                selected.add(current);
+            }
+        }
+        for (ChannelItem item : channels) {
+            if (selected.size() >= 4) {
+                break;
+            }
+            if (item == null || item.isVod || item.id == null || !added.add(item.id)) {
+                continue;
+            }
+            selected.add(item);
+        }
+        return selected;
+    }
+
+    private void showMultiViewChannelPicker(int slot) {
+        if (slot < 0 || slot >= multiViewChannels.size()) {
+            return;
+        }
+        List<ChannelItem> items = buildSelectableMultiViewChannels(slot);
+        if (items.isEmpty()) {
+            showStatus(getString(R.string.status_multiview_not_enough_channels));
+            return;
+        }
+        showQuickChannelListDialog(
+                getString(R.string.multiview_select_channel_title),
+                items,
+                getString(R.string.overlay_no_results),
+                item -> tuneMultiViewSlotChannel(slot, item)
+        );
+    }
+
+    private List<ChannelItem> buildSelectableMultiViewChannels(int slot) {
+        List<ChannelItem> items = new ArrayList<>();
+        Set<String> used = new HashSet<>();
+        for (int i = 0; i < multiViewChannels.size(); i++) {
+            if (i == slot) {
+                continue;
+            }
+            ChannelItem existing = multiViewChannels.get(i);
+            if (existing != null && existing.id != null) {
+                used.add(existing.id);
+            }
+        }
+        for (ChannelItem item : channels) {
+            if (item == null || item.isVod || item.id == null || used.contains(item.id)) {
+                continue;
+            }
+            items.add(item);
+        }
+        return items;
+    }
+
+    private void tuneMultiViewSlotChannel(int slot, ChannelItem item) {
+        if (slot < 0 || slot >= multiPlayerControllers.size() || item == null || item.id == null) {
+            return;
+        }
+        while (multiViewChannels.size() <= slot) {
+            multiViewChannels.add(null);
+        }
+        multiViewChannels.set(slot, item);
+        multiViewChannelIds[slot] = item.id;
+        PlayerController controller = multiPlayerControllers.get(slot);
+        controller.setMuted(slot != multiViewActiveIndex);
+        PlayerController.PlaybackRequest request = toPlaybackRequest(item);
+        PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(item.id);
+        controller.playChannel(request, true, cachedStreamInfo);
+        if (request != null && !request.directPlayback) {
+            controller.resolveStreamInfoAndReplayIfNeeded(request, true, streamInfoByChannelId);
+        }
+        updateMultiViewFocus();
+    }
+
+    private void focusMultiViewSlot(int slot) {
+        if (slot < 0 || slot >= multiViewChannels.size()) {
+            return;
+        }
+        if (slot == multiViewActiveIndex) {
+            openMultiViewSlotFullscreen(slot);
+            return;
+        }
+        multiViewActiveIndex = slot;
+        for (int i = 0; i < multiPlayerControllers.size(); i++) {
+            multiPlayerControllers.get(i).setMuted(i != multiViewActiveIndex);
+        }
+        updateMultiViewFocus();
+    }
+
+    private void openMultiViewSlotFullscreen(int slot) {
+        if (slot < 0 || slot >= multiViewChannels.size()) {
+            return;
+        }
+        ChannelItem item = multiViewChannels.get(slot);
+        if (item == null) {
+            return;
+        }
+        closeMultiView();
+        showStatus(item.name == null || item.name.trim().isEmpty()
+                ? getString(R.string.status_ready)
+                : item.name.trim());
+        tuneChannelById(item.id);
+    }
+
+    private void updateMultiViewFocus() {
+        for (int i = 0; i < multiTiles.length; i++) {
+            if (multiTiles[i] == null) {
+                continue;
+            }
+            boolean active = i == multiViewActiveIndex && i < multiViewChannels.size();
+            multiTiles[i].setBackgroundTintList(active ? ColorStateList.valueOf(0xFF2A7C86) : ColorStateList.valueOf(0xFF1A2430));
+            if (multiLabels[i] != null && i < multiViewChannels.size()) {
+                String label = multiViewChannels.get(i).name;
+                if (active) {
+                    label = "AUDIO · TAP = FULL" + " · " + label;
+                }
+                multiLabels[i].setText(label);
+            }
+        }
     }
 
     private CharSequence buildHighlightedText(String value, String query, boolean favorite) {
@@ -2950,6 +3268,7 @@ public class MainActivity extends FragmentActivity {
         clearQuickSearchOverlay();
         hideOverlay();
         hideRecordingsPanel();
+        closeMultiView();
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_channel_search, null, false);
         EditText input = dialogView.findViewById(R.id.channelSearchInput);
         RecyclerView recyclerView = dialogView.findViewById(R.id.channelSearchResults);
@@ -3371,7 +3690,15 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private interface QuickChannelSelectionAction {
+        void onChannelChosen(ChannelItem item);
+    }
+
     private void showQuickChannelListDialog(String title, List<ChannelItem> items, String emptyMessage) {
+        showQuickChannelListDialog(title, items, emptyMessage, this::tuneQuickAccessChannel);
+    }
+
+    private void showQuickChannelListDialog(String title, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action) {
         if (items == null || items.isEmpty()) {
             showStatus(emptyMessage == null || emptyMessage.trim().isEmpty()
                     ? getString(R.string.overlay_no_results)
@@ -3409,7 +3736,9 @@ public class MainActivity extends FragmentActivity {
             if (activeDialog != null && activeDialog.isShowing()) {
                 activeDialog.dismiss();
             }
-            uiHandler.post(() -> tuneQuickAccessChannel(item));
+            if (action != null) {
+                uiHandler.post(() -> action.onChannelChosen(item));
+            }
         });
         recyclerView.setAdapter(adapter);
         AlertDialog dialog = new AlertDialog.Builder(this)

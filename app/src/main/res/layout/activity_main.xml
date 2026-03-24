@@ -736,109 +736,398 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:orientation="horizontal">
+            android:background="#332B5F68"
+            android:orientation="vertical"
+            android:paddingLeft="8dp"
+            android:paddingTop="8dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="8dp">
 
             <TextView
-                android:id="@+id/touchHomeTvButton"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_weight="1"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/touchHomeVodButton"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/touchHomeAdultButton"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/touchHomeGrabButton"
                 android:layout_width="wrap_content"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:minWidth="74dp"
-                android:paddingLeft="10dp"
-                android:paddingRight="10dp"
-                android:textColor="#FFFFFF"
+                android:layout_height="wrap_content"
+                android:text="@string/touch_home_section_library"
+                android:textColor="#A8DCE2"
+                android:textSize="11sp"
                 android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/touchHomeTvButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/touchHomeVodButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/touchHomeAdultButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/touchHomeGrabButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+            android:background="#334A3126"
+            android:orientation="vertical"
+            android:paddingLeft="8dp"
+            android:paddingTop="8dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="8dp">
 
             <TextView
-                android:id="@+id/touchHomeRecentButton"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_weight="1"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/touchHomeFavoritesButton"
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/touchHomeListButton"
                 android:layout_width="wrap_content"
-                android:layout_height="42dp"
-                android:layout_marginLeft="8dp"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:minWidth="86dp"
-                android:paddingLeft="14dp"
-                android:paddingRight="14dp"
-                android:textColor="#FFFFFF"
+                android:layout_height="wrap_content"
+                android:text="@string/touch_home_section_access"
+                android:textColor="#F1C79A"
+                android:textSize="11sp"
                 android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/touchHomeRecentButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/touchHomeFavoritesButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/touchHomeListButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/touchHomeMultiButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:text="@string/touch_home_button_multi"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/multiViewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#EE090C12"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="10dp">
+
+                <TextView
+                    android:id="@+id/multiViewTitleText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/multiview_title"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/multiViewHintText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="10dp"
+                    android:text="@string/multiview_hint"
+                    android:textColor="#A8C5DE"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/multiViewCloseButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingLeft="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingRight="12dp"
+                    android:paddingBottom="6dp"
+                    android:text="@string/multiview_close"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+
+                    <FrameLayout
+                        android:id="@+id/multiTile1"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginRight="6dp"
+                        android:layout_weight="1"
+                        android:background="#FF1A2430">
+
+                        <androidx.media3.ui.PlayerView
+                            android:id="@+id/multiPlayerView1"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <TextView
+                            android:id="@+id/multiLabel1"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/channel_overlay_chip_bg"
+                            android:paddingLeft="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingRight="10dp"
+                            android:paddingBottom="5dp"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold" />
+                    </FrameLayout>
+
+                    <FrameLayout
+                        android:id="@+id/multiTile2"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginLeft="6dp"
+                        android:layout_weight="1"
+                        android:background="#FF1A2430">
+
+                        <androidx.media3.ui.PlayerView
+                            android:id="@+id/multiPlayerView2"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <TextView
+                            android:id="@+id/multiLabel2"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/channel_overlay_chip_bg"
+                            android:paddingLeft="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingRight="10dp"
+                            android:paddingBottom="5dp"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold" />
+                    </FrameLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="12dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+
+                    <FrameLayout
+                        android:id="@+id/multiTile3"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginRight="6dp"
+                        android:layout_weight="1"
+                        android:background="#FF1A2430">
+
+                        <androidx.media3.ui.PlayerView
+                            android:id="@+id/multiPlayerView3"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <TextView
+                            android:id="@+id/multiLabel3"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/channel_overlay_chip_bg"
+                            android:paddingLeft="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingRight="10dp"
+                            android:paddingBottom="5dp"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold" />
+                    </FrameLayout>
+
+                    <FrameLayout
+                        android:id="@+id/multiTile4"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginLeft="6dp"
+                        android:layout_weight="1"
+                        android:background="#FF1A2430">
+
+                        <androidx.media3.ui.PlayerView
+                            android:id="@+id/multiPlayerView4"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <TextView
+                            android:id="@+id/multiLabel4"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/channel_overlay_chip_bg"
+                            android:paddingLeft="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingRight="10dp"
+                            android:paddingBottom="5dp"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold" />
+                    </FrameLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
 
     <HorizontalScrollView
         android:id="@+id/touchControlsBar"

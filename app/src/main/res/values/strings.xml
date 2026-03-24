@@ -267,4 +267,12 @@
     <string name="touch_home_filter_favorites">Solo favoritos</string>
     <string name="timeline_program_scheduled_prefix">REC</string>
     <string name="timeline_program_scheduled_short">PROGRAMADA</string>
+    <string name="touch_home_button_multi">Multi 4</string>
+    <string name="touch_home_section_library">Biblioteca</string>
+    <string name="touch_home_section_access">Accesos rapidos</string>
+    <string name="multiview_title">Multiview 2x2</string>
+        <string name="multiview_hint">Toca una ventana para audio. Manten pulsado para cambiar canal</string>
+    <string name="multiview_select_channel_title">Elegir canal para ventana</string>
+    <string name="multiview_close">Cerrar</string>
+    <string name="status_multiview_not_enough_channels">No hay suficientes canales TV visibles para multiview</string>
 </resources>

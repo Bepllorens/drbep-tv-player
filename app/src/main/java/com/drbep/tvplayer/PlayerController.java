@@ -308,6 +308,18 @@ final class PlayerController {
         return player != null && player.isPlaying();
     }
 
+    void setMuted(boolean muted) {
+        if (player != null) {
+            player.setVolume(muted ? 0f : 1f);
+        }
+    }
+
+    void setPlayWhenReady(boolean playWhenReady) {
+        if (player != null) {
+            player.setPlayWhenReady(playWhenReady);
+        }
+    }
+
     void togglePlayback() {
         if (player == null) {
             return;

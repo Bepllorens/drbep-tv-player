@@ -317,6 +317,15 @@ public class MainActivity extends FragmentActivity {
             versionBadgeText.setText("v" + BuildConfig.VERSION_NAME);
             versionBadgeText.setOnClickListener(v -> showAboutDialog());
         }
+        if (liveStateBadgeText != null) {
+            liveStateBadgeText.setClickable(true);
+            liveStateBadgeText.setFocusable(true);
+            liveStateBadgeText.setOnClickListener(v -> retryCurrentPlayback());
+            liveStateBadgeText.setOnLongClickListener(v -> {
+                showPlaybackDiagnosticsDialog();
+                return true;
+            });
+        }
 
         baseUrl = resolveBaseUrl();
     catalogRepository = new CatalogRepository(baseUrl);
@@ -621,6 +630,11 @@ public class MainActivity extends FragmentActivity {
             touchInfoButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
                 openCurrentProgramInfoFromTouch();
+            });
+            touchInfoButton.setOnLongClickListener(v -> {
+                showTouchControlsTemporarily();
+                showPlaybackDiagnosticsDialog();
+                return true;
             });
         }
         if (touchToolsButton != null) {
@@ -2382,6 +2396,39 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private ChannelItem getCurrentPlaybackChannelItem() {
+        if (currentIndex >= 0 && currentIndex < channels.size()) {
+            return channels.get(currentIndex);
+        }
+        return findChannelItemById(lastChannelId);
+    }
+
+    private void retryCurrentPlayback() {
+        ChannelItem channelItem = getCurrentPlaybackChannelItem();
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        showStatus(getString(R.string.status_retry_channel, channelItem.name));
+        currentIndex = findChannelIndexById(channelItem.id);
+        if (currentIndex >= 0) {
+            selectedOverlayIndex = currentIndex;
+            channelAdapter.notifyDataSetChanged();
+            tuneToIndex(currentIndex, true);
+            return;
+        }
+        playChannelItem(channelItem, true);
+    }
+
+    private void showCurrentChannelPlaybackModeDialog() {
+        ChannelItem channelItem = getCurrentPlaybackChannelItem();
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        showPlaybackModeDialog(channelItem);
+    }
+
     private void showPlaybackModeDialog(ChannelItem channelItem) {
         if (channelItem == null || playbackModeStore == null) {
             return;
@@ -2400,8 +2447,9 @@ public class MainActivity extends FragmentActivity {
                     playbackModeStore.setMode(channelItem.id, selectedMode);
                     showStatus(getString(R.string.status_playback_mode_changed, options[which]));
                     dialog.dismiss();
-                    if (currentIndex >= 0 && currentIndex < channels.size() && channelItem.id.equals(channels.get(currentIndex).id)) {
-                        tuneToIndex(currentIndex, true);
+                    ChannelItem currentPlaybackChannel = getCurrentPlaybackChannelItem();
+                    if (currentPlaybackChannel != null && channelItem.id.equals(currentPlaybackChannel.id)) {
+                        retryCurrentPlayback();
                     }
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)
@@ -3157,10 +3205,17 @@ public class MainActivity extends FragmentActivity {
 
     private void showPlaybackDiagnosticsDialog() {
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        ChannelItem currentChannel = getCurrentPlaybackChannelItem();
         if (diagnostics == null || (diagnostics.channelName == null || diagnostics.channelName.trim().isEmpty()) && (diagnostics.targetUrl == null || diagnostics.targetUrl.trim().isEmpty())) {
             new AlertDialog.Builder(this)
                     .setTitle(R.string.title_playback_diagnostics)
                     .setMessage(getString(R.string.diagnostics_none))
+                    .setPositiveButton(R.string.diagnostics_action_retry, (dialog, which) -> retryCurrentPlayback())
+                    .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_mode, (dialog, which) -> {
+                        if (currentChannel != null) {
+                            showPlaybackModeDialog(currentChannel);
+                        }
+                    })
                     .setNegativeButton(R.string.dialog_close, null)
                     .show();
             return;
@@ -3180,10 +3235,17 @@ public class MainActivity extends FragmentActivity {
             appendDiagnosticLine(message, getString(R.string.diagnostics_last_error, diagnostics.lastError));
         }
         appendDiagnosticLine(message, getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_actions_hint));
 
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_playback_diagnostics)
                 .setMessage(message.toString().trim())
+                .setPositiveButton(R.string.diagnostics_action_retry, (dialog, which) -> retryCurrentPlayback())
+                .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_mode, (dialog, which) -> {
+                    if (currentChannel != null) {
+                        showPlaybackModeDialog(currentChannel);
+                    }
+                })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
     }

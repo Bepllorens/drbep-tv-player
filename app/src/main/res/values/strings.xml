@@ -155,10 +155,14 @@
     <string name="touch_previous_unavailable">No hay un canal anterior reciente</string>
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
+    <string name="status_retry_channel">Reintentando: %1$s</string>
     <string name="tools_menu_title">Herramientas v1.3.2</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>
+    <string name="diagnostics_action_retry">Reintentar</string>
+    <string name="diagnostics_action_mode">Modo canal</string>
+    <string name="diagnostics_actions_hint">Reintentar vuelve a probar el canal actual. Modo canal cambia entre Auto, Directo y Proxy.</string>
     <string name="tools_menu_recordings_panel">Panel de grabaciones</string>
     <string name="title_search_channels">Buscar canal</string>
     <string name="search_hint">Escribe nombre o grupo</string>

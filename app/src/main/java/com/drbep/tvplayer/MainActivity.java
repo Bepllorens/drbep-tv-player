@@ -108,6 +108,16 @@ public class MainActivity extends FragmentActivity {
     private TextView quickVodButton;
     private TextView quickAdultButton;
     private TextView quickGrabButton;
+    private View touchHomeHub;
+    private TextView touchHomeTitleText;
+    private TextView touchHomeSubtitleText;
+    private TextView touchHomeTvButton;
+    private TextView touchHomeVodButton;
+    private TextView touchHomeAdultButton;
+    private TextView touchHomeGrabButton;
+    private TextView touchHomeRecentButton;
+    private TextView touchHomeFavoritesButton;
+    private TextView touchHomeListButton;
     private EditText overlaySearchInput;
     private TextView overlayCurrentChannelText;
     private TextView overlayCurrentMetaText;
@@ -221,6 +231,12 @@ public class MainActivity extends FragmentActivity {
     private final Runnable hideTouchControlsRunnable = () -> {
         if (touchDeviceMode && touchControlsBar != null && !isOverlayVisible() && !isRecordingsPanelVisible()) {
             touchControlsBar.setVisibility(View.GONE);
+            if (touchHomeHub != null) {
+                touchHomeHub.setVisibility(View.GONE);
+            }
+        }
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
         }
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
@@ -263,6 +279,16 @@ public class MainActivity extends FragmentActivity {
         quickVodButton = findViewById(R.id.quickVodButton);
         quickAdultButton = findViewById(R.id.quickAdultButton);
         quickGrabButton = findViewById(R.id.quickGrabButton);
+        touchHomeHub = findViewById(R.id.touchHomeHub);
+        touchHomeTitleText = findViewById(R.id.touchHomeTitleText);
+        touchHomeSubtitleText = findViewById(R.id.touchHomeSubtitleText);
+        touchHomeTvButton = findViewById(R.id.touchHomeTvButton);
+        touchHomeVodButton = findViewById(R.id.touchHomeVodButton);
+        touchHomeAdultButton = findViewById(R.id.touchHomeAdultButton);
+        touchHomeGrabButton = findViewById(R.id.touchHomeGrabButton);
+        touchHomeRecentButton = findViewById(R.id.touchHomeRecentButton);
+        touchHomeFavoritesButton = findViewById(R.id.touchHomeFavoritesButton);
+        touchHomeListButton = findViewById(R.id.touchHomeListButton);
         overlaySearchInput = findViewById(R.id.overlaySearchInput);
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
@@ -534,6 +560,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         touchControlsBar.setVisibility(View.VISIBLE);
+        updateTouchHomeHub();
         updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
         if (touchPrevFilterButton != null) {
@@ -602,6 +629,44 @@ public class MainActivity extends FragmentActivity {
             quickGrabButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
                 openRecordingsBrowser();
+            });
+        }
+        if (touchHomeTvButton != null) {
+            touchHomeTvButton.setOnClickListener(v -> applyQuickOverlayTarget("tv"));
+        }
+        if (touchHomeVodButton != null) {
+            touchHomeVodButton.setOnClickListener(v -> applyQuickOverlayTarget("vod"));
+        }
+        if (touchHomeAdultButton != null) {
+            touchHomeAdultButton.setOnClickListener(v -> applyQuickOverlayTarget("vod-adult"));
+        }
+        if (touchHomeGrabButton != null) {
+            touchHomeGrabButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                openRecordingsBrowser();
+            });
+        }
+        if (touchHomeRecentButton != null) {
+            touchHomeRecentButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                showRecentChannelsQuickDialog();
+            });
+        }
+        if (touchHomeFavoritesButton != null) {
+            touchHomeFavoritesButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                showFavoriteChannelsQuickDialog();
+            });
+            touchHomeFavoritesButton.setOnLongClickListener(v -> {
+                showTouchControlsTemporarily();
+                toggleFavoritesOnlyMode();
+                return true;
+            });
+        }
+        if (touchHomeListButton != null) {
+            touchHomeListButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                showOverlay();
             });
         }
         if (overlaySearchInput != null) {
@@ -822,6 +887,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         touchControlsBar.setVisibility(View.VISIBLE);
+        updateTouchHomeHub();
         updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
     }
@@ -1211,12 +1277,21 @@ public class MainActivity extends FragmentActivity {
                     List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel.id, 12);
                     rows.add(new TimelineChannelPrograms(channel, programs));
                 }
+                List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
+                try {
+                    RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
+                    if (scheduledResult != null && scheduledResult.items != null) {
+                        scheduledItems.addAll(scheduledResult.items);
+                    }
+                } catch (Exception scheduledErr) {
+                    Log.w(TAG, "timeline scheduled recordings fetch failed", scheduledErr);
+                }
                 uiHandler.post(() -> {
                     if (rows.isEmpty()) {
                         showStatus(getString(R.string.status_no_epg_for_channel));
                         return;
                     }
-                    showTimelineGuideDialog(rows, selectedWindowStartMs, channels.get(selectedIndex).id);
+                    showTimelineGuideDialog(rows, selectedWindowStartMs, channels.get(selectedIndex).id, scheduledItems);
                 });
             } catch (Exception e) {
                 Log.w(TAG, "timeline guide failed", e);
@@ -1871,6 +1946,9 @@ public class MainActivity extends FragmentActivity {
             if (touchControlsBar != null) {
                 touchControlsBar.setVisibility(View.GONE);
             }
+            if (touchHomeHub != null) {
+                touchHomeHub.setVisibility(View.GONE);
+            }
             if (timeshiftBarContainer != null) {
                 timeshiftBarContainer.setVisibility(View.GONE);
             }
@@ -1888,6 +1966,9 @@ public class MainActivity extends FragmentActivity {
             uiHandler.removeCallbacks(hideTouchControlsRunnable);
             if (touchControlsBar != null) {
                 touchControlsBar.setVisibility(View.GONE);
+            }
+            if (touchHomeHub != null) {
+                touchHomeHub.setVisibility(View.GONE);
             }
             if (timeshiftBarContainer != null) {
                 timeshiftBarContainer.setVisibility(View.GONE);
@@ -2622,6 +2703,7 @@ public class MainActivity extends FragmentActivity {
                     favoriteCount));
         }
         updateQuickAccessButtons();
+        updateTouchHomeHub();
     }
 
     private void applyQuickOverlayTarget(String targetKey) {
@@ -2700,6 +2782,61 @@ public class MainActivity extends FragmentActivity {
         styleQuickAccessButton(quickVodButton, vodActive, getString(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")));
         styleQuickAccessButton(quickAdultButton, adultActive, getString(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")));
         styleQuickAccessButton(quickGrabButton, isRecordingsPanelVisible(), getString(R.string.overlay_quick_grab));
+    }
+
+    private void updateTouchHomeHub() {
+        if (touchHomeHub == null) {
+            return;
+        }
+        boolean visible = touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE && !isOverlayVisible() && !isRecordingsPanelVisible();
+        touchHomeHub.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (!visible) {
+            return;
+        }
+        if (touchHomeTitleText != null) {
+            touchHomeTitleText.setText(getString(R.string.touch_home_title));
+        }
+        if (touchHomeSubtitleText != null) {
+            String label = buildTouchHomeFilterLabel();
+            int count = favoritesOnly ? buildFavoriteQuickChannels().size() : channels.size();
+            touchHomeSubtitleText.setText(getString(R.string.touch_home_subtitle, label, count));
+        }
+        styleHomeHubButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
+        styleHomeHubButton(touchHomeVodButton, !favoritesOnly && "vod".equals(selectedFilterKey), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
+        styleHomeHubButton(touchHomeAdultButton, !favoritesOnly && "vod-adult".equals(selectedFilterKey), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+        styleHomeHubButton(touchHomeGrabButton, false, getString(R.string.touch_home_button_grab));
+        styleHomeHubButton(touchHomeRecentButton, false, getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()));
+        styleHomeHubButton(touchHomeFavoritesButton, favoritesOnly, getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
+        styleHomeHubButton(touchHomeListButton, false, getString(R.string.touch_home_button_list));
+    }
+
+    private boolean isTvHubActive() {
+        String activeTvKey = findPreferredTvFilterKey();
+        return selectedFilterKey == null || selectedFilterKey.equals(activeTvKey) || ("all".equals(selectedFilterKey) && "all".equals(activeTvKey));
+    }
+
+    private String buildTouchHomeFilterLabel() {
+        if (favoritesOnly) {
+            return getString(R.string.touch_home_filter_favorites);
+        }
+        if (selectedFilterKey == null || selectedFilterKey.trim().isEmpty() || "all".equals(selectedFilterKey)) {
+            return getString(R.string.touch_home_filter_all);
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && selectedFilterKey.equals(filter.key) && filter.label != null && !filter.label.trim().isEmpty()) {
+                return filter.label.trim();
+            }
+        }
+        return getString(R.string.touch_home_filter_all);
+    }
+
+    private void styleHomeHubButton(TextView view, boolean active, String label) {
+        if (view == null) {
+            return;
+        }
+        view.setText(label);
+        view.setBackgroundTintList(ColorStateList.valueOf(active ? 0xFF2A7C86 : 0xFF263341));
+        view.setTextColor(0xFFFFFFFF);
     }
 
     private CharSequence buildHighlightedText(String value, String query, boolean favorite) {
@@ -2868,7 +3005,7 @@ public class MainActivity extends FragmentActivity {
                 .show();
     }
 
-    private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId) {
+    private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId, List<RecordingsRepository.RecordingItem> scheduledItems) {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_timeline_guide, null, false);
         android.widget.ScrollView timelineVerticalScroll = dialogView.findViewById(R.id.timelineVerticalScroll);
         TextView timelineNowButton = dialogView.findViewById(R.id.timelineNowButton);
@@ -3005,15 +3142,19 @@ public class MainActivity extends FragmentActivity {
                 block.setFocusable(true);
                 block.setFocusableInTouchMode(true);
                 block.setPadding(dp(8), dp(6), dp(8), dp(6));
-                block.setText((program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title)
-                        + "\n" + shortTime(program.startTime) + " - " + shortTime(program.endTime));
+                String titleText = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title;
+                boolean scheduled = isProgramScheduled(row.channel, program, scheduledItems);
+                if (scheduled) {
+                    titleText = getString(R.string.timeline_program_scheduled_prefix) + " " + titleText;
+                }
+                block.setText(titleText + "\n" + shortTime(program.startTime) + " - " + shortTime(program.endTime));
                 block.setTextColor(0xFFFFFFFF);
                 block.setTextSize(11f);
                 block.setMaxLines(3);
                 boolean live = program.progress >= 0;
-                applyTimelineBlockState(block, live, false);
+                applyTimelineBlockState(block, live, scheduled, false);
                 block.setOnFocusChangeListener((v, hasFocus) -> {
-                    applyTimelineBlockState(block, live, hasFocus);
+                    applyTimelineBlockState(block, live, scheduled, hasFocus);
                     if (hasFocus) {
                         if (timelineProgramTitleText != null) {
                             timelineProgramTitleText.setText(program.title == null || program.title.trim().isEmpty()
@@ -3024,6 +3165,9 @@ public class MainActivity extends FragmentActivity {
                             String timelineMeta = row.channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
                             if (live) {
                                 timelineMeta = timelineMeta + "  ·  " + getString(R.string.guide_program_now);
+                            }
+                            if (scheduled) {
+                                timelineMeta = timelineMeta + "  ·  " + getString(R.string.timeline_program_scheduled_short);
                             }
                             timelineProgramMetaText.setText(timelineMeta);
                         }
@@ -3866,17 +4010,25 @@ public class MainActivity extends FragmentActivity {
         return Math.round(getResources().getDisplayMetrics().density * value);
     }
 
-    private void applyTimelineBlockState(TextView block, boolean live, boolean focused) {
+    private void applyTimelineBlockState(TextView block, boolean live, boolean scheduled, boolean focused) {
         if (block == null) {
             return;
         }
         int bgColor;
         if (focused) {
-            bgColor = live ? 0xFF49A06E : 0xFF4A6F98;
+            if (scheduled) {
+                bgColor = 0xFF9A6A1F;
+            } else {
+                bgColor = live ? 0xFF49A06E : 0xFF4A6F98;
+            }
             block.setScaleX(1.03f);
             block.setScaleY(1.03f);
         } else {
-            bgColor = live ? 0xFF276B49 : 0xFF2B4056;
+            if (scheduled) {
+                bgColor = 0xFF6E4A16;
+            } else {
+                bgColor = live ? 0xFF276B49 : 0xFF2B4056;
+            }
             block.setScaleX(1.0f);
             block.setScaleY(1.0f);
         }
@@ -3896,6 +4048,43 @@ public class MainActivity extends FragmentActivity {
         }
         parts.add(getString(R.string.vod_row_hint));
         return TextUtils.join("  ·  ", parts);
+    }
+
+    private boolean isProgramScheduled(ChannelItem channel, EpgRepository.EpgProgram program, List<RecordingsRepository.RecordingItem> scheduledItems) {
+        if (channel == null || program == null || scheduledItems == null || scheduledItems.isEmpty()) {
+            return false;
+        }
+        long programStartMs = parseIsoMillis(program.startTime);
+        long programEndMs = parseIsoMillis(program.endTime);
+        String normalizedChannel = normalizeScheduledText(channel.name);
+        String normalizedTitle = normalizeScheduledText(program.title);
+        for (RecordingsRepository.RecordingItem item : scheduledItems) {
+            if (item == null) {
+                continue;
+            }
+            String itemChannel = normalizeScheduledText(item.channelName);
+            String itemTitle = normalizeScheduledText(item.programTitle == null || item.programTitle.trim().isEmpty() ? item.name : item.programTitle);
+            if (!normalizedChannel.isEmpty() && !itemChannel.isEmpty() && !normalizedChannel.equals(itemChannel)) {
+                continue;
+            }
+            if (!normalizedTitle.isEmpty() && !itemTitle.isEmpty() && !normalizedTitle.equals(itemTitle)) {
+                continue;
+            }
+            long itemStartMs = parseIsoMillis(item.startTime);
+            long itemEndMs = parseIsoMillis(item.endTime);
+            boolean timeMatches = programStartMs > 0L && itemStartMs > 0L && Math.abs(programStartMs - itemStartMs) < 120000L;
+            if (!timeMatches && programEndMs > 0L && itemEndMs > 0L) {
+                timeMatches = Math.abs(programEndMs - itemEndMs) < 120000L;
+            }
+            if (timeMatches || (!normalizedChannel.isEmpty() && normalizedChannel.equals(itemChannel) && !normalizedTitle.isEmpty() && normalizedTitle.equals(itemTitle))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeScheduledText(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {

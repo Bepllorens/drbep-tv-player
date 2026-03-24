@@ -254,4 +254,17 @@
     <string name="vod_info_desc">Contenido bajo demanda. Puedes reproducirlo, pausarlo y avanzar con la barra inferior.</string>
     <string name="vod_info_desc_adult">Contenido adulto bajo demanda. Puedes reproducirlo, pausarlo y avanzar con la barra inferior.</string>
     <string name="vod_row_hint">Toca para reproducir</string>
+    <string name="touch_home_title">Explorar rapido</string>
+    <string name="touch_home_subtitle">%1$s  ·  %2$d elementos</string>
+    <string name="touch_home_button_tv">TV (%1$d)</string>
+    <string name="touch_home_button_vod">VOD (%1$d)</string>
+    <string name="touch_home_button_adult">Adult (%1$d)</string>
+    <string name="touch_home_button_grab">Grab</string>
+    <string name="touch_home_button_recent">Recientes (%1$d)</string>
+    <string name="touch_home_button_favorites">Favoritos (%1$d)</string>
+    <string name="touch_home_button_list">Lista</string>
+    <string name="touch_home_filter_all">Biblioteca completa</string>
+    <string name="touch_home_filter_favorites">Solo favoritos</string>
+    <string name="timeline_program_scheduled_prefix">REC</string>
+    <string name="timeline_program_scheduled_short">PROGRAMADA</string>
 </resources>

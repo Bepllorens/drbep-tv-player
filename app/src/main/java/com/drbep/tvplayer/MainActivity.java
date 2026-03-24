@@ -1987,6 +1987,15 @@ public class MainActivity extends FragmentActivity {
         }
         clearQuickSearchOverlay();
         hideOverlay();
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
+        }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+        }
         currentRecordingsResult = result;
         recordingsScheduledMode = result.scheduledMode;
         selectedRecordingIndex = 0;
@@ -3006,6 +3015,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId, List<RecordingsRepository.RecordingItem> scheduledItems) {
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
+        }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+        }
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_timeline_guide, null, false);
         android.widget.ScrollView timelineVerticalScroll = dialogView.findViewById(R.id.timelineVerticalScroll);
         TextView timelineNowButton = dialogView.findViewById(R.id.timelineNowButton);
@@ -3363,6 +3381,15 @@ public class MainActivity extends FragmentActivity {
         clearQuickSearchOverlay();
         hideOverlay();
         hideRecordingsPanel();
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
+        }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+        }
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
         TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
         TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);

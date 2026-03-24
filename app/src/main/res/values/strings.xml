@@ -243,4 +243,6 @@
     <string name="guide_program_now">EN DIRECTO</string>
     <string name="guide_program_next">SIGUIENTE</string>
     <string name="guide_program_later">DESPUES</string>
+    <string name="quick_channel_count">%1$d canales</string>
+    <string name="quick_channel_hint">Toca un canal para sintonizar</string>
 </resources>

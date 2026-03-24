@@ -6,6 +6,27 @@
     android:orientation="vertical"
     android:padding="12dp">
 
+    <TextView
+        android:id="@+id/dialogPanelTitleText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/dialogPanelSubtitleText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="10dp"
+        android:maxLines="2"
+        android:textColor="#B7C4D6"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/dialogRecyclerView"
         android:layout_width="match_parent"

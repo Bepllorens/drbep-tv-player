@@ -3149,21 +3149,33 @@ public class MainActivity extends FragmentActivity {
         clearQuickSearchOverlay();
         hideOverlay();
         hideRecordingsPanel();
-        List<String> labels = new ArrayList<>();
-        for (ChannelItem item : items) {
-            labels.add(buildQuickChannelLabel(item));
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
+        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
+        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
+        if (panelTitle != null) {
+            panelTitle.setText(title);
+            panelTitle.setVisibility(View.VISIBLE);
         }
+        if (panelSubtitle != null) {
+            panelSubtitle.setText(getString(R.string.quick_channel_count, items.size()) + "  ·  " + getString(R.string.quick_channel_hint));
+            panelSubtitle.setVisibility(View.VISIBLE);
+        }
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        SearchChannelAdapter adapter = new SearchChannelAdapter(items, item -> {
+            AlertDialog activeDialog = dialogHolder[0];
+            if (activeDialog != null && activeDialog.isShowing()) {
+                activeDialog.dismiss();
+            }
+            uiHandler.post(() -> tuneQuickAccessChannel(item));
+        });
+        recyclerView.setAdapter(adapter);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setItems(labels.toArray(new String[0]), (d, which) -> {
-                    if (which >= 0 && which < items.size()) {
-                        ChannelItem selectedItem = items.get(which);
-                        Log.d(TAG, "quick access choose index=" + which + " id=" + (selectedItem == null ? "null" : selectedItem.id) + " name=" + (selectedItem == null ? "null" : selectedItem.name));
-                        uiHandler.post(() -> tuneQuickAccessChannel(selectedItem));
-                    }
-                })
+                .setView(dialogView)
                 .setNegativeButton(R.string.dialog_close, null)
                 .create();
+        dialogHolder[0] = dialog;
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
     }
@@ -3175,21 +3187,6 @@ public class MainActivity extends FragmentActivity {
         }
         showStatus(item.name == null || item.name.trim().isEmpty() ? getString(R.string.status_ready) : item.name.trim());
         tuneChannelById(item.id);
-    }
-
-    private String buildQuickChannelLabel(ChannelItem item) {
-        if (item == null) {
-            return getString(R.string.label_program_default);
-        }
-        String name = item.name == null || item.name.trim().isEmpty() ? getString(R.string.label_program_default) : item.name.trim();
-        String meta = item.nowProgram;
-        if (meta == null || meta.trim().isEmpty()) {
-            meta = item.group;
-        }
-        if (meta == null || meta.trim().isEmpty()) {
-            return name;
-        }
-        return name + "  ·  " + meta.trim();
     }
 
     private List<ChannelItem> buildRecentQuickChannels() {
@@ -3991,7 +3988,17 @@ public class MainActivity extends FragmentActivity {
             if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
                 primaryMeta = getString(R.string.search_channel_action_hint);
             }
-            holder.meta.setText(getString(R.string.search_channel_meta, primaryMeta, item.isVod ? getString(R.string.channel_badge_vod) : getString(R.string.channel_badge_live)));
+            holder.meta.setText(primaryMeta);
+            String typeLabel;
+            if (item.isAdultVod) {
+                typeLabel = getString(R.string.channel_badge_vod_adult);
+            } else if (item.isVod) {
+                typeLabel = getString(R.string.channel_badge_vod);
+            } else {
+                typeLabel = getString(R.string.channel_badge_live);
+            }
+            holder.type.setText(typeLabel);
+            bindChannelLogo(holder.logo, item.logoUrl, item.name, 42, 42);
             holder.itemView.setOnClickListener(v -> {
                 if (listener != null) {
                     listener.onChannelChosen(item);
@@ -4007,11 +4014,15 @@ public class MainActivity extends FragmentActivity {
         final class SearchChannelVH extends RecyclerView.ViewHolder {
             final TextView name;
             final TextView meta;
+            final TextView type;
+            final ImageView logo;
 
             SearchChannelVH(@NonNull View itemView) {
                 super(itemView);
                 name = itemView.findViewById(R.id.searchChannelNameText);
                 meta = itemView.findViewById(R.id.searchChannelMetaText);
+                type = itemView.findViewById(R.id.searchChannelTypeText);
+                logo = itemView.findViewById(R.id.searchChannelLogo);
             }
         }
     }

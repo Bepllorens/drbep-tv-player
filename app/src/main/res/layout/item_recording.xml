@@ -5,24 +5,56 @@
     android:layout_marginBottom="@dimen/recording_row_margin_bottom"
     android:background="#2C2419"
     android:foregroundGravity="center_vertical"
+    android:gravity="center_vertical"
     android:minHeight="@dimen/recording_row_min_height"
-    android:orientation="vertical"
+    android:orientation="horizontal"
     android:padding="@dimen/recording_row_padding">
 
-    <TextView
-        android:id="@+id/recordingNameText"
-        android:layout_width="match_parent"
+    <ImageView
+        android:id="@+id/recordingPosterThumb"
+        android:layout_width="54dp"
+        android:layout_height="72dp"
+        android:adjustViewBounds="true"
+        android:contentDescription="@null"
+        android:scaleType="fitCenter" />
+
+    <LinearLayout
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:maxLines="2"
-        android:textColor="#FFFFFF"
-        android:textSize="@dimen/recording_name_text_size"
-        android:textStyle="bold" />
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/recordingNameText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="2"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/recording_name_text_size"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/recordingMetaText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:maxLines="3"
+            android:textColor="#F2D5AF"
+            android:textSize="@dimen/recording_meta_text_size" />
+    </LinearLayout>
 
     <TextView
-        android:id="@+id/recordingMetaText"
-        android:layout_width="match_parent"
+        android:id="@+id/recordingStatusBadge"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textColor="#F2D5AF"
-        android:textSize="@dimen/recording_meta_text_size" />
+        android:layout_marginStart="10dp"
+        android:background="#4F3A23"
+        android:paddingLeft="10dp"
+        android:paddingTop="6dp"
+        android:paddingRight="10dp"
+        android:paddingBottom="6dp"
+        android:textColor="#FFF3E0"
+        android:textSize="11sp"
+        android:textStyle="bold" />
 </LinearLayout>

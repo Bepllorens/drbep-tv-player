@@ -33,6 +33,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -1230,6 +1231,10 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_no_program_in_epg));
             return;
         }
+        if (channel.isVod) {
+            showVodInfoDialog(channel);
+            return;
+        }
         showStatus(getString(R.string.status_searching_current_program));
         ioExecutor.execute(() -> {
             try {
@@ -1252,6 +1257,71 @@ public class MainActivity extends FragmentActivity {
                 .setMessage(getString(R.string.message_about_app))
                 .setPositiveButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void showVodInfoDialog(ChannelItem channel) {
+        if (channel == null) {
+            return;
+        }
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(18);
+        container.setPadding(padding, padding, padding, padding);
+
+        ImageView posterView = new ImageView(this);
+        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260));
+        posterView.setLayoutParams(posterParams);
+        posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        container.addView(posterView);
+        bindRecordingPoster(posterView, channel.logoUrl);
+
+        TextView titleView = new TextView(this);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = dp(14);
+        titleView.setLayoutParams(titleParams);
+        titleView.setText(channel.name == null || channel.name.trim().isEmpty() ? getString(R.string.label_program_default) : channel.name.trim());
+        titleView.setTextColor(0xFFFFFFFF);
+        titleView.setTextSize(20f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        container.addView(titleView);
+
+        TextView metaView = new TextView(this);
+        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        metaParams.topMargin = dp(8);
+        metaView.setLayoutParams(metaParams);
+        metaView.setText(buildVodInfoMeta(channel));
+        metaView.setTextColor(0xFF9BD0FF);
+        metaView.setTextSize(14f);
+        container.addView(metaView);
+
+        TextView descView = new TextView(this);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        descParams.topMargin = dp(12);
+        descView.setLayoutParams(descParams);
+        descView.setText(channel.isAdultVod ? getString(R.string.vod_info_desc_adult) : getString(R.string.vod_info_desc));
+        descView.setTextColor(0xFFD5E6F8);
+        descView.setTextSize(15f);
+        container.addView(descView);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.title_touch_vod_info))
+                .setView(container)
+                .setPositiveButton(R.string.dialog_close, null)
+                .create();
+        dialog.setOnDismissListener(d -> Glide.with(this).clear(posterView));
+        dialog.show();
+    }
+
+    private String buildVodInfoMeta(ChannelItem channel) {
+        List<String> parts = new ArrayList<>();
+        parts.add(getString(channel.isAdultVod ? R.string.channel_badge_vod_adult : R.string.channel_badge_vod));
+        if (channel.platformName != null && !channel.platformName.trim().isEmpty()) {
+            parts.add(channel.platformName.trim());
+        }
+        if (channel.group != null && !channel.group.trim().isEmpty()) {
+            parts.add(channel.group.trim());
+        }
+        return TextUtils.join("  ·  ", parts);
     }
 
     private void showCurrentProgramInfoDialog(ChannelItem channel, EpgRepository.EpgProgram program) {
@@ -3522,6 +3592,46 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private String buildRecordingStatusLabel(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.status == null || item.status.trim().isEmpty()) {
+            return getString(R.string.recording_status_ready);
+        }
+        String status = item.status.trim().toLowerCase(Locale.US);
+        switch (status) {
+            case "completed":
+                return getString(R.string.recording_status_completed_short);
+            case "recording":
+                return getString(R.string.recording_status_recording_short);
+            case "failed":
+            case "error":
+                return getString(R.string.recording_status_issue_short);
+            case "scheduled":
+                return getString(R.string.recording_status_scheduled_short);
+            default:
+                return status.toUpperCase(Locale.US);
+        }
+    }
+
+    private int recordingStatusBadgeColor(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.status == null) {
+            return 0xFF4F3A23;
+        }
+        String status = item.status.trim().toLowerCase(Locale.US);
+        switch (status) {
+            case "completed":
+                return 0xFF2E6A57;
+            case "recording":
+                return 0xFF8B3D2F;
+            case "scheduled":
+                return 0xFF3F5877;
+            case "failed":
+            case "error":
+                return 0xFF7A3340;
+            default:
+                return 0xFF4F3A23;
+        }
+    }
+
     private int recordingMetaColor(RecordingsRepository.RecordingItem item) {
         if (item == null || item.playable) {
             return 0xFFF2D5AF;
@@ -3773,6 +3883,21 @@ public class MainActivity extends FragmentActivity {
         block.setBackgroundColor(bgColor);
     }
 
+    private String buildVodRowMeta(ChannelItem channel) {
+        List<String> parts = new ArrayList<>();
+        if (channel == null) {
+            return getString(R.string.search_channel_action_hint);
+        }
+        if (channel.platformName != null && !channel.platformName.trim().isEmpty()) {
+            parts.add(channel.platformName.trim());
+        }
+        if (channel.group != null && !channel.group.trim().isEmpty()) {
+            parts.add(channel.group.trim());
+        }
+        parts.add(getString(R.string.vod_row_hint));
+        return TextUtils.join("  ·  ", parts);
+    }
+
     private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {
         @NonNull
         @Override
@@ -3786,15 +3911,35 @@ public class MainActivity extends FragmentActivity {
             ChannelItem ch = channels.get(position);
             String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
             holder.name.setText(buildHighlightedText(ch.name, query, ch.favorite));
-            if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
-                holder.meta.setText(buildHighlightedText(ch.nowProgram, query, false));
-            } else if (ch.group != null && !ch.group.trim().isEmpty()) {
-                holder.meta.setText(buildHighlightedText(ch.group, query, false));
+            if (ch.isVod) {
+                String vodMeta = buildVodRowMeta(ch);
+                holder.meta.setText(buildHighlightedText(vodMeta, query, false));
+                holder.typeBadge.setVisibility(View.VISIBLE);
+                holder.typeBadge.setText(ch.isAdultVod ? getString(R.string.channel_badge_vod_adult) : getString(R.string.channel_badge_vod));
+                holder.typeBadge.setTextColor(ch.isAdultVod ? 0xFFFFD6D6 : 0xFFDDE8F6);
+                ViewGroup.LayoutParams plateParams = holder.logoPlate.getLayoutParams();
+                plateParams.width = dp(54);
+                plateParams.height = dp(72);
+                holder.logoPlate.setLayoutParams(plateParams);
+                holder.logoPlate.setPadding(0, 0, 0, 0);
+                bindRecordingPoster(holder.logo, ch.logoUrl);
             } else {
-                holder.meta.setText("");
+                if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
+                    holder.meta.setText(buildHighlightedText(ch.nowProgram, query, false));
+                } else if (ch.group != null && !ch.group.trim().isEmpty()) {
+                    holder.meta.setText(buildHighlightedText(ch.group, query, false));
+                } else {
+                    holder.meta.setText("");
+                }
+                holder.typeBadge.setVisibility(View.GONE);
+                ViewGroup.LayoutParams plateParams = holder.logoPlate.getLayoutParams();
+                plateParams.width = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_size);
+                plateParams.height = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_size);
+                holder.logoPlate.setLayoutParams(plateParams);
+                int logoPadding = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_padding);
+                holder.logoPlate.setPadding(logoPadding, logoPadding, logoPadding, logoPadding);
+                bindChannelLogo(holder.logo, ch.logoUrl, ch.name, 38, 38);
             }
-
-            bindChannelLogo(holder.logo, ch.logoUrl, ch.name, 38, 38);
             holder.favoriteToggle.setText(getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off));
             holder.favoriteToggle.setTextColor(ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF);
             holder.favoriteToggle.setOnClickListener(v -> {
@@ -3830,7 +3975,9 @@ public class MainActivity extends FragmentActivity {
             TextView name;
             TextView meta;
             TextView favoriteToggle;
+            TextView typeBadge;
             ImageView logo;
+            ViewGroup logoPlate;
 
             ChannelVH(@NonNull View itemView) {
                 super(itemView);
@@ -3838,7 +3985,9 @@ public class MainActivity extends FragmentActivity {
                 name = itemView.findViewById(R.id.channelName);
                 meta = itemView.findViewById(R.id.channelMeta);
                 favoriteToggle = itemView.findViewById(R.id.channelFavoriteToggle);
+                typeBadge = itemView.findViewById(R.id.channelTypeBadge);
                 logo = itemView.findViewById(R.id.channelLogo);
+                logoPlate = itemView.findViewById(R.id.channelLogoPlate);
             }
         }
     }
@@ -3925,6 +4074,9 @@ public class MainActivity extends FragmentActivity {
             holder.name.setText(buildRecordingTitle(item));
             holder.meta.setText(buildRecordingMeta(item));
             holder.meta.setTextColor(recordingMetaColor(item));
+            holder.status.setText(buildRecordingStatusLabel(item));
+            holder.status.setBackgroundTintList(ColorStateList.valueOf(recordingStatusBadgeColor(item)));
+            bindRecordingPoster(holder.poster, item.poster);
             boolean selected = position == selectedRecordingIndex;
             holder.itemView.setBackgroundColor(selected ? 0xFF80542A : 0xFF2C2419);
             holder.itemView.setOnClickListener(v -> {
@@ -3943,11 +4095,15 @@ public class MainActivity extends FragmentActivity {
         final class RecordingVH extends RecyclerView.ViewHolder {
             final TextView name;
             final TextView meta;
+            final TextView status;
+            final ImageView poster;
 
             RecordingVH(@NonNull View itemView) {
                 super(itemView);
                 name = itemView.findViewById(R.id.recordingNameText);
                 meta = itemView.findViewById(R.id.recordingMetaText);
+                status = itemView.findViewById(R.id.recordingStatusBadge);
+                poster = itemView.findViewById(R.id.recordingPosterThumb);
             }
         }
     }

@@ -19,6 +19,7 @@
         android:paddingBottom="@dimen/channel_row_padding_vertical">
 
         <FrameLayout
+            android:id="@+id/channelLogoPlate"
             android:layout_width="@dimen/channel_logo_plate_size"
             android:layout_height="@dimen/channel_logo_plate_size"
             android:layout_marginRight="8dp"
@@ -57,6 +58,21 @@
                     android:textStyle="bold" />
 
                 <TextView
+                    android:id="@+id/channelTypeBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="8dp"
+                    android:background="@drawable/channel_overlay_chip_bg"
+                    android:paddingLeft="8dp"
+                    android:paddingTop="5dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="5dp"
+                    android:textColor="#DDE8F6"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <TextView
                     android:id="@+id/channelFavoriteToggle"
                     android:layout_width="34dp"
                     android:layout_height="34dp"
@@ -77,7 +93,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="3dp"
                 android:ellipsize="end"
-                android:maxLines="1"
+                android:maxLines="2"
                 android:textColor="#D7E3EE"
                 android:textSize="@dimen/channel_meta_text_size" />
         </LinearLayout>

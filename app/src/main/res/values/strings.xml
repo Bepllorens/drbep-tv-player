@@ -245,4 +245,13 @@
     <string name="guide_program_later">DESPUES</string>
     <string name="quick_channel_count">%1$d canales</string>
     <string name="quick_channel_hint">Toca un canal para sintonizar</string>
+    <string name="recording_status_ready">Lista</string>
+    <string name="recording_status_completed_short">LISTA</string>
+    <string name="recording_status_recording_short">REC</string>
+    <string name="recording_status_issue_short">INCIDENCIA</string>
+    <string name="recording_status_scheduled_short">PROGRAMADA</string>
+    <string name="title_touch_vod_info">Ficha del contenido</string>
+    <string name="vod_info_desc">Contenido bajo demanda. Puedes reproducirlo, pausarlo y avanzar con la barra inferior.</string>
+    <string name="vod_info_desc_adult">Contenido adulto bajo demanda. Puedes reproducirlo, pausarlo y avanzar con la barra inferior.</string>
+    <string name="vod_row_hint">Toca para reproducir</string>
 </resources>

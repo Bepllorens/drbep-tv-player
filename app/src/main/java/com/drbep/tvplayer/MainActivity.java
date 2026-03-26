@@ -121,6 +121,7 @@ public class MainActivity extends FragmentActivity {
     private TextView touchHomeMultiButton;
     private View multiViewContainer;
     private TextView multiViewCloseButton;
+    private TextView multiViewHintText;
     private final PlayerView[] multiPlayerViews = new PlayerView[4];
     private final View[] multiTiles = new View[4];
     private final TextView[] multiLabels = new TextView[4];
@@ -303,6 +304,7 @@ public class MainActivity extends FragmentActivity {
         touchHomeMultiButton = findViewById(R.id.touchHomeMultiButton);
         multiViewContainer = findViewById(R.id.multiViewContainer);
         multiViewCloseButton = findViewById(R.id.multiViewCloseButton);
+        multiViewHintText = findViewById(R.id.multiViewHintText);
         multiPlayerViews[0] = findViewById(R.id.multiPlayerView1);
         multiPlayerViews[1] = findViewById(R.id.multiPlayerView2);
         multiPlayerViews[2] = findViewById(R.id.multiPlayerView3);
@@ -2336,6 +2338,35 @@ public class MainActivity extends FragmentActivity {
         }
 
         int keyCode = event.getKeyCode();
+        if (isMultiViewVisible()) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_BACK:
+                    closeMultiView();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    moveMultiViewSelection(-1, 0);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    moveMultiViewSelection(1, 0);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    moveMultiViewSelection(0, -1);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    moveMultiViewSelection(0, 1);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                    focusMultiViewSlot(multiViewActiveIndex);
+                    return true;
+                case KeyEvent.KEYCODE_MENU:
+                    showMultiViewChannelPicker(multiViewActiveIndex);
+                    return true;
+                default:
+                    break;
+            }
+        }
         switch (keyCode) {
             case KeyEvent.KEYCODE_MENU:
                 long now = System.currentTimeMillis();
@@ -2914,9 +2945,6 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openMultiView() {
-        if (!touchDeviceMode) {
-            return;
-        }
         List<ChannelItem> selected = buildMultiViewChannels();
         if (selected.size() < 2) {
             showStatus(getString(R.string.status_multiview_not_enough_channels));
@@ -2933,6 +2961,11 @@ public class MainActivity extends FragmentActivity {
         }
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
+        }
+        if (multiViewHintText != null) {
+            multiViewHintText.setText(touchDeviceMode
+                    ? getString(R.string.multiview_hint_touch)
+                    : getString(R.string.multiview_hint_tv));
         }
         mainWasPlayingBeforeMultiView = playerController != null && playerController.isPlaying();
         if (playerController != null) {
@@ -3058,6 +3091,17 @@ public class MainActivity extends FragmentActivity {
             }
             selected.add(item);
         }
+        if (selected.size() < 4) {
+            for (ChannelItem item : allChannels) {
+                if (selected.size() >= 4) {
+                    break;
+                }
+                if (item == null || item.isVod || item.id == null || !added.add(item.id)) {
+                    continue;
+                }
+                selected.add(item);
+            }
+        }
         return selected;
     }
 
@@ -3134,6 +3178,26 @@ public class MainActivity extends FragmentActivity {
         updateMultiViewFocus();
     }
 
+    private void moveMultiViewSelection(int columnDelta, int rowDelta) {
+        if (!isMultiViewVisible() || multiViewChannels.isEmpty()) {
+            return;
+        }
+        int currentSlot = Math.max(0, Math.min(multiViewActiveIndex, multiViewChannels.size() - 1));
+        int currentColumn = currentSlot % 2;
+        int currentRow = currentSlot / 2;
+        int nextColumn = Math.max(0, Math.min(1, currentColumn + columnDelta));
+        int nextRow = Math.max(0, Math.min(1, currentRow + rowDelta));
+        int nextSlot = (nextRow * 2) + nextColumn;
+        if (nextSlot >= multiViewChannels.size() || nextSlot == currentSlot) {
+            return;
+        }
+        multiViewActiveIndex = nextSlot;
+        for (int i = 0; i < multiPlayerControllers.size(); i++) {
+            multiPlayerControllers.get(i).setMuted(i != multiViewActiveIndex);
+        }
+        updateMultiViewFocus();
+    }
+
     private void openMultiViewSlotFullscreen(int slot) {
         if (slot < 0 || slot >= multiViewChannels.size()) {
             return;
@@ -3159,7 +3223,7 @@ public class MainActivity extends FragmentActivity {
             if (multiLabels[i] != null && i < multiViewChannels.size()) {
                 String label = multiViewChannels.get(i).name;
                 if (active) {
-                    label = "AUDIO · TAP = FULL" + " · " + label;
+                    label = (touchDeviceMode ? "AUDIO · TAP = FULL" : "AUDIO · OK = FULL") + " · " + label;
                 }
                 multiLabels[i].setText(label);
             }
@@ -3243,7 +3307,8 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
                 getString(R.string.tools_menu_playback_diagnostics),
-                getString(R.string.tools_menu_recordings_panel)
+                getString(R.string.tools_menu_recordings_panel),
+                getString(R.string.tools_menu_multiview)
         };
         new AlertDialog.Builder(this)
                 .setTitle(R.string.tools_menu_title)
@@ -3258,6 +3323,8 @@ public class MainActivity extends FragmentActivity {
                         showPlaybackDiagnosticsDialog();
                     } else if (which == 4) {
                         openRecordingsBrowser();
+                    } else if (which == 5) {
+                        openMultiView();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
@@ -3717,6 +3784,7 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
+        prefetchChannelLogos(items, 18, 42, 42);
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
         TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
         TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
@@ -3748,6 +3816,17 @@ public class MainActivity extends FragmentActivity {
         dialogHolder[0] = dialog;
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
+        recyclerView.post(() -> {
+            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
+            if (layoutManager != null) {
+                View firstItem = layoutManager.findViewByPosition(0);
+                if (firstItem != null) {
+                    firstItem.requestFocus();
+                    return;
+                }
+            }
+            recyclerView.requestFocus();
+        });
     }
 
     private void tuneQuickAccessChannel(ChannelItem item) {
@@ -4149,6 +4228,38 @@ public class MainActivity extends FragmentActivity {
                 return 0xFFC7D2E2;
             default:
                 return 0xFF9BD0FF;
+        }
+    }
+
+    private void prefetchChannelLogos(List<ChannelItem> items, int maxItems, int widthDp, int heightDp) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        int count = 0;
+        for (ChannelItem item : items) {
+            if (item == null || item.logoUrl == null || item.logoUrl.trim().isEmpty()) {
+                continue;
+            }
+            String trimmedLogoUrl = item.logoUrl.trim();
+            if (isSvgLogoUrl(trimmedLogoUrl)) {
+                if (channelLogoCache.get(trimmedLogoUrl) == null) {
+                    ioExecutor.execute(() -> {
+                        Drawable loaded = loadSvgDrawable(trimmedLogoUrl, widthDp, heightDp);
+                        if (loaded != null) {
+                            channelLogoCache.put(trimmedLogoUrl, loaded);
+                        }
+                    });
+                }
+            } else {
+                Glide.with(getApplicationContext())
+                        .load(trimmedLogoUrl)
+                        .fitCenter()
+                        .preload(dp(widthDp), dp(heightDp));
+            }
+            count++;
+            if (count >= maxItems) {
+                break;
+            }
         }
     }
 

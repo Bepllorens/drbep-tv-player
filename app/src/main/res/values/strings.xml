@@ -160,7 +160,7 @@
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="status_retry_channel">Reintentando: %1$s</string>
-    <string name="tools_menu_title">Herramientas v1.3.2</string>
+    <string name="tools_menu_title">Herramientas v1.3.3</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>
@@ -168,6 +168,7 @@
     <string name="diagnostics_action_mode">Modo canal</string>
     <string name="diagnostics_actions_hint">Reintentar vuelve a probar el canal actual. Modo canal cambia entre Auto, Directo y Proxy.</string>
     <string name="tools_menu_recordings_panel">Panel de grabaciones</string>
+    <string name="tools_menu_multiview">Multiview 2x2</string>
     <string name="title_search_channels">Buscar canal</string>
     <string name="search_hint">Escribe nombre o grupo</string>
     <string name="search_empty_results">Sin resultados todavia</string>
@@ -271,7 +272,8 @@
     <string name="touch_home_section_library">Biblioteca</string>
     <string name="touch_home_section_access">Accesos rapidos</string>
     <string name="multiview_title">Multiview 2x2</string>
-        <string name="multiview_hint">Toca una ventana para audio. Manten pulsado para cambiar canal</string>
+    <string name="multiview_hint_touch">Toca una ventana para audio. Manten pulsado para cambiar canal</string>
+    <string name="multiview_hint_tv">Flechas = mover · OK = audio/full · MENU = cambiar canal</string>
     <string name="multiview_select_channel_title">Elegir canal para ventana</string>
     <string name="multiview_close">Cerrar</string>
     <string name="status_multiview_not_enough_channels">No hay suficientes canales TV visibles para multiview</string>

@@ -31,6 +31,8 @@
         android:id="@+id/dialogRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
         android:maxHeight="620dp"
         android:overScrollMode="never" />
 </LinearLayout>

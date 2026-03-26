@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
@@ -973,7 +974,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginRight="10dp"
-                    android:text="@string/multiview_hint"
+                    android:text="@string/multiview_hint_touch"
                     android:textColor="#A8C5DE"
                     android:textSize="12sp" />
 
@@ -1016,7 +1017,8 @@
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView1"
                             android:layout_width="match_parent"
-                            android:layout_height="match_parent" />
+                            android:layout_height="match_parent"
+                            app:surface_type="texture_view" />
 
                         <TextView
                             android:id="@+id/multiLabel1"
@@ -1044,7 +1046,8 @@
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView2"
                             android:layout_width="match_parent"
-                            android:layout_height="match_parent" />
+                            android:layout_height="match_parent"
+                            app:surface_type="texture_view" />
 
                         <TextView
                             android:id="@+id/multiLabel2"
@@ -1080,7 +1083,8 @@
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView3"
                             android:layout_width="match_parent"
-                            android:layout_height="match_parent" />
+                            android:layout_height="match_parent"
+                            app:surface_type="texture_view" />
 
                         <TextView
                             android:id="@+id/multiLabel3"
@@ -1108,7 +1112,8 @@
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView4"
                             android:layout_width="match_parent"
-                            android:layout_height="match_parent" />
+                            android:layout_height="match_parent"
+                            app:surface_type="texture_view" />
 
                         <TextView
                             android:id="@+id/multiLabel4"

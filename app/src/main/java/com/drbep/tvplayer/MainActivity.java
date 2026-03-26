@@ -168,6 +168,12 @@ public class MainActivity extends FragmentActivity {
     private TextView recordingDetailMetaText;
     private TextView recordingDetailPathText;
     private TextView recordingDetailActionText;
+    private android.app.Dialog activeTimelineDialog;
+    private List<TimelineChannelPrograms> activeTimelineRows = new ArrayList<>();
+    private List<RecordingsRepository.RecordingItem> activeTimelineScheduledItems = new ArrayList<>();
+    private long activeTimelineWindowStartMs;
+    private String activeTimelineAnchorChannelId;
+    private boolean refreshingTimelineDialog;
     private View channelOverlay;
     private View zapBanner;
     private View quickSearchOverlay;
@@ -476,6 +482,12 @@ public class MainActivity extends FragmentActivity {
         playbackModeStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
         touchDeviceMode = detectTouchDeviceMode();
+        if (!touchDeviceMode) {
+            if (quickTvButton != null) quickTvButton.setVisibility(View.GONE);
+            if (quickVodButton != null) quickVodButton.setVisibility(View.GONE);
+            if (quickAdultButton != null) quickAdultButton.setVisibility(View.GONE);
+            if (quickGrabButton != null) quickGrabButton.setVisibility(View.GONE);
+        }
         tabletOrientationLocked = prefs.getBoolean(PREF_TABLET_ORIENTATION_LOCK, false);
         initializeTabletBrightness();
         applyTabletOrientationMode();
@@ -1567,12 +1579,51 @@ public class MainActivity extends FragmentActivity {
                 if (!response.isSuccessful()) {
                     throw new IllegalStateException("schedule HTTP " + response.code);
                 }
-                uiHandler.post(() -> showStatus(getString(R.string.status_recording_scheduled)));
+                uiHandler.post(() -> {
+                    showStatus(getString(R.string.status_recording_scheduled));
+                    markScheduledProgramInOpenTimeline(ch, program);
+                });
             } catch (Exception e) {
                 Log.w(TAG, "schedule program failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_schedule_recording)));
             }
         });
+    }
+
+    private void markScheduledProgramInOpenTimeline(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if (channel == null || program == null || activeTimelineDialog == null || !activeTimelineDialog.isShowing()) {
+            return;
+        }
+        activeTimelineScheduledItems.add(new RecordingsRepository.RecordingItem(
+                "timeline-" + System.currentTimeMillis(),
+                program.title == null || program.title.trim().isEmpty() ? channel.name : program.title,
+                "",
+                0L,
+                "",
+                channel.name,
+                program.title == null ? "" : program.title,
+                program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon,
+                "scheduled",
+                program.startTime == null ? "" : program.startTime,
+                program.endTime == null ? "" : program.endTime,
+                false
+        ));
+        refreshTimelineGuideDialog();
+    }
+
+    private void refreshTimelineGuideDialog() {
+        if (activeTimelineDialog == null || !activeTimelineDialog.isShowing() || activeTimelineRows.isEmpty()) {
+            return;
+        }
+        android.app.Dialog dialog = activeTimelineDialog;
+        List<TimelineChannelPrograms> rows = new ArrayList<>(activeTimelineRows);
+        List<RecordingsRepository.RecordingItem> scheduled = new ArrayList<>(activeTimelineScheduledItems);
+        long windowStartMs = activeTimelineWindowStartMs;
+        String anchorChannelId = activeTimelineAnchorChannelId;
+        refreshingTimelineDialog = true;
+        dialog.dismiss();
+        refreshingTimelineDialog = false;
+        showTimelineGuideDialog(rows, windowStartMs, anchorChannelId, scheduled);
     }
 
     private void createReminder(ChannelItem ch, EpgRepository.EpgProgram program) {
@@ -2870,6 +2921,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateQuickAccessButtons() {
+        if (!touchDeviceMode) {
+            return;
+        }
         String activeTvKey = findPreferredTvFilterKey();
         boolean tvActive = !favoritesOnly && (selectedFilterKey == null || selectedFilterKey.equals(activeTvKey) || ("all".equals(selectedFilterKey) && "all".equals(activeTvKey)));
         boolean vodActive = !favoritesOnly && "vod".equals(selectedFilterKey);
@@ -3401,6 +3455,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId, List<RecordingsRepository.RecordingItem> scheduledItems) {
+        activeTimelineRows = new ArrayList<>(rows);
+        activeTimelineScheduledItems = scheduledItems == null ? new ArrayList<>() : new ArrayList<>(scheduledItems);
+        activeTimelineWindowStartMs = windowStartMs;
+        activeTimelineAnchorChannelId = anchorChannelId;
         if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
         }
@@ -3639,6 +3697,7 @@ public class MainActivity extends FragmentActivity {
         clearTimelineProgramDetail.run();
 
         android.app.Dialog timelineDialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        activeTimelineDialog = timelineDialog;
         timelineDialog.setContentView(dialogView);
         timelineDialog.setCancelable(true);
         timelineDialog.setOnShowListener(d -> {
@@ -3655,7 +3714,16 @@ public class MainActivity extends FragmentActivity {
                 suppressInitialFocusScroll[0] = false;
             }
         });
-        timelineDialog.setOnDismissListener(d -> enableImmersiveMode());
+        timelineDialog.setOnDismissListener(d -> {
+            if (!refreshingTimelineDialog) {
+                activeTimelineDialog = null;
+                activeTimelineRows = new ArrayList<>();
+                activeTimelineScheduledItems = new ArrayList<>();
+                activeTimelineAnchorChannelId = null;
+                activeTimelineWindowStartMs = 0L;
+            }
+            enableImmersiveMode();
+        });
         timelineNowButton.setOnClickListener(v -> {
             timelineDialog.dismiss();
             openTimelineGuideAroundSelection();
@@ -4596,12 +4664,18 @@ public class MainActivity extends FragmentActivity {
                 holder.logoPlate.setPadding(logoPadding, logoPadding, logoPadding, logoPadding);
                 bindChannelLogo(holder.logo, ch.logoUrl, ch.name, 38, 38);
             }
-            holder.favoriteToggle.setText(getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off));
-            holder.favoriteToggle.setTextColor(ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF);
-            holder.favoriteToggle.setOnClickListener(v -> {
-                selectedOverlayIndex = position;
-                toggleFavoriteSelected();
-            });
+            if (touchDeviceMode) {
+                holder.favoriteToggle.setVisibility(View.VISIBLE);
+                holder.favoriteToggle.setText(getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off));
+                holder.favoriteToggle.setTextColor(ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF);
+                holder.favoriteToggle.setOnClickListener(v -> {
+                    selectedOverlayIndex = position;
+                    toggleFavoriteSelected();
+                });
+            } else {
+                holder.favoriteToggle.setVisibility(View.GONE);
+                holder.favoriteToggle.setOnClickListener(null);
+            }
 
             boolean selected = (position == selectedOverlayIndex);
             boolean tuned = (position == currentIndex);

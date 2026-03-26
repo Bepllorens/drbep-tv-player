@@ -9,4 +9,6 @@
 - Fixed the multiview channel picker for Fire Stick focus and scrolling.
 - Added clearer focused-row highlight in the multiview channel picker.
 - Added logo prefetching to make multiview channel picker artwork appear faster.
+- Refreshes the timeline immediately after scheduling so programmed events are marked in place.
+- Hides touch-only quick access chips and favorite star in Fire Stick overlay.
 

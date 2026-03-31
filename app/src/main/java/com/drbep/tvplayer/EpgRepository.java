@@ -10,6 +10,8 @@ import java.util.Map;
 
 final class EpgRepository {
     static final class EpgProgram {
+        final String channelId;
+        final String channelName;
         final String title;
         final String icon;
         final String description;
@@ -17,7 +19,9 @@ final class EpgRepository {
         final String endTime;
         final int progress;
 
-        EpgProgram(String title, String icon, String description, String startTime, String endTime, int progress) {
+        EpgProgram(String channelId, String channelName, String title, String icon, String description, String startTime, String endTime, int progress) {
+            this.channelId = channelId;
+            this.channelName = channelName;
             this.title = title;
             this.icon = icon;
             this.description = description;
@@ -100,8 +104,43 @@ final class EpgRepository {
         return fromJson(httpClient.parseObject(httpClient.requireSuccess(response, "cargando programa EPG").body, "cargando programa EPG"));
     }
 
+    List<EpgProgram> fetchNowProgramsDetailed() throws Exception {
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/now", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (!response.isSuccessful()) {
+            return new ArrayList<>();
+        }
+        return parseProgramsArray(response.body, "cargando EPG actual");
+    }
+
+    List<EpgProgram> fetchCategoryPrograms(String type, int hours) throws Exception {
+        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/category?type=" + type + "&hours=" + hours, 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        if (!response.isSuccessful()) {
+            return new ArrayList<>();
+        }
+        return parseProgramsArray(response.body, "cargando categoria EPG");
+    }
+
+    private List<EpgProgram> parseProgramsArray(String body, String context) throws Exception {
+        String trimmed = body == null ? "" : body.trim();
+        if (trimmed.isEmpty() || "null".equals(trimmed)) {
+            return new ArrayList<>();
+        }
+        JSONArray arr = httpClient.parseArray(trimmed, context);
+        List<EpgProgram> programs = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject item = arr.optJSONObject(i);
+            if (item == null) {
+                continue;
+            }
+            programs.add(fromJson(item));
+        }
+        return programs;
+    }
+
     private static EpgProgram fromJson(JSONObject item) {
         return new EpgProgram(
+                item.optString("channel_id", ""),
+                item.optString("channel_name", ""),
                 item.optString("title", "Sin titulo"),
                 item.optString("icon", ""),
                 item.optString("description", ""),

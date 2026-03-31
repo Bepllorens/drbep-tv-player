@@ -29,6 +29,7 @@
     <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
     <string name="status_loading_guide">Cargando guia...</string>
+    <string name="status_loading_visual_epg">Cargando EPG visual...</string>
     <string name="status_loading_recordings">Cargando grabaciones...</string>
     <string name="status_loading_scheduled_recordings">Cargando grabaciones programadas...</string>
     <string name="status_canceling_scheduled_recording">Cancelando grabacion programada...</string>
@@ -68,6 +69,15 @@
     <string name="error_playback_details">Error de reproduccion\n\n%1$s\n\nBase URL: %2$s\n\nPulsa MENU para abrir la lista o reintentar</string>
     <string name="title_guide">Guia: %1$s</string>
     <string name="title_timeline_guide">Guia timeline</string>
+    <string name="title_visual_epg">EPG visual</string>
+    <string name="visual_epg_subtitle">%1$s  ·  %2$d programas</string>
+    <string name="visual_epg_detail_hint">Muevete por las tarjetas para ver detalle del programa</string>
+    <string name="visual_epg_empty">No hay programas en emision para mostrar</string>
+    <string name="visual_epg_platform_visible">Canales visibles</string>
+    <string name="visual_epg_section_live">En directo ahora</string>
+    <string name="visual_epg_section_movies">Peliculas</string>
+    <string name="visual_epg_section_series">Series</string>
+    <string name="visual_epg_section_sports">Deportes</string>
     <string name="timeline_window_label">%1$s  ·  %2$s - %3$s</string>
     <string name="timeline_hour_block">%1$s</string>
     <string name="timeline_no_epg">Sin EPG</string>
@@ -160,8 +170,9 @@
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="status_retry_channel">Reintentando: %1$s</string>
-    <string name="tools_menu_title">Herramientas v1.3.3</string>
+    <string name="tools_menu_title">Herramientas v1.3.4</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
+    <string name="tools_menu_visual_epg">EPG visual</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>
     <string name="diagnostics_action_retry">Reintentar</string>

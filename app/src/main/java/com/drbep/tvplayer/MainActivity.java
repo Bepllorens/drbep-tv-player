@@ -240,6 +240,28 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+
+    private static final class VisualEpgEntry {
+        final ChannelItem channel;
+        final EpgRepository.EpgProgram program;
+
+        VisualEpgEntry(ChannelItem channel, EpgRepository.EpgProgram program) {
+            this.channel = channel;
+            this.program = program;
+        }
+    }
+
+
+    private static final class VisualEpgSection {
+        final String title;
+        final List<VisualEpgEntry> entries;
+
+        VisualEpgSection(String title, List<VisualEpgEntry> entries) {
+            this.title = title;
+            this.entries = entries;
+        }
+    }
+
     private final Runnable hideOverlayRunnable = this::hideOverlay;
     private final Runnable hideStatusRunnable = () -> {
         if (statusText != null) {
@@ -1362,6 +1384,456 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
+    }
+
+
+    private void openVisualEpgAroundSelection() {
+        if (channels.isEmpty()) {
+            return;
+        }
+        final ChannelItem anchorChannel = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size())
+                ? channels.get(selectedOverlayIndex)
+                : ((currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : channels.get(0));
+        final String anchorChannelId = anchorChannel.id;
+        final String platformLabel = (anchorChannel.platformName == null || anchorChannel.platformName.trim().isEmpty())
+                ? getString(R.string.visual_epg_platform_visible)
+                : anchorChannel.platformName.trim();
+        showStatus(getString(R.string.status_loading_visual_epg));
+        ioExecutor.execute(() -> {
+            try {
+                List<ChannelItem> platformChannels = new ArrayList<>();
+                java.util.Map<String, ChannelItem> byId = new java.util.HashMap<>();
+                java.util.Map<String, ChannelItem> byName = new java.util.HashMap<>();
+                for (ChannelItem channel : channels) {
+                    if (channel == null || channel.isVod || !matchesVisualEpgPlatform(anchorChannel, channel)) {
+                        continue;
+                    }
+                    platformChannels.add(channel);
+                    byId.put(channel.id, channel);
+                    byName.put(String.valueOf(channel.name).trim().toLowerCase(java.util.Locale.ROOT), channel);
+                }
+
+                List<EpgRepository.EpgProgram> nowPrograms = epgRepository.fetchNowProgramsDetailed();
+                List<EpgRepository.EpgProgram> moviePrograms = epgRepository.fetchCategoryPrograms("movies", 24);
+                List<EpgRepository.EpgProgram> seriesPrograms = epgRepository.fetchCategoryPrograms("series", 24);
+                List<EpgRepository.EpgProgram> sportsPrograms = epgRepository.fetchCategoryPrograms("sports", 24);
+
+                List<VisualEpgSection> sections = new ArrayList<>();
+                List<VisualEpgEntry> liveEntries = bindVisualEpgEntries(nowPrograms, byId, byName);
+                List<VisualEpgEntry> movieEntries = bindVisualEpgEntries(moviePrograms, byId, byName);
+                List<VisualEpgEntry> seriesEntries = bindVisualEpgEntries(seriesPrograms, byId, byName);
+                List<VisualEpgEntry> sportsEntries = bindVisualEpgEntries(sportsPrograms, byId, byName);
+                liveEntries.removeIf(entry -> containsVisualEpgProgram(sportsEntries, entry));
+                sortVisualEpgEntries(liveEntries);
+                sortVisualEpgEntries(movieEntries);
+                sortVisualEpgEntries(seriesEntries);
+                sortVisualEpgEntries(sportsEntries);
+                if (!liveEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_live), liveEntries));
+                if (!movieEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_movies), movieEntries));
+                if (!seriesEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_series), seriesEntries));
+                if (!sportsEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_sports), sportsEntries));
+
+                List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
+                try {
+                    RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
+                    if (scheduledResult != null && scheduledResult.items != null) {
+                        scheduledItems.addAll(scheduledResult.items);
+                    }
+                } catch (Exception scheduledErr) {
+                    Log.w(TAG, "visual epg scheduled recordings fetch failed", scheduledErr);
+                }
+                uiHandler.post(() -> {
+                    if (sections.isEmpty()) {
+                        showStatus(getString(R.string.visual_epg_empty));
+                        return;
+                    }
+                    showVisualEpgDialog(sections, anchorChannelId, platformLabel, scheduledItems);
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "visual epg failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+            }
+        });
+    }
+
+    private boolean matchesVisualEpgPlatform(ChannelItem anchorChannel, ChannelItem candidate) {
+        if (anchorChannel == null || candidate == null) {
+            return false;
+        }
+        if (anchorChannel.platformId > 0 && candidate.platformId > 0) {
+            return anchorChannel.platformId == candidate.platformId;
+        }
+        String anchorPlatform = anchorChannel.platformName == null ? "" : anchorChannel.platformName.trim();
+        String candidatePlatform = candidate.platformName == null ? "" : candidate.platformName.trim();
+        if (!anchorPlatform.isEmpty() && !candidatePlatform.isEmpty()) {
+            return anchorPlatform.equalsIgnoreCase(candidatePlatform);
+        }
+        return true;
+    }
+
+    private List<VisualEpgEntry> bindVisualEpgEntries(List<EpgRepository.EpgProgram> programs, java.util.Map<String, ChannelItem> byId, java.util.Map<String, ChannelItem> byName) {
+        List<VisualEpgEntry> out = new ArrayList<>();
+        if (programs == null || programs.isEmpty()) {
+            return out;
+        }
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (EpgRepository.EpgProgram program : programs) {
+            if (program == null) continue;
+            ChannelItem channel = null;
+            if (program.channelId != null && !program.channelId.trim().isEmpty()) {
+                channel = byId.get(program.channelId.trim());
+            }
+            if (channel == null && program.channelName != null) {
+                channel = byName.get(program.channelName.trim().toLowerCase(java.util.Locale.ROOT));
+            }
+            if (channel == null) continue;
+            String key = channel.id + "|" + String.valueOf(program.title).trim() + "|" + String.valueOf(program.startTime).trim();
+            if (!seen.add(key)) continue;
+            out.add(new VisualEpgEntry(channel, program));
+        }
+        return out;
+    }
+
+    private void sortVisualEpgEntries(List<VisualEpgEntry> entries) {
+        if (entries == null) return;
+        entries.sort((left, right) -> Long.compare(parseIsoMillis(left.program.startTime), parseIsoMillis(right.program.startTime)));
+    }
+
+    private boolean containsVisualEpgProgram(List<VisualEpgEntry> haystack, VisualEpgEntry needle) {
+        if (haystack == null || needle == null || needle.channel == null || needle.program == null) {
+            return false;
+        }
+        String needleKey = needle.channel.id + "|" + String.valueOf(needle.program.title).trim() + "|" + String.valueOf(needle.program.startTime).trim();
+        for (VisualEpgEntry entry : haystack) {
+            if (entry == null || entry.channel == null || entry.program == null) continue;
+            String key = entry.channel.id + "|" + String.valueOf(entry.program.title).trim() + "|" + String.valueOf(entry.program.startTime).trim();
+            if (needleKey.equals(key)) return true;
+        }
+        return false;
+    }
+
+    private List<VisualEpgSection> buildVisualEpgSections(List<VisualEpgEntry> entries) {
+        List<VisualEpgSection> sections = new ArrayList<>();
+        if (entries == null || entries.isEmpty()) {
+            return sections;
+        }
+
+        List<VisualEpgEntry> live = new ArrayList<>();
+        List<VisualEpgEntry> movies = new ArrayList<>();
+        List<VisualEpgEntry> series = new ArrayList<>();
+        List<VisualEpgEntry> sports = new ArrayList<>();
+        for (VisualEpgEntry entry : entries) {
+            if (looksSports(entry)) {
+                sports.add(entry);
+            } else if (looksMovie(entry)) {
+                movies.add(entry);
+            } else if (looksSeries(entry)) {
+                series.add(entry);
+            } else {
+                live.add(entry);
+            }
+        }
+        java.util.Comparator<VisualEpgEntry> byStartTime = java.util.Comparator.comparingLong(entry -> {
+            if (entry == null || entry.program == null || entry.program.startTime == null) {
+                return Long.MAX_VALUE;
+            }
+            try {
+                return java.time.Instant.parse(entry.program.startTime).toEpochMilli();
+            } catch (Exception ignored) {
+                return Long.MAX_VALUE;
+            }
+        });
+        live.sort(byStartTime);
+        movies.sort(byStartTime);
+        series.sort(byStartTime);
+        sports.sort(byStartTime);
+
+        if (!live.isEmpty()) {
+            sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_live), live));
+        }
+        if (!movies.isEmpty()) {
+            sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_movies), movies));
+        }
+        if (!series.isEmpty()) {
+            sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_series), series));
+        }
+        if (!sports.isEmpty()) {
+            sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_sports), sports));
+        }
+        return sections;
+    }
+
+    private boolean looksMovie(VisualEpgEntry entry) {
+        String haystack = visualEpgText(entry);
+        return haystack.contains("cine") || haystack.contains("pelicula") || haystack.contains("pelicula") || haystack.contains("film") || haystack.contains("accion") || haystack.contains("thriller");
+    }
+
+    private boolean looksSeries(VisualEpgEntry entry) {
+        String haystack = visualEpgText(entry);
+        return haystack.contains("serie") || haystack.contains("series") || haystack.contains("episodio") || haystack.contains("capitulo") || haystack.contains("temporada") || haystack.matches(".*t\\d+.*e\\d+.*");
+    }
+
+    private boolean looksSports(VisualEpgEntry entry) {
+        String haystack = visualEpgText(entry);
+        return haystack.contains("deporte") || haystack.contains("futbol") || haystack.contains("football") || haystack.contains("liga") || haystack.contains("champions") || haystack.contains("nba") || haystack.contains("tenis") || haystack.contains("formula 1") || haystack.contains("motogp") || haystack.contains("golf") || haystack.contains("boxing") || haystack.contains("ufc") || haystack.contains("baloncesto") || haystack.contains("arena sport") || haystack.contains("dazn") || haystack.contains("ziggo sport");
+    }
+
+    private String visualEpgText(VisualEpgEntry entry) {
+        StringBuilder sb = new StringBuilder();
+        if (entry.channel.name != null) {
+            sb.append(entry.channel.name).append(' ');
+        }
+        if (entry.channel.group != null) {
+            sb.append(entry.channel.group).append(' ');
+        }
+        if (entry.program.title != null) {
+            sb.append(entry.program.title).append(' ');
+        }
+        if (entry.program.description != null) {
+            sb.append(entry.program.description);
+        }
+        return sb.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private void showVisualEpgDialog(List<VisualEpgSection> sections, String anchorChannelId, String platformLabel, List<RecordingsRepository.RecordingItem> scheduledItems) {
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
+        }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+        }
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_visual_epg_guide, null, false);
+        TextView subtitleText = dialogView.findViewById(R.id.visualEpgSubtitleText);
+        TextView refreshButton = dialogView.findViewById(R.id.visualEpgRefreshButton);
+        TextView closeButton = dialogView.findViewById(R.id.visualEpgCloseButton);
+        android.widget.ScrollView verticalScroll = dialogView.findViewById(R.id.visualEpgScroll);
+        LinearLayout sectionsContainer = dialogView.findViewById(R.id.visualEpgSectionsContainer);
+        ImageView posterImage = dialogView.findViewById(R.id.visualEpgPosterImage);
+        TextView titleText = dialogView.findViewById(R.id.visualEpgDetailTitleText);
+        TextView metaText = dialogView.findViewById(R.id.visualEpgMetaText);
+        TextView descText = dialogView.findViewById(R.id.visualEpgDescText);
+        final View[] initialFocus = new View[1];
+        final List<List<View>> focusRows = new ArrayList<>();
+        final Map<View, Integer> focusCenters = new HashMap<>();
+        final Map<View, View> focusAnchors = new HashMap<>();
+
+        int totalItems = 0;
+        for (VisualEpgSection section : sections) {
+            totalItems += section.entries.size();
+        }
+        subtitleText.setText(getString(R.string.visual_epg_subtitle, platformLabel, totalItems));
+        posterImage.setVisibility(View.GONE);
+        titleText.setText(getString(R.string.title_visual_epg));
+        metaText.setText(getString(R.string.visual_epg_detail_hint));
+        descText.setText(getString(R.string.timeline_program_desc_empty));
+        sectionsContainer.removeAllViews();
+
+        int cardWidth = dp(164);
+        int cardHeight = dp(208);
+        int posterHeight = dp(104);
+        int cardGap = dp(10);
+
+        for (VisualEpgSection section : sections) {
+            if (section.entries == null || section.entries.isEmpty()) {
+                continue;
+            }
+            final int rowIndex = focusRows.size();
+            final List<View> rowFocusables = new ArrayList<>();
+
+            TextView sectionTitle = new TextView(this);
+            sectionTitle.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            sectionTitle.setText(section.title);
+            sectionTitle.setTextColor(0xFFFFFFFF);
+            sectionTitle.setTextSize(18f);
+            sectionTitle.setTypeface(Typeface.DEFAULT_BOLD);
+            sectionTitle.setPadding(dp(2), rowIndex == 0 ? dp(2) : dp(14), dp(2), dp(8));
+            sectionsContainer.addView(sectionTitle);
+
+            android.widget.HorizontalScrollView horizontalScroll = new android.widget.HorizontalScrollView(this);
+            horizontalScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            horizontalScroll.setHorizontalScrollBarEnabled(false);
+            horizontalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            horizontalScroll.setFocusable(false);
+            horizontalScroll.setFocusableInTouchMode(false);
+
+            LinearLayout row = new LinearLayout(this);
+            row.setFocusable(false);
+            row.setFocusableInTouchMode(false);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            horizontalScroll.addView(row);
+            sectionsContainer.addView(horizontalScroll);
+
+            for (VisualEpgEntry entry : section.entries) {
+                ChannelItem channel = entry.channel;
+                EpgRepository.EpgProgram program = entry.program;
+                boolean scheduled = isProgramScheduled(channel, program, scheduledItems);
+                boolean live = program.progress >= 0;
+
+                LinearLayout card = new LinearLayout(this);
+                card.setOrientation(LinearLayout.VERTICAL);
+                card.setFocusable(true);
+                card.setFocusableInTouchMode(true);
+                card.setClickable(true);
+                LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(cardWidth, cardHeight);
+                cardParams.rightMargin = cardGap;
+                card.setLayoutParams(cardParams);
+                card.setPadding(dp(8), dp(8), dp(8), dp(8));
+                card.setGravity(Gravity.TOP);
+
+                android.widget.FrameLayout posterFrame = new android.widget.FrameLayout(this);
+                posterFrame.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, posterHeight));
+                posterFrame.setBackgroundColor(0xFF0E1820);
+
+                ImageView posterView = new ImageView(this);
+                posterView.setLayoutParams(new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                posterView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                String heroPoster = program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon.trim();
+                bindRecordingPoster(posterView, heroPoster);
+                posterFrame.addView(posterView);
+
+                TextView topBadge = new TextView(this);
+                android.widget.FrameLayout.LayoutParams topBadgeParams = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
+                topBadgeParams.setMargins(dp(6), dp(6), dp(6), dp(6));
+                topBadge.setLayoutParams(topBadgeParams);
+                topBadge.setPadding(dp(7), dp(3), dp(7), dp(3));
+                topBadge.setText(scheduled ? getString(R.string.timeline_program_scheduled_short) : (live ? getString(R.string.guide_program_now) : channel.name));
+                topBadge.setTextColor(0xFFFFFFFF);
+                topBadge.setTextSize(10f);
+                topBadge.setTypeface(Typeface.DEFAULT_BOLD);
+                android.graphics.drawable.GradientDrawable topBadgeBg = new android.graphics.drawable.GradientDrawable();
+                topBadgeBg.setCornerRadius(dp(12));
+                topBadgeBg.setColor(scheduled ? 0xCC8E5B16 : 0xCC214A72);
+                topBadge.setBackground(topBadgeBg);
+                posterFrame.addView(topBadge);
+                card.addView(posterFrame);
+
+                TextView programTitle = new TextView(this);
+                LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                titleParams.topMargin = dp(8);
+                programTitle.setLayoutParams(titleParams);
+                programTitle.setText(program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title.trim());
+                programTitle.setTextColor(0xFFFFFFFF);
+                programTitle.setTypeface(Typeface.DEFAULT_BOLD);
+                programTitle.setTextSize(12f);
+                programTitle.setMaxLines(2);
+                programTitle.setMinLines(2);
+                card.addView(programTitle);
+
+                TextView programMeta = new TextView(this);
+                LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                metaParams.topMargin = dp(4);
+                programMeta.setLayoutParams(metaParams);
+                programMeta.setText(shortTime(program.startTime) + " - " + shortTime(program.endTime));
+                programMeta.setTextColor(0xFFC9D8E8);
+                programMeta.setTextSize(10f);
+                programMeta.setMaxLines(1);
+                programMeta.setMinLines(1);
+                card.addView(programMeta);
+
+                Runnable applyState = () -> {
+                    boolean focused = card.hasFocus();
+                    android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+                    bg.setCornerRadius(dp(18));
+                    bg.setColor(focused ? 0xFF213447 : 0xFF17232F);
+                    bg.setStroke(dp(2), focused ? 0xFF68B6FF : (scheduled ? 0xFFAF7A21 : 0xFF284156));
+                    card.setBackground(bg);
+                    card.setScaleX(focused ? 1.03f : 1f);
+                    card.setScaleY(focused ? 1.03f : 1f);
+                };
+                applyState.run();
+
+                final int itemIndex = rowFocusables.size();
+                final int focusCenter = itemIndex * (cardWidth + cardGap) + (cardWidth / 2);
+                card.setTag(focusCenter);
+                card.setOnFocusChangeListener((v, hasFocus) -> {
+                    applyState.run();
+                    if (!hasFocus) {
+                        return;
+                    }
+                    titleText.setText(program.title == null || program.title.trim().isEmpty()
+                            ? getString(R.string.label_program_default)
+                            : program.title.trim());
+                    String detailMeta = channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
+                    if (live) {
+                        detailMeta = detailMeta + "  ·  " + getString(R.string.guide_program_now);
+                    }
+                    if (scheduled) {
+                        detailMeta = detailMeta + "  ·  " + getString(R.string.timeline_program_scheduled_short);
+                    }
+                    metaText.setText(detailMeta);
+                    descText.setText(program.description == null || program.description.trim().isEmpty()
+                            ? getString(R.string.timeline_program_desc_empty)
+                            : program.description.trim());
+                    if (heroPoster == null || heroPoster.trim().isEmpty()) {
+                        posterImage.setVisibility(View.GONE);
+                        Glide.with(this).clear(posterImage);
+                    } else {
+                        posterImage.setVisibility(View.VISIBLE);
+                        Glide.with(this).load(heroPoster.trim()).fitCenter().into(posterImage);
+                    }
+                    horizontalScroll.post(() -> horizontalScroll.smoothScrollTo(Math.max(0, card.getLeft() - dp(24)), 0));
+                    if (verticalScroll != null) {
+                        View anchor = focusAnchors.get(card);
+                        verticalScroll.postDelayed(() -> scrollVisualEpgSectionIntoPlace(verticalScroll, anchor != null ? anchor : card), 24L);
+                    }
+                });
+                card.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                        return false;
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                        if (itemIndex > 0) {
+                            rowFocusables.get(itemIndex - 1).requestFocus();
+                            return true;
+                        }
+                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                        if (itemIndex + 1 < rowFocusables.size()) {
+                            rowFocusables.get(itemIndex + 1).requestFocus();
+                            return true;
+                        }
+                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        return moveVisualEpgFocus(focusRows, rowIndex, -1, focusCenter);
+                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                        return moveVisualEpgFocus(focusRows, rowIndex, 1, focusCenter);
+                    }
+                    return false;
+                });
+                card.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(channel, program));
+                rowFocusables.add(card);
+                focusCenters.put(card, focusCenter);
+                focusAnchors.put(card, sectionTitle);
+                if (anchorChannelId != null && anchorChannelId.equals(channel.id) && initialFocus[0] == null) {
+                    initialFocus[0] = card;
+                } else if (initialFocus[0] == null) {
+                    initialFocus[0] = card;
+                }
+                row.addView(card);
+            }
+            focusRows.add(rowFocusables);
+        }
+
+        android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        dialog.setContentView(dialogView);
+        dialog.setCancelable(true);
+        dialog.setOnShowListener(d -> {
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            }
+            if (initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+            }
+        });
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        refreshButton.setOnClickListener(v -> {
+            dialog.dismiss();
+            openVisualEpgAroundSelection();
+        });
+        closeButton.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
     }
 
     private void openCurrentProgramInfoFromTouch() {
@@ -3358,6 +3830,7 @@ public class MainActivity extends FragmentActivity {
         clearQuickSearchOverlay();
         String[] options = new String[]{
                 getString(R.string.tools_menu_timeline_guide),
+                getString(R.string.tools_menu_visual_epg),
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
                 getString(R.string.tools_menu_playback_diagnostics),
@@ -3370,14 +3843,16 @@ public class MainActivity extends FragmentActivity {
                     if (which == 0) {
                         openTimelineGuideAroundSelection();
                     } else if (which == 1) {
-                        showChannelSearchDialog();
+                        openVisualEpgAroundSelection();
                     } else if (which == 2) {
-                        showRecentChannelsDialog();
+                        showChannelSearchDialog();
                     } else if (which == 3) {
-                        showPlaybackDiagnosticsDialog();
+                        showRecentChannelsDialog();
                     } else if (which == 4) {
-                        openRecordingsBrowser();
+                        showPlaybackDiagnosticsDialog();
                     } else if (which == 5) {
+                        openRecordingsBrowser();
+                    } else if (which == 6) {
                         openMultiView();
                     }
                 })
@@ -3737,6 +4212,33 @@ public class MainActivity extends FragmentActivity {
         timelineDialog.show();
     }
 
+    private boolean moveVisualEpgFocus(List<List<View>> focusRows, int fromRowIndex, int direction, int preferredCenterMinute) {
+        int rowIndex = fromRowIndex + direction;
+        while (rowIndex >= 0 && rowIndex < focusRows.size()) {
+            List<View> targetRow = focusRows.get(rowIndex);
+            if (targetRow != null && !targetRow.isEmpty()) {
+                View best = null;
+                int bestDistance = Integer.MAX_VALUE;
+                for (View candidate : targetRow) {
+                    if (candidate == null) continue;
+                    Object tag = candidate.getTag();
+                    int center = preferredCenterMinute;
+                    if (tag instanceof Integer) {
+                        center = (Integer) tag;
+                    }
+                    int distance = Math.abs(center - preferredCenterMinute);
+                    if (best == null || distance < bestDistance) {
+                        best = candidate;
+                        bestDistance = distance;
+                    }
+                }
+                return best != null && best.requestFocus();
+            }
+            rowIndex += direction;
+        }
+        return false;
+    }
+
     private boolean moveTimelineFocus(android.widget.ScrollView timelineVerticalScroll, List<List<View>> focusRows, Map<View, Integer> focusCenters, int fromRowIndex, int direction, int preferredCenterMinute) {
         int rowIndex = fromRowIndex + direction;
         while (rowIndex >= 0 && rowIndex < focusRows.size()) {
@@ -3766,6 +4268,17 @@ public class MainActivity extends FragmentActivity {
             rowIndex += direction;
         }
         return false;
+    }
+
+    private void scrollVisualEpgSectionIntoPlace(android.widget.ScrollView verticalScroll, View target) {
+        if (verticalScroll == null || target == null) {
+            return;
+        }
+        Rect rect = new Rect();
+        target.getDrawingRect(rect);
+        verticalScroll.offsetDescendantRectToMyCoords(target, rect);
+        int desiredTop = Math.max(0, rect.top - dp(4));
+        verticalScroll.scrollTo(0, desiredTop);
     }
 
     private void ensureTimelineBlockVisible(android.widget.ScrollView timelineVerticalScroll, View target) {

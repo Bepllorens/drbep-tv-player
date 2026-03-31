@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.4 - 2026-03-31
+
+- Added Fire Stick visual EPG sections backed by the same EPG category endpoints used by the dashboard.
+- Kept the original timeline guide stable while separating the new visual EPG experience.
+- Improved Fire Stick visual EPG card sizing, poster centering, section ordering, and DPAD navigation.
+- Filtered visual EPG content by the current platform context and excluded sports from the live-now rail.
+- Refined Fire Stick visual EPG focus movement between rows and horizontal channel rails.
+
 ## 1.3.3 - 2026-03-26
 
 - Added Fire Stick multiview 2x2 entry from Tools.

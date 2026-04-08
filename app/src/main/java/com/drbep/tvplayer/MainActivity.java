@@ -2350,7 +2350,9 @@ public class MainActivity extends FragmentActivity {
         if (channels.isEmpty()) {
             return;
         }
-        int next = (currentIndex < 0) ? 0 : currentIndex + delta;
+        int size = channels.size();
+        int anchor = currentIndex < 0 ? 0 : currentIndex;
+        int next = ((anchor + delta) % size + size) % size;
         tuneToIndex(next, true);
     }
 

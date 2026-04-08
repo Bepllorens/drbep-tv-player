@@ -1,3 +1,7 @@
+## 1.3.5
+- Fire Stick: zapping circular dentro del grupo visible.
+- Fire Stick: recuperacion automatica de reproduccion en modo auto probando rutas alternativas antes de fallar.
+
 # Changelog
 
 ## 1.3.4 - 2026-03-31

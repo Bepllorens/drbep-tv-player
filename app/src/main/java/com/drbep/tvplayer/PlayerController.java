@@ -19,8 +19,10 @@ import androidx.media3.ui.PlayerView;
 
 import org.json.JSONObject;
 
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 final class PlayerController {
@@ -184,6 +186,7 @@ final class PlayerController {
     private StreamInfo currentStreamInfo;
     private PlaybackDecision currentPlaybackDecision;
     private boolean usingPlaybackFallback;
+    private final Set<String> attemptedRecoveryRoutes = new HashSet<>();
     private String lastPlaybackState = "IDLE";
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
@@ -233,11 +236,7 @@ final class PlayerController {
                         + " streamInfo=" + describeStreamInfo(currentStreamInfo)
                     + " errorCode=" + PlaybackException.getErrorCodeName(error.errorCode)
                         + " message=" + safeLogValue(error.getMessage()), error);
-                if (decision != null && decision.allowCompatibilityFallback && !usingPlaybackFallback && request != null && request.hasFallback()) {
-                    usingPlaybackFallback = true;
-                    Log.w(TAG, "retrying compatibility fallback for channel=" + describeRequest(request));
-                    host.showStatus(context.getString(R.string.status_retry_compat));
-                    playChannelInternal(request, true, true, currentStreamInfo);
+                if (tryAutoRecovery(request, decision)) {
                     return;
                 }
 
@@ -277,9 +276,76 @@ final class PlayerController {
 
     void resetFallbackState() {
         usingPlaybackFallback = false;
+        attemptedRecoveryRoutes.clear();
         forceLiveEdgeOnNextReady = false;
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         Log.d(TAG, "compatibility fallback state reset");
+    }
+
+    private boolean tryAutoRecovery(PlaybackRequest request, PlaybackDecision decision) {
+        if (request == null || decision == null) {
+            return false;
+        }
+        if (request.directPlayback) {
+            return false;
+        }
+        if (decision.allowCompatibilityFallback && !usingPlaybackFallback && request.hasFallback()) {
+            usingPlaybackFallback = true;
+            attemptedRecoveryRoutes.add(routeAttemptKey(decision));
+            Log.w(TAG, "retrying compatibility fallback for channel=" + describeRequest(request));
+            host.showStatus(context.getString(R.string.status_retry_compat));
+            playChannelInternal(request, true, true, currentStreamInfo);
+            return true;
+        }
+        String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
+        if (!PlaybackModeStore.MODE_AUTO.equals(playbackMode)) {
+            return false;
+        }
+        attemptedRecoveryRoutes.add(routeAttemptKey(decision));
+        PlaybackRequest[] alternatives = new PlaybackRequest[]{
+                cloneRequestWithMode(request, PlaybackModeStore.MODE_PROXY),
+                cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT)
+        };
+        for (PlaybackRequest alternative : alternatives) {
+            PlaybackDecision alternativeDecision = buildPlaybackDecision(alternative, false, currentStreamInfo);
+            String routeKey = routeAttemptKey(alternativeDecision);
+            if (routeKey.equals(routeAttemptKey(decision)) || attemptedRecoveryRoutes.contains(routeKey)) {
+                continue;
+            }
+            attemptedRecoveryRoutes.add(routeKey);
+            Log.w(TAG, "retrying automatic playback recovery channel=" + describeRequest(request)
+                    + " via mode=" + alternative.playbackMode
+                    + " decision=" + describeDecision(alternativeDecision));
+            host.showStatus(context.getString(R.string.status_retry_compat));
+            playChannelInternal(alternative, true, false, currentStreamInfo);
+            return true;
+        }
+        return false;
+    }
+
+    private PlaybackRequest cloneRequestWithMode(PlaybackRequest request, String playbackMode) {
+        return new PlaybackRequest(
+                request.channelId,
+                request.channelName,
+                request.platformName,
+                request.playUrl,
+                request.fallbackPlayUrl,
+                playbackMode,
+                request.drmScheme,
+                request.drmLicenseUrl,
+                request.directPlayback
+        );
+    }
+
+    private String routeAttemptKey(PlaybackDecision decision) {
+        if (decision == null) {
+            return "";
+        }
+        return safeLower(decision.playbackMode) + "|"
+                + safeLower(decision.targetUrl) + "|"
+                + safeLower(decision.mimeType) + "|"
+                + safeLower(decision.drmType) + "|"
+                + decision.useFallback;
     }
 
     PlaybackDiagnostics getPlaybackDiagnostics() {

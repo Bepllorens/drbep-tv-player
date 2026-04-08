@@ -1,3 +1,7 @@
+## 1.3.7
+- Fire Stick: al reabrir una grabacion pregunta si quieres continuar desde el punto guardado o empezar de nuevo.
+- Fire Stick: pulsar BACK durante una grabacion vuelve al panel de grabaciones y guarda el punto de reproduccion.
+
 ## 1.3.6
 - Fire Stick: timeline recuerda ventana y canal enfocado al reabrir.
 - Fire Stick: EPG visual recuerda la tarjeta enfocada al volver a abrir.

@@ -187,6 +187,7 @@ final class PlayerController {
     private PlaybackDecision currentPlaybackDecision;
     private boolean usingPlaybackFallback;
     private final Set<String> attemptedRecoveryRoutes = new HashSet<>();
+    private String currentRecordingUrl;
     private String lastPlaybackState = "IDLE";
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
@@ -454,14 +455,15 @@ final class PlayerController {
         });
     }
 
-    void playRecording(String recordingName, String recordingUrl) {
+    void playRecording(String recordingName, String recordingUrl, long resumePositionMs) {
         if (player == null || recordingUrl == null || recordingUrl.trim().isEmpty()) {
             return;
         }
 
         Log.i(TAG, "playRecording name=" + safeLogValue(recordingName)
                 + " url=" + shortenUrl(recordingUrl)
-                + " mime=" + safeLogValue(inferMimeType(recordingUrl)));
+                + " mime=" + safeLogValue(inferMimeType(recordingUrl))
+                + " resumeMs=" + resumePositionMs);
 
         String mimeType = inferMimeType(recordingUrl);
         MediaItem.Builder builder = new MediaItem.Builder().setUri(recordingUrl);
@@ -471,13 +473,29 @@ final class PlayerController {
 
         currentRequest = null;
         currentStreamInfo = null;
+        currentRecordingUrl = recordingUrl;
         usingPlaybackFallback = false;
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         player.setMediaItem(builder.build());
+        if (resumePositionMs > 0L) {
+            player.seekTo(resumePositionMs);
+        }
         player.prepare();
         player.setPlayWhenReady(true);
         host.hideError();
         host.showStatus(context.getString(R.string.status_playing_recording, recordingName));
+    }
+
+    boolean isPlayingRecording() {
+        return currentRecordingUrl != null && !currentRecordingUrl.trim().isEmpty();
+    }
+
+    long getCurrentPlaybackPosition() {
+        if (player == null) {
+            return 0L;
+        }
+        long value = player.getCurrentPosition();
+        return value < 0L ? 0L : value;
     }
 
     void release() {
@@ -581,6 +599,7 @@ final class PlayerController {
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         currentRequest = request;
         currentStreamInfo = streamInfo;
+        currentRecordingUrl = null;
         usingPlaybackFallback = useFallback;
         lastErrorSummary = null;
         lastHdrBadgeChannelId = null;

@@ -87,6 +87,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_PLAYBACK_MODES = "playback_mode_by_channel";
     private static final String PREF_REMINDERS = "channel_reminders";
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
+    private static final String PREF_RECORDING_RESUME_POSITIONS = "recording_resume_positions";
     private static final String PREF_TABLET_ORIENTATION_LOCK = "tablet_orientation_lock";
     private static final int FILTER_ALL = 0;
     private static final int FILTER_PLATFORM = 1;
@@ -178,6 +179,8 @@ public class MainActivity extends FragmentActivity {
     private String lastVisualEpgChannelId;
     private String lastVisualEpgProgramStartTime;
     private String lastSelectedRecordingId;
+    private String currentPlaybackRecordingId;
+    private final Map<String, Long> recordingResumePositions = new HashMap<>();
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
     private View zapBanner;
@@ -434,6 +437,7 @@ public class MainActivity extends FragmentActivity {
         recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
         favoriteOrderStore = new FavoriteOrderStore(prefs, PREF_FAVORITE_ORDER);
         playbackModeStore = new PlaybackModeStore(prefs, PREF_PLAYBACK_MODES);
+        loadRecordingResumePositions();
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
@@ -2274,9 +2278,29 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String url = recordingsRepository.buildPlaybackUrl(item, basePath);
-        playerController.playRecording(buildRecordingTitle(item), url);
-        hideRecordingsPanel();
-        hideOverlay();
+        currentPlaybackRecordingId = item.id;
+        long resumePositionMs = getRecordingResumePosition(item.id);
+        Runnable startFromBeginning = () -> {
+            clearRecordingResumePosition(item.id);
+            playerController.playRecording(buildRecordingTitle(item), url, 0L);
+            hideRecordingsPanel();
+            hideOverlay();
+        };
+        Runnable resumeFromSaved = () -> {
+            playerController.playRecording(buildRecordingTitle(item), url, resumePositionMs);
+            hideRecordingsPanel();
+            hideOverlay();
+        };
+        if (resumePositionMs > 30_000L) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.title_recordings_visual)
+                    .setMessage("Esta grabacion tiene un punto guardado. ¿Quieres continuar desde donde la dejaste?")
+                    .setPositiveButton("Continuar", (dialog, which) -> resumeFromSaved.run())
+                    .setNegativeButton("Empezar de nuevo", (dialog, which) -> startFromBeginning.run())
+                    .show();
+            return;
+        }
+        startFromBeginning.run();
     }
 
     private RecordingsRepository.RecordingItem getSelectedRecordingItem() {
@@ -2955,6 +2979,11 @@ public class MainActivity extends FragmentActivity {
                 }
                 if (isRecordingsPanelVisible()) {
                     hideRecordingsPanel();
+                    return true;
+                }
+                if (playerController != null && playerController.isPlayingRecording() && currentPlaybackRecordingId != null) {
+                    rememberCurrentRecordingPosition();
+                    openRecordingsBrowser();
                     return true;
                 }
                 if (isOverlayVisible()) {
@@ -4721,6 +4750,77 @@ public class MainActivity extends FragmentActivity {
             return item.channelName.trim() + "  ·  " + baseMeta;
         }
         return baseMeta;
+    }
+
+    private void rememberCurrentRecordingPosition() {
+        if (playerController == null || currentPlaybackRecordingId == null || currentPlaybackRecordingId.trim().isEmpty()) {
+            return;
+        }
+        long positionMs = playerController.getCurrentPlaybackPosition();
+        if (positionMs <= 0L) {
+            return;
+        }
+        recordingResumePositions.put(currentPlaybackRecordingId, positionMs);
+        saveRecordingResumePositions();
+    }
+
+    private long getRecordingResumePosition(String recordingId) {
+        if (recordingId == null || recordingId.trim().isEmpty()) {
+            return 0L;
+        }
+        Long value = recordingResumePositions.get(recordingId);
+        return value == null ? 0L : Math.max(0L, value);
+    }
+
+    private void clearRecordingResumePosition(String recordingId) {
+        if (recordingId == null || recordingId.trim().isEmpty()) {
+            return;
+        }
+        if (recordingResumePositions.remove(recordingId) != null) {
+            saveRecordingResumePositions();
+        }
+    }
+
+    private void loadRecordingResumePositions() {
+        recordingResumePositions.clear();
+        if (prefs == null) {
+            return;
+        }
+        String raw = prefs.getString(PREF_RECORDING_RESUME_POSITIONS, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject json = new JSONObject(raw);
+            java.util.Iterator<String> keys = json.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                recordingResumePositions.put(key, Math.max(0L, json.optLong(key, 0L)));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "failed to load recording resume positions", e);
+        }
+    }
+
+    private void saveRecordingResumePositions() {
+        if (prefs == null) {
+            return;
+        }
+        try {
+            JSONObject json = new JSONObject();
+            for (Map.Entry<String, Long> entry : recordingResumePositions.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().trim().isEmpty()) {
+                    continue;
+                }
+                long value = entry.getValue() == null ? 0L : Math.max(0L, entry.getValue());
+                if (value > 0L) {
+                    json.put(entry.getKey(), value);
+                }
+            }
+            prefs.edit().putString(PREF_RECORDING_RESUME_POSITIONS, json.toString()).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save recording resume positions", e);
+        }
     }
 
     private String buildRecordingsSummary(RecordingsRepository.RecordingsResult result) {

@@ -1,3 +1,6 @@
+## 1.4.1
+- Actualizado RecyclerView a 1.4.0 sobre la nueva base de build con API 36.
+
 ## 1.4.0
 - minSdk sube a 23 para alinearse con las dependencias modernas de reproduccion.
 - Actualizadas las dependencias de reproduccion a Media3 1.10.0.

@@ -1,3 +1,7 @@
+## 1.4.3
+- Fire Stick: el menu de acciones de un programa en timeline o EPG visual ahora ofrece cancelar la grabacion si ese evento ya estaba programado.
+- Fire Stick: cancelar una grabacion programada desde timeline refresca la propia vista al momento.
+
 ## 1.4.2
 - Fire Stick: anadidos presets 1/2/3 para multiview desde Herramientas.
 - Fire Stick: puedes guardar el multiview actual o reabrir un preset guardado sin reconstruirlo a mano.

@@ -27,6 +27,10 @@ final class ChannelActionsCoordinator {
 
         void scheduleProgram(ChannelItem channelItem, EpgRepository.EpgProgram program);
 
+        boolean isProgramScheduled(ChannelItem channelItem, EpgRepository.EpgProgram program);
+
+        void cancelScheduledProgram(ChannelItem channelItem, EpgRepository.EpgProgram program);
+
         void createReminder(ChannelItem channelItem, EpgRepository.EpgProgram program);
     }
 
@@ -132,12 +136,19 @@ final class ChannelActionsCoordinator {
         }
 
         String title = program.title == null || program.title.trim().isEmpty() ? context.getString(R.string.label_program_default) : program.title;
-        String[] options = context.getResources().getStringArray(R.array.program_action_menu_options);
+        boolean scheduled = host.isProgramScheduled(channelItem, program);
+        String[] options = scheduled
+                ? new String[]{context.getString(R.string.recording_action_cancel), context.getString(R.string.menu_reminder)}
+                : context.getResources().getStringArray(R.array.program_action_menu_options);
         new AlertDialog.Builder(context)
                 .setTitle(title)
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        host.scheduleProgram(channelItem, program);
+                        if (scheduled) {
+                            host.cancelScheduledProgram(channelItem, program);
+                        } else {
+                            host.scheduleProgram(channelItem, program);
+                        }
                     } else if (which == 1) {
                         host.createReminder(channelItem, program);
                     }

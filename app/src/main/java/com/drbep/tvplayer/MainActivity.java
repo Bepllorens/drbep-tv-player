@@ -174,6 +174,7 @@ public class MainActivity extends FragmentActivity {
     private android.app.Dialog activeTimelineDialog;
     private List<TimelineChannelPrograms> activeTimelineRows = new ArrayList<>();
     private List<RecordingsRepository.RecordingItem> activeTimelineScheduledItems = new ArrayList<>();
+    private List<RecordingsRepository.RecordingItem> activeProgramScheduledItems = new ArrayList<>();
     private long activeTimelineWindowStartMs;
     private String activeTimelineAnchorChannelId;
     private String lastTimelineAnchorChannelId;
@@ -496,6 +497,16 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void scheduleProgram(ChannelItem channelItem, EpgRepository.EpgProgram program) {
                 MainActivity.this.scheduleProgram(channelItem, program);
+            }
+
+            @Override
+            public boolean isProgramScheduled(ChannelItem channelItem, EpgRepository.EpgProgram program) {
+                return MainActivity.this.isProgramScheduled(channelItem, program, activeProgramScheduledItems);
+            }
+
+            @Override
+            public void cancelScheduledProgram(ChannelItem channelItem, EpgRepository.EpgProgram program) {
+                MainActivity.this.cancelScheduledProgram(channelItem, program);
             }
 
             @Override
@@ -1643,6 +1654,7 @@ public class MainActivity extends FragmentActivity {
         for (VisualEpgSection section : sections) {
             totalItems += section.entries.size();
         }
+        activeProgramScheduledItems = scheduledItems == null ? new ArrayList<>() : new ArrayList<>(scheduledItems);
         subtitleText.setText(getString(R.string.visual_epg_subtitle, platformLabel, totalItems));
         posterImage.setVisibility(View.GONE);
         titleText.setText(getString(R.string.title_visual_epg));
@@ -2121,6 +2133,31 @@ public class MainActivity extends FragmentActivity {
         dialog.dismiss();
         refreshingTimelineDialog = false;
         showTimelineGuideDialog(rows, windowStartMs, anchorChannelId, scheduled);
+    }
+
+    private void cancelScheduledProgram(ChannelItem ch, EpgRepository.EpgProgram program) {
+        RecordingsRepository.RecordingItem scheduled = findScheduledProgramRecording(ch, program, activeProgramScheduledItems);
+        if (scheduled == null) {
+            showStatus(getString(R.string.status_failed_cancel_scheduled_recording));
+            return;
+        }
+        showStatus(getString(R.string.status_canceling_scheduled_recording));
+        ioExecutor.execute(() -> {
+            try {
+                recordingsRepository.deleteScheduledRecording(scheduled.id);
+                uiHandler.post(() -> {
+                    activeProgramScheduledItems.remove(scheduled);
+                    activeTimelineScheduledItems.removeIf(item -> item != null && scheduled.id.equals(item.id));
+                    showStatus(getString(R.string.status_scheduled_recording_canceled));
+                    if (activeTimelineDialog != null && activeTimelineDialog.isShowing()) {
+                        refreshTimelineGuideDialog();
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "cancel scheduled program failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_cancel_scheduled_recording)));
+            }
+        });
     }
 
     private void createReminder(ChannelItem ch, EpgRepository.EpgProgram program) {
@@ -4107,6 +4144,7 @@ public class MainActivity extends FragmentActivity {
     private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId, List<RecordingsRepository.RecordingItem> scheduledItems) {
         activeTimelineRows = new ArrayList<>(rows);
         activeTimelineScheduledItems = scheduledItems == null ? new ArrayList<>() : new ArrayList<>(scheduledItems);
+        activeProgramScheduledItems = new ArrayList<>(activeTimelineScheduledItems);
         activeTimelineWindowStartMs = windowStartMs;
         activeTimelineAnchorChannelId = anchorChannelId;
         lastTimelineWindowStartMs = windowStartMs;
@@ -4375,6 +4413,7 @@ public class MainActivity extends FragmentActivity {
                 activeTimelineDialog = null;
                 activeTimelineRows = new ArrayList<>();
                 activeTimelineScheduledItems = new ArrayList<>();
+                activeProgramScheduledItems = new ArrayList<>();
                 activeTimelineAnchorChannelId = null;
                 activeTimelineWindowStartMs = 0L;
             }
@@ -5390,8 +5429,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isProgramScheduled(ChannelItem channel, EpgRepository.EpgProgram program, List<RecordingsRepository.RecordingItem> scheduledItems) {
+        return findScheduledProgramRecording(channel, program, scheduledItems) != null;
+    }
+
+    private RecordingsRepository.RecordingItem findScheduledProgramRecording(ChannelItem channel, EpgRepository.EpgProgram program, List<RecordingsRepository.RecordingItem> scheduledItems) {
         if (channel == null || program == null || scheduledItems == null || scheduledItems.isEmpty()) {
-            return false;
+            return null;
         }
         long programStartMs = parseIsoMillis(program.startTime);
         long programEndMs = parseIsoMillis(program.endTime);
@@ -5416,10 +5459,10 @@ public class MainActivity extends FragmentActivity {
                 timeMatches = Math.abs(programEndMs - itemEndMs) < 120000L;
             }
             if (timeMatches || (!normalizedChannel.isEmpty() && normalizedChannel.equals(itemChannel) && !normalizedTitle.isEmpty() && normalizedTitle.equals(itemTitle))) {
-                return true;
+                return item;
             }
         }
-        return false;
+        return null;
     }
 
     private String normalizeScheduledText(String value) {

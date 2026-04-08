@@ -1,3 +1,7 @@
+## 1.3.9
+- Migrado el build a AGP 8.9.1 y Gradle 8.11.1 para soportar compileSdk 36.
+- compileSdk sube a 36 sin cambiar todavia el targetSdk, preparando el proyecto para actualizar Media3 y otras dependencias.
+
 ## 1.3.8
 - Fire Stick: al pulsar BACK durante una grabacion ahora pregunta si quieres salir de la grabacion y volver al canal anterior.
 - Fire Stick: al confirmar la salida de una grabacion vuelve al canal lineal que estabas viendo antes en lugar de quedarse bloqueado.

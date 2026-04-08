@@ -180,6 +180,7 @@ public class MainActivity extends FragmentActivity {
     private String lastVisualEpgProgramStartTime;
     private String lastSelectedRecordingId;
     private String currentPlaybackRecordingId;
+    private String currentPlaybackReturnChannelId;
     private final Map<String, Long> recordingResumePositions = new HashMap<>();
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
@@ -2279,6 +2280,7 @@ public class MainActivity extends FragmentActivity {
         }
         String url = recordingsRepository.buildPlaybackUrl(item, basePath);
         currentPlaybackRecordingId = item.id;
+        currentPlaybackReturnChannelId = getCurrentChannelId();
         long resumePositionMs = getRecordingResumePosition(item.id);
         Runnable startFromBeginning = () -> {
             clearRecordingResumePosition(item.id);
@@ -2982,8 +2984,7 @@ public class MainActivity extends FragmentActivity {
                     return true;
                 }
                 if (playerController != null && playerController.isPlayingRecording() && currentPlaybackRecordingId != null) {
-                    rememberCurrentRecordingPosition();
-                    openRecordingsBrowser();
+                    showLeaveRecordingPrompt();
                     return true;
                 }
                 if (isOverlayVisible()) {
@@ -4750,6 +4751,45 @@ public class MainActivity extends FragmentActivity {
             return item.channelName.trim() + "  ·  " + baseMeta;
         }
         return baseMeta;
+    }
+
+    private String getCurrentChannelId() {
+        if (currentIndex >= 0 && currentIndex < channels.size()) {
+            ChannelItem item = channels.get(currentIndex);
+            if (item != null && item.id != null && !item.id.trim().isEmpty()) {
+                return item.id;
+            }
+        }
+        return lastChannelId;
+    }
+
+    private void showLeaveRecordingPrompt() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_recordings_visual)
+                .setMessage("¿Salir de la grabacion y volver al canal anterior?")
+                .setPositiveButton("Salir", (dialog, which) -> exitRecordingToPreviousChannel())
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void exitRecordingToPreviousChannel() {
+        rememberCurrentRecordingPosition();
+        String channelId = currentPlaybackReturnChannelId;
+        currentPlaybackRecordingId = null;
+        currentPlaybackReturnChannelId = null;
+        if (channelId != null && !channelId.trim().isEmpty()) {
+            ChannelItem returnChannel = findChannelItemById(channelId);
+            if (returnChannel != null) {
+                int visibleIndex = findChannelIndexById(channelId);
+                if (visibleIndex >= 0) {
+                    tuneToIndex(visibleIndex, true);
+                    return;
+                }
+                playChannelItem(returnChannel, true);
+                return;
+            }
+        }
+        openRecordingsBrowser();
     }
 
     private void rememberCurrentRecordingPosition() {

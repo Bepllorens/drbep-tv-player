@@ -173,6 +173,11 @@ public class MainActivity extends FragmentActivity {
     private List<RecordingsRepository.RecordingItem> activeTimelineScheduledItems = new ArrayList<>();
     private long activeTimelineWindowStartMs;
     private String activeTimelineAnchorChannelId;
+    private String lastTimelineAnchorChannelId;
+    private long lastTimelineWindowStartMs;
+    private String lastVisualEpgChannelId;
+    private String lastVisualEpgProgramStartTime;
+    private String lastSelectedRecordingId;
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
     private View zapBanner;
@@ -1337,10 +1342,14 @@ public class MainActivity extends FragmentActivity {
         if (channels.isEmpty()) {
             return;
         }
-        int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
-                ? selectedOverlayIndex
-                : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
-        openTimelineGuide(anchorIndex, System.currentTimeMillis());
+        int anchorIndex = findChannelIndexById(lastTimelineAnchorChannelId);
+        if (anchorIndex < 0) {
+            anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
+                    ? selectedOverlayIndex
+                    : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
+        }
+        long windowStartMs = lastTimelineWindowStartMs > 0L ? lastTimelineWindowStartMs : System.currentTimeMillis();
+        openTimelineGuide(anchorIndex, windowStartMs);
     }
 
     private void openTimelineGuide(int anchorIndex, long windowStartMs) {
@@ -1391,9 +1400,12 @@ public class MainActivity extends FragmentActivity {
         if (channels.isEmpty()) {
             return;
         }
-        final ChannelItem anchorChannel = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size())
+        int visualAnchorIndex = findChannelIndexById(lastVisualEpgChannelId);
+        final ChannelItem anchorChannel = (visualAnchorIndex >= 0 && visualAnchorIndex < channels.size())
+                ? channels.get(visualAnchorIndex)
+                : ((selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size())
                 ? channels.get(selectedOverlayIndex)
-                : ((currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : channels.get(0));
+                : ((currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : channels.get(0)));
         final String anchorChannelId = anchorChannel.id;
         final String platformLabel = (anchorChannel.platformName == null || anchorChannel.platformName.trim().isEmpty())
                 ? getString(R.string.visual_epg_platform_visible)
@@ -1754,6 +1766,8 @@ public class MainActivity extends FragmentActivity {
                     if (!hasFocus) {
                         return;
                     }
+                    lastVisualEpgChannelId = channel == null ? lastVisualEpgChannelId : channel.id;
+                    lastVisualEpgProgramStartTime = program == null ? lastVisualEpgProgramStartTime : program.startTime;
                     titleText.setText(program.title == null || program.title.trim().isEmpty()
                             ? getString(R.string.label_program_default)
                             : program.title.trim());
@@ -1806,7 +1820,11 @@ public class MainActivity extends FragmentActivity {
                 rowFocusables.add(card);
                 focusCenters.put(card, focusCenter);
                 focusAnchors.put(card, sectionTitle);
-                if (anchorChannelId != null && anchorChannelId.equals(channel.id) && initialFocus[0] == null) {
+                boolean preferredVisualCard = lastVisualEpgChannelId != null && lastVisualEpgChannelId.equals(channel.id)
+                        && lastVisualEpgProgramStartTime != null && lastVisualEpgProgramStartTime.equals(program.startTime);
+                if (preferredVisualCard) {
+                    initialFocus[0] = card;
+                } else if (anchorChannelId != null && anchorChannelId.equals(channel.id) && initialFocus[0] == null) {
                     initialFocus[0] = card;
                 } else if (initialFocus[0] == null) {
                     initialFocus[0] = card;
@@ -2115,7 +2133,7 @@ public class MainActivity extends FragmentActivity {
 
     private void openRecordingsBrowser() {
         Log.d(TAG, "openRecordingsBrowser scheduledMode=" + recordingsScheduledMode);
-        loadRecordingsPanel(recordingsScheduledMode, null);
+        loadRecordingsPanel(recordingsScheduledMode, lastSelectedRecordingId);
     }
 
     private void loadRecordingsPanel(boolean scheduledMode, String preferredId) {
@@ -2582,6 +2600,7 @@ public class MainActivity extends FragmentActivity {
         currentRecordingsResult = result;
         recordingsScheduledMode = result.scheduledMode;
         selectedRecordingIndex = 0;
+        lastSelectedRecordingId = preferredId;
         if (preferredId != null && !preferredId.trim().isEmpty()) {
             for (int i = 0; i < result.items.size(); i++) {
                 if (preferredId.equals(result.items.get(i).id)) {
@@ -2600,6 +2619,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void hideRecordingsPanel() {
+        RecordingsRepository.RecordingItem selected = getSelectedRecordingItem();
+        lastSelectedRecordingId = selected == null ? lastSelectedRecordingId : selected.id;
         if (recordingsPanel != null) {
             recordingsPanel.setVisibility(View.GONE);
         }
@@ -3936,6 +3957,8 @@ public class MainActivity extends FragmentActivity {
         activeTimelineScheduledItems = scheduledItems == null ? new ArrayList<>() : new ArrayList<>(scheduledItems);
         activeTimelineWindowStartMs = windowStartMs;
         activeTimelineAnchorChannelId = anchorChannelId;
+        lastTimelineWindowStartMs = windowStartMs;
+        lastTimelineAnchorChannelId = anchorChannelId;
         if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
         }
@@ -4095,6 +4118,8 @@ public class MainActivity extends FragmentActivity {
                 block.setOnFocusChangeListener((v, hasFocus) -> {
                     applyTimelineBlockState(block, live, scheduled, hasFocus);
                     if (hasFocus) {
+                        activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
+                        activeTimelineWindowStartMs = windowStartMs;
                         if (timelineProgramTitleText != null) {
                             timelineProgramTitleText.setText(program.title == null || program.title.trim().isEmpty()
                                     ? getString(R.string.label_program_default)
@@ -4193,6 +4218,8 @@ public class MainActivity extends FragmentActivity {
         });
         timelineDialog.setOnDismissListener(d -> {
             if (!refreshingTimelineDialog) {
+                lastTimelineAnchorChannelId = activeTimelineAnchorChannelId;
+                lastTimelineWindowStartMs = activeTimelineWindowStartMs;
                 activeTimelineDialog = null;
                 activeTimelineRows = new ArrayList<>();
                 activeTimelineScheduledItems = new ArrayList<>();

@@ -1,3 +1,8 @@
+## 1.3.6
+- Fire Stick: timeline recuerda ventana y canal enfocado al reabrir.
+- Fire Stick: EPG visual recuerda la tarjeta enfocada al volver a abrir.
+- Fire Stick: grabaciones recuerda el modo y el item seleccionado.
+
 ## 1.3.5
 - Fire Stick: zapping circular dentro del grupo visible.
 - Fire Stick: recuperacion automatica de reproduccion en modo auto probando rutas alternativas antes de fallar.

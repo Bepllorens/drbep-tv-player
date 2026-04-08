@@ -170,7 +170,7 @@
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="status_retry_channel">Reintentando: %1$s</string>
-    <string name="tools_menu_title">Herramientas v1.3.4</string>
+    <string name="tools_menu_title">Herramientas v1.4.2</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_visual_epg">EPG visual</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>
@@ -180,6 +180,8 @@
     <string name="diagnostics_actions_hint">Reintentar vuelve a probar el canal actual. Modo canal cambia entre Auto, Directo y Proxy.</string>
     <string name="tools_menu_recordings_panel">Panel de grabaciones</string>
     <string name="tools_menu_multiview">Multiview 2x2</string>
+    <string name="tools_menu_multiview_open_preset">Abrir preset multiview</string>
+    <string name="tools_menu_multiview_save_preset">Guardar preset multiview</string>
     <string name="title_search_channels">Buscar canal</string>
     <string name="search_hint">Escribe nombre o grupo</string>
     <string name="search_empty_results">Sin resultados todavia</string>
@@ -287,5 +289,10 @@
     <string name="multiview_hint_tv">Flechas = mover · OK = audio/full · MENU = cambiar canal</string>
     <string name="multiview_select_channel_title">Elegir canal para ventana</string>
     <string name="multiview_close">Cerrar</string>
+    <string name="multiview_open_preset_title">Abrir preset multiview</string>
+    <string name="multiview_save_preset_title">Guardar preset multiview</string>
+    <string name="multiview_preset_label">Preset %1$d (%2$d canales)</string>
     <string name="status_multiview_not_enough_channels">No hay suficientes canales TV visibles para multiview</string>
+    <string name="status_multiview_preset_saved">Preset %1$d guardado</string>
+    <string name="status_multiview_preset_empty">Ese preset aun no tiene suficientes canales</string>
 </resources>

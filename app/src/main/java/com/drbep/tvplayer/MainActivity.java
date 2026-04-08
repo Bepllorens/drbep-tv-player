@@ -88,6 +88,8 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_REMINDERS = "channel_reminders";
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
     private static final String PREF_RECORDING_RESUME_POSITIONS = "recording_resume_positions";
+    private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
+    private static final int MULTIVIEW_PRESET_COUNT = 3;
     private static final String PREF_TABLET_ORIENTATION_LOCK = "tablet_orientation_lock";
     private static final int FILTER_ALL = 0;
     private static final int FILTER_PLATFORM = 1;
@@ -3524,8 +3526,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openMultiView() {
-        List<ChannelItem> selected = buildMultiViewChannels();
-        if (selected.size() < 2) {
+        openMultiView(buildMultiViewChannels());
+    }
+
+    private void openMultiView(List<ChannelItem> selected) {
+        if (selected == null || selected.size() < 2) {
             showStatus(getString(R.string.status_multiview_not_enough_channels));
             return;
         }
@@ -3682,6 +3687,117 @@ public class MainActivity extends FragmentActivity {
             }
         }
         return selected;
+    }
+
+    private List<ChannelItem> buildCurrentMultiViewSelectionForSave() {
+        List<ChannelItem> selected = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        if (isMultiViewVisible()) {
+            for (ChannelItem item : multiViewChannels) {
+                if (item != null && item.id != null && added.add(item.id)) {
+                    selected.add(item);
+                }
+            }
+        }
+        if (selected.size() >= 2) {
+            return selected;
+        }
+        return buildMultiViewChannels();
+    }
+
+    private String getMultiViewPresetKey(int presetIndex) {
+        return PREF_MULTIVIEW_PRESET_PREFIX + presetIndex;
+    }
+
+    private List<String> getMultiViewPresetIds(int presetIndex) {
+        List<String> ids = new ArrayList<>();
+        if (prefs == null) {
+            return ids;
+        }
+        String raw = prefs.getString(getMultiViewPresetKey(presetIndex), "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return ids;
+        }
+        for (String part : raw.split("\\|")) {
+            if (part == null) {
+                continue;
+            }
+            String id = part.trim();
+            if (!id.isEmpty()) {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    private List<ChannelItem> resolveMultiViewPreset(int presetIndex) {
+        List<ChannelItem> result = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        for (String id : getMultiViewPresetIds(presetIndex)) {
+            ChannelItem item = findChannelItemById(id);
+            if (item != null && !item.isVod && item.id != null && added.add(item.id)) {
+                result.add(item);
+            }
+        }
+        return result;
+    }
+
+    private void saveMultiViewPreset(int presetIndex, List<ChannelItem> items) {
+        if (prefs == null) {
+            return;
+        }
+        List<String> ids = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        for (ChannelItem item : items) {
+            if (item != null && item.id != null && !item.id.trim().isEmpty() && added.add(item.id)) {
+                ids.add(item.id);
+            }
+        }
+        prefs.edit().putString(getMultiViewPresetKey(presetIndex), String.join("|", ids)).apply();
+    }
+
+    private String buildMultiViewPresetLabel(int presetIndex) {
+        int count = resolveMultiViewPreset(presetIndex).size();
+        return getString(R.string.multiview_preset_label, presetIndex + 1, count);
+    }
+
+    private void showSaveMultiViewPresetDialog() {
+        List<ChannelItem> source = buildCurrentMultiViewSelectionForSave();
+        if (source.size() < 2) {
+            showStatus(getString(R.string.status_multiview_not_enough_channels));
+            return;
+        }
+        String[] labels = new String[MULTIVIEW_PRESET_COUNT];
+        for (int i = 0; i < MULTIVIEW_PRESET_COUNT; i++) {
+            labels[i] = buildMultiViewPresetLabel(i);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.multiview_save_preset_title)
+                .setItems(labels, (dialog, which) -> {
+                    saveMultiViewPreset(which, source);
+                    showStatus(getString(R.string.status_multiview_preset_saved, which + 1));
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showOpenMultiViewPresetDialog() {
+        String[] labels = new String[MULTIVIEW_PRESET_COUNT];
+        for (int i = 0; i < MULTIVIEW_PRESET_COUNT; i++) {
+            labels[i] = buildMultiViewPresetLabel(i);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.multiview_open_preset_title)
+                .setItems(labels, (dialog, which) -> {
+                    List<ChannelItem> preset = resolveMultiViewPreset(which);
+                    if (preset.size() < 2) {
+                        showStatus(getString(R.string.status_multiview_preset_empty));
+                        return;
+                    }
+                    openMultiView(preset);
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
     }
 
     private void showMultiViewChannelPicker(int slot) {
@@ -3888,7 +4004,9 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_recent_channels),
                 getString(R.string.tools_menu_playback_diagnostics),
                 getString(R.string.tools_menu_recordings_panel),
-                getString(R.string.tools_menu_multiview)
+                getString(R.string.tools_menu_multiview),
+                getString(R.string.tools_menu_multiview_open_preset),
+                getString(R.string.tools_menu_multiview_save_preset)
         };
         new AlertDialog.Builder(this)
                 .setTitle(R.string.tools_menu_title)
@@ -3907,6 +4025,10 @@ public class MainActivity extends FragmentActivity {
                         openRecordingsBrowser();
                     } else if (which == 6) {
                         openMultiView();
+                    } else if (which == 7) {
+                        showOpenMultiViewPresetDialog();
+                    } else if (which == 8) {
+                        showSaveMultiViewPresetDialog();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)

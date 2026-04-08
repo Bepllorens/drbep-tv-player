@@ -1,3 +1,7 @@
+## 1.4.2
+- Fire Stick: anadidos presets 1/2/3 para multiview desde Herramientas.
+- Fire Stick: puedes guardar el multiview actual o reabrir un preset guardado sin reconstruirlo a mano.
+
 ## 1.4.1
 - Actualizado RecyclerView a 1.4.0 sobre la nueva base de build con API 36.
 

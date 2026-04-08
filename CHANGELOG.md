@@ -1,3 +1,8 @@
+## 1.4.0
+- minSdk sube a 23 para alinearse con las dependencias modernas de reproduccion.
+- Actualizadas las dependencias de reproduccion a Media3 1.10.0.
+- Leanback pasa a la release estable 1.2.0.
+
 ## 1.3.9
 - Migrado el build a AGP 8.9.1 y Gradle 8.11.1 para soportar compileSdk 36.
 - compileSdk sube a 36 sin cambiar todavia el targetSdk, preparando el proyecto para actualizar Media3 y otras dependencias.

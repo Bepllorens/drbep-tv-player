@@ -1,3 +1,6 @@
+## 1.4.19
+- Fire Stick: se retira Bouquet favoritos del menu Herramientas ahora que Favoritos ya existe como bouquet real en la navegacion.
+
 ## 1.4.18
 - Fire Stick: el bouquet Favoritos queda siempre visible aunque haya filtros de arranque activos, para que no desaparezca del player.
 

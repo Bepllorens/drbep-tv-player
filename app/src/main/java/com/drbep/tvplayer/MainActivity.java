@@ -3290,9 +3290,15 @@ public class MainActivity extends FragmentActivity {
                 }
                 break;
             case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                if (playerController != null && playerController.seekTimeshiftForward()) {
-                    showTimeshiftHudTemporarily();
-                    return true;
+                if (playerController != null) {
+                    if (event.getRepeatCount() > 0 && playerController.resumeTimeshiftLive()) {
+                        showTimeshiftHudTemporarily();
+                        return true;
+                    }
+                    if (playerController.seekTimeshiftForward()) {
+                        showTimeshiftHudTemporarily();
+                        return true;
+                    }
                 }
                 break;
             case KeyEvent.KEYCODE_MEDIA_PLAY:

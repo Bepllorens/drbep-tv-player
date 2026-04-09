@@ -4177,6 +4177,7 @@ public class MainActivity extends FragmentActivity {
         TextView timelineNextButton = dialogView.findViewById(R.id.timelineNextButton);
         TextView timelineCloseButton = dialogView.findViewById(R.id.timelineCloseButton);
         TextView windowText = dialogView.findViewById(R.id.timelineWindowText);
+        final List<TextView> timelineHeaderButtons = java.util.Arrays.asList(timelineNowButton, timelineNextButton, timelineCloseButton);
         LinearLayout headerRow = dialogView.findViewById(R.id.timelineHeaderRow);
         LinearLayout rowsContainer = dialogView.findViewById(R.id.timelineRowsContainer);
         ImageView timelineProgramPosterImage = dialogView.findViewById(R.id.timelineProgramPosterImage);
@@ -4207,6 +4208,23 @@ public class MainActivity extends FragmentActivity {
                 timelineProgramDescText.setText(getString(R.string.timeline_program_desc_empty));
             }
         };
+        final java.util.function.Consumer<TextView> styleTimelineHeaderButton = button -> {
+            if (button == null) {
+                return;
+            }
+            button.setFocusable(true);
+            button.setFocusableInTouchMode(true);
+            button.setClickable(true);
+            button.setOnFocusChangeListener((v, hasFocus) -> {
+                v.setScaleX(hasFocus ? 1.08f : 1f);
+                v.setScaleY(hasFocus ? 1.08f : 1f);
+                v.setAlpha(hasFocus ? 1f : 0.9f);
+                v.setBackgroundColor(hasFocus ? 0xFF2F89C5 : 0x264F86A8);
+            });
+        };
+        for (TextView headerButton : timelineHeaderButtons) {
+            styleTimelineHeaderButton.accept(headerButton);
+        }
 
         long windowEndMs = windowStartMs + TIMELINE_WINDOW_MS;
         final long nowMs = System.currentTimeMillis();
@@ -4373,6 +4391,10 @@ public class MainActivity extends FragmentActivity {
                         return false;
                     }
                     if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        if (rowIndex == 0 && timelineNowButton != null) {
+                            timelineNowButton.requestFocus();
+                            return true;
+                        }
                         return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, centerMinute);
                     }
                     if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -4464,6 +4486,36 @@ public class MainActivity extends FragmentActivity {
                 activeTimelineFocusedCenterMinute = -1;
             }
             enableImmersiveMode();
+        });
+        timelineNowButton.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+                return true;
+            }
+            return false;
+        });
+        timelineNextButton.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+                return true;
+            }
+            return false;
+        });
+        timelineCloseButton.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+                return true;
+            }
+            return false;
         });
         timelineNowButton.setOnClickListener(v -> {
             timelineDialog.dismiss();

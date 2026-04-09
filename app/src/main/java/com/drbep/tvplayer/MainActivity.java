@@ -129,6 +129,7 @@ public class MainActivity extends FragmentActivity {
     private final PlayerView[] multiPlayerViews = new PlayerView[4];
     private final View[] multiTiles = new View[4];
     private final TextView[] multiLabels = new TextView[4];
+    private final TextView[] multiAudioBadges = new TextView[4];
     private final List<PlayerController> multiPlayerControllers = new ArrayList<>();
     private final List<ChannelItem> multiViewChannels = new ArrayList<>();
     private final String[] multiViewChannelIds = new String[4];
@@ -367,6 +368,10 @@ public class MainActivity extends FragmentActivity {
         multiLabels[1] = findViewById(R.id.multiLabel2);
         multiLabels[2] = findViewById(R.id.multiLabel3);
         multiLabels[3] = findViewById(R.id.multiLabel4);
+        multiAudioBadges[0] = findViewById(R.id.multiAudioBadge1);
+        multiAudioBadges[1] = findViewById(R.id.multiAudioBadge2);
+        multiAudioBadges[2] = findViewById(R.id.multiAudioBadge3);
+        multiAudioBadges[3] = findViewById(R.id.multiAudioBadge4);
         overlaySearchInput = findViewById(R.id.overlaySearchInput);
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
@@ -4115,14 +4120,17 @@ public class MainActivity extends FragmentActivity {
             if (multiTiles[i] == null) {
                 continue;
             }
-            boolean active = i == multiViewActiveIndex && i < multiViewChannels.size();
+            boolean hasChannel = i < multiViewChannels.size();
+            boolean active = i == multiViewActiveIndex && hasChannel;
             multiTiles[i].setBackgroundTintList(active ? ColorStateList.valueOf(0xFF2A7C86) : ColorStateList.valueOf(0xFF1A2430));
-            if (multiLabels[i] != null && i < multiViewChannels.size()) {
-                String label = multiViewChannels.get(i).name;
-                if (active) {
-                    label = (touchDeviceMode ? "AUDIO · TAP = FULL" : "AUDIO · OK = FULL") + " · " + label;
-                }
-                multiLabels[i].setText(label);
+            multiTiles[i].setAlpha(hasChannel ? 1f : 0.7f);
+            if (multiLabels[i] != null) {
+                multiLabels[i].setText(hasChannel ? multiViewChannels.get(i).name : "");
+                multiLabels[i].setBackgroundTintList(ColorStateList.valueOf(active ? 0xCC0E3E46 : 0xCC243447));
+            }
+            if (multiAudioBadges[i] != null) {
+                multiAudioBadges[i].setVisibility(active ? View.VISIBLE : View.GONE);
+                multiAudioBadges[i].setText(touchDeviceMode ? "AUDIO" : "AUDIO");
             }
         }
     }

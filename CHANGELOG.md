@@ -1,3 +1,6 @@
+## 1.4.14
+- Fire Stick: multiview muestra ahora un badge AUDIO separado y un foco mas claro en la ventana activa, sin mezclarlo con el nombre del canal.
+
 ## 1.4.13
 - Fire Stick: con la barra de timeshift visible, DPAD arriba vuelve a LIVE y DPAD abajo la cierra sin abrir otros paneles.
 

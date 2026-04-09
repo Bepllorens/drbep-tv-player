@@ -3193,6 +3193,10 @@ public class MainActivity extends FragmentActivity {
                     moveRecordingsSelection(-1);
                     return true;
                 }
+                if (isTvTimeshiftHudActive() && playerController != null && playerController.resumeTimeshiftLive()) {
+                    showTimeshiftHudTemporarily();
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     moveOverlaySelection(-1);
                 } else {
@@ -3206,6 +3210,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 if (isRecordingsPanelVisible()) {
                     moveRecordingsSelection(1);
+                    return true;
+                }
+                if (isTvTimeshiftHudActive()) {
+                    hideTvTimeshiftHud();
                     return true;
                 }
                 if (isOverlayVisible()) {

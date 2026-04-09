@@ -1,3 +1,6 @@
+## 1.4.13
+- Fire Stick: con la barra de timeshift visible, DPAD arriba vuelve a LIVE y DPAD abajo la cierra sin abrir otros paneles.
+
 ## 1.4.12
 - Fire Stick: OK sobre reproduccion normal ahora muestra la barra de timeshift en vez de ocultarla tras pausar, y BACK la cierra primero si estaba visible.
 

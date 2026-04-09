@@ -304,7 +304,7 @@ final class CatalogRepository {
         }
         List<ChannelFilter> filtered = new ArrayList<>();
         for (ChannelFilter filter : filters) {
-            if (startupConfig.enabledFilterKeys.contains(filter.key)) {
+            if ("favorites".equals(filter.key) || startupConfig.enabledFilterKeys.contains(filter.key)) {
                 filtered.add(filter);
             }
         }

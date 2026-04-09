@@ -1,3 +1,6 @@
+## 1.4.18
+- Fire Stick: el bouquet Favoritos queda siempre visible aunque haya filtros de arranque activos, para que no desaparezca del player.
+
 ## 1.4.17
 - Fire Stick: Favoritos pasa a tener bouquet propio y Herramientas entra en ese grupo en vez de usar un modo separado de zapping.
 

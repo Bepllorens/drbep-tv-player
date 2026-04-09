@@ -3313,6 +3313,12 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     public boolean onKeyLongPress(int keyCode, @NonNull KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+            if (playerController != null && playerController.resumeTimeshiftLive()) {
+                showTimeshiftHudTemporarily();
+                return true;
+            }
+        }
         if (keyCode == KeyEvent.KEYCODE_INFO || keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
             showV12ToolsMenu();
             return true;

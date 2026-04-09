@@ -1,3 +1,6 @@
+## 1.4.9
+- Fire Stick: pulsacion larga en FF dentro de timeshift vuelve rapido a LIVE y mantiene la barra visible para confirmar el salto.
+
 ## 1.4.8
 - Fire Stick: primera base de timeshift con mando. PLAY/PAUSE y REW/FF muestran la barra y permiten pausar o mover el directo cuando el canal soporta DVR.
 

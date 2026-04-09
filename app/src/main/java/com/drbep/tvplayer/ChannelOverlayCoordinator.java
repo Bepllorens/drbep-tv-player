@@ -288,6 +288,9 @@ final class ChannelOverlayCoordinator {
         if (filter.type == 4) {
             return item.isAdultVod;
         }
+        if (filter.type == 5) {
+            return item.favorite && !item.isVod;
+        }
         return true;
     }
 

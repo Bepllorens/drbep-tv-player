@@ -1,3 +1,6 @@
+## 1.4.17
+- Fire Stick: Favoritos pasa a tener bouquet propio y Herramientas entra en ese grupo en vez de usar un modo separado de zapping.
+
 ## 1.4.16
 - Fire Stick: Herramientas anade acceso rapido a Canales favoritos y un conmutador claro para zapping solo entre favoritos.
 

@@ -98,6 +98,7 @@ public class MainActivity extends FragmentActivity {
     private static final int FILTER_PLATFORM = 1;
     private static final int FILTER_CUSTOM_GROUP = 2;
     private static final int FILTER_VOD = 3;
+    private static final int FILTER_FAVORITES = 5;
     private static final long TIMELINE_WINDOW_MS = 12L * 60L * 60L * 1000L;
     private static final long TIMELINE_SHIFT_MS = 2L * 60L * 60L * 1000L;
 
@@ -757,11 +758,11 @@ public class MainActivity extends FragmentActivity {
         if (touchHomeFavoritesButton != null) {
             touchHomeFavoritesButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
-                showFavoriteChannelsQuickDialog();
+                applyQuickOverlayTarget("favorites");
             });
             touchHomeFavoritesButton.setOnLongClickListener(v -> {
                 showTouchControlsTemporarily();
-                toggleFavoritesOnlyMode();
+                showFavoriteChannelsQuickDialog();
                 return true;
             });
         }
@@ -3642,6 +3643,8 @@ public class MainActivity extends FragmentActivity {
                 total++;
             } else if ("tv".equals(targetKey) && !item.isVod) {
                 total++;
+            } else if ("favorites".equals(targetKey) && item.favorite && !item.isVod) {
+                total++;
             }
         }
         return total;
@@ -3684,7 +3687,7 @@ public class MainActivity extends FragmentActivity {
         }
         if (touchHomeSubtitleText != null) {
             String label = buildTouchHomeFilterLabel();
-            int count = favoritesOnly ? buildFavoriteQuickChannels().size() : channels.size();
+            int count = (favoritesOnly || "favorites".equals(selectedFilterKey)) ? buildFavoriteQuickChannels().size() : channels.size();
             touchHomeSubtitleText.setText(getString(R.string.touch_home_subtitle, label, count));
         }
         styleHomeHubPrimaryButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
@@ -3692,7 +3695,7 @@ public class MainActivity extends FragmentActivity {
         styleHomeHubPrimaryButton(touchHomeAdultButton, !favoritesOnly && "vod-adult".equals(selectedFilterKey), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
         styleHomeHubPrimaryButton(touchHomeGrabButton, false, getString(R.string.touch_home_button_grab));
         styleHomeHubSecondaryButton(touchHomeRecentButton, false, getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()));
-        styleHomeHubSecondaryButton(touchHomeFavoritesButton, favoritesOnly, getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
+        styleHomeHubSecondaryButton(touchHomeFavoritesButton, favoritesOnly || "favorites".equals(selectedFilterKey), getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
         styleHomeHubSecondaryButton(touchHomeListButton, false, getString(R.string.touch_home_button_list));
         styleHomeHubSecondaryButton(touchHomeMultiButton, isMultiViewVisible(), getString(R.string.touch_home_button_multi));
     }
@@ -3703,7 +3706,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String buildTouchHomeFilterLabel() {
-        if (favoritesOnly) {
+        if (favoritesOnly || "favorites".equals(selectedFilterKey)) {
             return getString(R.string.touch_home_filter_favorites);
         }
         if (selectedFilterKey == null || selectedFilterKey.trim().isEmpty() || "all".equals(selectedFilterKey)) {
@@ -4221,7 +4224,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
                 getString(R.string.tools_menu_favorite_channels),
-                getString(favoritesOnly ? R.string.tools_menu_favorites_zap_off : R.string.tools_menu_favorites_zap_on),
+                getString(R.string.tools_menu_favorite_bouquet),
                 getString(R.string.tools_menu_playback_diagnostics),
                 getString(R.string.tools_menu_recordings_panel),
                 getString(R.string.tools_menu_multiview),
@@ -4242,7 +4245,7 @@ public class MainActivity extends FragmentActivity {
                     } else if (which == 4) {
                         showFavoriteChannelsQuickDialog();
                     } else if (which == 5) {
-                        toggleFavoritesOnlyMode();
+                        applyQuickOverlayTarget("favorites");
                     } else if (which == 6) {
                         showPlaybackDiagnosticsDialog();
                     } else if (which == 7) {

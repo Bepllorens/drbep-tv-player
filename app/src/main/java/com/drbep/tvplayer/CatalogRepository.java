@@ -22,6 +22,7 @@ final class CatalogRepository {
     private static final int FILTER_CUSTOM_GROUP = 2;
     private static final int FILTER_VOD = 3;
     private static final int FILTER_VOD_ADULT = 4;
+    private static final int FILTER_FAVORITES = 5;
 
     private final String baseUrl;
     private final HttpClient httpClient;
@@ -242,6 +243,7 @@ final class CatalogRepository {
     private List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId, StartupFilterConfig startupConfig) {
         LinkedHashMap<String, ChannelFilter> byKey = new LinkedHashMap<>();
         byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
+        byKey.put("favorites", new ChannelFilter("favorites", "Favoritos", FILTER_FAVORITES, 0, ""));
 
         Map<Integer, String> platformNames = new LinkedHashMap<>();
         Set<String> customGroupNames = new HashSet<>();

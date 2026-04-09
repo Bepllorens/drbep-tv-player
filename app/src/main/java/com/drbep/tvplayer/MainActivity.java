@@ -1028,6 +1028,15 @@ public class MainActivity extends FragmentActivity {
                 && !isMultiViewVisible();
     }
 
+    private void hideTvTimeshiftHud() {
+        if (touchDeviceMode || !tvTimeshiftHudVisible) {
+            return;
+        }
+        uiHandler.removeCallbacks(hideTvTimeshiftHudRunnable);
+        tvTimeshiftHudVisible = false;
+        updateTimeshiftBar();
+    }
+
     private void scheduleTouchControlsAutoHide() {
         uiHandler.removeCallbacks(hideTouchControlsRunnable);
         updateTimeshiftBar();
@@ -3137,6 +3146,10 @@ public class MainActivity extends FragmentActivity {
                     hideRecordingsPanel();
                     return true;
                 }
+                if (isTvTimeshiftHudActive()) {
+                    hideTvTimeshiftHud();
+                    return true;
+                }
                 if (playerController != null && playerController.isPlayingRecording() && currentPlaybackRecordingId != null) {
                     showLeaveRecordingPrompt();
                     return true;
@@ -3254,7 +3267,11 @@ public class MainActivity extends FragmentActivity {
                     tuneToIndex(selectedOverlayIndex, true);
                     hideOverlay();
                 } else if (playerController != null) {
-                    playerController.togglePlayback();
+                    if (!touchDeviceMode && playerController.getPlaybackSeekState() != null) {
+                        showTimeshiftHudTemporarily();
+                    } else {
+                        playerController.togglePlayback();
+                    }
                 }
                 return true;
             case KeyEvent.KEYCODE_INFO:

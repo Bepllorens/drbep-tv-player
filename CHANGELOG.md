@@ -1,3 +1,6 @@
+## 1.4.12
+- Fire Stick: OK sobre reproduccion normal ahora muestra la barra de timeshift en vez de ocultarla tras pausar, y BACK la cierra primero si estaba visible.
+
 ## 1.4.11
 - Fire Stick: cuando la barra de timeshift esta visible, LEFT/RIGHT del mando hacen seek sobre esa barra en vez de abrir el overlay.
 

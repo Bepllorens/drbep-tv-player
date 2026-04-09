@@ -4220,6 +4220,8 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_visual_epg),
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
+                getString(R.string.tools_menu_favorite_channels),
+                getString(favoritesOnly ? R.string.tools_menu_favorites_zap_off : R.string.tools_menu_favorites_zap_on),
                 getString(R.string.tools_menu_playback_diagnostics),
                 getString(R.string.tools_menu_recordings_panel),
                 getString(R.string.tools_menu_multiview),
@@ -4238,14 +4240,18 @@ public class MainActivity extends FragmentActivity {
                     } else if (which == 3) {
                         showRecentChannelsDialog();
                     } else if (which == 4) {
-                        showPlaybackDiagnosticsDialog();
+                        showFavoriteChannelsQuickDialog();
                     } else if (which == 5) {
-                        openRecordingsBrowser();
+                        toggleFavoritesOnlyMode();
                     } else if (which == 6) {
-                        openMultiView();
+                        showPlaybackDiagnosticsDialog();
                     } else if (which == 7) {
-                        showOpenMultiViewPresetDialog();
+                        openRecordingsBrowser();
                     } else if (which == 8) {
+                        openMultiView();
+                    } else if (which == 9) {
+                        showOpenMultiViewPresetDialog();
+                    } else if (which == 10) {
                         showSaveMultiViewPresetDialog();
                     }
                 })

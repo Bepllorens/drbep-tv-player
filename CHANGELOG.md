@@ -1,3 +1,6 @@
+## 1.4.16
+- Fire Stick: Herramientas anade acceso rapido a Canales favoritos y un conmutador claro para zapping solo entre favoritos.
+
 ## 1.4.15
 - Fire Stick: multiview sustituye el badge AUDIO por un marco naranja en la ventana activa, mas claro en tele.
 

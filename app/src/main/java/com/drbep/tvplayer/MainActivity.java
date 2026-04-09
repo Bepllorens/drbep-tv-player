@@ -27,11 +27,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.widget.EditText;
@@ -4122,17 +4124,23 @@ public class MainActivity extends FragmentActivity {
             }
             boolean hasChannel = i < multiViewChannels.size();
             boolean active = i == multiViewActiveIndex && hasChannel;
-            multiTiles[i].setBackgroundTintList(active ? ColorStateList.valueOf(0xFF2A7C86) : ColorStateList.valueOf(0xFF1A2430));
+            GradientDrawable tileBackground = new GradientDrawable();
+            tileBackground.setColor(Color.parseColor("#FF1A2430"));
+            tileBackground.setStroke(active ? dpToPx(4) : dpToPx(2), active ? Color.parseColor("#FFCC7A00") : Color.parseColor("#55384B5E"));
+            multiTiles[i].setBackground(tileBackground);
             multiTiles[i].setAlpha(hasChannel ? 1f : 0.7f);
             if (multiLabels[i] != null) {
                 multiLabels[i].setText(hasChannel ? multiViewChannels.get(i).name : "");
                 multiLabels[i].setBackgroundTintList(ColorStateList.valueOf(active ? 0xCC0E3E46 : 0xCC243447));
             }
             if (multiAudioBadges[i] != null) {
-                multiAudioBadges[i].setVisibility(active ? View.VISIBLE : View.GONE);
-                multiAudioBadges[i].setText(touchDeviceMode ? "AUDIO" : "AUDIO");
+                multiAudioBadges[i].setVisibility(View.GONE);
             }
         }
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
     private CharSequence buildHighlightedText(String value, String query, boolean favorite) {

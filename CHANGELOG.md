@@ -1,3 +1,6 @@
+## 1.4.15
+- Fire Stick: multiview sustituye el badge AUDIO por un marco naranja en la ventana activa, mas claro en tele.
+
 ## 1.4.14
 - Fire Stick: multiview muestra ahora un badge AUDIO separado y un foco mas claro en la ventana activa, sin mezclarlo con el nombre del canal.
 

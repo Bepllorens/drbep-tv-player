@@ -1020,6 +1020,14 @@ public class MainActivity extends FragmentActivity {
         scheduleTvTimeshiftHudAutoHide();
     }
 
+    private boolean isTvTimeshiftHudActive() {
+        return !touchDeviceMode
+                && tvTimeshiftHudVisible
+                && !isOverlayVisible()
+                && !isRecordingsPanelVisible()
+                && !isMultiViewVisible();
+    }
+
     private void scheduleTouchControlsAutoHide() {
         uiHandler.removeCallbacks(hideTouchControlsRunnable);
         updateTimeshiftBar();
@@ -3202,6 +3210,10 @@ public class MainActivity extends FragmentActivity {
                     hideRecordingsPanel();
                     return true;
                 }
+                if (isTvTimeshiftHudActive() && playerController != null && playerController.seekTimeshiftBack()) {
+                    showTimeshiftHudTemporarily();
+                    return true;
+                }
                 if (isOverlayVisible()) {
                     cycleFilter(-1);
                 } else {
@@ -3215,6 +3227,10 @@ public class MainActivity extends FragmentActivity {
                 }
                 if (isRecordingsPanelVisible()) {
                     switchRecordingsMode(true);
+                    return true;
+                }
+                if (isTvTimeshiftHudActive() && playerController != null && playerController.seekTimeshiftForward()) {
+                    showTimeshiftHudTemporarily();
                     return true;
                 }
                 if (isOverlayVisible()) {

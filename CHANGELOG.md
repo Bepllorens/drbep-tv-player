@@ -1,3 +1,6 @@
+## 1.4.11
+- Fire Stick: cuando la barra de timeshift esta visible, LEFT/RIGHT del mando hacen seek sobre esa barra en vez de abrir el overlay.
+
 ## 1.4.10
 - Fire Stick: mantener pulsado FF en timeshift ahora detecta la repeticion del mando y salta directo a LIVE, en vez de avanzar tramo a tramo.
 

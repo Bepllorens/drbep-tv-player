@@ -177,8 +177,10 @@ public class MainActivity extends FragmentActivity {
     private List<RecordingsRepository.RecordingItem> activeProgramScheduledItems = new ArrayList<>();
     private long activeTimelineWindowStartMs;
     private String activeTimelineAnchorChannelId;
+    private int activeTimelineFocusedCenterMinute = -1;
     private String lastTimelineAnchorChannelId;
     private long lastTimelineWindowStartMs;
+    private int lastTimelineFocusedCenterMinute = -1;
     private String lastVisualEpgChannelId;
     private String lastVisualEpgProgramStartTime;
     private String lastSelectedRecordingId;
@@ -1368,6 +1370,17 @@ public class MainActivity extends FragmentActivity {
         }
         long windowStartMs = lastTimelineWindowStartMs > 0L ? lastTimelineWindowStartMs : System.currentTimeMillis();
         openTimelineGuide(anchorIndex, windowStartMs);
+    }
+
+    private void openTimelineGuideNow() {
+        if (channels.isEmpty()) {
+            return;
+        }
+        int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
+                ? selectedOverlayIndex
+                : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
+        lastTimelineFocusedCenterMinute = -1;
+        openTimelineGuide(anchorIndex, System.currentTimeMillis());
     }
 
     private void openTimelineGuide(int anchorIndex, long windowStartMs) {
@@ -4171,6 +4184,11 @@ public class MainActivity extends FragmentActivity {
         TextView timelineProgramMetaText = dialogView.findViewById(R.id.timelineProgramMetaText);
         TextView timelineProgramDescText = dialogView.findViewById(R.id.timelineProgramDescText);
         final View[] initialFocus = new View[1];
+        final View[] anchorLiveFocus = new View[1];
+        final View[] anchorRememberedFocus = new View[1];
+        final View[] anchorFirstFocus = new View[1];
+        final View[] anyFirstFocus = new View[1];
+        final int[] anchorRememberedDelta = new int[]{Integer.MAX_VALUE};
         final boolean[] suppressInitialFocusScroll = new boolean[]{true};
         final List<List<View>> focusRows = new ArrayList<>();
         final Map<View, Integer> focusCenters = new HashMap<>();
@@ -4191,6 +4209,8 @@ public class MainActivity extends FragmentActivity {
         };
 
         long windowEndMs = windowStartMs + TIMELINE_WINDOW_MS;
+        final long nowMs = System.currentTimeMillis();
+        final boolean rememberFocusedCenter = lastTimelineFocusedCenterMinute >= 0 && lastTimelineWindowStartMs == windowStartMs;
         SimpleDateFormat dayFormat = new SimpleDateFormat("EEE d MMM", Locale.getDefault());
         SimpleDateFormat hourFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
         windowText.setText(getString(
@@ -4310,6 +4330,8 @@ public class MainActivity extends FragmentActivity {
                     if (hasFocus) {
                         activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
                         activeTimelineWindowStartMs = windowStartMs;
+                        activeTimelineFocusedCenterMinute = centerMinute;
+                        lastTimelineFocusedCenterMinute = centerMinute;
                         if (timelineProgramTitleText != null) {
                             timelineProgramTitleText.setText(program.title == null || program.title.trim().isEmpty()
                                     ? getString(R.string.label_program_default)
@@ -4361,10 +4383,22 @@ public class MainActivity extends FragmentActivity {
                 block.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(row.channel, program));
                 focusCenters.put(block, centerMinute);
                 rowFocusables.add(block);
-                if (anchorChannelId != null && anchorChannelId.equals(row.channel.id) && initialFocus[0] == null) {
-                    initialFocus[0] = block;
-                } else if (initialFocus[0] == null) {
-                    initialFocus[0] = block;
+                boolean anchorMatch = anchorChannelId != null && anchorChannelId.equals(row.channel.id);
+                if (anchorMatch && anchorFirstFocus[0] == null) {
+                    anchorFirstFocus[0] = block;
+                }
+                if (anyFirstFocus[0] == null) {
+                    anyFirstFocus[0] = block;
+                }
+                if (anchorMatch && nowMs >= startMs && nowMs < endMs) {
+                    anchorLiveFocus[0] = block;
+                }
+                if (anchorMatch && rememberFocusedCenter) {
+                    int delta = Math.abs(centerMinute - lastTimelineFocusedCenterMinute);
+                    if (delta < anchorRememberedDelta[0]) {
+                        anchorRememberedDelta[0] = delta;
+                        anchorRememberedFocus[0] = block;
+                    }
                 }
                 strip.addView(block);
                 usedWidth += blockWidth + dp(2);
@@ -4384,6 +4418,16 @@ public class MainActivity extends FragmentActivity {
             focusRows.add(rowFocusables);
             rowLayout.addView(strip);
             rowsContainer.addView(rowLayout);
+        }
+
+        if (anchorLiveFocus[0] != null) {
+            initialFocus[0] = anchorLiveFocus[0];
+        } else if (anchorRememberedFocus[0] != null) {
+            initialFocus[0] = anchorRememberedFocus[0];
+        } else if (anchorFirstFocus[0] != null) {
+            initialFocus[0] = anchorFirstFocus[0];
+        } else {
+            initialFocus[0] = anyFirstFocus[0];
         }
 
         clearTimelineProgramDetail.run();
@@ -4410,18 +4454,20 @@ public class MainActivity extends FragmentActivity {
             if (!refreshingTimelineDialog) {
                 lastTimelineAnchorChannelId = activeTimelineAnchorChannelId;
                 lastTimelineWindowStartMs = activeTimelineWindowStartMs;
+                lastTimelineFocusedCenterMinute = activeTimelineFocusedCenterMinute;
                 activeTimelineDialog = null;
                 activeTimelineRows = new ArrayList<>();
                 activeTimelineScheduledItems = new ArrayList<>();
                 activeProgramScheduledItems = new ArrayList<>();
                 activeTimelineAnchorChannelId = null;
                 activeTimelineWindowStartMs = 0L;
+                activeTimelineFocusedCenterMinute = -1;
             }
             enableImmersiveMode();
         });
         timelineNowButton.setOnClickListener(v -> {
             timelineDialog.dismiss();
-            openTimelineGuideAroundSelection();
+            openTimelineGuideNow();
         });
         timelineNextButton.setOnClickListener(v -> {
             timelineDialog.dismiss();

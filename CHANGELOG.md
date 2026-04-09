@@ -1,3 +1,7 @@
+## 1.4.4
+- Fire Stick: el boton Ahora de la timeline salta de verdad a la franja actual en vez de reabrir la ventana anterior.
+- Fire Stick: la timeline recuerda mejor el bloque enfocado y al reabrirse intenta caer en el programa en emision o en el ultimo punto usado.
+
 ## 1.4.3
 - Fire Stick: el menu de acciones de un programa en timeline o EPG visual ahora ofrece cancelar la grabacion si ese evento ya estaba programado.
 - Fire Stick: cancelar una grabacion programada desde timeline refresca la propia vista al momento.

@@ -1,3 +1,6 @@
+## 1.4.7
+- Fire Stick: corregido el salto de Siguiente en la timeline para que abra la franja correcta del siguiente programa del canal y no una fecha invalida.
+
 ## 1.4.6
 - Fire Stick: anadido boton Siguiente en la timeline para saltar al siguiente programa del canal enfocado sin recorrer toda la fila.
 

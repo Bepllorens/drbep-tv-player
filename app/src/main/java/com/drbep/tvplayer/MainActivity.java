@@ -1405,7 +1405,7 @@ public class MainActivity extends FragmentActivity {
             if (row == null || row.channel == null || row.programs == null) {
                 continue;
             }
-            if (!row.channel.id.equals(anchorChannelId)) {
+            if (anchorChannelId == null || !row.channel.id.equals(anchorChannelId)) {
                 continue;
             }
             for (EpgRepository.EpgProgram program : row.programs) {
@@ -1422,15 +1422,24 @@ public class MainActivity extends FragmentActivity {
             }
             break;
         }
-        long targetWindowStartMs = System.currentTimeMillis();
+        long targetWindowStartMs;
         if (nextProgram != null) {
             long nextStartMs = parseIsoMillis(nextProgram.startTime);
-            long snapped = nextStartMs - ((nextStartMs / TIMELINE_SHIFT_MS) * TIMELINE_SHIFT_MS);
-            targetWindowStartMs = Math.max(0L, snapped);
+            targetWindowStartMs = Math.max(0L, (nextStartMs / TIMELINE_SHIFT_MS) * TIMELINE_SHIFT_MS);
             lastTimelineFocusedCenterMinute = (int) Math.max(0L, (nextStartMs - targetWindowStartMs) / 60000L);
         } else {
             targetWindowStartMs = (activeTimelineWindowStartMs > 0L ? activeTimelineWindowStartMs : System.currentTimeMillis()) + TIMELINE_SHIFT_MS;
             lastTimelineFocusedCenterMinute = -1;
+        }
+        if (activeTimelineDialog != null && activeTimelineDialog.isShowing() && !activeTimelineRows.isEmpty()) {
+            android.app.Dialog dialog = activeTimelineDialog;
+            List<TimelineChannelPrograms> rows = new ArrayList<>(activeTimelineRows);
+            List<RecordingsRepository.RecordingItem> scheduled = new ArrayList<>(activeTimelineScheduledItems);
+            refreshingTimelineDialog = true;
+            dialog.dismiss();
+            refreshingTimelineDialog = false;
+            showTimelineGuideDialog(rows, targetWindowStartMs, channels.get(anchorIndex).id, scheduled);
+            return;
         }
         openTimelineGuide(anchorIndex, targetWindowStartMs);
     }
@@ -4584,10 +4593,7 @@ public class MainActivity extends FragmentActivity {
             timelineDialog.dismiss();
             openTimelineGuideNow();
         });
-        timelineChannelNextButton.setOnClickListener(v -> {
-            timelineDialog.dismiss();
-            openTimelineGuideNextForAnchor();
-        });
+        timelineChannelNextButton.setOnClickListener(v -> openTimelineGuideNextForAnchor());
         timelineNextButton.setOnClickListener(v -> {
             timelineDialog.dismiss();
             int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);

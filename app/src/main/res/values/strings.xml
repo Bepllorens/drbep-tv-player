@@ -171,7 +171,7 @@
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="status_retry_channel">Reintentando: %1$s</string>
-    <string name="tools_menu_title">Herramientas v1.4.6</string>
+    <string name="tools_menu_title">Herramientas v1.4.7</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_visual_epg">EPG visual</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>

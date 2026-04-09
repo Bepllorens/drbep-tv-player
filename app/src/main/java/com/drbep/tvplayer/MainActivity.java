@@ -4250,7 +4250,9 @@ public class MainActivity extends FragmentActivity {
         final View[] anchorLiveFocus = new View[1];
         final View[] anchorRememberedFocus = new View[1];
         final View[] anchorFirstFocus = new View[1];
+        final View[] anchorEmptyFocus = new View[1];
         final View[] anyFirstFocus = new View[1];
+        final View[] anyEmptyFocus = new View[1];
         final int[] anchorRememberedDelta = new int[]{Integer.MAX_VALUE};
         final boolean[] suppressInitialFocusScroll = new boolean[]{true};
         final List<List<View>> focusRows = new ArrayList<>();
@@ -4496,6 +4498,55 @@ public class MainActivity extends FragmentActivity {
                 empty.setPadding(dp(10), dp(8), dp(10), dp(8));
                 empty.setText(R.string.timeline_no_epg);
                 empty.setTextColor(0xFFBFD0E6);
+                empty.setFocusable(true);
+                empty.setFocusableInTouchMode(true);
+                empty.setOnFocusChangeListener((v, hasFocus) -> {
+                    v.setAlpha(hasFocus ? 1f : 0.82f);
+                    v.setBackgroundColor(hasFocus ? 0xFF2A3950 : 0xFF1E2630);
+                    if (hasFocus) {
+                        activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
+                        activeTimelineWindowStartMs = windowStartMs;
+                        activeTimelineFocusedCenterMinute = -1;
+                        lastTimelineFocusedCenterMinute = -1;
+                        if (timelineProgramPosterImage != null) {
+                            timelineProgramPosterImage.setVisibility(View.GONE);
+                            Glide.with(this).clear(timelineProgramPosterImage);
+                        }
+                        if (timelineProgramTitleText != null) {
+                            timelineProgramTitleText.setText(row.channel == null ? getString(R.string.timeline_no_epg) : row.channel.name);
+                        }
+                        if (timelineProgramMetaText != null) {
+                            timelineProgramMetaText.setText(getString(R.string.timeline_no_epg));
+                        }
+                        if (timelineProgramDescText != null) {
+                            timelineProgramDescText.setText(getString(R.string.timeline_program_desc_empty));
+                        }
+                    }
+                });
+                empty.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                        return false;
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        if (rowIndex == 0 && timelineNowButton != null) {
+                            timelineNowButton.requestFocus();
+                            return true;
+                        }
+                        return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, 0);
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                        return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, 0);
+                    }
+                    return false;
+                });
+                rowFocusables.add(empty);
+                boolean anchorMatch = anchorChannelId != null && row.channel != null && anchorChannelId.equals(row.channel.id);
+                if (anchorMatch && anchorEmptyFocus[0] == null) {
+                    anchorEmptyFocus[0] = empty;
+                }
+                if (anyEmptyFocus[0] == null) {
+                    anyEmptyFocus[0] = empty;
+                }
                 strip.addView(empty);
             }
 
@@ -4510,8 +4561,12 @@ public class MainActivity extends FragmentActivity {
             initialFocus[0] = anchorRememberedFocus[0];
         } else if (anchorFirstFocus[0] != null) {
             initialFocus[0] = anchorFirstFocus[0];
-        } else {
+        } else if (anchorEmptyFocus[0] != null) {
+            initialFocus[0] = anchorEmptyFocus[0];
+        } else if (anyFirstFocus[0] != null) {
             initialFocus[0] = anyFirstFocus[0];
+        } else {
+            initialFocus[0] = anyEmptyFocus[0];
         }
 
         clearTimelineProgramDetail.run();

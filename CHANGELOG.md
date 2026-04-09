@@ -1,3 +1,6 @@
+## 1.4.8
+- Fire Stick: primera base de timeshift con mando. PLAY/PAUSE y REW/FF muestran la barra y permiten pausar o mover el directo cuando el canal soporta DVR.
+
 ## 1.4.7
 - Fire Stick: corregido el salto de Siguiente en la timeline para que abra la franja correcta del siguiente programa del canal y no una fecha invalida.
 

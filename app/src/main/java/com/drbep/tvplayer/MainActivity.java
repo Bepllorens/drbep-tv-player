@@ -78,6 +78,7 @@ public class MainActivity extends FragmentActivity {
     private static final long OVERLAY_HIDE_MS = 6000L;
     private static final long STATUS_HIDE_MS = 2500L;
     private static final long TOUCH_CONTROLS_HIDE_MS = 3000L;
+    private static final long TV_TIMESHIFT_HUD_HIDE_MS = 3500L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
     private static final String PREFS = "drbep_tv_prefs";
@@ -199,6 +200,10 @@ public class MainActivity extends FragmentActivity {
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final Runnable hideTvTimeshiftHudRunnable = () -> {
+        tvTimeshiftHudVisible = false;
+        updateTimeshiftBar();
+    };
 
     private final List<ChannelItem> channels = new ArrayList<>();
     private final List<ChannelItem> allChannels = new ArrayList<>();
@@ -239,6 +244,7 @@ public class MainActivity extends FragmentActivity {
     private float touchGestureDownX = Float.NaN;
     private float touchGestureDownY = Float.NaN;
     private boolean timeshiftSeekUserDragging;
+    private boolean tvTimeshiftHudVisible;
     private boolean tabletOrientationLocked;
     private float tabletBrightnessLevel = 0.5f;
     private float touchGestureLastY = Float.NaN;
@@ -295,6 +301,8 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
+        tvTimeshiftHudVisible = false;
+        uiHandler.removeCallbacks(hideTvTimeshiftHudRunnable);
     };
     private final Runnable hideHdrBadgeRunnable = () -> {
         if (hdrBadgeText != null) {
@@ -926,14 +934,18 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateTimeshiftBar() {
-        if (!touchDeviceMode || timeshiftBarContainer == null || timeshiftSeekBar == null || timeshiftStatusText == null || playerController == null) {
+        if (timeshiftBarContainer == null || timeshiftSeekBar == null || timeshiftStatusText == null || playerController == null) {
             updatePlaybackStateBadge(null);
             return;
         }
         if (timeshiftLiveButton != null) {
             timeshiftLiveButton.setVisibility(View.GONE);
         }
-        if (touchControlsBar == null || touchControlsBar.getVisibility() != View.VISIBLE || isOverlayVisible() || isRecordingsPanelVisible()) {
+        boolean showForTouch = touchDeviceMode
+                && touchControlsBar != null
+                && touchControlsBar.getVisibility() == View.VISIBLE;
+        boolean showForTv = !touchDeviceMode && tvTimeshiftHudVisible;
+        if ((!showForTouch && !showForTv) || isOverlayVisible() || isRecordingsPanelVisible() || isMultiViewVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
             updatePlaybackStateBadge(playerController.getTimeshiftState());
             return;
@@ -995,11 +1007,32 @@ public class MainActivity extends FragmentActivity {
         scheduleTouchControlsAutoHide();
     }
 
+    private void showTimeshiftHudTemporarily() {
+        if (touchDeviceMode || playerController == null) {
+            return;
+        }
+        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
+        if (state == null) {
+            return;
+        }
+        tvTimeshiftHudVisible = true;
+        updateTimeshiftBar();
+        scheduleTvTimeshiftHudAutoHide();
+    }
+
     private void scheduleTouchControlsAutoHide() {
         uiHandler.removeCallbacks(hideTouchControlsRunnable);
         updateTimeshiftBar();
         if (touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
             uiHandler.postDelayed(hideTouchControlsRunnable, TOUCH_CONTROLS_HIDE_MS);
+        }
+    }
+
+    private void scheduleTvTimeshiftHudAutoHide() {
+        uiHandler.removeCallbacks(hideTvTimeshiftHudRunnable);
+        updateTimeshiftBar();
+        if (!touchDeviceMode && tvTimeshiftHudVisible) {
+            uiHandler.postDelayed(hideTvTimeshiftHudRunnable, TV_TIMESHIFT_HUD_HIDE_MS);
         }
     }
 
@@ -3252,17 +3285,22 @@ public class MainActivity extends FragmentActivity {
                 return true;
             case KeyEvent.KEYCODE_MEDIA_REWIND:
                 if (playerController != null && playerController.seekTimeshiftBack()) {
+                    showTimeshiftHudTemporarily();
                     return true;
                 }
                 break;
             case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
                 if (playerController != null && playerController.seekTimeshiftForward()) {
+                    showTimeshiftHudTemporarily();
                     return true;
                 }
                 break;
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
                 if (playerController != null) {
                     playerController.togglePlayback();
+                    showTimeshiftHudTemporarily();
                     return true;
                 }
                 break;

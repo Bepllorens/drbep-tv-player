@@ -85,6 +85,7 @@
     <string name="timeline_program_desc_empty">Sin sinopsis disponible</string>
     <string name="timeline_now_marker">AHORA</string>
     <string name="timeline_now_button">Ahora</string>
+    <string name="timeline_channel_next_button">Siguiente</string>
     <string name="timeline_next_button">+2h</string>
     <string name="tools_menu_timeline_guide">Guia timeline</string>
     <string name="title_recordings">Grabaciones</string>
@@ -170,7 +171,7 @@
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="status_retry_channel">Reintentando: %1$s</string>
-    <string name="tools_menu_title">Herramientas v1.4.5</string>
+    <string name="tools_menu_title">Herramientas v1.4.6</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_visual_epg">EPG visual</string>
     <string name="tools_menu_recent_channels">Canales recientes</string>

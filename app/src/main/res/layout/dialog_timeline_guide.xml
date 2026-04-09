@@ -44,6 +44,21 @@
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/timelineChannelNextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:background="@drawable/channel_overlay_chip_bg"
+                android:paddingLeft="10dp"
+                android:paddingTop="6dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="6dp"
+                android:text="@string/timeline_channel_next_button"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:id="@+id/timelineNextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

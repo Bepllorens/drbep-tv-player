@@ -1383,6 +1383,58 @@ public class MainActivity extends FragmentActivity {
         openTimelineGuide(anchorIndex, System.currentTimeMillis());
     }
 
+    private void openTimelineGuideNextForAnchor() {
+        if (channels.isEmpty()) {
+            return;
+        }
+        String anchorChannelId = activeTimelineAnchorChannelId != null ? activeTimelineAnchorChannelId : lastTimelineAnchorChannelId;
+        int anchorIndex = findChannelIndexById(anchorChannelId);
+        if (anchorIndex < 0) {
+            anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
+                    ? selectedOverlayIndex
+                    : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
+        }
+        long referenceMs = System.currentTimeMillis();
+        if (activeTimelineWindowStartMs > 0L && activeTimelineFocusedCenterMinute >= 0) {
+            referenceMs = activeTimelineWindowStartMs + (activeTimelineFocusedCenterMinute * 60_000L);
+        } else if (lastTimelineWindowStartMs > 0L && lastTimelineFocusedCenterMinute >= 0) {
+            referenceMs = lastTimelineWindowStartMs + (lastTimelineFocusedCenterMinute * 60_000L);
+        }
+        EpgRepository.EpgProgram nextProgram = null;
+        for (TimelineChannelPrograms row : activeTimelineRows) {
+            if (row == null || row.channel == null || row.programs == null) {
+                continue;
+            }
+            if (!row.channel.id.equals(anchorChannelId)) {
+                continue;
+            }
+            for (EpgRepository.EpgProgram program : row.programs) {
+                long startMs = parseIsoMillis(program.startTime);
+                long endMs = parseIsoMillis(program.endTime);
+                if (endMs <= startMs) {
+                    continue;
+                }
+                if (startMs > referenceMs) {
+                    if (nextProgram == null || startMs < parseIsoMillis(nextProgram.startTime)) {
+                        nextProgram = program;
+                    }
+                }
+            }
+            break;
+        }
+        long targetWindowStartMs = System.currentTimeMillis();
+        if (nextProgram != null) {
+            long nextStartMs = parseIsoMillis(nextProgram.startTime);
+            long snapped = nextStartMs - ((nextStartMs / TIMELINE_SHIFT_MS) * TIMELINE_SHIFT_MS);
+            targetWindowStartMs = Math.max(0L, snapped);
+            lastTimelineFocusedCenterMinute = (int) Math.max(0L, (nextStartMs - targetWindowStartMs) / 60000L);
+        } else {
+            targetWindowStartMs = (activeTimelineWindowStartMs > 0L ? activeTimelineWindowStartMs : System.currentTimeMillis()) + TIMELINE_SHIFT_MS;
+            lastTimelineFocusedCenterMinute = -1;
+        }
+        openTimelineGuide(anchorIndex, targetWindowStartMs);
+    }
+
     private void openTimelineGuide(int anchorIndex, long windowStartMs) {
         if (channels.isEmpty()) {
             return;
@@ -4174,10 +4226,11 @@ public class MainActivity extends FragmentActivity {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_timeline_guide, null, false);
         android.widget.ScrollView timelineVerticalScroll = dialogView.findViewById(R.id.timelineVerticalScroll);
         TextView timelineNowButton = dialogView.findViewById(R.id.timelineNowButton);
+        TextView timelineChannelNextButton = dialogView.findViewById(R.id.timelineChannelNextButton);
         TextView timelineNextButton = dialogView.findViewById(R.id.timelineNextButton);
         TextView timelineCloseButton = dialogView.findViewById(R.id.timelineCloseButton);
         TextView windowText = dialogView.findViewById(R.id.timelineWindowText);
-        final List<TextView> timelineHeaderButtons = java.util.Arrays.asList(timelineNowButton, timelineNextButton, timelineCloseButton);
+        final List<TextView> timelineHeaderButtons = java.util.Arrays.asList(timelineNowButton, timelineChannelNextButton, timelineNextButton, timelineCloseButton);
         LinearLayout headerRow = dialogView.findViewById(R.id.timelineHeaderRow);
         LinearLayout rowsContainer = dialogView.findViewById(R.id.timelineRowsContainer);
         ImageView timelineProgramPosterImage = dialogView.findViewById(R.id.timelineProgramPosterImage);
@@ -4497,6 +4550,16 @@ public class MainActivity extends FragmentActivity {
             }
             return false;
         });
+        timelineChannelNextButton.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+                return true;
+            }
+            return false;
+        });
         timelineNextButton.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) {
                 return false;
@@ -4520,6 +4583,10 @@ public class MainActivity extends FragmentActivity {
         timelineNowButton.setOnClickListener(v -> {
             timelineDialog.dismiss();
             openTimelineGuideNow();
+        });
+        timelineChannelNextButton.setOnClickListener(v -> {
+            timelineDialog.dismiss();
+            openTimelineGuideNextForAnchor();
         });
         timelineNextButton.setOnClickListener(v -> {
             timelineDialog.dismiss();

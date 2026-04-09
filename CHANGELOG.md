@@ -1,3 +1,6 @@
+## 1.4.6
+- Fire Stick: anadido boton Siguiente en la timeline para saltar al siguiente programa del canal enfocado sin recorrer toda la fila.
+
 ## 1.4.5
 - Fire Stick: los chips Ahora, +2h y Cerrar de la timeline ya son accesibles con mando y se pueden enfocar desde la primera fila con DPAD arriba.
 

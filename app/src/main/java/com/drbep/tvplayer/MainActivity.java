@@ -59,6 +59,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
@@ -111,6 +112,10 @@ public class MainActivity extends FragmentActivity {
     private static final int FILTER_FAVORITES = 5;
     private static final long TIMELINE_WINDOW_MS = 12L * 60L * 60L * 1000L;
     private static final long TIMELINE_SHIFT_MS = 2L * 60L * 60L * 1000L;
+    private static final String RECORDINGS_DAY_ALL = "all";
+    private static final String RECORDINGS_DAY_TODAY = "today";
+    private static final String RECORDINGS_DAY_TOMORROW = "tomorrow";
+    private static final String RECORDINGS_DAY_WEEK = "week";
 
     private PlayerView playerView;
     private TextView errorText;
@@ -265,6 +270,8 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private RecordingsAdapter recordingsAdapter;
     private final RecordingsController recordingsController = new RecordingsController();
+    private String recordingsChannelFilter = "";
+    private String recordingsDayFilter = RECORDINGS_DAY_ALL;
     private boolean touchDeviceMode;
     private boolean recordingsAutoRefreshEnabled;
     private float touchGestureDownX = Float.NaN;
@@ -1516,6 +1523,21 @@ public class MainActivity extends FragmentActivity {
         return channelProfileStore == null ? channelItem.name : channelProfileStore.getDisplayName(channelItem.id, channelItem.name);
     }
 
+    private String getCurrentChannelName() {
+        ChannelItem channel = null;
+        if (currentIndex >= 0 && currentIndex < channels.size()) {
+            channel = channels.get(currentIndex);
+        }
+        if (channel == null && lastChannelId != null && !lastChannelId.trim().isEmpty()) {
+            channel = findChannelItemById(lastChannelId);
+        }
+        return cleanText(displayName(channel));
+    }
+
+    private String cleanText(String value) {
+        return value == null ? "" : value.trim();
+    }
+
     private String profileTag(ChannelItem channelItem) {
         if (channelItem == null || channelProfileStore == null) {
             return "";
@@ -2535,12 +2557,14 @@ public class MainActivity extends FragmentActivity {
         final String desiredId = preferredId;
         ioExecutor.execute(() -> {
             try {
-                RecordingsRepository.RecordingsResult primaryResult = scheduledMode
+                RecordingsRepository.RecordingsResult fetchedPrimaryResult = scheduledMode
                         ? recordingsRepository.fetchScheduledRecordings()
                         : recordingsRepository.fetchCompletedRecordings();
-                RecordingsRepository.RecordingsResult alternateResult = scheduledMode
+                RecordingsRepository.RecordingsResult fetchedAlternateResult = scheduledMode
                         ? recordingsRepository.fetchCompletedRecordings()
                         : recordingsRepository.fetchScheduledRecordings();
+                final RecordingsRepository.RecordingsResult primaryResult = filterRecordingsResult(fetchedPrimaryResult);
+                final RecordingsRepository.RecordingsResult alternateResult = filterRecordingsResult(fetchedAlternateResult);
                 if (!primaryResult.items.isEmpty()) {
                     Log.d(TAG, "loadRecordingsPanel primary scheduled=" + primaryResult.scheduledMode + " count=" + primaryResult.items.size());
                     uiHandler.post(() -> showRecordingsPanel(primaryResult, desiredId));
@@ -2586,6 +2610,19 @@ public class MainActivity extends FragmentActivity {
         if (item == null || item.playable) {
             return;
         }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.title_recording_cancel_confirm)
+                .setMessage(getString(R.string.recording_cancel_confirm_message, buildRecordingTitle(item), buildRecordingMeta(item)))
+                .setPositiveButton(R.string.recording_action_cancel_confirm, (unused, which) -> cancelScheduledRecording(item))
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private void cancelScheduledRecording(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.playable) {
+            return;
+        }
         showStatus(getString(R.string.status_canceling_scheduled_recording));
         ioExecutor.execute(() -> {
             try {
@@ -2612,9 +2649,9 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.recording_action_extend),
                 getString(R.string.recording_action_shorten)
         };
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.title_recording_edit_time)
-                .setItems(options, (dialog, which) -> {
+                .setItems(options, (unused, which) -> {
                     if (which == 0) {
                         adjustSelectedScheduledRecording(-15L * 60L * 1000L, -15L * 60L * 1000L);
                     } else if (which == 1) {
@@ -2626,7 +2663,8 @@ public class MainActivity extends FragmentActivity {
                     }
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                .create();
+        showTvDialog(dialog);
     }
 
     private void adjustSelectedScheduledRecording(long startDeltaMs, long endDeltaMs) {
@@ -2684,12 +2722,13 @@ public class MainActivity extends FragmentActivity {
             hideOverlay();
         };
         if (resumePositionMs > 30_000L) {
-            new AlertDialog.Builder(this)
+            AlertDialog dialog = new AlertDialog.Builder(this)
                     .setTitle(R.string.title_recordings_visual)
-                    .setMessage("Esta grabacion tiene un punto guardado. ¿Quieres continuar desde donde la dejaste?")
-                    .setPositiveButton("Continuar", (dialog, which) -> resumeFromSaved.run())
-                    .setNegativeButton("Empezar de nuevo", (dialog, which) -> startFromBeginning.run())
-                    .show();
+                    .setMessage(getString(R.string.recording_resume_prompt, formatPlaybackPosition(resumePositionMs)))
+                    .setPositiveButton(R.string.recording_resume_continue, (unused, which) -> resumeFromSaved.run())
+                    .setNegativeButton(R.string.recording_resume_restart, (unused, which) -> startFromBeginning.run())
+                    .create();
+            showTvDialog(dialog);
             return;
         }
         startFromBeginning.run();
@@ -2709,6 +2748,10 @@ public class MainActivity extends FragmentActivity {
         if (item.playable) {
             options.add(getString(R.string.recording_action_play));
             actions.add(this::playSelectedRecording);
+            if (getRecordingResumePosition(item.id) > 30_000L) {
+                options.add(getString(R.string.recording_action_clear_progress));
+                actions.add(() -> clearSelectedRecordingProgress(item));
+            }
         } else {
             options.add(getString(R.string.recording_action_edit_time));
             actions.add(this::showScheduledRecordingEditDialog);
@@ -2721,11 +2764,71 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::toggleRecordingsAutoRefresh);
         options.add(getString(recordingsController.isScheduledMode() ? R.string.recording_action_switch_completed : R.string.recording_action_switch_scheduled));
         actions.add(() -> switchRecordingsMode(!recordingsController.isScheduledMode()));
-        new AlertDialog.Builder(this)
+        addRecordingFilterActions(options, actions, item);
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.title_recording_actions)
-                .setItems(options.toArray(new String[0]), (dialog, which) -> actions.get(which).run())
+                .setItems(options.toArray(new String[0]), (unused, which) -> actions.get(which).run())
                 .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private void clearSelectedRecordingProgress(RecordingsRepository.RecordingItem item) {
+        if (item == null) {
+            return;
+        }
+        clearRecordingResumePosition(item.id);
+        if (recordingsAdapter != null) {
+            recordingsAdapter.notifyDataSetChanged();
+        }
+        updateRecordingsDetailPanel();
+        showStatus(getString(R.string.status_recording_progress_cleared));
+    }
+
+    private void addRecordingFilterActions(List<String> options, List<Runnable> actions, RecordingsRepository.RecordingItem item) {
+        String itemChannel = item == null ? "" : cleanText(item.channelName);
+        if (!itemChannel.isEmpty() && !itemChannel.equalsIgnoreCase(recordingsChannelFilter)) {
+            options.add(getString(R.string.recording_action_filter_channel, itemChannel));
+            actions.add(() -> applyRecordingsChannelFilter(itemChannel));
+        }
+        String currentChannel = cleanText(getCurrentChannelName());
+        if (!currentChannel.isEmpty() && !currentChannel.equalsIgnoreCase(itemChannel) && !currentChannel.equalsIgnoreCase(recordingsChannelFilter)) {
+            options.add(getString(R.string.recording_action_filter_current_channel, currentChannel));
+            actions.add(() -> applyRecordingsChannelFilter(currentChannel));
+        }
+        if (!recordingsChannelFilter.trim().isEmpty() || !RECORDINGS_DAY_ALL.equals(recordingsDayFilter)) {
+            options.add(getString(R.string.recording_action_clear_filters));
+            actions.add(this::clearRecordingsFilters);
+        }
+        options.add(getString(R.string.recording_action_filter_today));
+        actions.add(() -> applyRecordingsDayFilter(RECORDINGS_DAY_TODAY));
+        options.add(getString(R.string.recording_action_filter_tomorrow));
+        actions.add(() -> applyRecordingsDayFilter(RECORDINGS_DAY_TOMORROW));
+        options.add(getString(R.string.recording_action_filter_week));
+        actions.add(() -> applyRecordingsDayFilter(RECORDINGS_DAY_WEEK));
+        if (!RECORDINGS_DAY_ALL.equals(recordingsDayFilter)) {
+            options.add(getString(R.string.recording_action_filter_all_days));
+            actions.add(() -> applyRecordingsDayFilter(RECORDINGS_DAY_ALL));
+        }
+    }
+
+    private void applyRecordingsChannelFilter(String channelName) {
+        recordingsChannelFilter = cleanText(channelName);
+        showStatus(getString(R.string.status_recordings_filter_channel, recordingsChannelFilter));
+        refreshRecordingsPanel();
+    }
+
+    private void applyRecordingsDayFilter(String dayFilter) {
+        recordingsDayFilter = dayFilter == null || dayFilter.trim().isEmpty() ? RECORDINGS_DAY_ALL : dayFilter;
+        showStatus(getString(R.string.status_recordings_filter_day, recordingsDayFilterLabel(recordingsDayFilter)));
+        refreshRecordingsPanel();
+    }
+
+    private void clearRecordingsFilters() {
+        recordingsChannelFilter = "";
+        recordingsDayFilter = RECORDINGS_DAY_ALL;
+        showStatus(getString(R.string.status_recordings_filters_cleared));
+        refreshRecordingsPanel();
     }
 
     private void toggleRecordingsAutoRefresh() {
@@ -3231,8 +3334,165 @@ public class MainActivity extends FragmentActivity {
             recordingsRefreshButton.setBackgroundTintList(ColorStateList.valueOf(0xFF2B3642));
         }
         if (recordingsHintText != null) {
-            recordingsHintText.setText(getString(R.string.recordings_panel_hint_touch));
+            recordingsHintText.setText(buildRecordingsHint());
         }
+    }
+
+    private String buildRecordingsHint() {
+        String base = touchDeviceMode ? getString(R.string.recordings_panel_hint_touch) : getString(R.string.recordings_panel_hint);
+        String filterLabel = buildRecordingsFilterLabel();
+        if (filterLabel.isEmpty()) {
+            return base;
+        }
+        return base + "\n" + filterLabel;
+    }
+
+    private String buildRecordingsFilterLabel() {
+        List<String> labels = new ArrayList<>();
+        if (!recordingsChannelFilter.trim().isEmpty()) {
+            labels.add(getString(R.string.recordings_filter_channel_label, recordingsChannelFilter));
+        }
+        if (!RECORDINGS_DAY_ALL.equals(recordingsDayFilter)) {
+            labels.add(getString(R.string.recordings_filter_day_label, recordingsDayFilterLabel(recordingsDayFilter)));
+        }
+        if (labels.isEmpty()) {
+            return "";
+        }
+        return TextUtils.join("  ·  ", labels);
+    }
+
+    private RecordingsRepository.RecordingsResult filterRecordingsResult(RecordingsRepository.RecordingsResult result) {
+        if (result == null || result.items == null || result.items.isEmpty()) {
+            return result;
+        }
+        boolean hasChannelFilter = !recordingsChannelFilter.trim().isEmpty();
+        boolean hasDayFilter = !RECORDINGS_DAY_ALL.equals(recordingsDayFilter);
+        long nowMs = System.currentTimeMillis();
+        List<RecordingsRepository.RecordingItem> filtered = new ArrayList<>();
+        for (RecordingsRepository.RecordingItem item : result.items) {
+            if (item == null) {
+                continue;
+            }
+            if (hasChannelFilter && !channelMatchesRecordingFilter(item)) {
+                continue;
+            }
+            if (hasDayFilter && !dayMatchesRecordingFilter(item, recordingsDayFilter, nowMs)) {
+                continue;
+            }
+            filtered.add(item);
+        }
+        filtered.sort((left, right) -> {
+            int leftBucket = recordingStatusSortBucket(left);
+            int rightBucket = recordingStatusSortBucket(right);
+            if (leftBucket != rightBucket) {
+                return Integer.compare(leftBucket, rightBucket);
+            }
+            long leftTime = recordingTimeMillis(left);
+            long rightTime = recordingTimeMillis(right);
+            if (leftTime <= 0L && rightTime <= 0L) {
+                return buildRecordingTitle(left).compareToIgnoreCase(buildRecordingTitle(right));
+            }
+            if (leftTime <= 0L) {
+                return 1;
+            }
+            if (rightTime <= 0L) {
+                return -1;
+            }
+            return result.scheduledMode ? Long.compare(leftTime, rightTime) : Long.compare(rightTime, leftTime);
+        });
+        return new RecordingsRepository.RecordingsResult(result.basePath, filtered, result.scheduledMode);
+    }
+
+    private int recordingStatusSortBucket(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.playable) {
+            return 0;
+        }
+        switch (safeLower(item.status)) {
+            case "recording":
+            case "running":
+            case "in_progress":
+                return 0;
+            case "scheduled":
+            case "pending":
+                return 1;
+            case "failed":
+            case "error":
+            case "cancelled":
+            case "canceled":
+                return 2;
+            default:
+                return 3;
+        }
+    }
+
+    private boolean channelMatchesRecordingFilter(RecordingsRepository.RecordingItem item) {
+        String channel = cleanText(item == null ? "" : item.channelName);
+        if (channel.isEmpty()) {
+            return false;
+        }
+        return channel.equalsIgnoreCase(recordingsChannelFilter.trim());
+    }
+
+    private boolean dayMatchesRecordingFilter(RecordingsRepository.RecordingItem item, String filter, long nowMs) {
+        long itemTime = recordingTimeMillis(item);
+        if (itemTime <= 0L) {
+            return false;
+        }
+        Calendar now = Calendar.getInstance();
+        now.setTimeInMillis(nowMs);
+        Calendar target = Calendar.getInstance();
+        target.setTimeInMillis(itemTime);
+        if (RECORDINGS_DAY_TODAY.equals(filter)) {
+            return isSameDay(now, target);
+        }
+        if (RECORDINGS_DAY_TOMORROW.equals(filter)) {
+            now.add(Calendar.DAY_OF_YEAR, 1);
+            return isSameDay(now, target);
+        }
+        if (RECORDINGS_DAY_WEEK.equals(filter)) {
+            long weekEndMs = nowMs + (7L * 24L * 60L * 60L * 1000L);
+            return itemTime >= startOfDayMillis(nowMs) && itemTime <= weekEndMs;
+        }
+        return true;
+    }
+
+    private boolean isSameDay(Calendar left, Calendar right) {
+        return left.get(Calendar.YEAR) == right.get(Calendar.YEAR)
+                && left.get(Calendar.DAY_OF_YEAR) == right.get(Calendar.DAY_OF_YEAR);
+    }
+
+    private long recordingTimeMillis(RecordingsRepository.RecordingItem item) {
+        if (item == null) {
+            return 0L;
+        }
+        long start = parseIsoMillis(item.startTime);
+        if (start > 0L) {
+            return start;
+        }
+        return parseIsoMillis(item.modified);
+    }
+
+    private long startOfDayMillis(long value) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(value);
+        calendar.set(Calendar.HOUR_OF_DAY, 0);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar.getTimeInMillis();
+    }
+
+    private String recordingsDayFilterLabel(String filter) {
+        if (RECORDINGS_DAY_TODAY.equals(filter)) {
+            return getString(R.string.recordings_day_today);
+        }
+        if (RECORDINGS_DAY_TOMORROW.equals(filter)) {
+            return getString(R.string.recordings_day_tomorrow);
+        }
+        if (RECORDINGS_DAY_WEEK.equals(filter)) {
+            return getString(R.string.recordings_day_week);
+        }
+        return getString(R.string.recordings_day_all);
     }
 
     private void showHdrBadge(String label) {
@@ -6452,13 +6712,17 @@ public class MainActivity extends FragmentActivity {
         if (item == null) {
             return getString(R.string.diagnostics_value_unknown);
         }
+        String dayLabel = recordingDayLabel(item);
         if (!item.playable) {
             String start = shortTime(item.startTime);
             String end = shortTime(item.endTime);
             String status = humanizeRecordingStatus(item.status);
             String baseMeta = getString(R.string.recording_meta_scheduled, start, end, status);
             if (hasRecordingConflict(item, recordingsController.getCurrentResult())) {
-                baseMeta = baseMeta + "  ·  solape";
+                baseMeta = baseMeta + "  ·  " + getString(R.string.recording_status_conflict);
+            }
+            if (!dayLabel.isEmpty()) {
+                baseMeta = dayLabel + "  ·  " + baseMeta;
             }
             if (item.channelName != null && !item.channelName.trim().isEmpty()) {
                 return item.channelName.trim() + "  ·  " + baseMeta;
@@ -6468,10 +6732,46 @@ public class MainActivity extends FragmentActivity {
         String modified = item.modified == null || item.modified.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : item.modified;
         String sizeLabel = item.size <= 0L ? getString(R.string.recording_size_unknown) : humanReadableSize(item.size);
         String baseMeta = getString(R.string.recording_meta, modified, sizeLabel);
+        long resumePositionMs = getRecordingResumePosition(item.id);
+        if (resumePositionMs > 30_000L) {
+            baseMeta = baseMeta + "  ·  " + getString(R.string.recording_progress_label, formatPlaybackPosition(resumePositionMs));
+        }
+        if (!dayLabel.isEmpty()) {
+            baseMeta = dayLabel + "  ·  " + baseMeta;
+        }
         if (item.channelName != null && !item.channelName.trim().isEmpty()) {
             return item.channelName.trim() + "  ·  " + baseMeta;
         }
         return baseMeta;
+    }
+
+    private String recordingDayLabel(RecordingsRepository.RecordingItem item) {
+        long timeMs = recordingTimeMillis(item);
+        if (timeMs <= 0L) {
+            return "";
+        }
+        Calendar now = Calendar.getInstance();
+        Calendar target = Calendar.getInstance();
+        target.setTimeInMillis(timeMs);
+        if (isSameDay(now, target)) {
+            return getString(R.string.recordings_day_today);
+        }
+        now.add(Calendar.DAY_OF_YEAR, 1);
+        if (isSameDay(now, target)) {
+            return getString(R.string.recordings_day_tomorrow);
+        }
+        return new SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(new Date(timeMs));
+    }
+
+    private String formatPlaybackPosition(long positionMs) {
+        long totalSeconds = Math.max(0L, positionMs / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0L) {
+            return String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds);
+        }
+        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
     }
 
     private boolean hasRecordingConflict(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result) {
@@ -6683,15 +6983,23 @@ public class MainActivity extends FragmentActivity {
     private String buildRecordingsSummary(RecordingsRepository.RecordingsResult result) {
         if (result == null || result.items == null || result.items.isEmpty()) {
             if (result != null && result.scheduledMode) {
-                return getString(R.string.recordings_summary_scheduled, 0, 0, 0, 0, 0);
+                return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_scheduled, 0, 0, 0, 0, 0));
             }
-            return getString(R.string.recordings_summary_completed, 0);
+            return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_completed, 0));
         }
         if (!result.scheduledMode) {
-            return getString(R.string.recordings_summary_completed, result.items.size());
+            return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_completed, result.items.size()));
         }
         RecordingsController.SummaryStats stats = RecordingsController.buildSummaryStats(result);
-        return getString(R.string.recordings_summary_scheduled, stats.total, stats.scheduled, stats.recording, stats.issue, stats.conflict);
+        return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_scheduled, stats.total, stats.scheduled, stats.recording, stats.issue, stats.conflict));
+    }
+
+    private String appendRecordingsSummaryFilters(String summary) {
+        String label = buildRecordingsFilterLabel();
+        if (label.isEmpty()) {
+            return summary;
+        }
+        return summary + "  ·  " + label;
     }
 
     private String humanizeRecordingStatus(String status) {
@@ -6721,6 +7029,9 @@ public class MainActivity extends FragmentActivity {
         if (item == null || item.status == null || item.status.trim().isEmpty()) {
             return getString(R.string.recording_status_ready);
         }
+        if (hasRecordingConflict(item, recordingsController.getCurrentResult())) {
+            return getString(R.string.recording_status_conflict_short);
+        }
         String status = item.status.trim().toLowerCase(Locale.US);
         switch (status) {
             case "completed":
@@ -6740,6 +7051,9 @@ public class MainActivity extends FragmentActivity {
     private int recordingStatusBadgeColor(RecordingsRepository.RecordingItem item) {
         if (item == null || item.status == null) {
             return 0xFF4F3A23;
+        }
+        if (hasRecordingConflict(item, recordingsController.getCurrentResult())) {
+            return 0xFF9A6B28;
         }
         String status = item.status.trim().toLowerCase(Locale.US);
         switch (status) {

@@ -30,8 +30,12 @@
     <string name="status_loading_channels">Cargando canales...</string>
     <string name="startup_hub_title">Inicio DRBEP TV</string>
     <string name="startup_hub_message">Version %1$s activa\nFiltro restaurado: %2$s\n%3$d elementos visibles</string>
+    <string name="startup_hub_message_v2">Version %1$s activa\nFiltro: %2$s  ·  TV %3$d  ·  VOD %4$d  ·  Adult %5$d\nFavoritos %6$d  ·  Recientes %7$d  ·  Grabaciones %8$d/%9$d programadas</string>
     <string name="startup_hub_continue_channel">Continuar canal: %1$s</string>
     <string name="startup_hub_continue_vod">Continuar VOD: %1$s</string>
+    <string name="startup_hub_continue_vod_progress">Continuar VOD: %1$s (%2$s)</string>
+    <string name="startup_hub_continue_recording">Continuar grabacion: %1$s (%2$s)</string>
+    <string name="startup_hub_disable">No mostrar al inicio</string>
     <string name="startup_recovery_title">No se pudo cargar el inicio</string>
     <string name="startup_recovery_message">Error: %1$s\nVersion activa: %2$s\nPuedes reintentar o revisar la instalacion.</string>
     <string name="startup_recovery_retry">Reintentar carga</string>
@@ -286,6 +290,9 @@
     <string name="title_favorite_channels">Canales favoritos</string>
     <string name="title_quick_hub">Hub rapido</string>
     <string name="quick_hub_continue">Continuar canal actual</string>
+    <string name="quick_hub_continue_recording">Continuar grabacion: %1$s</string>
+    <string name="quick_hub_global_search">Busqueda global</string>
+    <string name="quick_hub_enable_startup">Mostrar inicio al arrancar</string>
     <string name="quick_hub_recent">Recientes</string>
     <string name="quick_hub_favorites">Favoritos</string>
     <string name="quick_hub_recordings">Grabaciones</string>
@@ -400,7 +407,9 @@
     <string name="touch_home_button_grab">Grab</string>
     <string name="touch_home_button_recent">Recientes (%1$d)</string>
     <string name="touch_home_button_favorites">Favoritos (%1$d)</string>
-    <string name="touch_home_button_list">Lista</string>
+    <string name="touch_home_button_list">Buscar</string>
+    <string name="touch_home_continue_vod">Continuar VOD: %1$s (%2$s)</string>
+    <string name="touch_home_continue_recording_count">%1$d grabaciones con progreso</string>
     <string name="touch_home_filter_all">Biblioteca completa</string>
     <string name="touch_home_filter_favorites">Solo favoritos</string>
     <string name="timeline_program_scheduled_prefix">REC</string>
@@ -462,6 +471,8 @@
     <string name="status_channel_hidden">Canal oculto</string>
     <string name="status_channel_unhidden">Canal visible</string>
     <string name="status_channel_startup_set">Canal de arranque actualizado</string>
+    <string name="status_startup_hub_disabled">Inicio rapido desactivado</string>
+    <string name="status_startup_hub_enabled">Inicio rapido activado</string>
     <string name="title_playback_mode_temporary">Modo temporal de playback</string>
     <string name="status_playback_mode_temporary_changed">Modo temporal: %1$s</string>
 </resources>

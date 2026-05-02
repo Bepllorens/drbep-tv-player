@@ -99,6 +99,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_RECORDING_RESUME_POSITIONS = "recording_resume_positions";
     private static final String PREF_VOD_RESUME_POSITIONS = "vod_resume_positions";
     private static final String PREF_GLOBAL_SEARCH_RECENTS = "global_search_recents";
+    private static final String PREF_STARTUP_HUB_DISABLED = "startup_hub_disabled";
     private static final String PREF_LAST_VOD_ID = "last_vod_id";
     private static final String PREF_CHANNEL_COLLECTIONS = "channel_collections";
     private static final String PREF_CHANNEL_PROFILES = "channel_profiles";
@@ -354,6 +355,24 @@ public class MainActivity extends FragmentActivity {
             this.epgResult = epgResult;
             this.recording = recording;
             this.recordingBasePath = recordingBasePath;
+        }
+    }
+
+    private static final class StartupHubState {
+        final ChannelItem currentChannel;
+        final ChannelItem lastVod;
+        final RecordingsRepository.RecordingItem resumeRecording;
+        final String resumeRecordingBasePath;
+        final int completedRecordings;
+        final int scheduledRecordings;
+
+        StartupHubState(ChannelItem currentChannel, ChannelItem lastVod, RecordingsRepository.RecordingItem resumeRecording, String resumeRecordingBasePath, int completedRecordings, int scheduledRecordings) {
+            this.currentChannel = currentChannel;
+            this.lastVod = lastVod;
+            this.resumeRecording = resumeRecording;
+            this.resumeRecordingBasePath = resumeRecordingBasePath;
+            this.completedRecordings = completedRecordings;
+            this.scheduledRecordings = scheduledRecordings;
         }
     }
 
@@ -922,7 +941,12 @@ public class MainActivity extends FragmentActivity {
         if (touchHomeListButton != null) {
             touchHomeListButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
+                showGlobalSearchDialog();
+            });
+            touchHomeListButton.setOnLongClickListener(v -> {
+                showTouchControlsTemporarily();
                 showOverlay();
+                return true;
             });
         }
         if (touchHomeMultiButton != null) {
@@ -4345,7 +4369,12 @@ public class MainActivity extends FragmentActivity {
         if (touchHomeSubtitleText != null) {
             String label = buildTouchHomeFilterLabel();
             int count = (favoritesOnly || "favorites".equals(selectedFilterKey)) ? buildFavoriteQuickChannels().size() : channels.size();
-            touchHomeSubtitleText.setText(getString(R.string.touch_home_subtitle, label, count));
+            String continueLabel = buildTouchHomeContinueLabel();
+            String subtitle = getString(R.string.touch_home_subtitle, label, count);
+            if (!continueLabel.isEmpty()) {
+                subtitle = subtitle + "\n" + continueLabel;
+            }
+            touchHomeSubtitleText.setText(subtitle);
         }
         styleHomeHubPrimaryButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
         styleHomeHubPrimaryButton(touchHomeVodButton, !favoritesOnly && isVodFilterSelected(false), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
@@ -4355,6 +4384,20 @@ public class MainActivity extends FragmentActivity {
         styleHomeHubSecondaryButton(touchHomeFavoritesButton, favoritesOnly || "favorites".equals(selectedFilterKey), getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
         styleHomeHubSecondaryButton(touchHomeListButton, false, getString(R.string.touch_home_button_list));
         styleHomeHubSecondaryButton(touchHomeMultiButton, isMultiViewVisible(), getString(R.string.touch_home_button_multi));
+    }
+
+    private String buildTouchHomeContinueLabel() {
+        ChannelItem lastVod = findChannelItemById(lastVodId);
+        if (lastVod != null && lastVod.isVod) {
+            long resumeMs = getVodResumePosition(lastVod.id);
+            if (resumeMs > 30_000L) {
+                return getString(R.string.touch_home_continue_vod, displayName(lastVod), formatDurationShort(resumeMs));
+            }
+        }
+        if (!recordingResumePositions.isEmpty()) {
+            return getString(R.string.touch_home_continue_recording_count, recordingResumePositions.size());
+        }
+        return "";
     }
 
     private boolean isTvHubActive() {
@@ -5039,48 +5082,157 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void maybeShowStartupHub() {
-        if (startupHubShown) {
+        if (startupHubShown || (prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false))) {
             return;
         }
         startupHubShown = true;
-        uiHandler.postDelayed(this::showStartupHubDialog, 700L);
+        uiHandler.postDelayed(this::loadStartupHubStateAndShow, 700L);
     }
 
-    private void showStartupHubDialog() {
+    private void loadStartupHubStateAndShow() {
+        if (isFinishing()) {
+            return;
+        }
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        ChannelItem lastVod = findChannelItemById(lastVodId);
+        ioExecutor.execute(() -> {
+            RecordingsRepository.RecordingItem resumeRecording = null;
+            String recordingBasePath = "";
+            int completedCount = 0;
+            int scheduledCount = 0;
+            try {
+                RecordingsRepository.RecordingsResult completed = recordingsRepository.fetchCompletedRecordings();
+                recordingBasePath = completed == null ? "" : completed.basePath;
+                completedCount = completed == null || completed.items == null ? 0 : completed.items.size();
+                resumeRecording = findResumeRecording(completed);
+            } catch (Exception e) {
+                Log.w(TAG, "startup completed recordings summary failed", e);
+            }
+            try {
+                RecordingsRepository.RecordingsResult scheduled = recordingsRepository.fetchScheduledRecordings();
+                scheduledCount = scheduled == null || scheduled.items == null ? 0 : scheduled.items.size();
+            } catch (Exception e) {
+                Log.w(TAG, "startup scheduled recordings summary failed", e);
+            }
+            StartupHubState state = new StartupHubState(current, lastVod, resumeRecording, recordingBasePath, completedCount, scheduledCount);
+            uiHandler.post(() -> showStartupHubDialog(state));
+        });
+    }
+
+    private RecordingsRepository.RecordingItem findResumeRecording(RecordingsRepository.RecordingsResult completed) {
+        if (completed == null || completed.items == null || completed.items.isEmpty() || recordingResumePositions.isEmpty()) {
+            return null;
+        }
+        RecordingsRepository.RecordingItem best = null;
+        long bestPosition = 0L;
+        for (RecordingsRepository.RecordingItem item : completed.items) {
+            if (item == null || !item.playable) {
+                continue;
+            }
+            long position = getRecordingResumePosition(item.id);
+            if (position > bestPosition && position > 30_000L) {
+                best = item;
+                bestPosition = position;
+            }
+        }
+        return best;
+    }
+
+    private RecordingsRepository.RecordingItem findLocalResumeRecording() {
+        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
+        return findResumeRecording(result);
+    }
+
+    private void showStartupHubDialog(StartupHubState state) {
         if (isFinishing()) {
             return;
         }
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
-        ChannelItem current = getCurrentPlaybackChannelItem();
+        ChannelItem current = state == null ? getCurrentPlaybackChannelItem() : state.currentChannel;
         options.add(getString(R.string.startup_hub_continue_channel, current == null ? getString(R.string.diagnostics_value_unknown) : displayName(current)));
         actions.add(() -> {
             if (current != null) {
                 tuneChannelById(current.id);
             }
         });
-        ChannelItem lastVod = findChannelItemById(lastVodId);
+        ChannelItem lastVod = state == null ? findChannelItemById(lastVodId) : state.lastVod;
         if (lastVod != null && lastVod.isVod) {
-            options.add(getString(R.string.startup_hub_continue_vod, displayName(lastVod)));
+            long resumeMs = getVodResumePosition(lastVod.id);
+            options.add(resumeMs > 30_000L
+                    ? getString(R.string.startup_hub_continue_vod_progress, displayName(lastVod), formatDurationShort(resumeMs))
+                    : getString(R.string.startup_hub_continue_vod, displayName(lastVod)));
             actions.add(() -> showVodInfoDialog(lastVod));
         }
+        RecordingsRepository.RecordingItem resumeRecording = state == null ? null : state.resumeRecording;
+        if (resumeRecording != null) {
+            long resumeMs = getRecordingResumePosition(resumeRecording.id);
+            String basePath = state.resumeRecordingBasePath == null ? "" : state.resumeRecordingBasePath;
+            options.add(getString(R.string.startup_hub_continue_recording, buildRecordingTitle(resumeRecording), formatPlaybackPosition(resumeMs)));
+            actions.add(() -> playRecording(resumeRecording, basePath));
+        }
+        options.add(getString(R.string.quick_hub_global_search));
+        actions.add(this::showGlobalSearchDialog);
+        options.add(getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
+        actions.add(() -> applyQuickOverlayTarget("tv"));
+        options.add(getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
+        actions.add(() -> applyQuickOverlayTarget("vod"));
+        options.add(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+        actions.add(() -> applyQuickOverlayTarget("vod-adult"));
+        options.add(getString(R.string.quick_hub_recordings));
+        actions.add(this::openRecordingsBrowser);
         options.add(getString(R.string.quick_hub_recent));
         actions.add(this::showRecentChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_favorites));
         actions.add(this::showFavoriteChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_lists));
         actions.add(this::showPersonalListsManagerDialog);
-        options.add(getString(R.string.quick_hub_search_vod));
-        actions.add(this::showVodSearchDialog);
+        options.add(getString(R.string.startup_hub_disable));
+        actions.add(this::disableStartupHub);
         options.add(getString(R.string.tools_menu_install_status));
         actions.add(this::showInstallStatusDialog);
 
         showTvOptionsDialog(
                 R.string.startup_hub_title,
-                getString(R.string.startup_hub_message, BuildConfig.VERSION_NAME, buildCurrentFilterLabel(), channels.size()),
+                buildStartupHubMessage(state),
                 options,
                 actions
         );
+    }
+
+    private String buildStartupHubMessage(StartupHubState state) {
+        int vodCount = countItemsForQuickTarget("vod");
+        int adultCount = countItemsForQuickTarget("vod-adult");
+        int favoriteCount = buildFavoriteQuickChannels().size();
+        int recentCount = buildRecentQuickChannels().size();
+        int completed = state == null ? 0 : state.completedRecordings;
+        int scheduled = state == null ? 0 : state.scheduledRecordings;
+        return getString(
+                R.string.startup_hub_message_v2,
+                BuildConfig.VERSION_NAME,
+                buildCurrentFilterLabel(),
+                channels.size(),
+                vodCount,
+                adultCount,
+                favoriteCount,
+                recentCount,
+                completed,
+                scheduled
+        );
+    }
+
+    private void disableStartupHub() {
+        if (prefs != null) {
+            prefs.edit().putBoolean(PREF_STARTUP_HUB_DISABLED, true).apply();
+        }
+        showStatus(getString(R.string.status_startup_hub_disabled));
+    }
+
+    private void enableStartupHub() {
+        if (prefs != null) {
+            prefs.edit().putBoolean(PREF_STARTUP_HUB_DISABLED, false).apply();
+        }
+        showStatus(getString(R.string.status_startup_hub_enabled));
     }
 
     private String buildCurrentFilterLabel() {
@@ -5107,6 +5259,13 @@ public class MainActivity extends FragmentActivity {
         });
         options.add(getString(R.string.quick_hub_continue_vod));
         actions.add(this::openLastVod);
+        RecordingsRepository.RecordingItem resumeRecording = findLocalResumeRecording();
+        if (resumeRecording != null) {
+            options.add(getString(R.string.quick_hub_continue_recording, buildRecordingTitle(resumeRecording)));
+            actions.add(() -> openRecordingsBrowser());
+        }
+        options.add(getString(R.string.quick_hub_global_search));
+        actions.add(this::showGlobalSearchDialog);
         options.add(getString(R.string.quick_hub_recent));
         actions.add(this::showRecentChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_favorites));
@@ -5123,6 +5282,10 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showEpgSearchDialog);
         options.add(getString(R.string.tools_menu_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
+        if (prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false)) {
+            options.add(getString(R.string.quick_hub_enable_startup));
+            actions.add(this::enableStartupHub);
+        }
         options.add(getString(R.string.tools_menu_title_short));
         actions.add(this::showV12ToolsMenu);
         showTvOptionsDialog(R.string.title_quick_hub, null, options, actions);

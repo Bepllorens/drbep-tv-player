@@ -4,10 +4,13 @@ import android.content.SharedPreferences;
 
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -38,6 +41,7 @@ final class PlaybackDiagnosticsStore {
     private final SharedPreferences prefs;
     private final String preferenceKey;
     private final Map<String, ErrorRecord> records = new HashMap<>();
+    private static final int MAX_RECORDS = 20;
 
     PlaybackDiagnosticsStore(SharedPreferences prefs, String preferenceKey) {
         this.prefs = prefs;
@@ -81,6 +85,7 @@ final class PlaybackDiagnosticsStore {
             return;
         }
         records.put(channelId.trim(), new ErrorRecord(channelId, channelName, message, routeLabel, playbackMode, System.currentTimeMillis()));
+        trimOldRecords();
         save();
     }
 
@@ -97,6 +102,36 @@ final class PlaybackDiagnosticsStore {
         }
         if (records.remove(channelId.trim()) != null) {
             save();
+        }
+    }
+
+    List<ErrorRecord> getRecentErrors(int maxItems) {
+        List<ErrorRecord> result = new ArrayList<>(records.values());
+        result.sort(Comparator.comparingLong((ErrorRecord record) -> record.timestampMs).reversed());
+        if (maxItems > 0 && result.size() > maxItems) {
+            return new ArrayList<>(result.subList(0, maxItems));
+        }
+        return result;
+    }
+
+    void clearAll() {
+        if (!records.isEmpty()) {
+            records.clear();
+            save();
+        }
+    }
+
+    private void trimOldRecords() {
+        if (records.size() <= MAX_RECORDS) {
+            return;
+        }
+        List<ErrorRecord> sorted = new ArrayList<>(records.values());
+        sorted.sort(Comparator.comparingLong((ErrorRecord record) -> record.timestampMs).reversed());
+        records.clear();
+        int limit = Math.min(MAX_RECORDS, sorted.size());
+        for (int i = 0; i < limit; i++) {
+            ErrorRecord record = sorted.get(i);
+            records.put(record.channelId, record);
         }
     }
 

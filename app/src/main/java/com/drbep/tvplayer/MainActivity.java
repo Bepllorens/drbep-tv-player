@@ -5918,6 +5918,7 @@ public class MainActivity extends FragmentActivity {
                 appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_route, storedError.routeLabel));
             }
         }
+        appendDiagnosticLine(message, getString(R.string.diagnostics_recommendation, buildPlaybackDiagnosticsRecommendation(diagnostics, storedError)));
         if (currentChannel != null && temporaryPlaybackModesByChannelId.containsKey(currentChannel.id)) {
             appendDiagnosticLine(message, getString(R.string.diagnostics_temporary_mode, formatPlaybackModeLabel(temporaryPlaybackModesByChannelId.get(currentChannel.id))));
         }
@@ -5942,22 +5943,75 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String[] options = new String[]{
+                getString(R.string.diagnostics_action_test_auto),
+                getString(R.string.diagnostics_action_test_direct),
+                getString(R.string.diagnostics_action_test_proxy),
                 getString(R.string.diagnostics_action_temporary_mode),
                 getString(R.string.diagnostics_action_permanent_mode),
+                getString(R.string.diagnostics_action_history),
                 getString(R.string.diagnostics_action_clear_error)
         };
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_playback_diagnostics)
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        showTemporaryPlaybackModeDialog(channelItem);
+                        testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_AUTO);
                     } else if (which == 1) {
-                        showPlaybackModeDialog(channelItem);
+                        testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_DIRECT);
                     } else if (which == 2) {
+                        testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_PROXY);
+                    } else if (which == 3) {
+                        showTemporaryPlaybackModeDialog(channelItem);
+                    } else if (which == 4) {
+                        showPlaybackModeDialog(channelItem);
+                    } else if (which == 5) {
+                        showPlaybackDiagnosticsHistoryDialog();
+                    } else if (which == 6) {
                         clearPlaybackDiagnosticsError(channelItem);
                     }
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void testPlaybackModeNow(ChannelItem channelItem, String playbackMode) {
+        if (channelItem == null) {
+            return;
+        }
+        if (PlaybackModeStore.MODE_AUTO.equals(playbackMode)) {
+            temporaryPlaybackModesByChannelId.remove(channelItem.id);
+        } else {
+            temporaryPlaybackModesByChannelId.put(channelItem.id, playbackMode);
+        }
+        showStatus(getString(R.string.status_playback_mode_temporary_changed, formatPlaybackModeLabel(playbackMode)));
+        retryCurrentPlayback();
+    }
+
+    private void showPlaybackDiagnosticsHistoryDialog() {
+        if (playbackDiagnosticsStore == null) {
+            showStatus(getString(R.string.diagnostics_history_empty));
+            return;
+        }
+        List<PlaybackDiagnosticsStore.ErrorRecord> records = playbackDiagnosticsStore.getRecentErrors(10);
+        if (records.isEmpty()) {
+            showStatus(getString(R.string.diagnostics_history_empty));
+            return;
+        }
+        StringBuilder message = new StringBuilder();
+        for (PlaybackDiagnosticsStore.ErrorRecord record : records) {
+            appendDiagnosticLine(message, formatPlaybackDiagnosticsHistoryItem(record));
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.diagnostics_action_history)
+                .setMessage(message.toString())
+                .setPositiveButton(R.string.diagnostics_action_clear_history, (dialog, which) -> {
+                    playbackDiagnosticsStore.clearAll();
+                    if (playerController != null) {
+                        playerController.clearLastError();
+                    }
+                    showStatus(getString(R.string.status_diagnostics_history_cleared));
+                })
+                .setNegativeButton(R.string.dialog_close, null)
                 .show();
     }
 
@@ -5985,6 +6039,38 @@ public class MainActivity extends FragmentActivity {
                 diagnostics.routeLabel,
                 diagnostics.playbackMode
         );
+    }
+
+    private String formatPlaybackDiagnosticsHistoryItem(PlaybackDiagnosticsStore.ErrorRecord record) {
+        if (record == null) {
+            return "";
+        }
+        return getString(
+                R.string.diagnostics_history_item,
+                record.shortLabel(),
+                fallbackUnknown(record.channelName),
+                fallbackUnknown(record.routeLabel),
+                formatPlaybackModeLabel(record.playbackMode),
+                fallbackUnknown(record.message)
+        );
+    }
+
+    private String buildPlaybackDiagnosticsRecommendation(PlayerController.PlaybackDiagnostics diagnostics, PlaybackDiagnosticsStore.ErrorRecord storedError) {
+        String route = diagnostics == null ? "" : safeLower(diagnostics.routeLabel);
+        String mode = diagnostics == null ? "" : safeLower(diagnostics.playbackMode);
+        String error = diagnostics == null ? "" : safeLower(diagnostics.lastError);
+        if (error.isEmpty() && storedError != null) {
+            error = safeLower(storedError.message);
+            route = safeLower(storedError.routeLabel);
+            mode = safeLower(storedError.playbackMode);
+        }
+        if (route.contains("proxy") || mode.contains(PlaybackModeStore.MODE_PROXY) || error.contains("proxy")) {
+            return getString(R.string.diagnostics_recommend_direct);
+        }
+        if (error.contains("drm") || error.contains("403") || error.contains("401") || error.contains("mime") || route.contains("direct")) {
+            return getString(R.string.diagnostics_recommend_proxy);
+        }
+        return getString(R.string.diagnostics_recommend_auto);
     }
 
     private String buildRecentDiagnosticsSummary() {

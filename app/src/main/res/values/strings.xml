@@ -205,8 +205,14 @@
     <string name="diagnostics_action_more">Acciones</string>
     <string name="diagnostics_action_temporary_mode">Modo temporal</string>
     <string name="diagnostics_action_permanent_mode">Modo permanente</string>
+    <string name="diagnostics_action_test_auto">Probar Auto ahora</string>
+    <string name="diagnostics_action_test_direct">Probar Directo ahora</string>
+    <string name="diagnostics_action_test_proxy">Probar Proxy ahora</string>
+    <string name="diagnostics_action_history">Historial de fallos</string>
     <string name="diagnostics_action_clear_error">Limpiar ultimo fallo</string>
+    <string name="diagnostics_action_clear_history">Limpiar historial</string>
     <string name="status_diagnostics_error_cleared">Ultimo fallo limpiado</string>
+    <string name="status_diagnostics_history_cleared">Historial de fallos limpiado</string>
     <string name="diagnostics_actions_hint">Reintentar vuelve a probar el canal actual. Modo canal cambia entre Auto, Directo y Proxy.</string>
     <string name="tools_menu_recordings_panel">Panel de grabaciones</string>
     <string name="tools_menu_multiview">Multiview 2x2</string>
@@ -260,6 +266,12 @@
     <string name="diagnostics_last_error">Ultimo error: %1$s</string>
     <string name="diagnostics_persistent_error">Ultimo fallo guardado: %1$s</string>
     <string name="diagnostics_persistent_route">Ruta del fallo: %1$s</string>
+    <string name="diagnostics_recommendation">Sugerencia: %1$s</string>
+    <string name="diagnostics_history_empty">No hay fallos guardados</string>
+    <string name="diagnostics_history_item">%1$s\nCanal: %2$s\nRuta: %3$s  ·  Modo: %4$s\n%5$s</string>
+    <string name="diagnostics_recommend_proxy">prueba Proxy si el directo falla por DRM, MIME o permisos del origen.</string>
+    <string name="diagnostics_recommend_direct">prueba Directo si el proxy devuelve error o la ruta efectiva apunta al proxy.</string>
+    <string name="diagnostics_recommend_auto">vuelve a Auto para que la app pruebe la mejor ruta y fallback.</string>
     <string name="diagnostics_temporary_mode">Modo temporal activo: %1$s</string>
     <string name="diagnostics_recent">Recientes: %1$s</string>
     <string name="diagnostics_value_yes">si</string>

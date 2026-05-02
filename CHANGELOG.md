@@ -1,3 +1,8 @@
+## 1.4.24
+- Fire Stick: herramientas y pantalla principal usan la misma version de `BuildConfig`, evitando titulos desfasados.
+- Fire Stick: el script de instalacion desactiva paquetes antiguos conocidos para no abrir builds duplicadas desde el launcher.
+- Dev: anadido script de auditoria de instalacion para comprobar paquete activo, version y duplicados DRBEP.
+
 ## 1.4.19
 - Fire Stick: se retira Bouquet favoritos del menu Herramientas ahora que Favoritos ya existe como bouquet real en la navegacion.
 
@@ -105,4 +110,3 @@
 - Added logo prefetching to make multiview channel picker artwork appear faster.
 - Refreshes the timeline immediately after scheduling so programmed events are marked in place.
 - Hides touch-only quick access chips and favorite star in Fire Stick overlay.
-

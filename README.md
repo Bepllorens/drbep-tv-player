@@ -61,6 +61,14 @@ app/build/outputs/apk/release/app-release.apk
 ## Install on TV (ADB)
 
 ```bash
-adb connect IP_DE_TV:5555
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+scripts/install_tv.sh IP_DE_TV:5555
+```
+
+El script instala `com.drbep.tvplayer`, arranca `MainActivity` y desactiva paquetes antiguos conocidos
+como `com.drbep.tv.v2.fixed` para evitar abrir una app vieja desde el launcher.
+
+Para auditar que el Fire Stick esta usando el paquete correcto:
+
+```bash
+scripts/check_tv_install.sh IP_DE_TV:5555
 ```

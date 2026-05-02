@@ -28,6 +28,13 @@
     <string name="status_buffering">Cargando stream...</string>
     <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
+    <string name="startup_hub_title">Inicio DRBEP TV</string>
+    <string name="startup_hub_message">Version %1$s activa\nFiltro restaurado: %2$s\n%3$d elementos visibles</string>
+    <string name="startup_hub_continue_channel">Continuar canal: %1$s</string>
+    <string name="startup_hub_continue_vod">Continuar VOD: %1$s</string>
+    <string name="startup_recovery_title">No se pudo cargar el inicio</string>
+    <string name="startup_recovery_message">Error: %1$s\nVersion activa: %2$s\nPuedes reintentar o revisar la instalacion.</string>
+    <string name="startup_recovery_retry">Reintentar carga</string>
     <string name="status_loading_guide">Cargando guia...</string>
     <string name="status_searching_epg">Buscando programas...</string>
     <string name="status_loading_visual_epg">Cargando EPG visual...</string>

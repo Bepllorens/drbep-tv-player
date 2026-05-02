@@ -87,6 +87,8 @@ public class MainActivity extends FragmentActivity {
     private static final long RECORDINGS_AUTO_REFRESH_MS = 60000L;
     private static final String PREFS = "drbep_tv_prefs";
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
+    private static final String PREF_LAST_FILTER_KEY = "last_filter_key";
+    private static final String PREF_FAVORITES_ONLY = "favorites_only";
     private static final String PREF_FAVORITES = "favorite_channel_ids";
     private static final String PREF_FAVORITE_ORDER = "favorite_order_ids";
     private static final String PREF_PLAYBACK_MODES = "playback_mode_by_channel";
@@ -252,6 +254,7 @@ public class MainActivity extends FragmentActivity {
     private int currentIndex = -1;
     private int selectedOverlayIndex = 0;
     private boolean favoritesOnly;
+    private boolean startupHubShown;
     private String lastChannelId;
     private String selectedFilterKey = "all";
     private final StringBuilder quickSearchBuffer = new StringBuilder();
@@ -566,6 +569,8 @@ public class MainActivity extends FragmentActivity {
             }
         });
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
+        selectedFilterKey = prefs.getString(PREF_LAST_FILTER_KEY, "all");
+        favoritesOnly = prefs.getBoolean(PREF_FAVORITES_ONLY, false);
         lastVodId = prefs.getString(PREF_LAST_VOD_ID, "");
         favoritesOnly = false;
         remoteInputRouter = new RemoteInputRouter(createRemoteInputHost(), MENU_DOUBLE_PRESS_MS);
@@ -1379,16 +1384,30 @@ public class MainActivity extends FragmentActivity {
                     uiHandler.post(() -> applyLoadedChannels(fallback));
                 } catch (Exception e) {
                     Log.e(TAG, "load channels failed", e);
-                    uiHandler.post(() -> showError(getString(R.string.error_load_channels, e.getMessage())));
+                    uiHandler.post(() -> {
+                        showError(getString(R.string.error_load_channels, e.getMessage()));
+                        showCatalogRecoveryDialog(e.getMessage());
+                    });
                 }
             }
         });
+    }
+
+    private void showCatalogRecoveryDialog(String reason) {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.startup_recovery_title)
+                .setMessage(getString(R.string.startup_recovery_message, fallbackUnknown(reason), BuildConfig.VERSION_NAME))
+                .setPositiveButton(R.string.startup_recovery_retry, (dialog, which) -> loadChannels())
+                .setNeutralButton(R.string.tools_menu_install_status, (dialog, which) -> showInstallStatusDialog())
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
     }
 
     private void applyLoadedChannels(CatalogLoadResult result) {
         syncOverlayCoordinator();
         channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
         syncOverlayStateFromCoordinator();
+        persistNavigationState();
         channelAdapter.notifyDataSetChanged();
         updateFilterText();
         updateOverlaySearchState();
@@ -1407,6 +1426,7 @@ public class MainActivity extends FragmentActivity {
         }
         tuneToIndex(startIndex, true);
         loadEpgNow();
+        maybeShowStartupHub();
     }
 
     private void tuneToIndex(int index, boolean autoPlay) {
@@ -2823,10 +2843,21 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void persistNavigationState() {
+        if (prefs == null) {
+            return;
+        }
+        prefs.edit()
+                .putString(PREF_LAST_FILTER_KEY, selectedFilterKey == null || selectedFilterKey.trim().isEmpty() ? "all" : selectedFilterKey)
+                .putBoolean(PREF_FAVORITES_ONLY, favoritesOnly)
+                .apply();
+    }
+
     private void cycleFilter(int delta) {
         syncOverlayCoordinator();
         ChannelFilter filter = channelOverlayCoordinator.cycleFilter(delta);
         syncOverlayStateFromCoordinator();
+        persistNavigationState();
         channelAdapter.notifyDataSetChanged();
         updateFilterText();
         updateOverlaySearchState();
@@ -4489,6 +4520,7 @@ public class MainActivity extends FragmentActivity {
         selectedOverlayIndex = channelOverlayCoordinator.getSelectedOverlayIndex();
         favoritesOnly = channelOverlayCoordinator.isFavoritesOnly();
         selectedFilterKey = channelOverlayCoordinator.getSelectedFilterKey();
+        persistNavigationState();
     }
 
     private void updateOverlayPanel() {
@@ -4620,6 +4652,67 @@ public class MainActivity extends FragmentActivity {
                 .setMessage(message)
                 .setPositiveButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void maybeShowStartupHub() {
+        if (startupHubShown) {
+            return;
+        }
+        startupHubShown = true;
+        uiHandler.postDelayed(this::showStartupHubDialog, 700L);
+    }
+
+    private void showStartupHubDialog() {
+        if (isFinishing()) {
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        options.add(getString(R.string.startup_hub_continue_channel, current == null ? getString(R.string.diagnostics_value_unknown) : displayName(current)));
+        actions.add(() -> {
+            if (current != null) {
+                tuneChannelById(current.id);
+            }
+        });
+        ChannelItem lastVod = findChannelItemById(lastVodId);
+        if (lastVod != null && lastVod.isVod) {
+            options.add(getString(R.string.startup_hub_continue_vod, displayName(lastVod)));
+            actions.add(() -> showVodInfoDialog(lastVod));
+        }
+        options.add(getString(R.string.quick_hub_recent));
+        actions.add(this::showRecentChannelsQuickDialog);
+        options.add(getString(R.string.quick_hub_favorites));
+        actions.add(this::showFavoriteChannelsQuickDialog);
+        options.add(getString(R.string.quick_hub_lists));
+        actions.add(this::showPersonalListsManagerDialog);
+        options.add(getString(R.string.quick_hub_search_vod));
+        actions.add(this::showVodSearchDialog);
+        options.add(getString(R.string.tools_menu_install_status));
+        actions.add(this::showInstallStatusDialog);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.startup_hub_title)
+                .setMessage(getString(R.string.startup_hub_message, BuildConfig.VERSION_NAME, buildCurrentFilterLabel(), channels.size()))
+                .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    if (which >= 0 && which < actions.size()) {
+                        actions.get(which).run();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private String buildCurrentFilterLabel() {
+        if (favoritesOnly || "favorites".equals(selectedFilterKey)) {
+            return getString(R.string.touch_home_filter_favorites);
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && selectedFilterKey != null && selectedFilterKey.equals(filter.key) && filter.label != null && !filter.label.trim().isEmpty()) {
+                return filter.label.trim();
+            }
+        }
+        return getString(R.string.touch_home_filter_all);
     }
 
     private void showQuickHubDialog() {

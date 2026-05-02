@@ -93,6 +93,8 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_REMINDERS = "channel_reminders";
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
     private static final String PREF_RECORDING_RESUME_POSITIONS = "recording_resume_positions";
+    private static final String PREF_VOD_RESUME_POSITIONS = "vod_resume_positions";
+    private static final String PREF_LAST_VOD_ID = "last_vod_id";
     private static final String PREF_CHANNEL_COLLECTIONS = "channel_collections";
     private static final String PREF_CHANNEL_PROFILES = "channel_profiles";
     private static final String PREF_PLAYBACK_DIAGNOSTICS = "playback_diagnostics";
@@ -196,7 +198,10 @@ public class MainActivity extends FragmentActivity {
     private String lastVisualEpgProgramStartTime;
     private String currentPlaybackRecordingId;
     private String currentPlaybackReturnChannelId;
+    private String currentPlaybackVodId;
+    private String lastVodId;
     private final Map<String, Long> recordingResumePositions = new HashMap<>();
+    private final Map<String, Long> vodResumePositions = new HashMap<>();
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
     private View zapBanner;
@@ -470,6 +475,7 @@ public class MainActivity extends FragmentActivity {
         channelProfileStore = new ChannelProfileStore(prefs, PREF_CHANNEL_PROFILES);
         playbackDiagnosticsStore = new PlaybackDiagnosticsStore(prefs, PREF_PLAYBACK_DIAGNOSTICS);
         loadRecordingResumePositions();
+        loadVodResumePositions();
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
@@ -560,6 +566,7 @@ public class MainActivity extends FragmentActivity {
             }
         });
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
+        lastVodId = prefs.getString(PREF_LAST_VOD_ID, "");
         favoritesOnly = false;
         remoteInputRouter = new RemoteInputRouter(createRemoteInputHost(), MENU_DOUBLE_PRESS_MS);
         Set<String> storedFavorites = prefs.getStringSet(PREF_FAVORITES, new HashSet<>());
@@ -1106,6 +1113,10 @@ public class MainActivity extends FragmentActivity {
         return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds);
     }
 
+    private String formatDurationShort(long valueMs) {
+        return formatDurationLabel(valueMs);
+    }
+
     private void showTouchControlsTemporarily() {
         if (touchControlsController != null) {
             touchControlsController.showTouchControlsTemporarily();
@@ -1420,17 +1431,56 @@ public class MainActivity extends FragmentActivity {
         if (ch == null) {
             return;
         }
+        rememberCurrentVodPosition();
+        if (ch.isVod) {
+            playVodItem(ch, autoPlay);
+            return;
+        }
+        currentPlaybackVodId = null;
+        playChannelItemInternal(ch, autoPlay, 0L);
+    }
+
+    private void playVodItem(ChannelItem ch, boolean autoPlay) {
+        if (ch == null) {
+            return;
+        }
+        long resumePositionMs = getVodResumePosition(ch.id);
+        Runnable startFromBeginning = () -> {
+            clearVodResumePosition(ch.id);
+            playChannelItemInternal(ch, autoPlay, 0L);
+        };
+        Runnable resumeFromSaved = () -> playChannelItemInternal(ch, autoPlay, resumePositionMs);
+        if (resumePositionMs > 30_000L) {
+            new AlertDialog.Builder(this)
+                    .setTitle(displayName(ch))
+                    .setMessage(getString(R.string.vod_continue_prompt, formatDurationShort(resumePositionMs)))
+                    .setPositiveButton(R.string.vod_action_continue, (dialog, which) -> resumeFromSaved.run())
+                    .setNegativeButton(R.string.vod_action_start_over, (dialog, which) -> startFromBeginning.run())
+                    .show();
+            return;
+        }
+        startFromBeginning.run();
+    }
+
+    private void playChannelItemInternal(ChannelItem ch, boolean autoPlay, long resumePositionMs) {
         saveLastChannelId(ch.id);
         if (recentChannelsStore != null) {
             recentChannelsStore.add(ch.id, displayName(ch));
+        }
+        if (ch.isVod) {
+            currentPlaybackVodId = ch.id;
+            lastVodId = ch.id;
+            if (prefs != null) {
+                prefs.edit().putString(PREF_LAST_VOD_ID, ch.id).apply();
+            }
         }
         playerController.resetFallbackState();
         updateTimeshiftBar();
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
         PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
-        playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo);
+        playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo, resumePositionMs);
         if (playbackRequest != null && !playbackRequest.directPlayback) {
-            playerController.resolveStreamInfoAndReplayIfNeeded(playbackRequest, autoPlay, streamInfoByChannelId);
+            playerController.resolveStreamInfoAndReplayIfNeeded(playbackRequest, autoPlay, streamInfoByChannelId, resumePositionMs);
         }
 
         hideError();
@@ -2144,6 +2194,7 @@ public class MainActivity extends FragmentActivity {
         if (channel == null) {
             return;
         }
+        rememberCurrentVodPosition();
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
         int padding = dp(18);
@@ -2184,13 +2235,64 @@ public class MainActivity extends FragmentActivity {
         descView.setTextSize(15f);
         container.addView(descView);
 
+        long resumeMs = getVodResumePosition(channel.id);
+        if (resumeMs > 0L) {
+            TextView resumeView = new TextView(this);
+            LinearLayout.LayoutParams resumeParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            resumeParams.topMargin = dp(12);
+            resumeView.setLayoutParams(resumeParams);
+            resumeView.setText(getString(R.string.vod_resume_meta, formatDurationShort(resumeMs)));
+            resumeView.setTextColor(0xFFFFD082);
+            resumeView.setTextSize(14f);
+            resumeView.setTypeface(Typeface.DEFAULT_BOLD);
+            container.addView(resumeView);
+        }
+
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.title_touch_vod_info))
                 .setView(container)
-                .setPositiveButton(R.string.dialog_close, null)
+                .setPositiveButton(R.string.vod_action_play, (d, which) -> playVodItem(channel, true))
+                .setNeutralButton(R.string.vod_action_more, (d, which) -> showVodActionsDialog(channel))
+                .setNegativeButton(R.string.dialog_close, null)
                 .create();
         dialog.setOnDismissListener(d -> Glide.with(this).clear(posterView));
         dialog.show();
+    }
+
+    private void showVodActionsDialog(ChannelItem channel) {
+        if (channel == null) {
+            return;
+        }
+        String[] options = new String[]{
+                getString(R.string.vod_action_play),
+                getString(R.string.vod_action_continue),
+                getString(R.string.menu_personal_lists),
+                getString(R.string.diagnostics_action_temporary_mode),
+                getString(R.string.tools_menu_playback_diagnostics),
+                getString(R.string.vod_action_clear_progress)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(displayName(channel))
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        clearVodResumePosition(channel.id);
+                        playChannelItemInternal(channel, true, 0L);
+                    } else if (which == 1) {
+                        playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
+                    } else if (which == 2) {
+                        showPersonalListsDialog(channel);
+                    } else if (which == 3) {
+                        showTemporaryPlaybackModeDialog(channel);
+                    } else if (which == 4) {
+                        currentPlaybackVodId = channel.id;
+                        showPlaybackDiagnosticsDialog();
+                    } else if (which == 5) {
+                        clearVodResumePosition(channel.id);
+                        showStatus(getString(R.string.vod_status_progress_cleared));
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
     }
 
     private String buildVodInfoMeta(ChannelItem channel) {
@@ -2550,6 +2652,8 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_recording_not_playable));
             return;
         }
+        rememberCurrentVodPosition();
+        currentPlaybackVodId = null;
         String url = recordingsRepository.buildPlaybackUrl(item, basePath);
         currentPlaybackRecordingId = item.id;
         currentPlaybackReturnChannelId = getCurrentChannelId();
@@ -3422,6 +3526,8 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onDestroy() {
+        rememberCurrentVodPosition();
+        rememberCurrentRecordingPosition();
         if (touchControlsController != null) {
             touchControlsController.cancelTimers();
         }
@@ -4522,6 +4628,8 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.quick_hub_recent),
                 getString(R.string.quick_hub_favorites),
                 getString(R.string.quick_hub_recordings),
+                getString(R.string.quick_hub_continue_vod),
+                getString(R.string.quick_hub_search_vod),
                 getString(R.string.quick_hub_lists),
                 getString(R.string.quick_hub_add_current_to_list),
                 getString(R.string.quick_hub_timeline),
@@ -4542,17 +4650,84 @@ public class MainActivity extends FragmentActivity {
                     } else if (which == 3) {
                         openRecordingsBrowser();
                     } else if (which == 4) {
-                        showPersonalListsManagerDialog();
+                        openLastVod();
                     } else if (which == 5) {
-                        openCurrentChannelPersonalLists();
+                        showVodSearchDialog();
                     } else if (which == 6) {
-                        openTimelineGuideAroundSelection();
+                        showPersonalListsManagerDialog();
                     } else if (which == 7) {
+                        openCurrentChannelPersonalLists();
+                    } else if (which == 8) {
+                        openTimelineGuideAroundSelection();
+                    } else if (which == 9) {
                         showEpgSearchDialog();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void showVodSearchDialog() {
+        clearQuickSearchOverlay();
+        hideOverlay();
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.vod_search_hint);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_vod_search)
+                .setView(input)
+                .setPositiveButton(R.string.search_channel_dialog_action, (dialog, which) -> {
+                    String query = input.getText() == null ? "" : input.getText().toString();
+                    showVodSearchResults(query);
+                })
+                .setNeutralButton(R.string.vod_search_all, (dialog, which) -> showVodSearchResults(""))
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showVodSearchResults(String query) {
+        List<ChannelItem> results = buildVodSearchResults(query, false);
+        if (results.isEmpty()) {
+            showStatus(getString(R.string.vod_search_empty));
+            return;
+        }
+        showQuickChannelListDialog(
+                query == null || query.trim().isEmpty()
+                        ? getString(R.string.title_vod_search)
+                        : getString(R.string.vod_search_results_title, query.trim()),
+                results,
+                getString(R.string.vod_search_empty),
+                item -> showVodInfoDialog(item)
+        );
+    }
+
+    private List<ChannelItem> buildVodSearchResults(String query, boolean includeAdult) {
+        String needle = safeLower(query);
+        List<ChannelItem> results = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (item == null || !item.isVod || (!includeAdult && item.isAdultVod)) {
+                continue;
+            }
+            String haystack = safeLower(displayName(item)) + " " + safeLower(item.group) + " " + safeLower(item.platformName);
+            if (!needle.isEmpty() && !haystack.contains(needle)) {
+                continue;
+            }
+            results.add(item);
+            if (results.size() >= 80) {
+                break;
+            }
+        }
+        return results;
+    }
+
+    private void openLastVod() {
+        rememberCurrentVodPosition();
+        ChannelItem item = findChannelItemById(lastVodId);
+        if (item == null || !item.isVod) {
+            showStatus(getString(R.string.vod_continue_empty));
+            return;
+        }
+        showVodInfoDialog(item);
     }
 
     private void showPersonalListsManagerDialog() {
@@ -6284,6 +6459,77 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void rememberCurrentVodPosition() {
+        if (playerController == null || currentPlaybackVodId == null || currentPlaybackVodId.trim().isEmpty()) {
+            return;
+        }
+        long positionMs = playerController.getCurrentPlaybackPosition();
+        if (positionMs <= 0L) {
+            return;
+        }
+        vodResumePositions.put(currentPlaybackVodId, positionMs);
+        saveVodResumePositions();
+    }
+
+    private long getVodResumePosition(String vodId) {
+        if (vodId == null || vodId.trim().isEmpty()) {
+            return 0L;
+        }
+        Long value = vodResumePositions.get(vodId);
+        return value == null ? 0L : Math.max(0L, value);
+    }
+
+    private void clearVodResumePosition(String vodId) {
+        if (vodId == null || vodId.trim().isEmpty()) {
+            return;
+        }
+        if (vodResumePositions.remove(vodId) != null) {
+            saveVodResumePositions();
+        }
+    }
+
+    private void loadVodResumePositions() {
+        vodResumePositions.clear();
+        if (prefs == null) {
+            return;
+        }
+        String raw = prefs.getString(PREF_VOD_RESUME_POSITIONS, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject json = new JSONObject(raw);
+            java.util.Iterator<String> keys = json.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                vodResumePositions.put(key, Math.max(0L, json.optLong(key, 0L)));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "failed to load vod resume positions", e);
+        }
+    }
+
+    private void saveVodResumePositions() {
+        if (prefs == null) {
+            return;
+        }
+        try {
+            JSONObject json = new JSONObject();
+            for (Map.Entry<String, Long> entry : vodResumePositions.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().trim().isEmpty()) {
+                    continue;
+                }
+                long value = entry.getValue() == null ? 0L : Math.max(0L, entry.getValue());
+                if (value > 0L) {
+                    json.put(entry.getKey(), value);
+                }
+            }
+            prefs.edit().putString(PREF_VOD_RESUME_POSITIONS, json.toString()).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save vod resume positions", e);
+        }
+    }
+
     private void loadRecordingResumePositions() {
         recordingResumePositions.clear();
         if (prefs == null) {
@@ -6704,6 +6950,10 @@ public class MainActivity extends FragmentActivity {
         }
         if (channel.group != null && !channel.group.trim().isEmpty()) {
             parts.add(channel.group.trim());
+        }
+        long resumeMs = getVodResumePosition(channel.id);
+        if (resumeMs > 30_000L) {
+            parts.add(getString(R.string.vod_resume_meta, formatDurationShort(resumeMs)));
         }
         parts.add(getString(R.string.vod_row_hint));
         return TextUtils.join("  ·  ", parts);

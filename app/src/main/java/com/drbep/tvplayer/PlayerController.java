@@ -377,10 +377,22 @@ final class PlayerController {
         Log.d(TAG, "playChannel request=" + describeRequest(request)
                 + " autoPlay=" + autoPlay
                 + " initialStreamInfo=" + describeStreamInfo(streamInfo));
-        playChannelInternal(request, autoPlay, false, streamInfo);
+        playChannel(request, autoPlay, streamInfo, 0L);
+    }
+
+    void playChannel(PlaybackRequest request, boolean autoPlay, StreamInfo streamInfo, long resumePositionMs) {
+        Log.d(TAG, "playChannel request=" + describeRequest(request)
+                + " autoPlay=" + autoPlay
+                + " initialStreamInfo=" + describeStreamInfo(streamInfo)
+                + " resumeMs=" + resumePositionMs);
+        playChannelInternal(request, autoPlay, false, streamInfo, resumePositionMs);
     }
 
     void resolveStreamInfoAndReplayIfNeeded(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache) {
+        resolveStreamInfoAndReplayIfNeeded(request, autoPlay, streamInfoCache, 0L);
+    }
+
+    void resolveStreamInfoAndReplayIfNeeded(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache, long resumePositionMs) {
         if (request == null || request.directPlayback || request.channelId == null || request.channelId.trim().isEmpty()) {
             return;
         }
@@ -420,7 +432,7 @@ final class PlayerController {
                         + " requiresReplay=" + requiresReplay
                         + " previousDecision=" + describeDecision(currentPlaybackDecision)
                         + " resolvedDecision=" + describeDecision(resolvedDecision));
-                playChannelInternal(request, autoPlay, false, resolved);
+                playChannelInternal(request, autoPlay, false, resolved, resumePositionMs);
                 if ("widevine".equals(safeLower(resolved.drmType))) {
                     host.showStatus(context.getString(R.string.status_channel_widevine, request.channelName));
                 }
@@ -469,6 +481,12 @@ final class PlayerController {
         }
         long value = player.getCurrentPosition();
         return value < 0L ? 0L : value;
+    }
+
+    void seekToPosition(long positionMs) {
+        if (player != null && positionMs > 0L) {
+            player.seekTo(positionMs);
+        }
     }
 
     void release() {
@@ -565,6 +583,10 @@ final class PlayerController {
     }
 
     private void playChannelInternal(PlaybackRequest request, boolean autoPlay, boolean useFallback, StreamInfo streamInfo) {
+        playChannelInternal(request, autoPlay, useFallback, streamInfo, 0L);
+    }
+
+    private void playChannelInternal(PlaybackRequest request, boolean autoPlay, boolean useFallback, StreamInfo streamInfo, long resumePositionMs) {
         if (request == null || player == null) {
             return;
         }
@@ -614,8 +636,12 @@ final class PlayerController {
 
         Log.i(TAG, "preparePlayback channel=" + describeRequest(request)
             + " decision=" + describeDecision(decision)
-            + " streamInfo=" + describeStreamInfo(streamInfo));
+            + " streamInfo=" + describeStreamInfo(streamInfo)
+            + " resumeMs=" + resumePositionMs);
         player.setMediaItem(builder.build());
+        if (resumePositionMs > 0L) {
+            player.seekTo(resumePositionMs);
+        }
         player.prepare();
         player.setPlayWhenReady(autoPlay);
 

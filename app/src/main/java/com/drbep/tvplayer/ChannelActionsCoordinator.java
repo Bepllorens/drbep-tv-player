@@ -3,6 +3,9 @@ package com.drbep.tvplayer;
 import android.app.AlertDialog;
 import android.content.Context;
 
+import java.util.ArrayList;
+import java.util.List;
+
 final class ChannelActionsCoordinator {
     interface Host {
         void tuneSelectedChannel();
@@ -12,6 +15,10 @@ final class ChannelActionsCoordinator {
         void moveFavoriteSelected(int delta);
 
         void openPlaybackModeSelector(ChannelItem channelItem);
+
+        void openPersonalListsSelector(ChannelItem channelItem);
+
+        void openChannelProfile(ChannelItem channelItem);
 
         void openMiniGuide(ChannelItem channelItem);
 
@@ -47,83 +54,42 @@ final class ChannelActionsCoordinator {
             return;
         }
 
-        String[] options = context.getResources().getStringArray(
-            favorite ? R.array.channel_action_menu_favorite_on : R.array.channel_action_menu_favorite_off
-        );
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(context.getString(R.string.menu_tune_channel));
+        actions.add(host::tuneSelectedChannel);
+        options.add(context.getString(favorite ? R.string.menu_remove_favorite : R.string.menu_add_favorite));
+        actions.add(host::toggleFavoriteSelected);
+        if (favorite) {
+            options.add(context.getString(R.string.menu_favorite_move_up));
+            actions.add(() -> host.moveFavoriteSelected(-1));
+            options.add(context.getString(R.string.menu_favorite_move_down));
+            actions.add(() -> host.moveFavoriteSelected(1));
+        }
+        options.add(context.getString(R.string.menu_personal_lists));
+        actions.add(() -> host.openPersonalListsSelector(channelItem));
+        options.add(context.getString(R.string.menu_channel_profile));
+        actions.add(() -> host.openChannelProfile(channelItem));
+        options.add(context.getString(R.string.menu_playback_mode));
+        actions.add(() -> host.openPlaybackModeSelector(channelItem));
+        options.add(context.getString(R.string.menu_mini_guide));
+        actions.add(() -> host.openMiniGuide(channelItem));
+        options.add(context.getString(R.string.menu_record_current_program));
+        actions.add(() -> host.scheduleCurrentProgram(channelItem));
+        options.add(context.getString(R.string.menu_record_next_program));
+        actions.add(() -> host.scheduleNextProgram(channelItem));
+        options.add(context.getString(R.string.menu_create_current_reminder));
+        actions.add(() -> host.createCurrentReminder(channelItem));
+        options.add(context.getString(R.string.menu_create_next_reminder));
+        actions.add(() -> host.createNextReminder(channelItem));
+        options.add(context.getString(R.string.menu_view_recordings));
+        actions.add(host::openRecordings);
 
         new AlertDialog.Builder(context)
                 .setTitle(channelItem.name)
-                .setItems(options, (dialog, which) -> {
-                    if (favorite) {
-                        switch (which) {
-                            case 0:
-                                host.tuneSelectedChannel();
-                                break;
-                            case 1:
-                                host.toggleFavoriteSelected();
-                                break;
-                            case 2:
-                                host.moveFavoriteSelected(-1);
-                                break;
-                            case 3:
-                                host.moveFavoriteSelected(1);
-                                break;
-                            case 4:
-                                host.openPlaybackModeSelector(channelItem);
-                                break;
-                            case 5:
-                                host.openMiniGuide(channelItem);
-                                break;
-                            case 6:
-                                host.scheduleCurrentProgram(channelItem);
-                                break;
-                            case 7:
-                                host.scheduleNextProgram(channelItem);
-                                break;
-                            case 8:
-                                host.createCurrentReminder(channelItem);
-                                break;
-                            case 9:
-                                host.createNextReminder(channelItem);
-                                break;
-                            case 10:
-                                host.openRecordings();
-                                break;
-                            default:
-                                break;
-                        }
-                        return;
-                    }
-                    switch (which) {
-                        case 0:
-                            host.tuneSelectedChannel();
-                            break;
-                        case 1:
-                            host.toggleFavoriteSelected();
-                            break;
-                        case 2:
-                            host.openPlaybackModeSelector(channelItem);
-                            break;
-                        case 3:
-                            host.openMiniGuide(channelItem);
-                            break;
-                        case 4:
-                            host.scheduleCurrentProgram(channelItem);
-                            break;
-                        case 5:
-                            host.scheduleNextProgram(channelItem);
-                            break;
-                        case 6:
-                            host.createCurrentReminder(channelItem);
-                            break;
-                        case 7:
-                            host.createNextReminder(channelItem);
-                            break;
-                        case 8:
-                            host.openRecordings();
-                            break;
-                        default:
-                            break;
+                .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    if (which >= 0 && which < actions.size()) {
+                        actions.get(which).run();
                     }
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)

@@ -83,6 +83,7 @@ public class MainActivity extends FragmentActivity {
     private static final long TV_TIMESHIFT_HUD_HIDE_MS = 3500L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
+    private static final long RECORDINGS_AUTO_REFRESH_MS = 60000L;
     private static final String PREFS = "drbep_tv_prefs";
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_FAVORITES = "favorite_channel_ids";
@@ -91,6 +92,9 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_REMINDERS = "channel_reminders";
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
     private static final String PREF_RECORDING_RESUME_POSITIONS = "recording_resume_positions";
+    private static final String PREF_CHANNEL_COLLECTIONS = "channel_collections";
+    private static final String PREF_CHANNEL_PROFILES = "channel_profiles";
+    private static final String PREF_PLAYBACK_DIAGNOSTICS = "playback_diagnostics";
     private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
     private static final int MULTIVIEW_PRESET_COUNT = 3;
     private static final String PREF_TABLET_ORIENTATION_LOCK = "tablet_orientation_lock";
@@ -98,6 +102,7 @@ public class MainActivity extends FragmentActivity {
     private static final int FILTER_PLATFORM = 1;
     private static final int FILTER_CUSTOM_GROUP = 2;
     private static final int FILTER_VOD = 3;
+    private static final int FILTER_VOD_ADULT = 4;
     private static final int FILTER_FAVORITES = 5;
     private static final long TIMELINE_WINDOW_MS = 12L * 60L * 60L * 1000L;
     private static final long TIMELINE_SHIFT_MS = 2L * 60L * 60L * 1000L;
@@ -188,7 +193,6 @@ public class MainActivity extends FragmentActivity {
     private int lastTimelineFocusedCenterMinute = -1;
     private String lastVisualEpgChannelId;
     private String lastVisualEpgProgramStartTime;
-    private String lastSelectedRecordingId;
     private String currentPlaybackRecordingId;
     private String currentPlaybackReturnChannelId;
     private final Map<String, Long> recordingResumePositions = new HashMap<>();
@@ -204,11 +208,16 @@ public class MainActivity extends FragmentActivity {
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
-    private final Runnable hideTvTimeshiftHudRunnable = () -> {
-        tvTimeshiftHudVisible = false;
-        updateTimeshiftBar();
+    private final Runnable recordingsAutoRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!recordingsAutoRefreshEnabled || !isRecordingsPanelVisible()) {
+                return;
+            }
+            refreshRecordingsPanel();
+            uiHandler.postDelayed(this, RECORDINGS_AUTO_REFRESH_MS);
+        }
     };
-
     private final List<ChannelItem> channels = new ArrayList<>();
     private final List<ChannelItem> allChannels = new ArrayList<>();
     private final List<ChannelFilter> filters = new ArrayList<>();
@@ -222,8 +231,13 @@ public class MainActivity extends FragmentActivity {
     private RecentChannelsStore recentChannelsStore;
     private FavoriteOrderStore favoriteOrderStore;
     private PlaybackModeStore playbackModeStore;
+    private ChannelCollectionStore channelCollectionStore;
+    private ChannelProfileStore channelProfileStore;
+    private PlaybackDiagnosticsStore playbackDiagnosticsStore;
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
+    private RemoteInputRouter remoteInputRouter;
+    private TouchControlsController touchControlsController;
     private HttpClient httpClient;
     private AudioManager audioManager;
     private String baseUrl;
@@ -232,23 +246,21 @@ public class MainActivity extends FragmentActivity {
     private int currentIndex = -1;
     private int selectedOverlayIndex = 0;
     private boolean favoritesOnly;
-    private long lastMenuPressedAtMs;
     private String lastChannelId;
     private String selectedFilterKey = "all";
-    private int selectedRecordingIndex = 0;
-    private boolean recordingsScheduledMode;
     private final StringBuilder quickSearchBuffer = new StringBuilder();
     private final List<ChannelItem> quickSearchMatches = new ArrayList<>();
     private int quickSearchSelectionIndex = 0;
     private final Set<String> favoriteChannelIds = new HashSet<>();
+    private final Map<String, String> temporaryPlaybackModesByChannelId = new HashMap<>();
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
-    private RecordingsRepository.RecordingsResult currentRecordingsResult;
     private RecordingsAdapter recordingsAdapter;
+    private final RecordingsController recordingsController = new RecordingsController();
     private boolean touchDeviceMode;
+    private boolean recordingsAutoRefreshEnabled;
     private float touchGestureDownX = Float.NaN;
     private float touchGestureDownY = Float.NaN;
     private boolean timeshiftSeekUserDragging;
-    private boolean tvTimeshiftHudVisible;
     private boolean tabletOrientationLocked;
     private float tabletBrightnessLevel = 0.5f;
     private float touchGestureLastY = Float.NaN;
@@ -291,22 +303,6 @@ public class MainActivity extends FragmentActivity {
         if (statusText != null) {
             statusText.setVisibility(View.GONE);
         }
-    };
-    private final Runnable hideTouchControlsRunnable = () -> {
-        if (touchDeviceMode && touchControlsBar != null && !isOverlayVisible() && !isRecordingsPanelVisible()) {
-            touchControlsBar.setVisibility(View.GONE);
-            if (touchHomeHub != null) {
-                touchHomeHub.setVisibility(View.GONE);
-            }
-        }
-        if (touchHomeHub != null) {
-            touchHomeHub.setVisibility(View.GONE);
-        }
-        if (timeshiftBarContainer != null) {
-            timeshiftBarContainer.setVisibility(View.GONE);
-        }
-        tvTimeshiftHudVisible = false;
-        uiHandler.removeCallbacks(hideTvTimeshiftHudRunnable);
     };
     private final Runnable hideHdrBadgeRunnable = () -> {
         if (hdrBadgeText != null) {
@@ -459,8 +455,11 @@ public class MainActivity extends FragmentActivity {
         recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
         favoriteOrderStore = new FavoriteOrderStore(prefs, PREF_FAVORITE_ORDER);
         playbackModeStore = new PlaybackModeStore(prefs, PREF_PLAYBACK_MODES);
+        channelCollectionStore = new ChannelCollectionStore(prefs, PREF_CHANNEL_COLLECTIONS);
+        channelProfileStore = new ChannelProfileStore(prefs, PREF_CHANNEL_PROFILES);
+        playbackDiagnosticsStore = new PlaybackDiagnosticsStore(prefs, PREF_PLAYBACK_DIAGNOSTICS);
         loadRecordingResumePositions();
-        channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore);
+        channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
             public void tuneSelectedChannel() {
@@ -480,6 +479,16 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void openPlaybackModeSelector(ChannelItem channelItem) {
                 MainActivity.this.showPlaybackModeDialog(channelItem);
+            }
+
+            @Override
+            public void openPersonalListsSelector(ChannelItem channelItem) {
+                MainActivity.this.showPersonalListsDialog(channelItem);
+            }
+
+            @Override
+            public void openChannelProfile(ChannelItem channelItem) {
+                MainActivity.this.showChannelProfileDialog(channelItem);
             }
 
             @Override
@@ -534,7 +543,7 @@ public class MainActivity extends FragmentActivity {
         });
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         favoritesOnly = false;
-        lastMenuPressedAtMs = 0L;
+        remoteInputRouter = new RemoteInputRouter(createRemoteInputHost(), MENU_DOUBLE_PRESS_MS);
         Set<String> storedFavorites = prefs.getStringSet(PREF_FAVORITES, new HashSet<>());
         if (storedFavorites != null) {
             favoriteChannelIds.addAll(storedFavorites);
@@ -543,8 +552,12 @@ public class MainActivity extends FragmentActivity {
         recentChannelsStore.load();
         favoriteOrderStore.load();
         playbackModeStore.load();
+        channelCollectionStore.load();
+        channelProfileStore.load();
+        playbackDiagnosticsStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
         touchDeviceMode = detectTouchDeviceMode();
+        touchControlsController = new TouchControlsController(uiHandler, createTouchControlsHost(), TOUCH_CONTROLS_HIDE_MS, TV_TIMESHIFT_HUD_HIDE_MS);
         if (!touchDeviceMode) {
             if (quickTvButton != null) quickTvButton.setVisibility(View.GONE);
             if (quickVodButton != null) quickVodButton.setVisibility(View.GONE);
@@ -612,6 +625,11 @@ public class MainActivity extends FragmentActivity {
             public void showHdrBadge(String label) {
                 MainActivity.this.showHdrBadge(label);
             }
+
+            @Override
+            public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
+                MainActivity.this.recordPlaybackError(request, diagnostics);
+            }
         });
         playerController.initialize();
     }
@@ -643,6 +661,71 @@ public class MainActivity extends FragmentActivity {
         boolean hasTouchscreen = pm != null && pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
         boolean hasLeanback = pm != null && pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK);
         return hasTouchscreen && !hasLeanback;
+    }
+
+    private TouchControlsController.Host createTouchControlsHost() {
+        return new TouchControlsController.Host() {
+            @Override
+            public boolean isTouchDeviceMode() {
+                return touchDeviceMode;
+            }
+
+            @Override
+            public boolean isTouchControlsVisible() {
+                return touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE;
+            }
+
+            @Override
+            public boolean isOverlayVisible() {
+                return MainActivity.this.isOverlayVisible();
+            }
+
+            @Override
+            public boolean isRecordingsPanelVisible() {
+                return MainActivity.this.isRecordingsPanelVisible();
+            }
+
+            @Override
+            public boolean isMultiViewVisible() {
+                return MainActivity.this.isMultiViewVisible();
+            }
+
+            @Override
+            public boolean hasSeekablePlayback() {
+                return playerController != null && playerController.getPlaybackSeekState() != null;
+            }
+
+            @Override
+            public void setTouchControlsVisible(boolean visible) {
+                if (touchControlsBar != null) {
+                    touchControlsBar.setVisibility(visible ? View.VISIBLE : View.GONE);
+                }
+            }
+
+            @Override
+            public void hideTouchHomeHub() {
+                if (touchHomeHub != null) {
+                    touchHomeHub.setVisibility(View.GONE);
+                }
+            }
+
+            @Override
+            public void hideTimeshiftBar() {
+                if (timeshiftBarContainer != null) {
+                    timeshiftBarContainer.setVisibility(View.GONE);
+                }
+            }
+
+            @Override
+            public void updateTouchHomeHub() {
+                MainActivity.this.updateTouchHomeHub();
+            }
+
+            @Override
+            public void updateTimeshiftBar() {
+                MainActivity.this.updateTimeshiftBar();
+            }
+        };
     }
 
     private void setupTouchControls() {
@@ -952,7 +1035,7 @@ public class MainActivity extends FragmentActivity {
         boolean showForTouch = touchDeviceMode
                 && touchControlsBar != null
                 && touchControlsBar.getVisibility() == View.VISIBLE;
-        boolean showForTv = !touchDeviceMode && tvTimeshiftHudVisible;
+        boolean showForTv = !touchDeviceMode && touchControlsController != null && touchControlsController.isTvTimeshiftHudVisible();
         if ((!showForTouch && !showForTv) || isOverlayVisible() || isRecordingsPanelVisible() || isMultiViewVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
             updatePlaybackStateBadge(playerController.getTimeshiftState());
@@ -1006,58 +1089,36 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showTouchControlsTemporarily() {
-        if (!touchDeviceMode || touchControlsBar == null) {
-            return;
+        if (touchControlsController != null) {
+            touchControlsController.showTouchControlsTemporarily();
         }
-        touchControlsBar.setVisibility(View.VISIBLE);
-        updateTouchHomeHub();
-        updateTimeshiftBar();
-        scheduleTouchControlsAutoHide();
     }
 
     private void showTimeshiftHudTemporarily() {
-        if (touchDeviceMode || playerController == null) {
-            return;
+        if (touchControlsController != null) {
+            touchControlsController.showTimeshiftHudTemporarily();
         }
-        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
-        if (state == null) {
-            return;
-        }
-        tvTimeshiftHudVisible = true;
-        updateTimeshiftBar();
-        scheduleTvTimeshiftHudAutoHide();
     }
 
     private boolean isTvTimeshiftHudActive() {
-        return !touchDeviceMode
-                && tvTimeshiftHudVisible
-                && !isOverlayVisible()
-                && !isRecordingsPanelVisible()
-                && !isMultiViewVisible();
+        return touchControlsController != null && touchControlsController.isTvTimeshiftHudActive();
     }
 
     private void hideTvTimeshiftHud() {
-        if (touchDeviceMode || !tvTimeshiftHudVisible) {
-            return;
+        if (touchControlsController != null) {
+            touchControlsController.hideTvTimeshiftHud();
         }
-        uiHandler.removeCallbacks(hideTvTimeshiftHudRunnable);
-        tvTimeshiftHudVisible = false;
-        updateTimeshiftBar();
     }
 
     private void scheduleTouchControlsAutoHide() {
-        uiHandler.removeCallbacks(hideTouchControlsRunnable);
-        updateTimeshiftBar();
-        if (touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
-            uiHandler.postDelayed(hideTouchControlsRunnable, TOUCH_CONTROLS_HIDE_MS);
+        if (touchControlsController != null) {
+            touchControlsController.scheduleTouchControlsAutoHide();
         }
     }
 
     private void scheduleTvTimeshiftHudAutoHide() {
-        uiHandler.removeCallbacks(hideTvTimeshiftHudRunnable);
-        updateTimeshiftBar();
-        if (!touchDeviceMode && tvTimeshiftHudVisible) {
-            uiHandler.postDelayed(hideTvTimeshiftHudRunnable, TV_TIMESHIFT_HUD_HIDE_MS);
+        if (touchControlsController != null) {
+            touchControlsController.scheduleTvTimeshiftHudAutoHide();
         }
     }
 
@@ -1343,7 +1404,7 @@ public class MainActivity extends FragmentActivity {
         }
         saveLastChannelId(ch.id);
         if (recentChannelsStore != null) {
-            recentChannelsStore.add(ch.id, ch.name);
+            recentChannelsStore.add(ch.id, displayName(ch));
         }
         playerController.resetFallbackState();
         updateTimeshiftBar();
@@ -1355,9 +1416,23 @@ public class MainActivity extends FragmentActivity {
         }
 
         hideError();
-        showStatus(ch.name);
+        showStatus(displayName(ch));
         updateOverlayPanel();
         showZapBanner(ch);
+    }
+
+    private String displayName(ChannelItem channelItem) {
+        if (channelItem == null) {
+            return "";
+        }
+        return channelProfileStore == null ? channelItem.name : channelProfileStore.getDisplayName(channelItem.id, channelItem.name);
+    }
+
+    private String profileTag(ChannelItem channelItem) {
+        if (channelItem == null || channelProfileStore == null) {
+            return "";
+        }
+        return channelProfileStore.getTag(channelItem.id);
     }
 
     private static String safeLower(String value) {
@@ -2308,12 +2383,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openRecordingsBrowser() {
-        Log.d(TAG, "openRecordingsBrowser scheduledMode=" + recordingsScheduledMode);
-        loadRecordingsPanel(recordingsScheduledMode, lastSelectedRecordingId);
+        Log.d(TAG, "openRecordingsBrowser scheduledMode=" + recordingsController.isScheduledMode());
+        loadRecordingsPanel(recordingsController.isScheduledMode(), recordingsController.getLastSelectedId());
     }
 
     private void loadRecordingsPanel(boolean scheduledMode, String preferredId) {
-        recordingsScheduledMode = scheduledMode;
+        recordingsController.setScheduledMode(scheduledMode);
         showStatus(getString(scheduledMode ? R.string.status_loading_scheduled_recordings : R.string.status_loading_recordings));
         final String desiredId = preferredId;
         ioExecutor.execute(() -> {
@@ -2353,11 +2428,11 @@ public class MainActivity extends FragmentActivity {
 
     private void refreshRecordingsPanel() {
         RecordingsRepository.RecordingItem selected = getSelectedRecordingItem();
-        loadRecordingsPanel(recordingsScheduledMode, selected == null ? null : selected.id);
+        loadRecordingsPanel(recordingsController.isScheduledMode(), selected == null ? null : selected.id);
     }
 
     private void switchRecordingsMode(boolean scheduledMode) {
-        if (recordingsScheduledMode == scheduledMode && isRecordingsPanelVisible()) {
+        if (recordingsController.isScheduledMode() == scheduledMode && isRecordingsPanelVisible()) {
             return;
         }
         RecordingsRepository.RecordingItem selected = getSelectedRecordingItem();
@@ -2477,13 +2552,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private RecordingsRepository.RecordingItem getSelectedRecordingItem() {
-        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
-            return null;
-        }
-        if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
-            selectedRecordingIndex = 0;
-        }
-        return currentRecordingsResult.items.get(selectedRecordingIndex);
+        return recordingsController.getSelectedItem();
     }
 
     private void showRecordingActionsDialog() {
@@ -2504,13 +2573,21 @@ public class MainActivity extends FragmentActivity {
         }
         options.add(getString(R.string.recording_action_refresh));
         actions.add(this::refreshRecordingsPanel);
-        options.add(getString(recordingsScheduledMode ? R.string.recording_action_switch_completed : R.string.recording_action_switch_scheduled));
-        actions.add(() -> switchRecordingsMode(!recordingsScheduledMode));
+        options.add(getString(recordingsAutoRefreshEnabled ? R.string.recording_action_auto_refresh_on : R.string.recording_action_auto_refresh_off));
+        actions.add(this::toggleRecordingsAutoRefresh);
+        options.add(getString(recordingsController.isScheduledMode() ? R.string.recording_action_switch_completed : R.string.recording_action_switch_scheduled));
+        actions.add(() -> switchRecordingsMode(!recordingsController.isScheduledMode()));
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_recording_actions)
                 .setItems(options.toArray(new String[0]), (dialog, which) -> actions.get(which).run())
                 .setNegativeButton(R.string.dialog_cancel, null)
                 .show();
+    }
+
+    private void toggleRecordingsAutoRefresh() {
+        recordingsAutoRefreshEnabled = !recordingsAutoRefreshEnabled;
+        showStatus(getString(recordingsAutoRefreshEnabled ? R.string.recordings_panel_auto_refresh_on : R.string.recordings_panel_auto_refresh_off));
+        scheduleRecordingsAutoRefresh();
     }
 
     private void checkReminderNotifications() {
@@ -2739,16 +2816,12 @@ public class MainActivity extends FragmentActivity {
         hideRecordingsPanel();
         closeMultiView();
         if (touchDeviceMode) {
-            uiHandler.removeCallbacks(hideTouchControlsRunnable);
-            if (touchControlsBar != null) {
-                touchControlsBar.setVisibility(View.GONE);
+            if (touchControlsController != null) {
+                touchControlsController.cancelTimers();
             }
-            if (touchHomeHub != null) {
-                touchHomeHub.setVisibility(View.GONE);
-            }
-            if (timeshiftBarContainer != null) {
-                timeshiftBarContainer.setVisibility(View.GONE);
-            }
+            if (touchControlsBar != null) touchControlsBar.setVisibility(View.GONE);
+            if (touchHomeHub != null) touchHomeHub.setVisibility(View.GONE);
+            if (timeshiftBarContainer != null) timeshiftBarContainer.setVisibility(View.GONE);
         }
         updateOverlayPanel();
         updateOverlaySearchState();
@@ -2760,16 +2833,12 @@ public class MainActivity extends FragmentActivity {
         clearOverlaySearchQuery();
         channelOverlayCoordinator.hideOverlay(channelOverlay);
         if (touchDeviceMode) {
-            uiHandler.removeCallbacks(hideTouchControlsRunnable);
-            if (touchControlsBar != null) {
-                touchControlsBar.setVisibility(View.GONE);
+            if (touchControlsController != null) {
+                touchControlsController.cancelTimers();
             }
-            if (touchHomeHub != null) {
-                touchHomeHub.setVisibility(View.GONE);
-            }
-            if (timeshiftBarContainer != null) {
-                timeshiftBarContainer.setVisibility(View.GONE);
-            }
+            if (touchControlsBar != null) touchControlsBar.setVisibility(View.GONE);
+            if (touchHomeHub != null) touchHomeHub.setVisibility(View.GONE);
+            if (timeshiftBarContainer != null) timeshiftBarContainer.setVisibility(View.GONE);
         }
     }
 
@@ -2794,36 +2863,31 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
-        currentRecordingsResult = result;
-        recordingsScheduledMode = result.scheduledMode;
-        selectedRecordingIndex = 0;
-        lastSelectedRecordingId = preferredId;
-        if (preferredId != null && !preferredId.trim().isEmpty()) {
-            for (int i = 0; i < result.items.size(); i++) {
-                if (preferredId.equals(result.items.get(i).id)) {
-                    selectedRecordingIndex = i;
-                    break;
-                }
-            }
-        }
+        recordingsController.applyResult(result, preferredId);
         Log.d(TAG, "showRecordingsPanel scheduled=" + result.scheduledMode + " count=" + result.items.size());
         recordingsAdapter = new RecordingsAdapter(result);
         recordingsRecyclerView.setAdapter(recordingsAdapter);
-        recordingsRecyclerView.scrollToPosition(selectedRecordingIndex);
+        recordingsRecyclerView.scrollToPosition(recordingsController.getSelectedIndex());
         updateRecordingsDetailPanel();
         recordingsPanel.setVisibility(View.VISIBLE);
+        scheduleRecordingsAutoRefresh();
         Log.d(TAG, "recordingsPanel visible=" + (recordingsPanel.getVisibility() == View.VISIBLE));
     }
 
     private void hideRecordingsPanel() {
-        RecordingsRepository.RecordingItem selected = getSelectedRecordingItem();
-        lastSelectedRecordingId = selected == null ? lastSelectedRecordingId : selected.id;
+        uiHandler.removeCallbacks(recordingsAutoRefreshRunnable);
+        recordingsController.clearCurrentResult();
         if (recordingsPanel != null) {
             recordingsPanel.setVisibility(View.GONE);
         }
-        currentRecordingsResult = null;
-        selectedRecordingIndex = 0;
         updateRecordingsDetailPanel();
+    }
+
+    private void scheduleRecordingsAutoRefresh() {
+        uiHandler.removeCallbacks(recordingsAutoRefreshRunnable);
+        if (recordingsAutoRefreshEnabled && isRecordingsPanelVisible()) {
+            uiHandler.postDelayed(recordingsAutoRefreshRunnable, RECORDINGS_AUTO_REFRESH_MS);
+        }
     }
 
     private boolean isQuickSearchVisible() {
@@ -2940,38 +3004,29 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void moveRecordingsSelection(int delta) {
-        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
+        if (recordingsController.moveSelection(delta) == null) {
             return;
-        }
-        selectedRecordingIndex += delta;
-        if (selectedRecordingIndex < 0) {
-            selectedRecordingIndex = currentRecordingsResult.items.size() - 1;
-        }
-        if (selectedRecordingIndex >= currentRecordingsResult.items.size()) {
-            selectedRecordingIndex = 0;
         }
         if (recordingsAdapter != null) {
             recordingsAdapter.notifyDataSetChanged();
         }
         if (recordingsRecyclerView != null) {
-            recordingsRecyclerView.scrollToPosition(selectedRecordingIndex);
+            recordingsRecyclerView.scrollToPosition(recordingsController.getSelectedIndex());
         }
         updateRecordingsDetailPanel();
     }
 
     private void playSelectedRecording() {
-        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
+        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
+        RecordingsRepository.RecordingItem item = recordingsController.getSelectedItem();
+        if (result == null || item == null) {
             return;
         }
-        if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
-            selectedRecordingIndex = 0;
-        }
-        RecordingsRepository.RecordingItem item = currentRecordingsResult.items.get(selectedRecordingIndex);
         if (!item.playable) {
             showRecordingActionsDialog();
             return;
         }
-        playRecording(item, currentRecordingsResult.basePath);
+        playRecording(item, result.basePath);
     }
 
     private void updateRecordingsDetailPanel() {
@@ -2979,25 +3034,23 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         updateRecordingsPanelButtons();
-        if (currentRecordingsResult == null || currentRecordingsResult.items.isEmpty()) {
-            recordingsSectionText.setText(getString(recordingsScheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
-            recordingsSummaryText.setText(buildRecordingsSummary(currentRecordingsResult));
+        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
+        if (result == null || result.items.isEmpty()) {
+            recordingsSectionText.setText(getString(recordingsController.isScheduledMode() ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
+            recordingsSummaryText.setText(buildRecordingsSummary(result));
             recordingDetailTitleText.setText(getString(R.string.recordings_detail_empty));
             recordingDetailMetaText.setText("");
             recordingDetailMetaText.setTextColor(0xFFF2D5AF);
             recordingDetailPathText.setText("");
-            recordingDetailActionText.setText(getString(recordingsScheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
+            recordingDetailActionText.setText(getString(recordingsController.isScheduledMode() ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
             recordingDetailPathText.setVisibility(View.GONE);
             recordingDetailPosterImage.setVisibility(View.GONE);
             Glide.with(this).clear(recordingDetailPosterImage);
             return;
         }
-        if (selectedRecordingIndex < 0 || selectedRecordingIndex >= currentRecordingsResult.items.size()) {
-            selectedRecordingIndex = 0;
-        }
-        RecordingsRepository.RecordingItem item = currentRecordingsResult.items.get(selectedRecordingIndex);
-        recordingsSectionText.setText(getString(currentRecordingsResult.scheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
-        recordingsSummaryText.setText(buildRecordingsSummary(currentRecordingsResult));
+        RecordingsRepository.RecordingItem item = recordingsController.getSelectedItem();
+        recordingsSectionText.setText(getString(result.scheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
+        recordingsSummaryText.setText(buildRecordingsSummary(result));
         recordingDetailTitleText.setText(buildRecordingTitle(item));
         recordingDetailMetaText.setText(buildRecordingMeta(item));
         recordingDetailMetaText.setTextColor(recordingMetaColor(item));
@@ -3008,16 +3061,16 @@ public class MainActivity extends FragmentActivity {
             recordingDetailPathText.setVisibility(View.GONE);
             recordingDetailPathText.setText("");
         }
-        recordingDetailActionText.setText(getString(currentRecordingsResult.scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
+        recordingDetailActionText.setText(getString(result.scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
         bindRecordingPoster(recordingDetailPosterImage, item.poster);
     }
 
     private void updateRecordingsPanelButtons() {
         if (recordingsCompletedButton != null) {
-            recordingsCompletedButton.setBackgroundTintList(ColorStateList.valueOf(recordingsScheduledMode ? 0xFF2B3642 : 0xFF2A7C86));
+            recordingsCompletedButton.setBackgroundTintList(ColorStateList.valueOf(recordingsController.isScheduledMode() ? 0xFF2B3642 : 0xFF2A7C86));
         }
         if (recordingsScheduledButton != null) {
-            recordingsScheduledButton.setBackgroundTintList(ColorStateList.valueOf(recordingsScheduledMode ? 0xFF2A7C86 : 0xFF2B3642));
+            recordingsScheduledButton.setBackgroundTintList(ColorStateList.valueOf(recordingsController.isScheduledMode() ? 0xFF2A7C86 : 0xFF2B3642));
         }
         if (recordingsRefreshButton != null) {
             recordingsRefreshButton.setBackgroundTintList(ColorStateList.valueOf(0xFF2B3642));
@@ -3066,339 +3119,253 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    @Override
-    public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
-        if (event.getAction() != KeyEvent.ACTION_DOWN) {
-            return super.dispatchKeyEvent(event);
-        }
-
-        if (!isRecordingsPanelVisible()) {
-            int unicode = event.getUnicodeChar();
-            if (unicode > 0 && Character.isLetterOrDigit((char) unicode)) {
-                handleQuickSearchCharacter((char) unicode);
-                return true;
+    private RemoteInputRouter.Host createRemoteInputHost() {
+        return new RemoteInputRouter.Host() {
+            @Override
+            public boolean isRecordingsPanelVisible() {
+                return MainActivity.this.isRecordingsPanelVisible();
             }
-        }
 
-        int keyCode = event.getKeyCode();
-        if (isMultiViewVisible()) {
-            switch (keyCode) {
-                case KeyEvent.KEYCODE_BACK:
-                    closeMultiView();
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    moveMultiViewSelection(-1, 0);
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    moveMultiViewSelection(1, 0);
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_UP:
-                    moveMultiViewSelection(0, -1);
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_DOWN:
-                    moveMultiViewSelection(0, 1);
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_CENTER:
-                case KeyEvent.KEYCODE_ENTER:
-                case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                    focusMultiViewSlot(multiViewActiveIndex);
-                    return true;
-                case KeyEvent.KEYCODE_MENU:
-                    showMultiViewChannelPicker(multiViewActiveIndex);
-                    return true;
-                default:
-                    break;
+            @Override
+            public boolean isQuickSearchVisible() {
+                return MainActivity.this.isQuickSearchVisible();
             }
-        }
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_MENU:
-                long now = System.currentTimeMillis();
-                if (isQuickSearchVisible()) {
-                    clearQuickSearchOverlay();
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    switchRecordingsMode(false);
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
-                        lastMenuPressedAtMs = 0L;
-                        if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
-                            openTimelineGuideAroundSelection();
-                        }
-                        return true;
-                    }
-                    lastMenuPressedAtMs = now;
-                    showChannelActionMenu();
-                    return true;
-                }
-                if (now - lastMenuPressedAtMs <= MENU_DOUBLE_PRESS_MS) {
-                    lastMenuPressedAtMs = 0L;
-                    if (currentIndex >= 0 && currentIndex < channels.size()) {
-                        openTimelineGuide(currentIndex, System.currentTimeMillis());
-                    } else {
-                        showOverlay();
-                    }
-                    return true;
-                }
-                lastMenuPressedAtMs = now;
-                showV12ToolsMenu();
-                return true;
-            case KeyEvent.KEYCODE_BACK:
-                if (isQuickSearchVisible()) {
-                    clearQuickSearchOverlay();
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    hideRecordingsPanel();
-                    return true;
-                }
-                if (isTvTimeshiftHudActive()) {
-                    hideTvTimeshiftHud();
-                    return true;
-                }
-                if (playerController != null && playerController.isPlayingRecording() && currentPlaybackRecordingId != null) {
-                    showLeaveRecordingPrompt();
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    hideOverlay();
-                    return true;
-                }
-                finish();
-                return true;
-            case KeyEvent.KEYCODE_CHANNEL_UP:
-            case KeyEvent.KEYCODE_PAGE_UP:
-                if (isQuickSearchVisible()) {
-                    moveQuickSearchSelection(-1);
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    moveRecordingsSelection(-1);
-                    return true;
-                }
-                tuneRelative(-1);
-                return true;
-            case KeyEvent.KEYCODE_CHANNEL_DOWN:
-            case KeyEvent.KEYCODE_PAGE_DOWN:
-                if (isQuickSearchVisible()) {
-                    moveQuickSearchSelection(1);
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    moveRecordingsSelection(1);
-                    return true;
-                }
-                tuneRelative(1);
-                return true;
-            case KeyEvent.KEYCODE_DPAD_UP:
-                if (isQuickSearchVisible()) {
-                    moveQuickSearchSelection(-1);
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    moveRecordingsSelection(-1);
-                    return true;
-                }
-                if (isTvTimeshiftHudActive() && playerController != null && playerController.resumeTimeshiftLive()) {
-                    showTimeshiftHudTemporarily();
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    moveOverlaySelection(-1);
-                } else {
-                    tuneRelative(-1);
-                }
-                return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                if (isQuickSearchVisible()) {
-                    moveQuickSearchSelection(1);
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    moveRecordingsSelection(1);
-                    return true;
-                }
-                if (isTvTimeshiftHudActive()) {
-                    hideTvTimeshiftHud();
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    moveOverlaySelection(1);
-                } else {
-                    tuneRelative(1);
-                }
-                return true;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-                if (isQuickSearchVisible()) {
-                    clearQuickSearchOverlay();
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    hideRecordingsPanel();
-                    return true;
-                }
-                if (isTvTimeshiftHudActive() && playerController != null && playerController.seekTimeshiftBack()) {
-                    showTimeshiftHudTemporarily();
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    cycleFilter(-1);
-                } else {
-                    showOverlay();
-                }
-                return true;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (isQuickSearchVisible()) {
-                    tuneQuickSearchSelection();
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    switchRecordingsMode(true);
-                    return true;
-                }
-                if (isTvTimeshiftHudActive() && playerController != null && playerController.seekTimeshiftForward()) {
-                    showTimeshiftHudTemporarily();
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    cycleFilter(1);
-                } else {
-                    showOverlay();
-                }
-                return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
-            case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                if (isQuickSearchVisible()) {
-                    tuneQuickSearchSelection();
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    playSelectedRecording();
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    tuneToIndex(selectedOverlayIndex, true);
-                    hideOverlay();
-                } else if (playerController != null) {
-                    if (!touchDeviceMode && playerController.getPlaybackSeekState() != null) {
-                        showTimeshiftHudTemporarily();
-                    } else {
-                        playerController.togglePlayback();
-                    }
-                }
-                return true;
-            case KeyEvent.KEYCODE_INFO:
-                if (isQuickSearchVisible()) {
-                    showChannelSearchDialog();
-                    return true;
-                }
-                if (isRecordingsPanelVisible()) {
-                    showRecordingActionsDialog();
-                    return true;
-                }
-                if (isOverlayVisible()) {
-                    if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
-                        openTimelineGuideAroundSelection();
-                    }
-                    return true;
-                }
-                if (currentIndex >= 0 && currentIndex < channels.size()) {
-                    openTimelineGuide(currentIndex, System.currentTimeMillis());
-                } else {
-                    showOverlay();
-                }
-                return true;
-            case KeyEvent.KEYCODE_SEARCH:
-                if (isQuickSearchVisible()) {
-                    showChannelSearchDialog();
-                    return true;
-                }
-                showChannelSearchDialog();
-                return true;
-            case KeyEvent.KEYCODE_DEL:
-            case KeyEvent.KEYCODE_FORWARD_DEL:
-                if (isQuickSearchVisible()) {
-                    deleteQuickSearchCharacter();
-                    return true;
-                }
-                break;
-            case KeyEvent.KEYCODE_MEDIA_RECORD:
-                if (isOverlayVisible() && selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
-                    createScheduleFromEndpoint(channels.get(selectedOverlayIndex), false);
-                } else if (currentIndex >= 0 && currentIndex < channels.size()) {
-                    createScheduleFromEndpoint(channels.get(currentIndex), false);
-                }
-                return true;
-            case KeyEvent.KEYCODE_MEDIA_REWIND:
-                if (playerController != null && playerController.seekTimeshiftBack()) {
-                    showTimeshiftHudTemporarily();
-                    return true;
-                }
-                break;
-            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                if (playerController != null) {
-                    if (event.getRepeatCount() > 0 && playerController.resumeTimeshiftLive()) {
-                        showTimeshiftHudTemporarily();
-                        return true;
-                    }
-                    if (playerController.seekTimeshiftForward()) {
-                        showTimeshiftHudTemporarily();
-                        return true;
-                    }
-                }
-                break;
-            case KeyEvent.KEYCODE_MEDIA_PLAY:
-            case KeyEvent.KEYCODE_MEDIA_PAUSE:
-            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+
+            @Override
+            public boolean isMultiViewVisible() {
+                return MainActivity.this.isMultiViewVisible();
+            }
+
+            @Override
+            public boolean isOverlayVisible() {
+                return MainActivity.this.isOverlayVisible();
+            }
+
+            @Override
+            public boolean isTvTimeshiftHudActive() {
+                return MainActivity.this.isTvTimeshiftHudActive();
+            }
+
+            @Override
+            public boolean canResumeTimeshiftLive() {
+                return playerController != null && playerController.resumeTimeshiftLive();
+            }
+
+            @Override
+            public boolean canSeekTimeshiftBack() {
+                return playerController != null && playerController.seekTimeshiftBack();
+            }
+
+            @Override
+            public boolean canSeekTimeshiftForward() {
+                return playerController != null && playerController.seekTimeshiftForward();
+            }
+
+            @Override
+            public boolean isPlayingRecordingWithReturnTarget() {
+                return playerController != null && playerController.isPlayingRecording() && currentPlaybackRecordingId != null;
+            }
+
+            @Override
+            public boolean hasSeekablePlayback() {
+                return playerController != null && playerController.getPlaybackSeekState() != null;
+            }
+
+            @Override
+            public boolean isTouchDeviceMode() {
+                return touchDeviceMode;
+            }
+
+            @Override
+            public boolean hasSelectedOverlayChannel() {
+                return selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size();
+            }
+
+            @Override
+            public boolean hasCurrentChannel() {
+                return currentIndex >= 0 && currentIndex < channels.size();
+            }
+
+            @Override
+            public int getMultiViewActiveIndex() {
+                return multiViewActiveIndex;
+            }
+
+            @Override
+            public void handleQuickSearchCharacter(char value) {
+                MainActivity.this.handleQuickSearchCharacter(value);
+            }
+
+            @Override
+            public void clearQuickSearchOverlay() {
+                MainActivity.this.clearQuickSearchOverlay();
+            }
+
+            @Override
+            public void switchRecordingsMode(boolean scheduledMode) {
+                MainActivity.this.switchRecordingsMode(scheduledMode);
+            }
+
+            @Override
+            public void showChannelActionMenu() {
+                MainActivity.this.showChannelActionMenu();
+            }
+
+            @Override
+            public void openTimelineGuideAroundSelection() {
+                MainActivity.this.openTimelineGuideAroundSelection();
+            }
+
+            @Override
+            public void openTimelineGuideForCurrentChannel() {
+                MainActivity.this.openTimelineGuide(currentIndex, System.currentTimeMillis());
+            }
+
+            @Override
+            public void showOverlay() {
+                MainActivity.this.showOverlay();
+            }
+
+            @Override
+            public void showV12ToolsMenu() {
+                MainActivity.this.showV12ToolsMenu();
+            }
+
+            @Override
+            public void hideRecordingsPanel() {
+                MainActivity.this.hideRecordingsPanel();
+            }
+
+            @Override
+            public void hideTvTimeshiftHud() {
+                MainActivity.this.hideTvTimeshiftHud();
+            }
+
+            @Override
+            public void showLeaveRecordingPrompt() {
+                MainActivity.this.showLeaveRecordingPrompt();
+            }
+
+            @Override
+            public void hideOverlay() {
+                MainActivity.this.hideOverlay();
+            }
+
+            @Override
+            public void finishActivity() {
+                MainActivity.this.finish();
+            }
+
+            @Override
+            public void moveQuickSearchSelection(int delta) {
+                MainActivity.this.moveQuickSearchSelection(delta);
+            }
+
+            @Override
+            public void moveRecordingsSelection(int delta) {
+                MainActivity.this.moveRecordingsSelection(delta);
+            }
+
+            @Override
+            public void tuneRelative(int delta) {
+                MainActivity.this.tuneRelative(delta);
+            }
+
+            @Override
+            public void showTimeshiftHudTemporarily() {
+                MainActivity.this.showTimeshiftHudTemporarily();
+            }
+
+            @Override
+            public void moveOverlaySelection(int delta) {
+                MainActivity.this.moveOverlaySelection(delta);
+            }
+
+            @Override
+            public void cycleFilter(int delta) {
+                MainActivity.this.cycleFilter(delta);
+            }
+
+            @Override
+            public void tuneQuickSearchSelection() {
+                MainActivity.this.tuneQuickSearchSelection();
+            }
+
+            @Override
+            public void playSelectedRecording() {
+                MainActivity.this.playSelectedRecording();
+            }
+
+            @Override
+            public void tuneOverlaySelectionAndHide() {
+                MainActivity.this.tuneToIndex(selectedOverlayIndex, true);
+                MainActivity.this.hideOverlay();
+            }
+
+            @Override
+            public void togglePlayback() {
                 if (playerController != null) {
                     playerController.togglePlayback();
-                    showTimeshiftHudTemporarily();
-                    return true;
                 }
-                break;
-            default:
-                break;
-        }
+            }
 
+            @Override
+            public void showChannelSearchDialog() {
+                MainActivity.this.showChannelSearchDialog();
+            }
+
+            @Override
+            public void showRecordingActionsDialog() {
+                MainActivity.this.showRecordingActionsDialog();
+            }
+
+            @Override
+            public void deleteQuickSearchCharacter() {
+                MainActivity.this.deleteQuickSearchCharacter();
+            }
+
+            @Override
+            public void scheduleSelectedOrCurrentProgram() {
+                if (MainActivity.this.isOverlayVisible() && selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
+                    MainActivity.this.createScheduleFromEndpoint(channels.get(selectedOverlayIndex), false);
+                } else if (currentIndex >= 0 && currentIndex < channels.size()) {
+                    MainActivity.this.createScheduleFromEndpoint(channels.get(currentIndex), false);
+                }
+            }
+
+            @Override
+            public void closeMultiView() {
+                MainActivity.this.closeMultiView();
+            }
+
+            @Override
+            public void moveMultiViewSelection(int columnDelta, int rowDelta) {
+                MainActivity.this.moveMultiViewSelection(columnDelta, rowDelta);
+            }
+
+            @Override
+            public void focusMultiViewSlot(int slot) {
+                MainActivity.this.focusMultiViewSlot(slot);
+            }
+
+            @Override
+            public void showMultiViewChannelPicker(int slot) {
+                MainActivity.this.showMultiViewChannelPicker(slot);
+            }
+        };
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+        if (remoteInputRouter != null && remoteInputRouter.dispatchKeyEvent(event)) {
+            return true;
+        }
         return super.dispatchKeyEvent(event);
     }
 
     @Override
     public boolean onKeyLongPress(int keyCode, @NonNull KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
-            if (playerController != null && playerController.resumeTimeshiftLive()) {
-                showTimeshiftHudTemporarily();
-                return true;
-            }
-        }
-        if (keyCode == KeyEvent.KEYCODE_INFO || keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            showV12ToolsMenu();
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            if (isQuickSearchVisible()) {
-                clearQuickSearchOverlay();
-                return true;
-            }
-            if (isRecordingsPanelVisible()) {
-                hideRecordingsPanel();
-                return true;
-            }
-            if (isOverlayVisible()) {
-                if (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
-                    openTimelineGuideAroundSelection();
-                    return true;
-                }
-            } else if (currentIndex >= 0 && currentIndex < channels.size()) {
-                openTimelineGuide(currentIndex, System.currentTimeMillis());
-                return true;
-            }
-        }
-        if (isOverlayVisible() && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
-            showChannelActionMenu();
+        if (remoteInputRouter != null && remoteInputRouter.onKeyLongPress(keyCode)) {
             return true;
         }
         return super.onKeyLongPress(keyCode, event);
@@ -3429,6 +3396,9 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onDestroy() {
+        if (touchControlsController != null) {
+            touchControlsController.cancelTimers();
+        }
         uiHandler.removeCallbacksAndMessages(null);
         ioExecutor.shutdownNow();
         if (playerController != null) {
@@ -3443,11 +3413,13 @@ public class MainActivity extends FragmentActivity {
         }
         return new PlayerController.PlaybackRequest(
                 channelItem.id,
-                channelItem.name,
+                displayName(channelItem),
                 channelItem.platformName,
                 channelItem.playUrl,
                 channelItem.fallbackPlayUrl,
-                playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id),
+                temporaryPlaybackModesByChannelId.containsKey(channelItem.id)
+                        ? temporaryPlaybackModesByChannelId.get(channelItem.id)
+                        : (playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id)),
                 channelItem.drmScheme,
                 channelItem.drmLicenseUrl,
                 channelItem.directPlayback
@@ -3467,7 +3439,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.diagnostics_none));
             return;
         }
-        showStatus(getString(R.string.status_retry_channel, channelItem.name));
+        showStatus(getString(R.string.status_retry_channel, displayName(channelItem)));
         currentIndex = findChannelIndexById(channelItem.id);
         if (currentIndex >= 0) {
             selectedOverlayIndex = currentIndex;
@@ -3512,6 +3484,173 @@ public class MainActivity extends FragmentActivity {
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)
                 .show();
+    }
+
+    private void showTemporaryPlaybackModeDialog(ChannelItem channelItem) {
+        if (channelItem == null) {
+            return;
+        }
+        String currentMode = temporaryPlaybackModesByChannelId.getOrDefault(channelItem.id, PlaybackModeStore.MODE_AUTO);
+        int checkedItem = PlaybackModeStore.MODE_DIRECT.equals(currentMode)
+                ? 1
+                : (PlaybackModeStore.MODE_PROXY.equals(currentMode) ? 2 : 0);
+        String[] options = getResources().getStringArray(R.array.playback_mode_options);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_playback_mode_temporary)
+                .setSingleChoiceItems(options, checkedItem, (dialog, which) -> {
+                    String selectedMode = which == 1
+                            ? PlaybackModeStore.MODE_DIRECT
+                            : (which == 2 ? PlaybackModeStore.MODE_PROXY : PlaybackModeStore.MODE_AUTO);
+                    if (PlaybackModeStore.MODE_AUTO.equals(selectedMode)) {
+                        temporaryPlaybackModesByChannelId.remove(channelItem.id);
+                    } else {
+                        temporaryPlaybackModesByChannelId.put(channelItem.id, selectedMode);
+                    }
+                    showStatus(getString(R.string.status_playback_mode_temporary_changed, options[which]));
+                    dialog.dismiss();
+                    ChannelItem currentPlaybackChannel = getCurrentPlaybackChannelItem();
+                    if (currentPlaybackChannel != null && channelItem.id.equals(currentPlaybackChannel.id)) {
+                        retryCurrentPlayback();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showPersonalListsDialog(ChannelItem channelItem) {
+        if (channelItem == null || channelCollectionStore == null) {
+            return;
+        }
+        List<ChannelCollectionStore.ChannelCollection> collections = channelCollectionStore.getCollections();
+        String[] labels = new String[collections.size()];
+        boolean[] checked = new boolean[collections.size()];
+        for (int i = 0; i < collections.size(); i++) {
+            ChannelCollectionStore.ChannelCollection collection = collections.get(i);
+            labels[i] = collection.label;
+            checked[i] = channelCollectionStore.contains(collection.key, channelItem.id);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_personal_lists)
+                .setMultiChoiceItems(labels, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    for (int i = 0; i < collections.size(); i++) {
+                        channelCollectionStore.setMembership(collections.get(i).key, channelItem.id, checked[i]);
+                    }
+                    refreshLocalChannelFilters(channelItem.id);
+                    showStatus(getString(R.string.status_personal_lists_updated));
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showChannelProfileDialog(ChannelItem channelItem) {
+        if (channelItem == null || channelProfileStore == null) {
+            return;
+        }
+        boolean hasAlias = channelProfileStore.hasAlias(channelItem.id);
+        boolean hidden = channelProfileStore.isHidden(channelItem.id);
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.channel_profile_alias));
+        actions.add(() -> showChannelAliasDialog(channelItem));
+        if (hasAlias) {
+            options.add(getString(R.string.channel_profile_clear_alias));
+            actions.add(() -> {
+                channelProfileStore.setAlias(channelItem.id, "");
+                refreshLocalChannelFilters(channelItem.id);
+                showStatus(getString(R.string.status_channel_alias_cleared));
+            });
+        }
+        options.add(getString(R.string.channel_profile_tag));
+        actions.add(() -> showChannelTagDialog(channelItem));
+        if (channelProfileStore.hasTag(channelItem.id)) {
+            options.add(getString(R.string.channel_profile_clear_tag));
+            actions.add(() -> {
+                channelProfileStore.setTag(channelItem.id, "");
+                refreshLocalChannelFilters(channelItem.id);
+                showStatus(getString(R.string.status_channel_tag_cleared));
+            });
+        }
+        options.add(getString(hidden ? R.string.channel_profile_unhide : R.string.channel_profile_hide));
+        actions.add(() -> {
+            channelProfileStore.setHidden(channelItem.id, !hidden);
+            refreshLocalChannelFilters(channelItem.id);
+            showStatus(getString(hidden ? R.string.status_channel_unhidden : R.string.status_channel_hidden));
+        });
+        options.add(getString(R.string.channel_profile_startup));
+        actions.add(() -> {
+            saveLastChannelId(channelItem.id);
+            showStatus(getString(R.string.status_channel_startup_set));
+        });
+        options.add(getString(R.string.menu_playback_mode_temporary));
+        actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
+        new AlertDialog.Builder(this)
+                .setTitle(displayName(channelItem))
+                .setItems(options.toArray(new String[0]), (dialog, which) -> actions.get(which).run())
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showChannelTagDialog(ChannelItem channelItem) {
+        if (channelItem == null || channelProfileStore == null) {
+            return;
+        }
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.channel_profile_tag_hint);
+        input.setText(channelProfileStore.getTag(channelItem.id));
+        input.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.channel_profile_tag)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    String value = input.getText() == null ? "" : input.getText().toString();
+                    channelProfileStore.setTag(channelItem.id, value);
+                    refreshLocalChannelFilters(channelItem.id);
+                    showStatus(getString(value.trim().isEmpty() ? R.string.status_channel_tag_cleared : R.string.status_channel_tag_updated));
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showChannelAliasDialog(ChannelItem channelItem) {
+        if (channelItem == null || channelProfileStore == null) {
+            return;
+        }
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.channel_profile_alias_hint);
+        input.setText(channelProfileStore.getDisplayName(channelItem.id, channelItem.name));
+        input.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.channel_profile_alias)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    String value = input.getText() == null ? "" : input.getText().toString();
+                    channelProfileStore.setAlias(channelItem.id, value);
+                    refreshLocalChannelFilters(channelItem.id);
+                    showStatus(getString(value.trim().isEmpty() ? R.string.status_channel_alias_cleared : R.string.status_channel_alias_updated));
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void refreshLocalChannelFilters(String selectedId) {
+        if (channelOverlayCoordinator == null) {
+            return;
+        }
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.refreshLocalFilters();
+        String currentId = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : lastChannelId;
+        channelOverlayCoordinator.refreshVisibleChannels(currentId, selectedId == null ? currentId : selectedId);
+        syncOverlayStateFromCoordinator();
+        channelAdapter.notifyDataSetChanged();
+        updateFilterText();
+        updateOverlaySearchState();
+        if (!channels.isEmpty() && selectedOverlayIndex >= 0) {
+            channelList.scrollToPosition(selectedOverlayIndex);
+        }
+        showOverlay();
     }
 
     private void focusOverlaySearchInput() {
@@ -3602,6 +3741,10 @@ public class MainActivity extends FragmentActivity {
         String filterKey = targetKey;
         if ("tv".equals(targetKey)) {
             filterKey = findPreferredTvFilterKey();
+        } else if ("vod".equals(targetKey)) {
+            filterKey = findPreferredVodFilterKey(false);
+        } else if ("vod-adult".equals(targetKey)) {
+            filterKey = findPreferredVodFilterKey(true);
         }
         channelOverlayCoordinator.setSelectedFilterKey(filterKey);
         String currentId = lastChannelId == null ? "" : lastChannelId;
@@ -3628,9 +3771,26 @@ public class MainActivity extends FragmentActivity {
         return "all";
     }
 
+    private String findPreferredVodFilterKey(boolean adult) {
+        String fallback = adult ? "vod-adult" : "vod";
+        for (ChannelFilter filter : filters) {
+            if (filter == null) {
+                continue;
+            }
+            if (adult && filter.type == FILTER_VOD_ADULT) {
+                return filter.key;
+            }
+            if (!adult && filter.type == FILTER_VOD) {
+                return filter.key;
+            }
+        }
+        return fallback;
+    }
+
     private int countItemsForQuickTarget(String targetKey) {
         if ("grab".equals(targetKey)) {
-            return currentRecordingsResult == null || currentRecordingsResult.items == null ? 0 : currentRecordingsResult.items.size();
+            RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
+            return result == null || result.items == null ? 0 : result.items.size();
         }
         int total = 0;
         for (ChannelItem item : allChannels) {
@@ -3665,8 +3825,8 @@ public class MainActivity extends FragmentActivity {
         }
         String activeTvKey = findPreferredTvFilterKey();
         boolean tvActive = !favoritesOnly && (selectedFilterKey == null || selectedFilterKey.equals(activeTvKey) || ("all".equals(selectedFilterKey) && "all".equals(activeTvKey)));
-        boolean vodActive = !favoritesOnly && "vod".equals(selectedFilterKey);
-        boolean adultActive = !favoritesOnly && "vod-adult".equals(selectedFilterKey);
+        boolean vodActive = !favoritesOnly && isVodFilterSelected(false);
+        boolean adultActive = !favoritesOnly && isVodFilterSelected(true);
         styleQuickAccessButton(quickTvButton, tvActive, getString(R.string.overlay_quick_tv, countItemsForQuickTarget("tv")));
         styleQuickAccessButton(quickVodButton, vodActive, getString(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")));
         styleQuickAccessButton(quickAdultButton, adultActive, getString(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")));
@@ -3691,8 +3851,8 @@ public class MainActivity extends FragmentActivity {
             touchHomeSubtitleText.setText(getString(R.string.touch_home_subtitle, label, count));
         }
         styleHomeHubPrimaryButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
-        styleHomeHubPrimaryButton(touchHomeVodButton, !favoritesOnly && "vod".equals(selectedFilterKey), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
-        styleHomeHubPrimaryButton(touchHomeAdultButton, !favoritesOnly && "vod-adult".equals(selectedFilterKey), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+        styleHomeHubPrimaryButton(touchHomeVodButton, !favoritesOnly && isVodFilterSelected(false), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
+        styleHomeHubPrimaryButton(touchHomeAdultButton, !favoritesOnly && isVodFilterSelected(true), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
         styleHomeHubPrimaryButton(touchHomeGrabButton, false, getString(R.string.touch_home_button_grab));
         styleHomeHubSecondaryButton(touchHomeRecentButton, false, getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()));
         styleHomeHubSecondaryButton(touchHomeFavoritesButton, favoritesOnly || "favorites".equals(selectedFilterKey), getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
@@ -3703,6 +3863,19 @@ public class MainActivity extends FragmentActivity {
     private boolean isTvHubActive() {
         String activeTvKey = findPreferredTvFilterKey();
         return selectedFilterKey == null || selectedFilterKey.equals(activeTvKey) || ("all".equals(selectedFilterKey) && "all".equals(activeTvKey));
+    }
+
+    private boolean isVodFilterSelected(boolean adult) {
+        if (selectedFilterKey == null || selectedFilterKey.trim().isEmpty()) {
+            return false;
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter == null || !selectedFilterKey.equals(filter.key)) {
+                continue;
+            }
+            return adult ? filter.type == FILTER_VOD_ADULT : filter.type == FILTER_VOD;
+        }
+        return adult ? "vod-adult".equals(selectedFilterKey) : "vod".equals(selectedFilterKey);
     }
 
     private String buildTouchHomeFilterLabel() {
@@ -3853,6 +4026,11 @@ public class MainActivity extends FragmentActivity {
 
                 @Override
                 public void showHdrBadge(String label) {
+                }
+
+                @Override
+                public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
+                    MainActivity.this.recordPlaybackError(request, diagnostics);
                 }
             });
             controller.initialize();
@@ -4190,10 +4368,14 @@ public class MainActivity extends FragmentActivity {
             overlayCurrentChannelText.setText(getString(R.string.status_ready));
             overlayCurrentMetaText.setText(getString(R.string.overlay_current_program_empty));
         } else {
-            overlayCurrentChannelText.setText(currentChannel.name);
+            overlayCurrentChannelText.setText(displayName(currentChannel));
             String currentProgram = currentChannel.nowProgram == null || currentChannel.nowProgram.trim().isEmpty()
                     ? getString(R.string.overlay_current_program_empty)
                     : getString(R.string.overlay_current_program, currentChannel.nowProgram);
+            String tag = profileTag(currentChannel);
+            if (!tag.isEmpty()) {
+                currentProgram = tag + "  ·  " + currentProgram;
+            }
             overlayCurrentMetaText.setText(currentProgram);
         }
 
@@ -4219,11 +4401,16 @@ public class MainActivity extends FragmentActivity {
     private void showV12ToolsMenu() {
         clearQuickSearchOverlay();
         String[] options = new String[]{
+                getString(R.string.tools_menu_quick_hub),
                 getString(R.string.tools_menu_timeline_guide),
                 getString(R.string.tools_menu_visual_epg),
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
                 getString(R.string.tools_menu_favorite_channels),
+                getString(R.string.tools_menu_manage_personal_lists),
+                getString(R.string.tools_menu_personal_lists_current),
+                getString(R.string.tools_menu_channel_profile_current),
+                getString(R.string.tools_menu_playback_mode_temporary),
                 getString(R.string.tools_menu_playback_diagnostics),
                 getString(R.string.tools_menu_recordings_panel),
                 getString(R.string.tools_menu_multiview),
@@ -4231,32 +4418,221 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_multiview_save_preset)
         };
         new AlertDialog.Builder(this)
-                .setTitle(R.string.tools_menu_title)
+                .setTitle(getString(R.string.tools_menu_title, BuildConfig.VERSION_NAME))
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        openTimelineGuideAroundSelection();
+                        showQuickHubDialog();
                     } else if (which == 1) {
-                        openVisualEpgAroundSelection();
+                        openTimelineGuideAroundSelection();
                     } else if (which == 2) {
-                        showChannelSearchDialog();
+                        openVisualEpgAroundSelection();
                     } else if (which == 3) {
-                        showRecentChannelsDialog();
+                        showChannelSearchDialog();
                     } else if (which == 4) {
-                        showFavoriteChannelsQuickDialog();
+                        showRecentChannelsDialog();
                     } else if (which == 5) {
-                        showPlaybackDiagnosticsDialog();
+                        showFavoriteChannelsQuickDialog();
                     } else if (which == 6) {
-                        openRecordingsBrowser();
+                        showPersonalListsManagerDialog();
                     } else if (which == 7) {
-                        openMultiView();
+                        openCurrentChannelPersonalLists();
                     } else if (which == 8) {
-                        showOpenMultiViewPresetDialog();
+                        openCurrentChannelProfile();
                     } else if (which == 9) {
+                        openCurrentTemporaryPlaybackMode();
+                    } else if (which == 10) {
+                        showPlaybackDiagnosticsDialog();
+                    } else if (which == 11) {
+                        openRecordingsBrowser();
+                    } else if (which == 12) {
+                        openMultiView();
+                    } else if (which == 13) {
+                        showOpenMultiViewPresetDialog();
+                    } else if (which == 14) {
                         showSaveMultiViewPresetDialog();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void showQuickHubDialog() {
+        String[] options = new String[]{
+                getString(R.string.quick_hub_continue),
+                getString(R.string.quick_hub_recent),
+                getString(R.string.quick_hub_favorites),
+                getString(R.string.quick_hub_recordings),
+                getString(R.string.quick_hub_lists),
+                getString(R.string.quick_hub_timeline)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_quick_hub)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        ChannelItem current = getCurrentPlaybackChannelItem();
+                        if (current != null) {
+                            tuneChannelById(current.id);
+                        }
+                    } else if (which == 1) {
+                        showRecentChannelsQuickDialog();
+                    } else if (which == 2) {
+                        showFavoriteChannelsQuickDialog();
+                    } else if (which == 3) {
+                        openRecordingsBrowser();
+                    } else if (which == 4) {
+                        showPersonalListsManagerDialog();
+                    } else if (which == 5) {
+                        openTimelineGuideAroundSelection();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void showPersonalListsManagerDialog() {
+        if (channelCollectionStore == null) {
+            return;
+        }
+        List<ChannelCollectionStore.ChannelCollection> collections = channelCollectionStore.getCollections();
+        List<String> options = new ArrayList<>();
+        options.add(getString(R.string.personal_list_create));
+        for (ChannelCollectionStore.ChannelCollection collection : collections) {
+            options.add(collection.label + " (" + collection.channelIds.size() + ")");
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_manage_personal_lists)
+                .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    if (which == 0) {
+                        showCreatePersonalListDialog();
+                        return;
+                    }
+                    int index = which - 1;
+                    if (index >= 0 && index < collections.size()) {
+                        showPersonalListActionsDialog(collections.get(index));
+                    }
+                })
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void showPersonalListActionsDialog(ChannelCollectionStore.ChannelCollection collection) {
+        if (collection == null) {
+            return;
+        }
+        String[] options = new String[]{
+                getString(R.string.personal_list_open),
+                getString(R.string.personal_list_rename),
+                getString(R.string.personal_list_delete)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(collection.label)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        applyPersonalListFilter(collection.key);
+                    } else if (which == 1) {
+                        showRenamePersonalListDialog(collection);
+                    } else if (which == 2) {
+                        channelCollectionStore.deleteCollection(collection.key);
+                        refreshLocalChannelFilters(lastChannelId);
+                        showStatus(getString(R.string.status_personal_list_deleted));
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showCreatePersonalListDialog() {
+        showPersonalListNameDialog("", value -> {
+            ChannelCollectionStore.ChannelCollection created = channelCollectionStore == null ? null : channelCollectionStore.createCollection(value);
+            if (created == null) {
+                showStatus(getString(R.string.status_personal_list_empty_name));
+                return;
+            }
+            refreshLocalChannelFilters(lastChannelId);
+            showStatus(getString(R.string.status_personal_list_created));
+        });
+    }
+
+    private void showRenamePersonalListDialog(ChannelCollectionStore.ChannelCollection collection) {
+        if (collection == null) {
+            return;
+        }
+        showPersonalListNameDialog(collection.label, value -> {
+            if (channelCollectionStore == null || !channelCollectionStore.renameCollection(collection.key, value)) {
+                showStatus(getString(R.string.status_personal_list_empty_name));
+                return;
+            }
+            refreshLocalChannelFilters(lastChannelId);
+            showStatus(getString(R.string.status_personal_list_renamed));
+        });
+    }
+
+    private void showPersonalListNameDialog(String initialValue, PersonalListNameAction action) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.personal_list_name_hint);
+        input.setText(initialValue == null ? "" : initialValue);
+        input.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_manage_personal_lists)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    String value = input.getText() == null ? "" : input.getText().toString().trim();
+                    if (value.isEmpty()) {
+                        showStatus(getString(R.string.status_personal_list_empty_name));
+                        return;
+                    }
+                    action.apply(value);
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void applyPersonalListFilter(String collectionKey) {
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.refreshLocalFilters();
+        channelOverlayCoordinator.setSearchQuery("");
+        channelOverlayCoordinator.setFavoritesOnly(false);
+        channelOverlayCoordinator.setSelectedFilterKey("collection:" + collectionKey);
+        String currentId = lastChannelId == null ? "" : lastChannelId;
+        channelOverlayCoordinator.refreshVisibleChannels(currentId, currentId);
+        syncOverlayStateFromCoordinator();
+        clearOverlaySearchQuery();
+        channelAdapter.notifyDataSetChanged();
+        updateFilterText();
+        updateOverlaySearchState();
+        showOverlay();
+    }
+
+    private void openCurrentChannelPersonalLists() {
+        ChannelItem channelItem = getCurrentPlaybackChannelItem();
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        showPersonalListsDialog(channelItem);
+    }
+
+    private void openCurrentChannelProfile() {
+        ChannelItem channelItem = getCurrentPlaybackChannelItem();
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        showChannelProfileDialog(channelItem);
+    }
+
+    private void openCurrentTemporaryPlaybackMode() {
+        ChannelItem channelItem = getCurrentPlaybackChannelItem();
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        showTemporaryPlaybackModeDialog(channelItem);
+    }
+
+    private interface PersonalListNameAction {
+        void apply(String value);
     }
 
     private void showChannelSearchDialog() {
@@ -4348,11 +4724,12 @@ public class MainActivity extends FragmentActivity {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_timeline_guide, null, false);
         android.widget.ScrollView timelineVerticalScroll = dialogView.findViewById(R.id.timelineVerticalScroll);
         TextView timelineNowButton = dialogView.findViewById(R.id.timelineNowButton);
+        TextView timelinePrevButton = dialogView.findViewById(R.id.timelinePrevButton);
         TextView timelineChannelNextButton = dialogView.findViewById(R.id.timelineChannelNextButton);
         TextView timelineNextButton = dialogView.findViewById(R.id.timelineNextButton);
         TextView timelineCloseButton = dialogView.findViewById(R.id.timelineCloseButton);
         TextView windowText = dialogView.findViewById(R.id.timelineWindowText);
-        final List<TextView> timelineHeaderButtons = java.util.Arrays.asList(timelineNowButton, timelineChannelNextButton, timelineNextButton, timelineCloseButton);
+        final List<TextView> timelineHeaderButtons = java.util.Arrays.asList(timelineNowButton, timelinePrevButton, timelineChannelNextButton, timelineNextButton, timelineCloseButton);
         LinearLayout headerRow = dialogView.findViewById(R.id.timelineHeaderRow);
         LinearLayout rowsContainer = dialogView.findViewById(R.id.timelineRowsContainer);
         ImageView timelineProgramPosterImage = dialogView.findViewById(R.id.timelineProgramPosterImage);
@@ -4727,6 +5104,16 @@ public class MainActivity extends FragmentActivity {
             }
             return false;
         });
+        timelinePrevButton.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+                return true;
+            }
+            return false;
+        });
         timelineChannelNextButton.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) {
                 return false;
@@ -4760,6 +5147,11 @@ public class MainActivity extends FragmentActivity {
         timelineNowButton.setOnClickListener(v -> {
             timelineDialog.dismiss();
             openTimelineGuideNow();
+        });
+        timelinePrevButton.setOnClickListener(v -> {
+            timelineDialog.dismiss();
+            int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);
+            openTimelineGuide(anchorIndex, Math.max(0L, windowStartMs - TIMELINE_SHIFT_MS));
         });
         timelineChannelNextButton.setOnClickListener(v -> openTimelineGuideNextForAnchor());
         timelineNextButton.setOnClickListener(v -> {
@@ -5094,10 +5486,17 @@ public class MainActivity extends FragmentActivity {
     private void showPlaybackDiagnosticsDialog() {
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
         ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+        PlaybackDiagnosticsStore.ErrorRecord storedError = currentChannel == null || playbackDiagnosticsStore == null
+                ? null
+                : playbackDiagnosticsStore.getLastError(currentChannel.id);
         if (diagnostics == null || (diagnostics.channelName == null || diagnostics.channelName.trim().isEmpty()) && (diagnostics.targetUrl == null || diagnostics.targetUrl.trim().isEmpty())) {
+            String message = getString(R.string.diagnostics_none);
+            if (storedError != null) {
+                message = message + "\n\n" + getString(R.string.diagnostics_persistent_error, storedError.shortLabel());
+            }
             new AlertDialog.Builder(this)
                     .setTitle(R.string.title_playback_diagnostics)
-                    .setMessage(getString(R.string.diagnostics_none))
+                    .setMessage(message)
                     .setPositiveButton(R.string.diagnostics_action_retry, (dialog, which) -> retryCurrentPlayback())
                     .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_mode, (dialog, which) -> {
                         if (currentChannel != null) {
@@ -5122,6 +5521,15 @@ public class MainActivity extends FragmentActivity {
         if (diagnostics.lastError != null && !diagnostics.lastError.trim().isEmpty()) {
             appendDiagnosticLine(message, getString(R.string.diagnostics_last_error, diagnostics.lastError));
         }
+        if (storedError != null) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_error, storedError.shortLabel()));
+            if (!storedError.routeLabel.isEmpty()) {
+                appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_route, storedError.routeLabel));
+            }
+        }
+        if (currentChannel != null && temporaryPlaybackModesByChannelId.containsKey(currentChannel.id)) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_temporary_mode, formatPlaybackModeLabel(temporaryPlaybackModesByChannelId.get(currentChannel.id))));
+        }
         appendDiagnosticLine(message, getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
         appendDiagnosticLine(message, getString(R.string.diagnostics_actions_hint));
 
@@ -5136,6 +5544,19 @@ public class MainActivity extends FragmentActivity {
                 })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
+        if (playbackDiagnosticsStore == null || request == null || diagnostics == null) {
+            return;
+        }
+        playbackDiagnosticsStore.recordError(
+                request.channelId,
+                request.channelName,
+                diagnostics.lastError,
+                diagnostics.routeLabel,
+                diagnostics.playbackMode
+        );
     }
 
     private String buildRecentDiagnosticsSummary() {
@@ -5239,6 +5660,9 @@ public class MainActivity extends FragmentActivity {
             String end = shortTime(item.endTime);
             String status = humanizeRecordingStatus(item.status);
             String baseMeta = getString(R.string.recording_meta_scheduled, start, end, status);
+            if (hasRecordingConflict(item, recordingsController.getCurrentResult())) {
+                baseMeta = baseMeta + "  ·  solape";
+            }
             if (item.channelName != null && !item.channelName.trim().isEmpty()) {
                 return item.channelName.trim() + "  ·  " + baseMeta;
             }
@@ -5251,6 +5675,31 @@ public class MainActivity extends FragmentActivity {
             return item.channelName.trim() + "  ·  " + baseMeta;
         }
         return baseMeta;
+    }
+
+    private boolean hasRecordingConflict(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result) {
+        if (item == null || result == null || result.items == null || !result.scheduledMode) {
+            return false;
+        }
+        long start = parseIsoMillis(item.startTime);
+        long end = parseIsoMillis(item.endTime);
+        if (start <= 0L || end <= start) {
+            return false;
+        }
+        for (RecordingsRepository.RecordingItem other : result.items) {
+            if (other == null || item == other || (item.id != null && item.id.equals(other.id))) {
+                continue;
+            }
+            long otherStart = parseIsoMillis(other.startTime);
+            long otherEnd = parseIsoMillis(other.endTime);
+            if (otherStart <= 0L || otherEnd <= otherStart) {
+                continue;
+            }
+            if (start < otherEnd && otherStart < end) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String getCurrentChannelId() {
@@ -5366,36 +5815,15 @@ public class MainActivity extends FragmentActivity {
     private String buildRecordingsSummary(RecordingsRepository.RecordingsResult result) {
         if (result == null || result.items == null || result.items.isEmpty()) {
             if (result != null && result.scheduledMode) {
-                return getString(R.string.recordings_summary_scheduled, 0, 0, 0, 0);
+                return getString(R.string.recordings_summary_scheduled, 0, 0, 0, 0, 0);
             }
             return getString(R.string.recordings_summary_completed, 0);
         }
         if (!result.scheduledMode) {
             return getString(R.string.recordings_summary_completed, result.items.size());
         }
-        int scheduled = 0;
-        int recording = 0;
-        int issue = 0;
-        for (RecordingsRepository.RecordingItem item : result.items) {
-            String status = item == null ? "" : safeLower(item.status);
-            switch (status) {
-                case "recording":
-                case "running":
-                case "in_progress":
-                    recording++;
-                    break;
-                case "failed":
-                case "error":
-                case "cancelled":
-                case "canceled":
-                    issue++;
-                    break;
-                default:
-                    scheduled++;
-                    break;
-            }
-        }
-        return getString(R.string.recordings_summary_scheduled, result.items.size(), scheduled, recording, issue);
+        RecordingsController.SummaryStats stats = RecordingsController.buildSummaryStats(result);
+        return getString(R.string.recordings_summary_scheduled, stats.total, stats.scheduled, stats.recording, stats.issue, stats.conflict);
     }
 
     private String humanizeRecordingStatus(String status) {
@@ -5820,7 +6248,7 @@ public class MainActivity extends FragmentActivity {
         public void onBindViewHolder(@NonNull ChannelVH holder, int position) {
             ChannelItem ch = channels.get(position);
             String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
-            holder.name.setText(buildHighlightedText(ch.name, query, ch.favorite));
+            holder.name.setText(buildHighlightedText(displayName(ch), query, ch.favorite));
             if (ch.isVod) {
                 String vodMeta = buildVodRowMeta(ch);
                 holder.meta.setText(buildHighlightedText(vodMeta, query, false));
@@ -5834,10 +6262,13 @@ public class MainActivity extends FragmentActivity {
                 holder.logoPlate.setPadding(0, 0, 0, 0);
                 bindRecordingPoster(holder.logo, ch.logoUrl);
             } else {
+                String tag = profileTag(ch);
                 if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
-                    holder.meta.setText(buildHighlightedText(ch.nowProgram, query, false));
+                    holder.meta.setText(buildHighlightedText(tag.isEmpty() ? ch.nowProgram : tag + "  ·  " + ch.nowProgram, query, false));
                 } else if (ch.group != null && !ch.group.trim().isEmpty()) {
-                    holder.meta.setText(buildHighlightedText(ch.group, query, false));
+                    holder.meta.setText(buildHighlightedText(tag.isEmpty() ? ch.group : tag + "  ·  " + ch.group, query, false));
+                } else if (!tag.isEmpty()) {
+                    holder.meta.setText(buildHighlightedText(tag, query, false));
                 } else {
                     holder.meta.setText("");
                 }
@@ -5848,7 +6279,7 @@ public class MainActivity extends FragmentActivity {
                 holder.logoPlate.setLayoutParams(plateParams);
                 int logoPadding = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_padding);
                 holder.logoPlate.setPadding(logoPadding, logoPadding, logoPadding, logoPadding);
-                bindChannelLogo(holder.logo, ch.logoUrl, ch.name, 38, 38);
+                bindChannelLogo(holder.logo, ch.logoUrl, displayName(ch), 38, 38);
             }
             if (touchDeviceMode) {
                 holder.favoriteToggle.setVisibility(View.VISIBLE);
@@ -5993,10 +6424,10 @@ public class MainActivity extends FragmentActivity {
             holder.status.setText(buildRecordingStatusLabel(item));
             holder.status.setBackgroundTintList(ColorStateList.valueOf(recordingStatusBadgeColor(item)));
             bindRecordingPoster(holder.poster, item.poster);
-            boolean selected = position == selectedRecordingIndex;
+            boolean selected = position == recordingsController.getSelectedIndex();
             holder.itemView.setBackgroundColor(selected ? 0xFF80542A : 0xFF2C2419);
             holder.itemView.setOnClickListener(v -> {
-                selectedRecordingIndex = position;
+                recordingsController.selectIndex(position);
                 notifyDataSetChanged();
                 updateRecordingsDetailPanel();
                 playRecording(item, result.basePath);

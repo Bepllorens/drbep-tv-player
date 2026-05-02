@@ -42,6 +42,8 @@ final class PlayerController {
         boolean isChannelCurrent(String channelId);
 
         void showHdrBadge(String label);
+
+        void recordPlaybackError(PlaybackRequest request, PlaybackDiagnostics diagnostics);
     }
 
     static final class PlaybackRequest {
@@ -135,42 +137,6 @@ final class PlayerController {
         }
     }
 
-    private static final class PlaybackDecision {
-        final String targetUrl;
-        final String mimeType;
-        final String drmType;
-        final String playbackMode;
-        final boolean useFallback;
-        final boolean allowCompatibilityFallback;
-
-        PlaybackDecision(String targetUrl, String mimeType, String drmType, String playbackMode, boolean useFallback, boolean allowCompatibilityFallback) {
-            this.targetUrl = targetUrl;
-            this.mimeType = mimeType;
-            this.drmType = drmType;
-            this.playbackMode = playbackMode;
-            this.useFallback = useFallback;
-            this.allowCompatibilityFallback = allowCompatibilityFallback;
-        }
-
-        boolean isEquivalentTo(PlaybackDecision other) {
-            if (other == null) {
-                return false;
-            }
-            return equalsNullable(targetUrl, other.targetUrl)
-                    && equalsNullable(mimeType, other.mimeType)
-                    && equalsNullable(drmType, other.drmType)
-                    && equalsNullable(playbackMode, other.playbackMode)
-                    && useFallback == other.useFallback;
-        }
-
-        private static boolean equalsNullable(String left, String right) {
-            if (left == null) {
-                return right == null;
-            }
-            return left.equals(right);
-        }
-    }
-
     private final Context context;
     private final PlayerView playerView;
     private final String baseUrl;
@@ -179,12 +145,13 @@ final class PlayerController {
     private final Host host;
     private final HttpClient httpClient;
     private final SharedPreferences prefs;
+    private final PlaybackRouteResolver playbackRouteResolver;
 
     private DefaultTrackSelector trackSelector;
     private ExoPlayer player;
     private PlaybackRequest currentRequest;
     private StreamInfo currentStreamInfo;
-    private PlaybackDecision currentPlaybackDecision;
+    private PlaybackRouteResolver.Decision currentPlaybackDecision;
     private boolean usingPlaybackFallback;
     private final Set<String> attemptedRecoveryRoutes = new HashSet<>();
     private String currentRecordingUrl;
@@ -209,6 +176,7 @@ final class PlayerController {
         this.host = host;
         this.httpClient = new HttpClient();
         this.prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this.playbackRouteResolver = new PlaybackRouteResolver(baseUrl);
     }
 
     void initialize() {
@@ -231,7 +199,7 @@ final class PlayerController {
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
                 PlaybackRequest request = currentRequest;
-                PlaybackDecision decision = currentPlaybackDecision;
+                PlaybackRouteResolver.Decision decision = currentPlaybackDecision;
                 Log.w(TAG, "onPlayerError channel=" + describeRequest(request)
                         + " decision=" + describeDecision(decision)
                         + " streamInfo=" + describeStreamInfo(currentStreamInfo)
@@ -244,6 +212,7 @@ final class PlayerController {
                 String message = context.getString(R.string.error_playback_message, error.getMessage());
                 lastErrorSummary = message;
                 host.showError(message);
+                host.recordPlaybackError(request, getPlaybackDiagnostics());
                 Log.w(TAG, message, error);
             }
 
@@ -283,7 +252,7 @@ final class PlayerController {
         Log.d(TAG, "compatibility fallback state reset");
     }
 
-    private boolean tryAutoRecovery(PlaybackRequest request, PlaybackDecision decision) {
+    private boolean tryAutoRecovery(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
         if (request == null || decision == null) {
             return false;
         }
@@ -308,7 +277,7 @@ final class PlayerController {
                 cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT)
         };
         for (PlaybackRequest alternative : alternatives) {
-            PlaybackDecision alternativeDecision = buildPlaybackDecision(alternative, false, currentStreamInfo);
+            PlaybackRouteResolver.Decision alternativeDecision = buildPlaybackDecision(alternative, false, currentStreamInfo);
             String routeKey = routeAttemptKey(alternativeDecision);
             if (routeKey.equals(routeAttemptKey(decision)) || attemptedRecoveryRoutes.contains(routeKey)) {
                 continue;
@@ -338,7 +307,7 @@ final class PlayerController {
         );
     }
 
-    private String routeAttemptKey(PlaybackDecision decision) {
+    private String routeAttemptKey(PlaybackRouteResolver.Decision decision) {
         if (decision == null) {
             return "";
         }
@@ -437,7 +406,7 @@ final class PlayerController {
                     Log.d(TAG, "resolveStreamInfo ignored because channel changed: channelId=" + channelId);
                     return;
                 }
-                PlaybackDecision resolvedDecision = buildPlaybackDecision(request, false, resolved);
+                PlaybackRouteResolver.Decision resolvedDecision = buildPlaybackDecision(request, false, resolved);
                 if (!requiresReplay && resolvedDecision.isEquivalentTo(currentPlaybackDecision)) {
                     Log.d(TAG, "resolveStreamInfo no replay needed channel=" + describeRequest(request)
                             + " resolvedDecision=" + describeDecision(resolvedDecision));
@@ -462,10 +431,10 @@ final class PlayerController {
 
         Log.i(TAG, "playRecording name=" + safeLogValue(recordingName)
                 + " url=" + shortenUrl(recordingUrl)
-                + " mime=" + safeLogValue(inferMimeType(recordingUrl))
+                + " mime=" + safeLogValue(PlaybackRouteResolver.inferMimeType(recordingUrl))
                 + " resumeMs=" + resumePositionMs);
 
-        String mimeType = inferMimeType(recordingUrl);
+        String mimeType = PlaybackRouteResolver.inferMimeType(recordingUrl);
         MediaItem.Builder builder = new MediaItem.Builder().setUri(recordingUrl);
         if (mimeType != null && !mimeType.trim().isEmpty()) {
             builder.setMimeType(mimeType);
@@ -606,7 +575,7 @@ final class PlayerController {
         forceLiveEdgeOnNextReady = request != null
                 && request.platformName != null
                 && request.platformName.toLowerCase(Locale.ROOT).contains("movistar");
-        PlaybackDecision decision = buildPlaybackDecision(request, useFallback, streamInfo);
+        PlaybackRouteResolver.Decision decision = buildPlaybackDecision(request, useFallback, streamInfo);
         currentPlaybackDecision = decision;
         Log.d(TAG, "playChannelInternal channel=" + describeRequest(request)
             + " autoPlay=" + autoPlay
@@ -651,149 +620,8 @@ final class PlayerController {
             : request.channelName);
     }
 
-    private PlaybackDecision buildPlaybackDecision(PlaybackRequest request, boolean useFallback, StreamInfo streamInfo) {
-        String directUrl = useFallback && request.hasFallback() ? request.fallbackPlayUrl : request.playUrl;
-        String playUrlLower = request.playUrl == null ? "" : request.playUrl.toLowerCase(Locale.ROOT);
-        boolean looksDash = playUrlLower.contains(".mpd");
-        String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
-        String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
-
-        if (request.directPlayback) {
-            return new PlaybackDecision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
-                    safeLower(request.drmScheme),
-                    playbackMode,
-                    false,
-                    false
-            );
-        }
-
-        if (useFallback) {
-            return new PlaybackDecision(
-                    directUrl,
-                    inferMimeType(directUrl),
-                    "",
-                    playbackMode,
-                    true,
-                    false
-            );
-        }
-
-        if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
-            return new PlaybackDecision(
-                    baseUrl + "/proxy/manifest/" + request.channelId,
-                    MimeTypes.APPLICATION_MPD,
-                    drmType,
-                    playbackMode,
-                    false,
-                    false
-            );
-        }
-
-        if (PlaybackModeStore.MODE_PROXY.equals(playbackMode)) {
-            String proxyUrl = baseUrl + "/proxy/manifest/" + request.channelId + (streamInfo != null && streamInfo.encrypted ? "?nodrm=1" : "");
-            return new PlaybackDecision(
-                    proxyUrl,
-                    resolveMimeType(proxyUrl, streamInfo, true),
-                    "",
-                    playbackMode,
-                    false,
-                    false
-            );
-        }
-
-        if (streamInfo != null && streamInfo.encrypted) {
-            return new PlaybackDecision(
-                    baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1",
-                    resolveMimeType(baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1", streamInfo, true),
-                    "",
-                    playbackMode,
-                    false,
-                    false
-            );
-        }
-
-        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
-            return new PlaybackDecision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
-                    "",
-                    playbackMode,
-                    false,
-                    request.hasFallback()
-            );
-        }
-
-        if (streamInfo != null) {
-            String streamType = safeLower(streamInfo.type);
-            if ("dash".equals(streamType) || looksDash) {
-                return new PlaybackDecision(
-                        baseUrl + "/proxy/manifest/" + request.channelId + "?nodrm=1",
-                        MimeTypes.APPLICATION_MPD,
-                        "",
-                        playbackMode,
-                        false,
-                        false
-                );
-            }
-            if ("hls".equals(streamType) && request.hasFallback()) {
-                return new PlaybackDecision(
-                        request.fallbackPlayUrl,
-                        MimeTypes.APPLICATION_M3U8,
-                        "",
-                        playbackMode,
-                        false,
-                        false
-                );
-            }
-            return new PlaybackDecision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
-                    "",
-                    playbackMode,
-                    false,
-                    request.hasFallback()
-            );
-        }
-
-        if (looksDash) {
-            return new PlaybackDecision(
-                    baseUrl + "/proxy/manifest/" + request.channelId,
-                    MimeTypes.APPLICATION_MPD,
-                    "",
-                    playbackMode,
-                    false,
-                    false
-            );
-        }
-
-        return new PlaybackDecision(
-                request.playUrl,
-                resolveMimeType(request.playUrl, null, false),
-                "",
-                playbackMode,
-                false,
-                request.hasFallback()
-        );
-    }
-
-    private String resolveMimeType(String targetUrl, StreamInfo streamInfo, boolean defaultDashForProxy) {
-        String mimeType = inferMimeType(targetUrl);
-        if ((mimeType == null || mimeType.trim().isEmpty()) && streamInfo != null && streamInfo.type != null) {
-            String streamType = safeLower(streamInfo.type);
-            if ("dash".equals(streamType)) {
-                mimeType = MimeTypes.APPLICATION_MPD;
-            } else if ("hls".equals(streamType)) {
-                mimeType = MimeTypes.APPLICATION_M3U8;
-            }
-        }
-        if ((mimeType == null || mimeType.trim().isEmpty()) && defaultDashForProxy) {
-            mimeType = streamInfo != null && "hls".equals(safeLower(streamInfo.type))
-                    ? MimeTypes.APPLICATION_M3U8
-                    : MimeTypes.APPLICATION_MPD;
-        }
-        return mimeType;
+    private PlaybackRouteResolver.Decision buildPlaybackDecision(PlaybackRequest request, boolean useFallback, StreamInfo streamInfo) {
+        return playbackRouteResolver.buildDecision(request, useFallback, streamInfo);
     }
 
     private void maybeShowHdrBadge() {
@@ -940,7 +768,7 @@ final class PlayerController {
         return "{" + request.channelId + "," + safeLogValue(request.channelName) + "}";
     }
 
-    private static String describeDecision(PlaybackDecision decision) {
+    private static String describeDecision(PlaybackRouteResolver.Decision decision) {
         if (decision == null) {
             return "null";
         }
@@ -964,7 +792,7 @@ final class PlayerController {
                 + "}";
     }
 
-    private String describeRouteLabel(PlaybackDecision decision) {
+    private String describeRouteLabel(PlaybackRouteResolver.Decision decision) {
         if (decision == null) {
             return context.getString(R.string.diagnostics_state_idle);
         }
@@ -1016,26 +844,6 @@ final class PlayerController {
 
     private static String safeLogValue(String value) {
         return value == null ? "" : value;
-    }
-
-    private static String inferMimeType(String url) {
-        String lower = url.toLowerCase(Locale.ROOT);
-        if (lower.contains(".mpd")) {
-            return MimeTypes.APPLICATION_MPD;
-        }
-        if (lower.contains(".m3u8")) {
-            return MimeTypes.APPLICATION_M3U8;
-        }
-        if (lower.contains(".mp4")) {
-            return MimeTypes.VIDEO_MP4;
-        }
-        if (lower.contains(".ts")) {
-            return MimeTypes.VIDEO_MP2T;
-        }
-        if (lower.contains(".mkv")) {
-            return MimeTypes.VIDEO_MATROSKA;
-        }
-        return null;
     }
 
     private static String safeLower(String value) {

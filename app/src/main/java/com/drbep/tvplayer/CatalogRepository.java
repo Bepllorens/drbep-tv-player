@@ -107,11 +107,13 @@ final class CatalogRepository {
                     customGroups,
                     "",
                     "",
+                    "",
                     false
             ));
         }
 
         appendTivifyVodItems(parsed);
+        appendRuntimeVodItems(parsed);
 
         long activePlatformId = payload.optLong("active_platform_id", 0L);
         StartupFilterConfig startupConfig = parseStartupFilterConfig(payload.optJSONObject("tv_player_startup"));
@@ -162,6 +164,7 @@ final class CatalogRepository {
                     0,
                     "Plataforma activa",
                     new ArrayList<>(),
+                    "",
                     "",
                     "",
                     false
@@ -235,17 +238,81 @@ final class CatalogRepository {
                     new ArrayList<>(),
                     hasKeys ? "clearkey" : "",
                     hasKeys ? buildVodLicenseUrl(selectedUrl) : "",
+                    adult ? "vod:tivify:adult" : "vod:tivify:general",
                     true
             ));
         }
     }
 
-    private List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId, StartupFilterConfig startupConfig) {
+    private void appendRuntimeVodItems(List<ChannelItem> parsed) {
+        try {
+            JSONObject payload = httpClient.getJsonObject(
+                    baseUrl + "/api/vod/runtime",
+                    10000,
+                    20000,
+                    java.util.Collections.singletonMap("Accept", "application/json"),
+                    "cargando runtime vod"
+            );
+            appendRuntimeVodArray(parsed, payload.optJSONArray("movies"), "vod:runtime:movies", "Runtime Peliculas");
+        } catch (Exception e) {
+            // Live TV and Tivify VOD should still load even if Runtime VOD is temporarily unavailable.
+        }
+    }
+
+    private void appendRuntimeVodArray(List<ChannelItem> parsed, JSONArray rows, String vodFilterKey, String platformName) {
+        if (rows == null) {
+            return;
+        }
+        int baseOrder = parsed.size() + 1;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            String selectedUrl = firstNonEmpty(
+                    row.optString("playback_endpoint", ""),
+                    row.optString("stream_url", "")
+            );
+            if (selectedUrl.isEmpty()) {
+                continue;
+            }
+            selectedUrl = absolutizeUrl(selectedUrl);
+            String title = row.optString("title", "Runtime VOD").trim();
+            if (title.isEmpty()) {
+                title = "Runtime VOD";
+            }
+            String logo = row.optString("poster", "").trim();
+            String group = firstNonEmpty(row.optString("categories", ""), row.optString("kind", ""), platformName);
+
+            parsed.add(new ChannelItem(
+                    buildVodItemId(selectedUrl, title, false),
+                    title,
+                    logo,
+                    group,
+                    selectedUrl,
+                    "",
+                    baseOrder + i,
+                    baseOrder + i,
+                    true,
+                    false,
+                    0,
+                    platformName,
+                    new ArrayList<>(),
+                    "",
+                    "",
+                    vodFilterKey,
+                    true
+            ));
+        }
+    }
+
+    List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId, StartupFilterConfig startupConfig) {
         LinkedHashMap<String, ChannelFilter> byKey = new LinkedHashMap<>();
         byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
         byKey.put("favorites", new ChannelFilter("favorites", "Favoritos", FILTER_FAVORITES, 0, ""));
 
         Map<Integer, String> platformNames = new LinkedHashMap<>();
+        Map<String, String> vodFilterLabels = new LinkedHashMap<>();
         Set<String> customGroupNames = new HashSet<>();
         boolean hasVod = false;
         boolean hasAdultVod = false;
@@ -254,6 +321,9 @@ final class CatalogRepository {
                 hasAdultVod = true;
             } else if (item.isVod) {
                 hasVod = true;
+            }
+            if (item.isVod && item.vodFilterKey != null && !item.vodFilterKey.trim().isEmpty() && !vodFilterLabels.containsKey(item.vodFilterKey)) {
+                vodFilterLabels.put(item.vodFilterKey, buildVodFilterLabel(item.vodFilterKey, item.platformName, item.isAdultVod));
             }
             if (item.platformId > 0 && !platformNames.containsKey(item.platformId)) {
                 String platformName = item.platformName == null ? "" : item.platformName.trim();
@@ -291,6 +361,11 @@ final class CatalogRepository {
         for (String groupName : groupNames) {
             byKey.put("custom-group:" + groupName.toLowerCase(Locale.ROOT), new ChannelFilter("custom-group:" + groupName.toLowerCase(Locale.ROOT), "Grupo: " + groupName, FILTER_CUSTOM_GROUP, 0, groupName));
         }
+        for (Map.Entry<String, String> entry : vodFilterLabels.entrySet()) {
+            String key = entry.getKey();
+            int type = "vod:tivify:adult".equals(key) ? FILTER_VOD_ADULT : FILTER_VOD;
+            byKey.put(key, new ChannelFilter(key, entry.getValue(), type, 0, ""));
+        }
         if (hasVod) {
             byKey.put("vod", new ChannelFilter("vod", "VOD", FILTER_VOD, 0, ""));
         }
@@ -324,6 +399,34 @@ final class CatalogRepository {
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private String absolutizeUrl(String url) {
+        if (url == null) {
+            return "";
+        }
+        String trimmed = url.trim();
+        if (trimmed.startsWith("/")) {
+            return baseUrl + trimmed;
+        }
+        return trimmed;
+    }
+
+    private static String buildVodFilterLabel(String key, String platformName, boolean adult) {
+        if ("vod:tivify:general".equals(key)) {
+            return "Tivify VOD";
+        }
+        if ("vod:tivify:adult".equals(key)) {
+            return "Tivify Adulto";
+        }
+        if ("vod:runtime:movies".equals(key)) {
+            return "Runtime Peliculas";
+        }
+        String fallback = platformName == null ? "" : platformName.trim();
+        if (!fallback.isEmpty()) {
+            return fallback;
+        }
+        return adult ? "VOD Adulto" : "VOD";
     }
 
     private String buildVodLicenseUrl(String selectedUrl) {
@@ -485,11 +588,12 @@ final class ChannelItem {
     final List<String> customGroups;
     final String drmScheme;
     final String drmLicenseUrl;
+    final String vodFilterKey;
     final boolean directPlayback;
     boolean favorite;
     String nowProgram;
 
-    ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, boolean directPlayback) {
+    ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback) {
         this.id = id;
         this.name = name;
         this.logoUrl = logoUrl;
@@ -505,6 +609,7 @@ final class ChannelItem {
         this.customGroups = customGroups;
         this.drmScheme = drmScheme == null ? "" : drmScheme.trim();
         this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
+        this.vodFilterKey = vodFilterKey == null ? "" : vodFilterKey.trim().toLowerCase(Locale.ROOT);
         this.directPlayback = directPlayback;
         this.nowProgram = "";
     }

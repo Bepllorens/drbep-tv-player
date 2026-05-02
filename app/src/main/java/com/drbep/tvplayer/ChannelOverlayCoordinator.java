@@ -10,11 +10,22 @@ import java.util.List;
 import java.util.Set;
 
 final class ChannelOverlayCoordinator {
+    private static final int FILTER_ALL = 0;
+    private static final int FILTER_PLATFORM = 1;
+    private static final int FILTER_CUSTOM_GROUP = 2;
+    private static final int FILTER_VOD = 3;
+    private static final int FILTER_VOD_ADULT = 4;
+    private static final int FILTER_FAVORITES = 5;
+    private static final int FILTER_PERSONAL_LIST = 6;
+    private static final int FILTER_HIDDEN = 7;
+
     private final List<ChannelItem> channels;
     private final List<ChannelItem> allChannels;
     private final List<ChannelFilter> filters;
     private final Set<String> favoriteChannelIds;
     private final FavoriteOrderStore favoriteOrderStore;
+    private final ChannelCollectionStore collectionStore;
+    private final ChannelProfileStore profileStore;
 
     private int currentIndex;
     private int selectedOverlayIndex;
@@ -22,12 +33,14 @@ final class ChannelOverlayCoordinator {
     private String selectedFilterKey;
     private String searchQuery;
 
-    ChannelOverlayCoordinator(List<ChannelItem> channels, List<ChannelItem> allChannels, List<ChannelFilter> filters, Set<String> favoriteChannelIds, FavoriteOrderStore favoriteOrderStore) {
+    ChannelOverlayCoordinator(List<ChannelItem> channels, List<ChannelItem> allChannels, List<ChannelFilter> filters, Set<String> favoriteChannelIds, FavoriteOrderStore favoriteOrderStore, ChannelCollectionStore collectionStore, ChannelProfileStore profileStore) {
         this.channels = channels;
         this.allChannels = allChannels;
         this.filters = filters;
         this.favoriteChannelIds = favoriteChannelIds;
         this.favoriteOrderStore = favoriteOrderStore;
+        this.collectionStore = collectionStore;
+        this.profileStore = profileStore;
         this.currentIndex = -1;
         this.selectedOverlayIndex = 0;
         this.favoritesOnly = false;
@@ -80,6 +93,7 @@ final class ChannelOverlayCoordinator {
 
         filters.clear();
         filters.addAll(result.filters);
+        appendLocalFilters();
 
         int foundFilterIndex = findFilterIndexByKey(selectedFilterKey);
         if (foundFilterIndex < 0) {
@@ -91,6 +105,14 @@ final class ChannelOverlayCoordinator {
         selectedFilterKey = filters.isEmpty() ? "all" : filters.get(foundFilterIndex).key;
 
         rebuildVisibleChannels(lastChannelId, lastChannelId);
+    }
+
+    void refreshLocalFilters() {
+        filters.removeIf(filter -> filter != null && (filter.type == FILTER_PERSONAL_LIST || filter.type == FILTER_HIDDEN));
+        appendLocalFilters();
+        if (findFilterIndexByKey(selectedFilterKey) < 0) {
+            selectedFilterKey = "all";
+        }
     }
 
     void moveOverlaySelection(int delta) {
@@ -268,13 +290,20 @@ final class ChannelOverlayCoordinator {
 
     private boolean channelMatchesCurrentFilter(ChannelItem item) {
         ChannelFilter filter = getSelectedFilter();
-        if (filter == null || filter.type == 0) {
-            return true;
+        boolean hidden = profileStore != null && profileStore.isHidden(item.id);
+        if (filter == null || filter.type == FILTER_ALL) {
+            return !hidden;
         }
-        if (filter.type == 1) {
+        if (filter.type == FILTER_HIDDEN) {
+            return hidden;
+        }
+        if (hidden) {
+            return false;
+        }
+        if (filter.type == FILTER_PLATFORM) {
             return item.platformId == filter.platformId && !item.isVod;
         }
-        if (filter.type == 2) {
+        if (filter.type == FILTER_CUSTOM_GROUP) {
             for (String name : item.customGroups) {
                 if (name != null && name.equalsIgnoreCase(filter.groupName)) {
                     return true;
@@ -282,14 +311,23 @@ final class ChannelOverlayCoordinator {
             }
             return false;
         }
-        if (filter.type == 3) {
+        if (filter.type == FILTER_VOD) {
+            if (filter.key != null && filter.key.startsWith("vod:")) {
+                return item.isVod && !item.isAdultVod && filter.key.equals(item.vodFilterKey);
+            }
             return item.isVod && !item.isAdultVod;
         }
-        if (filter.type == 4) {
+        if (filter.type == FILTER_VOD_ADULT) {
+            if (filter.key != null && filter.key.startsWith("vod:")) {
+                return item.isAdultVod && filter.key.equals(item.vodFilterKey);
+            }
             return item.isAdultVod;
         }
-        if (filter.type == 5) {
+        if (filter.type == FILTER_FAVORITES) {
             return item.favorite && !item.isVod;
+        }
+        if (filter.type == FILTER_PERSONAL_LIST) {
+            return collectionStore != null && collectionStore.contains(filter.groupName, item.id);
         }
         return true;
     }
@@ -303,8 +341,9 @@ final class ChannelOverlayCoordinator {
             return true;
         }
         String name = item.name == null ? "" : item.name.toLowerCase();
+        String alias = profileStore == null ? "" : profileStore.getDisplayName(item.id, "").toLowerCase();
         String group = item.group == null ? "" : item.group.toLowerCase();
-        if (name.contains(query) || group.contains(query)) {
+        if (name.contains(query) || alias.contains(query) || group.contains(query)) {
             return true;
         }
         for (String label : item.customGroups) {
@@ -313,6 +352,17 @@ final class ChannelOverlayCoordinator {
             }
         }
         return false;
+    }
+
+    private void appendLocalFilters() {
+        if (collectionStore != null) {
+            for (ChannelCollectionStore.ChannelCollection collection : collectionStore.getNonEmptyCollections()) {
+                filters.add(new ChannelFilter("collection:" + collection.key, "Lista: " + collection.label, FILTER_PERSONAL_LIST, 0, collection.key));
+            }
+        }
+        if (profileStore != null && !profileStore.getHiddenChannelIds().isEmpty()) {
+            filters.add(new ChannelFilter("hidden", "Ocultos", FILTER_HIDDEN, 0, ""));
+        }
     }
 
     private ChannelFilter getSelectedFilter() {

@@ -4495,6 +4495,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.quick_hub_favorites),
                 getString(R.string.quick_hub_recordings),
                 getString(R.string.quick_hub_lists),
+                getString(R.string.quick_hub_add_current_to_list),
                 getString(R.string.quick_hub_timeline)
         };
         new AlertDialog.Builder(this)
@@ -4514,6 +4515,8 @@ public class MainActivity extends FragmentActivity {
                     } else if (which == 4) {
                         showPersonalListsManagerDialog();
                     } else if (which == 5) {
+                        openCurrentChannelPersonalLists();
+                    } else if (which == 6) {
                         openTimelineGuideAroundSelection();
                     }
                 })
@@ -4526,25 +4529,43 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         List<ChannelCollectionStore.ChannelCollection> collections = channelCollectionStore.getCollections();
-        List<String> options = new ArrayList<>();
-        options.add(getString(R.string.personal_list_create));
-        for (ChannelCollectionStore.ChannelCollection collection : collections) {
-            options.add(collection.label + " (" + collection.channelIds.size() + ")");
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
+        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
+        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
+        if (panelTitle != null) {
+            panelTitle.setText(R.string.title_manage_personal_lists);
+            panelTitle.setVisibility(View.VISIBLE);
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_manage_personal_lists)
-                .setItems(options.toArray(new String[0]), (dialog, which) -> {
-                    if (which == 0) {
-                        showCreatePersonalListDialog();
-                        return;
-                    }
-                    int index = which - 1;
-                    if (index >= 0 && index < collections.size()) {
-                        showPersonalListActionsDialog(collections.get(index));
-                    }
-                })
+        if (panelSubtitle != null) {
+            panelSubtitle.setText(getString(R.string.personal_list_manager_hint, collections.size()));
+            panelSubtitle.setVisibility(View.VISIBLE);
+        }
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        PersonalListAdapter adapter = new PersonalListAdapter(
+                collections,
+                this::showPersonalListChannelsPanel,
+                this::showPersonalListActionsDialog
+        );
+        recyclerView.setAdapter(adapter);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .setPositiveButton(R.string.personal_list_create, (d, which) -> showCreatePersonalListDialog())
                 .setNegativeButton(R.string.dialog_close, null)
-                .show();
+                .create();
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        recyclerView.post(() -> {
+            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
+            if (layoutManager != null) {
+                View firstItem = layoutManager.findViewByPosition(0);
+                if (firstItem != null) {
+                    firstItem.requestFocus();
+                    return;
+                }
+            }
+            recyclerView.requestFocus();
+        });
     }
 
     private void showPersonalListActionsDialog(ChannelCollectionStore.ChannelCollection collection) {
@@ -4552,6 +4573,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String[] options = new String[]{
+                getString(R.string.personal_list_view_channels),
                 getString(R.string.personal_list_open),
                 getString(R.string.personal_list_rename),
                 getString(R.string.personal_list_delete)
@@ -4560,10 +4582,12 @@ public class MainActivity extends FragmentActivity {
                 .setTitle(collection.label)
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        applyPersonalListFilter(collection.key);
+                        showPersonalListChannelsPanel(collection);
                     } else if (which == 1) {
-                        showRenamePersonalListDialog(collection);
+                        applyPersonalListFilter(collection.key);
                     } else if (which == 2) {
+                        showRenamePersonalListDialog(collection);
+                    } else if (which == 3) {
                         channelCollectionStore.deleteCollection(collection.key);
                         refreshLocalChannelFilters(lastChannelId);
                         showStatus(getString(R.string.status_personal_list_deleted));
@@ -4582,6 +4606,7 @@ public class MainActivity extends FragmentActivity {
             }
             refreshLocalChannelFilters(lastChannelId);
             showStatus(getString(R.string.status_personal_list_created));
+            uiHandler.post(() -> showPersonalListChannelsPanel(created));
         });
     }
 
@@ -4634,6 +4659,160 @@ public class MainActivity extends FragmentActivity {
         updateFilterText();
         updateOverlaySearchState();
         showOverlay();
+    }
+
+    private void showPersonalListChannelsPanel(ChannelCollectionStore.ChannelCollection collection) {
+        if (collection == null || channelCollectionStore == null) {
+            return;
+        }
+        ChannelCollectionStore.ChannelCollection currentCollection = channelCollectionStore.getCollection(collection.key);
+        if (currentCollection == null) {
+            showStatus(getString(R.string.personal_list_channels_empty));
+            return;
+        }
+        List<ChannelItem> items = buildPersonalListChannels(currentCollection);
+        if (items.isEmpty()) {
+            showStatus(getString(R.string.personal_list_channels_empty));
+            showPersonalListActionsDialog(currentCollection);
+            return;
+        }
+        clearQuickSearchOverlay();
+        hideOverlay();
+        hideRecordingsPanel();
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
+        }
+        prefetchChannelLogos(items, 18, 42, 42);
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
+        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
+        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
+        if (panelTitle != null) {
+            panelTitle.setText(getString(R.string.personal_list_channels_title, currentCollection.label));
+            panelTitle.setVisibility(View.VISIBLE);
+        }
+        if (panelSubtitle != null) {
+            panelSubtitle.setText(getString(R.string.personal_list_channels_hint, items.size()));
+            panelSubtitle.setVisibility(View.VISIBLE);
+        }
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        SearchChannelAdapter adapter = new SearchChannelAdapter(items, item -> {
+            AlertDialog activeDialog = dialogHolder[0];
+            if (activeDialog != null && activeDialog.isShowing()) {
+                activeDialog.dismiss();
+            }
+            uiHandler.post(() -> showPersonalListChannelActionsDialog(currentCollection, item));
+        });
+        recyclerView.setAdapter(adapter);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .setPositiveButton(R.string.personal_list_open, (d, which) -> applyPersonalListFilter(currentCollection.key))
+                .setNeutralButton(R.string.personal_list_rename, (d, which) -> showRenamePersonalListDialog(currentCollection))
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+        dialogHolder[0] = dialog;
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        recyclerView.post(() -> {
+            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
+            if (layoutManager != null) {
+                View firstItem = layoutManager.findViewByPosition(0);
+                if (firstItem != null) {
+                    firstItem.requestFocus();
+                    return;
+                }
+            }
+            recyclerView.requestFocus();
+        });
+    }
+
+    private void showPersonalListChannelActionsDialog(ChannelCollectionStore.ChannelCollection collection, ChannelItem item) {
+        if (collection == null || item == null) {
+            return;
+        }
+        String[] options = new String[]{
+                getString(R.string.personal_list_channel_action_tune),
+                getString(R.string.personal_list_channel_action_remove),
+                getString(R.string.personal_list_channel_action_profile)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(displayName(item))
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        tuneQuickAccessChannel(item);
+                    } else if (which == 1) {
+                        if (channelCollectionStore != null) {
+                            channelCollectionStore.setMembership(collection.key, item.id, false);
+                        }
+                        refreshLocalChannelFilters(item.id);
+                        showStatus(getString(R.string.status_personal_list_channel_removed));
+                        ChannelCollectionStore.ChannelCollection refreshed = channelCollectionStore == null ? null : channelCollectionStore.getCollection(collection.key);
+                        if (refreshed != null && !refreshed.channelIds.isEmpty()) {
+                            uiHandler.post(() -> showPersonalListChannelsPanel(refreshed));
+                        }
+                    } else if (which == 2) {
+                        showChannelProfileDialog(item);
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private List<ChannelItem> buildPersonalListChannels(ChannelCollectionStore.ChannelCollection collection) {
+        List<ChannelItem> items = new ArrayList<>();
+        if (collection == null || collection.channelIds.isEmpty()) {
+            return items;
+        }
+        Set<String> added = new HashSet<>();
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.id != null && collection.channelIds.contains(item.id)) {
+                items.add(item);
+                added.add(item.id);
+            }
+        }
+        for (String channelId : collection.channelIds) {
+            if (channelId == null || added.contains(channelId)) {
+                continue;
+            }
+            ChannelItem item = findChannelItemById(channelId);
+            if (item != null) {
+                items.add(item);
+            }
+        }
+        return items;
+    }
+
+    private String buildPersonalListPreview(ChannelCollectionStore.ChannelCollection collection) {
+        List<ChannelItem> items = buildPersonalListChannels(collection);
+        if (items.isEmpty()) {
+            return getString(R.string.personal_list_empty_preview);
+        }
+        List<String> names = new ArrayList<>();
+        int max = Math.min(3, items.size());
+        for (int i = 0; i < max; i++) {
+            names.add(displayName(items.get(i)));
+        }
+        String joined = joinLabels(names);
+        int remaining = items.size() - max;
+        if (remaining > 0) {
+            return getString(R.string.personal_list_more_preview, joined, remaining);
+        }
+        return joined;
+    }
+
+    private String buildChannelMembershipLabel(ChannelItem channelItem, int maxLabels) {
+        if (channelItem == null || channelCollectionStore == null) {
+            return "";
+        }
+        List<String> labels = channelCollectionStore.getMembershipLabels(channelItem.id, maxLabels);
+        if (labels.isEmpty()) {
+            return "";
+        }
+        return getString(R.string.channel_list_membership_label, joinLabels(labels));
     }
 
     private void openCurrentChannelPersonalLists() {
@@ -6320,6 +6499,10 @@ public class MainActivity extends FragmentActivity {
             holder.name.setText(buildHighlightedText(displayName(ch), query, ch.favorite));
             if (ch.isVod) {
                 String vodMeta = buildVodRowMeta(ch);
+                String listLabel = buildChannelMembershipLabel(ch, 2);
+                if (!listLabel.isEmpty()) {
+                    vodMeta = listLabel + "  ·  " + vodMeta;
+                }
                 holder.meta.setText(buildHighlightedText(vodMeta, query, false));
                 holder.typeBadge.setVisibility(View.VISIBLE);
                 holder.typeBadge.setText(ch.isAdultVod ? getString(R.string.channel_badge_vod_adult) : getString(R.string.channel_badge_vod));
@@ -6332,15 +6515,19 @@ public class MainActivity extends FragmentActivity {
                 bindRecordingPoster(holder.logo, ch.logoUrl);
             } else {
                 String tag = profileTag(ch);
+                String listLabel = buildChannelMembershipLabel(ch, 2);
+                String metaText = "";
                 if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
-                    holder.meta.setText(buildHighlightedText(tag.isEmpty() ? ch.nowProgram : tag + "  ·  " + ch.nowProgram, query, false));
+                    metaText = tag.isEmpty() ? ch.nowProgram : tag + "  ·  " + ch.nowProgram;
                 } else if (ch.group != null && !ch.group.trim().isEmpty()) {
-                    holder.meta.setText(buildHighlightedText(tag.isEmpty() ? ch.group : tag + "  ·  " + ch.group, query, false));
+                    metaText = tag.isEmpty() ? ch.group : tag + "  ·  " + ch.group;
                 } else if (!tag.isEmpty()) {
-                    holder.meta.setText(buildHighlightedText(tag, query, false));
-                } else {
-                    holder.meta.setText("");
+                    metaText = tag;
                 }
+                if (!listLabel.isEmpty()) {
+                    metaText = metaText.isEmpty() ? listLabel : listLabel + "  ·  " + metaText;
+                }
+                holder.meta.setText(buildHighlightedText(metaText, query, false));
                 holder.typeBadge.setVisibility(View.GONE);
                 ViewGroup.LayoutParams plateParams = holder.logoPlate.getLayoutParams();
                 plateParams.width = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_size);
@@ -6404,6 +6591,71 @@ public class MainActivity extends FragmentActivity {
                 typeBadge = itemView.findViewById(R.id.channelTypeBadge);
                 logo = itemView.findViewById(R.id.channelLogo);
                 logoPlate = itemView.findViewById(R.id.channelLogoPlate);
+            }
+        }
+    }
+
+    private final class PersonalListAdapter extends RecyclerView.Adapter<PersonalListAdapter.PersonalListVH> {
+        interface OnPersonalListChosenListener {
+            void onPersonalListChosen(ChannelCollectionStore.ChannelCollection collection);
+        }
+
+        private final List<ChannelCollectionStore.ChannelCollection> items = new ArrayList<>();
+        private final OnPersonalListChosenListener clickListener;
+        private final OnPersonalListChosenListener actionsListener;
+
+        PersonalListAdapter(List<ChannelCollectionStore.ChannelCollection> initialItems, OnPersonalListChosenListener clickListener, OnPersonalListChosenListener actionsListener) {
+            this.clickListener = clickListener;
+            this.actionsListener = actionsListener;
+            if (initialItems != null) {
+                items.addAll(initialItems);
+            }
+        }
+
+        @NonNull
+        @Override
+        public PersonalListVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.item_personal_list, parent, false);
+            return new PersonalListVH(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull PersonalListVH holder, int position) {
+            ChannelCollectionStore.ChannelCollection collection = items.get(position);
+            holder.badge.setText(String.valueOf(Math.min(99, collection.channelIds.size())));
+            holder.name.setText(collection.label);
+            holder.preview.setText(getString(R.string.personal_list_count, collection.channelIds.size()) + "  ·  " + buildPersonalListPreview(collection));
+            holder.action.setText(R.string.personal_list_action_badge);
+            holder.itemView.setOnClickListener(v -> {
+                if (clickListener != null) {
+                    clickListener.onPersonalListChosen(collection);
+                }
+            });
+            holder.itemView.setOnLongClickListener(v -> {
+                if (actionsListener != null) {
+                    actionsListener.onPersonalListChosen(collection);
+                }
+                return true;
+            });
+        }
+
+        @Override
+        public int getItemCount() {
+            return items.size();
+        }
+
+        final class PersonalListVH extends RecyclerView.ViewHolder {
+            final TextView badge;
+            final TextView name;
+            final TextView preview;
+            final TextView action;
+
+            PersonalListVH(@NonNull View itemView) {
+                super(itemView);
+                badge = itemView.findViewById(R.id.personalListBadgeText);
+                name = itemView.findViewById(R.id.personalListNameText);
+                preview = itemView.findViewById(R.id.personalListPreviewText);
+                action = itemView.findViewById(R.id.personalListActionText);
             }
         }
     }
@@ -6555,10 +6807,14 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void onBindViewHolder(@NonNull SearchChannelVH holder, int position) {
             ChannelItem item = items.get(position);
-            holder.name.setText(item.favorite ? "★ " + item.name : item.name);
+            holder.name.setText(item.favorite ? "★ " + displayName(item) : displayName(item));
             String primaryMeta = item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group;
             if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
                 primaryMeta = getString(R.string.search_channel_action_hint);
+            }
+            String listLabel = buildChannelMembershipLabel(item, 2);
+            if (!listLabel.isEmpty()) {
+                primaryMeta = listLabel + "  ·  " + primaryMeta;
             }
             holder.meta.setText(primaryMeta);
             String typeLabel;
@@ -6570,7 +6826,7 @@ public class MainActivity extends FragmentActivity {
                 typeLabel = getString(R.string.channel_badge_live);
             }
             holder.type.setText(typeLabel);
-            bindChannelLogo(holder.logo, item.logoUrl, item.name, 42, 42);
+            bindChannelLogo(holder.logo, item.logoUrl, displayName(item), 42, 42);
             holder.itemView.setOnClickListener(v -> {
                 if (listener != null) {
                     listener.onChannelChosen(item);

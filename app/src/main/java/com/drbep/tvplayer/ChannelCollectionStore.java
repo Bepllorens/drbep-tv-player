@@ -101,6 +101,26 @@ final class ChannelCollectionStore {
         return result;
     }
 
+    ChannelCollection getCollection(String collectionKey) {
+        return collections.get(normalizeKey(collectionKey));
+    }
+
+    List<String> getMembershipLabels(String channelId, int maxLabels) {
+        List<String> labels = new ArrayList<>();
+        if (channelId == null || channelId.trim().isEmpty() || maxLabels <= 0) {
+            return labels;
+        }
+        for (ChannelCollection collection : collections.values()) {
+            if (collection.channelIds.contains(channelId)) {
+                labels.add(collection.label);
+                if (labels.size() >= maxLabels) {
+                    break;
+                }
+            }
+        }
+        return labels;
+    }
+
     boolean contains(String collectionKey, String channelId) {
         ChannelCollection collection = collections.get(normalizeKey(collectionKey));
         return collection != null && channelId != null && collection.channelIds.contains(channelId);

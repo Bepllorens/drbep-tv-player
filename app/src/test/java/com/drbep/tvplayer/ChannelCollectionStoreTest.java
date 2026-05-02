@@ -40,6 +40,21 @@ public class ChannelCollectionStoreTest {
     }
 
     @Test
+    public void membershipLabelsRespectCollectionOrderAndLimit() {
+        ChannelCollectionStore store = new ChannelCollectionStore(null, "collections");
+
+        store.setMembership("deportes", "ch-1", true);
+        store.setMembership("noticias", "ch-1", true);
+        store.setMembership("kids", "ch-1", true);
+
+        List<String> labels = store.getMembershipLabels("ch-1", 2);
+
+        assertEquals(2, labels.size());
+        assertEquals("Deportes", labels.get(0));
+        assertEquals("Noticias", labels.get(1));
+    }
+
+    @Test
     public void collectionsCanBeCreatedRenamedAndDeleted() {
         ChannelCollectionStore store = new ChannelCollectionStore(null, "collections");
 

@@ -57,6 +57,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -97,6 +98,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_RECENT_CHANNELS = "recent_channel_items";
     private static final String PREF_RECORDING_RESUME_POSITIONS = "recording_resume_positions";
     private static final String PREF_VOD_RESUME_POSITIONS = "vod_resume_positions";
+    private static final String PREF_GLOBAL_SEARCH_RECENTS = "global_search_recents";
     private static final String PREF_LAST_VOD_ID = "last_vod_id";
     private static final String PREF_CHANNEL_COLLECTIONS = "channel_collections";
     private static final String PREF_CHANNEL_PROFILES = "channel_profiles";
@@ -116,6 +118,12 @@ public class MainActivity extends FragmentActivity {
     private static final String RECORDINGS_DAY_TODAY = "today";
     private static final String RECORDINGS_DAY_TOMORROW = "tomorrow";
     private static final String RECORDINGS_DAY_WEEK = "week";
+    private static final int GLOBAL_SEARCH_HEADER = 0;
+    private static final int GLOBAL_SEARCH_HISTORY = 1;
+    private static final int GLOBAL_SEARCH_CHANNEL = 2;
+    private static final int GLOBAL_SEARCH_VOD = 3;
+    private static final int GLOBAL_SEARCH_EPG = 4;
+    private static final int GLOBAL_SEARCH_RECORDING = 5;
 
     private PlayerView playerView;
     private TextView errorText;
@@ -264,6 +272,7 @@ public class MainActivity extends FragmentActivity {
     private String selectedFilterKey = "all";
     private final StringBuilder quickSearchBuffer = new StringBuilder();
     private final List<ChannelItem> quickSearchMatches = new ArrayList<>();
+    private final List<String> globalSearchRecents = new ArrayList<>();
     private int quickSearchSelectionIndex = 0;
     private final Set<String> favoriteChannelIds = new HashSet<>();
     private final Map<String, String> temporaryPlaybackModesByChannelId = new HashMap<>();
@@ -281,6 +290,8 @@ public class MainActivity extends FragmentActivity {
     private float tabletBrightnessLevel = 0.5f;
     private float touchGestureLastY = Float.NaN;
     private boolean touchGestureVerticalHandled;
+    private int globalSearchGeneration;
+    private Runnable pendingGlobalSearchRunnable;
 
     private static final class TimelineChannelPrograms {
         final ChannelItem channel;
@@ -321,6 +332,28 @@ public class MainActivity extends FragmentActivity {
         EpgSearchResult(ChannelItem channel, EpgRepository.EpgProgram program) {
             this.channel = channel;
             this.program = program;
+        }
+    }
+
+    private static final class GlobalSearchResult {
+        final int type;
+        final String title;
+        final String meta;
+        final String badge;
+        final ChannelItem channel;
+        final EpgSearchResult epgResult;
+        final RecordingsRepository.RecordingItem recording;
+        final String recordingBasePath;
+
+        GlobalSearchResult(int type, String title, String meta, String badge, ChannelItem channel, EpgSearchResult epgResult, RecordingsRepository.RecordingItem recording, String recordingBasePath) {
+            this.type = type;
+            this.title = title;
+            this.meta = meta;
+            this.badge = badge;
+            this.channel = channel;
+            this.epgResult = epgResult;
+            this.recording = recording;
+            this.recordingBasePath = recordingBasePath;
         }
     }
 
@@ -457,8 +490,7 @@ public class MainActivity extends FragmentActivity {
         timeshiftSeekBar = findViewById(R.id.timeshiftSeekBar);
 
         if (versionBadgeText != null) {
-            versionBadgeText.setText("v" + BuildConfig.VERSION_NAME);
-            versionBadgeText.setOnClickListener(v -> showAboutDialog());
+            versionBadgeText.setVisibility(View.GONE);
         }
         if (liveStateBadgeText != null) {
             liveStateBadgeText.setClickable(true);
@@ -486,6 +518,7 @@ public class MainActivity extends FragmentActivity {
         playbackDiagnosticsStore = new PlaybackDiagnosticsStore(prefs, PREF_PLAYBACK_DIAGNOSTICS);
         loadRecordingResumePositions();
         loadVodResumePositions();
+        loadGlobalSearchRecents();
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
@@ -1547,6 +1580,32 @@ public class MainActivity extends FragmentActivity {
 
     private static String safeLower(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String safeSearchText(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(value.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
+        return normalized.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+    }
+
+    private static boolean matchesSearch(String haystack, String query) {
+        String normalizedHaystack = safeSearchText(haystack);
+        String normalizedQuery = safeSearchText(query);
+        if (normalizedQuery.isEmpty()) {
+            return true;
+        }
+        String[] tokens = normalizedQuery.split("\\s+");
+        for (String token : tokens) {
+            if (token == null || token.isEmpty()) {
+                continue;
+            }
+            if (!normalizedHaystack.contains(token)) {
+                return false;
+            }
+        }
+        return true;
     }
 
 
@@ -3012,6 +3071,28 @@ public class MainActivity extends FragmentActivity {
         showOverlay();
     }
 
+    private void toggleFavoriteChannel(ChannelItem channel) {
+        if (channel == null || channel.id == null || channel.id.trim().isEmpty()) {
+            return;
+        }
+        boolean added;
+        if (favoriteChannelIds.contains(channel.id)) {
+            favoriteChannelIds.remove(channel.id);
+            favoriteOrderStore.remove(channel.id);
+            added = false;
+        } else {
+            favoriteChannelIds.add(channel.id);
+            favoriteOrderStore.addIfMissing(channel.id);
+            added = true;
+        }
+        saveFavorites();
+        if (channelAdapter != null) {
+            channelAdapter.notifyDataSetChanged();
+        }
+        updateOverlaySearchState();
+        showStatus(getString(added ? R.string.status_favorite_added : R.string.status_favorite_removed));
+    }
+
     private void moveFavoriteSelected(int delta) {
         if (channels.isEmpty() || selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
             return;
@@ -3243,14 +3324,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> searchChannels(String query, int limit) {
-        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         List<ChannelItem> results = new ArrayList<>();
         for (ChannelItem item : allChannels) {
-            if (normalizedQuery.isEmpty()) {
+            if (query == null || query.trim().isEmpty()) {
                 results.add(item);
             } else {
-                String haystack = (item.name + " " + item.group + " " + joinLabels(item.customGroups)).toLowerCase(Locale.ROOT);
-                if (haystack.contains(normalizedQuery)) {
+                String haystack = displayName(item) + " " + item.group + " " + item.platformName + " " + joinLabels(item.customGroups);
+                if (matchesSearch(haystack, query)) {
                     results.add(item);
                 }
             }
@@ -5083,14 +5163,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> buildVodSearchResults(String query, boolean includeAdult) {
-        String needle = safeLower(query);
         List<ChannelItem> results = new ArrayList<>();
         for (ChannelItem item : allChannels) {
             if (item == null || !item.isVod || (!includeAdult && item.isAdultVod)) {
                 continue;
             }
-            String haystack = safeLower(displayName(item)) + " " + safeLower(item.group) + " " + safeLower(item.platformName);
-            if (!needle.isEmpty() && !haystack.contains(needle)) {
+            String haystack = displayName(item) + " " + item.group + " " + item.platformName;
+            if (!matchesSearch(haystack, query)) {
                 continue;
             }
             results.add(item);
@@ -5434,6 +5513,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showChannelSearchDialog() {
+        showGlobalSearchDialog();
+    }
+
+    private void showGlobalSearchDialog() {
         clearQuickSearchOverlay();
         hideOverlay();
         hideRecordingsPanel();
@@ -5441,21 +5524,30 @@ public class MainActivity extends FragmentActivity {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_channel_search, null, false);
         EditText input = dialogView.findViewById(R.id.channelSearchInput);
         RecyclerView recyclerView = dialogView.findViewById(R.id.channelSearchResults);
+        input.setHint(R.string.global_search_hint);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        List<ChannelItem> filteredItems = new ArrayList<>();
-        filteredItems.addAll(allChannels);
         final AlertDialog[] dialogHolder = new AlertDialog[1];
-        SearchChannelAdapter adapter = new SearchChannelAdapter(filteredItems, item -> {
-            tuneChannelById(item.id);
+        GlobalSearchAdapter adapter = new GlobalSearchAdapter(buildGlobalSearchLocalResults(""), result -> {
+            if (result == null) {
+                return;
+            }
+            if (result.type == GLOBAL_SEARCH_HISTORY) {
+                input.setText(result.title);
+                input.setSelection(input.getText() == null ? 0 : input.getText().length());
+                return;
+            }
+            String query = input.getText() == null ? "" : input.getText().toString();
+            rememberGlobalSearchQuery(query);
             if (dialogHolder[0] != null) {
                 dialogHolder[0].dismiss();
             }
+            handleGlobalSearchResult(result);
         });
         recyclerView.setAdapter(adapter);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.title_search_channels)
+                .setTitle(R.string.title_global_search)
                 .setView(dialogView)
                 .setNegativeButton(R.string.dialog_close, null)
                 .create();
@@ -5468,7 +5560,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                filterSearchResults(adapter, s == null ? "" : s.toString());
+                updateGlobalSearchResults(adapter, s == null ? "" : s.toString());
             }
 
             @Override
@@ -5478,9 +5570,252 @@ public class MainActivity extends FragmentActivity {
 
         dialog.setOnShowListener(d -> {
             input.requestFocus();
-            filterSearchResults(adapter, "");
+            updateGlobalSearchResults(adapter, "");
         });
         dialog.show();
+    }
+
+    private void updateGlobalSearchResults(GlobalSearchAdapter adapter, String query) {
+        if (adapter == null) {
+            return;
+        }
+        int generation = ++globalSearchGeneration;
+        if (pendingGlobalSearchRunnable != null) {
+            uiHandler.removeCallbacks(pendingGlobalSearchRunnable);
+            pendingGlobalSearchRunnable = null;
+        }
+        adapter.submitList(buildGlobalSearchLocalResults(query));
+        String trimmed = query == null ? "" : query.trim();
+        if (trimmed.length() < 2) {
+            return;
+        }
+        pendingGlobalSearchRunnable = () -> fetchGlobalSearchRemoteResults(adapter, trimmed, generation);
+        uiHandler.postDelayed(pendingGlobalSearchRunnable, 450L);
+    }
+
+    private void fetchGlobalSearchRemoteResults(GlobalSearchAdapter adapter, String query, int generation) {
+        ioExecutor.execute(() -> {
+            List<GlobalSearchResult> remoteResults = new ArrayList<>();
+            try {
+                List<EpgSearchResult> epgResults = buildEpgSearchResults(query);
+                if (!epgResults.isEmpty()) {
+                    remoteResults.add(globalSearchHeader(getString(R.string.global_search_section_epg)));
+                    int max = Math.min(10, epgResults.size());
+                    for (int i = 0; i < max; i++) {
+                        EpgSearchResult result = epgResults.get(i);
+                        EpgRepository.EpgProgram program = result == null ? null : result.program;
+                        ChannelItem channel = result == null ? null : result.channel;
+                        String title = program == null || program.title == null || program.title.trim().isEmpty()
+                                ? getString(R.string.label_program_default)
+                                : program.title.trim();
+                        String meta = (channel == null ? "" : displayName(channel)) + "  ·  " + shortTime(program == null ? "" : program.startTime) + " - " + shortTime(program == null ? "" : program.endTime);
+                        remoteResults.add(new GlobalSearchResult(GLOBAL_SEARCH_EPG, title, meta.trim(), program != null && program.progress >= 0 ? getString(R.string.epg_search_badge_live) : getString(R.string.epg_search_badge_next), null, result, null, ""));
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "global EPG search failed", e);
+            }
+            try {
+                remoteResults.addAll(buildGlobalRecordingResults(query));
+            } catch (Exception e) {
+                Log.w(TAG, "global recording search failed", e);
+            }
+            uiHandler.post(() -> {
+                if (generation != globalSearchGeneration) {
+                    return;
+                }
+                List<GlobalSearchResult> merged = new ArrayList<>(buildGlobalSearchLocalResults(query));
+                merged.addAll(remoteResults);
+                adapter.submitList(merged);
+            });
+        });
+    }
+
+    private List<GlobalSearchResult> buildGlobalSearchLocalResults(String query) {
+        String trimmed = query == null ? "" : query.trim();
+        List<GlobalSearchResult> results = new ArrayList<>();
+        if (trimmed.isEmpty()) {
+            appendGlobalSuggestions(results);
+            return results;
+        }
+        List<GlobalSearchResult> channels = new ArrayList<>();
+        List<GlobalSearchResult> vod = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (item == null) {
+                continue;
+            }
+            String haystack = displayName(item) + " " + item.group + " " + item.platformName + " " + joinLabels(item.customGroups);
+            if (!matchesSearch(haystack, trimmed)) {
+                continue;
+            }
+            if (item.isVod) {
+                if (vod.size() < 10) {
+                    vod.add(new GlobalSearchResult(GLOBAL_SEARCH_VOD, displayName(item), buildVodRowMeta(item), item.isAdultVod ? getString(R.string.channel_badge_vod_adult) : getString(R.string.channel_badge_vod), item, null, null, ""));
+                }
+            } else if (channels.size() < 10) {
+                String meta = item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group;
+                channels.add(new GlobalSearchResult(GLOBAL_SEARCH_CHANNEL, displayName(item), meta, getString(R.string.channel_badge_live), item, null, null, ""));
+            }
+            if (channels.size() >= 10 && vod.size() >= 10) {
+                break;
+            }
+        }
+        if (!channels.isEmpty()) {
+            results.add(globalSearchHeader(getString(R.string.global_search_section_channels)));
+            results.addAll(channels);
+        }
+        if (!vod.isEmpty()) {
+            results.add(globalSearchHeader(getString(R.string.global_search_section_vod)));
+            results.addAll(vod);
+        }
+        if (results.isEmpty()) {
+            results.add(globalSearchHeader(getString(R.string.global_search_no_local_results)));
+        }
+        return results;
+    }
+
+    private void appendGlobalSuggestions(List<GlobalSearchResult> results) {
+        if (!globalSearchRecents.isEmpty()) {
+            results.add(globalSearchHeader(getString(R.string.global_search_section_recent_searches)));
+            int maxSearches = Math.min(5, globalSearchRecents.size());
+            for (int i = 0; i < maxSearches; i++) {
+                String value = globalSearchRecents.get(i);
+                results.add(new GlobalSearchResult(GLOBAL_SEARCH_HISTORY, value, getString(R.string.global_search_history_hint), getString(R.string.global_search_badge_history), null, null, null, ""));
+            }
+        }
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current != null) {
+            results.add(globalSearchHeader(getString(R.string.global_search_section_suggestions)));
+            results.add(new GlobalSearchResult(current.isVod ? GLOBAL_SEARCH_VOD : GLOBAL_SEARCH_CHANNEL, displayName(current), current.isVod ? buildVodRowMeta(current) : getString(R.string.quick_hub_continue), current.isVod ? getString(R.string.channel_badge_vod) : getString(R.string.channel_badge_live), current, null, null, ""));
+        }
+        ChannelItem lastVod = findChannelItemById(lastVodId);
+        if (lastVod != null && lastVod.isVod && (current == null || !lastVod.id.equals(current.id))) {
+            if (current == null) {
+                results.add(globalSearchHeader(getString(R.string.global_search_section_suggestions)));
+            }
+            results.add(new GlobalSearchResult(GLOBAL_SEARCH_VOD, displayName(lastVod), getString(R.string.quick_hub_continue_vod, buildVodInfoMeta(lastVod)), getString(R.string.channel_badge_vod), lastVod, null, null, ""));
+        }
+        List<ChannelItem> recentChannels = buildRecentQuickChannels();
+        if (!recentChannels.isEmpty()) {
+            results.add(globalSearchHeader(getString(R.string.global_search_section_recent_channels)));
+            int max = Math.min(6, recentChannels.size());
+            for (int i = 0; i < max; i++) {
+                ChannelItem item = recentChannels.get(i);
+                if (item == null) {
+                    continue;
+                }
+                results.add(new GlobalSearchResult(item.isVod ? GLOBAL_SEARCH_VOD : GLOBAL_SEARCH_CHANNEL, displayName(item), item.isVod ? buildVodRowMeta(item) : item.group, item.isVod ? getString(R.string.channel_badge_vod) : getString(R.string.channel_badge_live), item, null, null, ""));
+            }
+        }
+        if (results.isEmpty()) {
+            results.add(globalSearchHeader(getString(R.string.global_search_empty_hint)));
+        }
+    }
+
+    private List<GlobalSearchResult> buildGlobalRecordingResults(String query) throws Exception {
+        List<GlobalSearchResult> results = new ArrayList<>();
+        List<GlobalSearchResult> matches = new ArrayList<>();
+        RecordingsRepository.RecordingsResult completed = recordingsRepository.fetchCompletedRecordings();
+        appendGlobalRecordingMatches(matches, completed, query, 8);
+        RecordingsRepository.RecordingsResult scheduled = recordingsRepository.fetchScheduledRecordings();
+        appendGlobalRecordingMatches(matches, scheduled, query, 8);
+        if (!matches.isEmpty()) {
+            results.add(globalSearchHeader(getString(R.string.global_search_section_recordings)));
+            results.addAll(matches);
+        }
+        return results;
+    }
+
+    private void appendGlobalRecordingMatches(List<GlobalSearchResult> out, RecordingsRepository.RecordingsResult result, String query, int limit) {
+        if (out == null || result == null || result.items == null || out.size() >= limit) {
+            return;
+        }
+        for (RecordingsRepository.RecordingItem item : result.items) {
+            if (item == null) {
+                continue;
+            }
+            String haystack = buildRecordingTitle(item) + " " + item.channelName + " " + item.name + " " + item.path + " " + item.status;
+            if (!matchesSearch(haystack, query)) {
+                continue;
+            }
+            out.add(new GlobalSearchResult(GLOBAL_SEARCH_RECORDING, buildRecordingTitle(item), buildRecordingMeta(item), item.playable ? getString(R.string.recording_status_completed_short) : buildRecordingStatusLabel(item), null, null, item, result.basePath));
+            if (out.size() >= limit) {
+                return;
+            }
+        }
+    }
+
+    private GlobalSearchResult globalSearchHeader(String title) {
+        return new GlobalSearchResult(GLOBAL_SEARCH_HEADER, title, "", "", null, null, null, "");
+    }
+
+    private void handleGlobalSearchResult(GlobalSearchResult result) {
+        if (result == null) {
+            return;
+        }
+        if ((result.type == GLOBAL_SEARCH_CHANNEL || result.type == GLOBAL_SEARCH_VOD) && result.channel != null) {
+            if (result.channel.isVod) {
+                showVodInfoDialog(result.channel);
+            } else {
+                tuneChannelById(result.channel.id);
+            }
+            return;
+        }
+        if (result.type == GLOBAL_SEARCH_EPG && result.epgResult != null) {
+            channelActionsCoordinator.showProgramActionMenu(result.epgResult.channel, result.epgResult.program);
+            return;
+        }
+        if (result.type == GLOBAL_SEARCH_RECORDING && result.recording != null) {
+            if (result.recording.playable) {
+                playRecording(result.recording, result.recordingBasePath);
+            } else {
+                loadRecordingsPanel(true, result.recording.id);
+            }
+        }
+    }
+
+    private void showGlobalSearchActions(GlobalSearchResult result) {
+        if (result == null || result.type == GLOBAL_SEARCH_HEADER || result.type == GLOBAL_SEARCH_HISTORY) {
+            return;
+        }
+        if (result.channel != null) {
+            if (result.channel.isVod) {
+                showVodActionsDialog(result.channel);
+            } else {
+                showGlobalChannelActions(result.channel);
+            }
+            return;
+        }
+        if (result.epgResult != null) {
+            channelActionsCoordinator.showProgramActionMenu(result.epgResult.channel, result.epgResult.program);
+            return;
+        }
+        if (result.recording != null) {
+            if (result.recording.playable) {
+                playRecording(result.recording, result.recordingBasePath);
+            } else {
+                loadRecordingsPanel(true, result.recording.id);
+            }
+        }
+    }
+
+    private void showGlobalChannelActions(ChannelItem channel) {
+        if (channel == null) {
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.menu_tune_channel));
+        actions.add(() -> tuneChannelById(channel.id));
+        options.add(getString(favoriteChannelIds.contains(channel.id) ? R.string.menu_remove_favorite : R.string.menu_add_favorite));
+        actions.add(() -> toggleFavoriteChannel(channel));
+        options.add(getString(R.string.menu_personal_lists));
+        actions.add(() -> showPersonalListsDialog(channel));
+        options.add(getString(R.string.menu_channel_profile));
+        actions.add(() -> showChannelProfileDialog(channel));
+        options.add(getString(R.string.menu_mini_guide));
+        actions.add(() -> openMiniGuideForChannel(channel));
+        showTvOptionsDialog(R.string.title_global_search, displayName(channel), options, actions);
     }
 
     private void filterSearchResults(SearchChannelAdapter adapter, String query) {
@@ -5529,7 +5864,6 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<EpgSearchResult> buildEpgSearchResults(String query) throws Exception {
-        String normalizedQuery = safeLower(query);
         List<EpgSearchResult> results = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         List<ChannelItem> searchScope = new ArrayList<>();
@@ -5553,8 +5887,8 @@ public class MainActivity extends FragmentActivity {
                 if (program == null) {
                     continue;
                 }
-                String haystack = safeLower(program.title) + " " + safeLower(program.description) + " " + safeLower(channel.name);
-                if (!haystack.contains(normalizedQuery)) {
+                String haystack = program.title + " " + program.description + " " + displayName(channel);
+                if (!matchesSearch(haystack, query)) {
                     continue;
                 }
                 String key = channel.id + "|" + String.valueOf(program.title).trim() + "|" + String.valueOf(program.startTime).trim();
@@ -6938,6 +7272,54 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void loadGlobalSearchRecents() {
+        globalSearchRecents.clear();
+        if (prefs == null) {
+            return;
+        }
+        String raw = prefs.getString(PREF_GLOBAL_SEARCH_RECENTS, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return;
+        }
+        try {
+            org.json.JSONArray array = new org.json.JSONArray(raw);
+            for (int i = 0; i < array.length(); i++) {
+                String value = cleanText(array.optString(i, ""));
+                if (!value.isEmpty() && !globalSearchRecents.contains(value)) {
+                    globalSearchRecents.add(value);
+                }
+                if (globalSearchRecents.size() >= 8) {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "failed to load global search recents", e);
+        }
+    }
+
+    private void rememberGlobalSearchQuery(String query) {
+        String value = cleanText(query);
+        if (value.length() < 2 || prefs == null) {
+            return;
+        }
+        globalSearchRecents.remove(value);
+        globalSearchRecents.add(0, value);
+        while (globalSearchRecents.size() > 8) {
+            globalSearchRecents.remove(globalSearchRecents.size() - 1);
+        }
+        try {
+            org.json.JSONArray array = new org.json.JSONArray();
+            for (String item : globalSearchRecents) {
+                if (item != null && !item.trim().isEmpty()) {
+                    array.put(item.trim());
+                }
+            }
+            prefs.edit().putString(PREF_GLOBAL_SEARCH_RECENTS, array.toString()).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save global search recents", e);
+        }
+    }
+
     private void loadRecordingResumePositions() {
         recordingResumePositions.clear();
         if (prefs == null) {
@@ -7779,6 +8161,112 @@ public class MainActivity extends FragmentActivity {
                 meta = itemView.findViewById(R.id.recordingMetaText);
                 status = itemView.findViewById(R.id.recordingStatusBadge);
                 poster = itemView.findViewById(R.id.recordingPosterThumb);
+            }
+        }
+    }
+
+    private final class GlobalSearchAdapter extends RecyclerView.Adapter<GlobalSearchAdapter.GlobalSearchVH> {
+        interface OnGlobalSearchResultChosenListener {
+            void onGlobalSearchResultChosen(GlobalSearchResult result);
+        }
+
+        private final List<GlobalSearchResult> items = new ArrayList<>();
+        private final OnGlobalSearchResultChosenListener listener;
+
+        GlobalSearchAdapter(List<GlobalSearchResult> initialItems, OnGlobalSearchResultChosenListener listener) {
+            this.listener = listener;
+            submitList(initialItems);
+        }
+
+        void submitList(List<GlobalSearchResult> newItems) {
+            items.clear();
+            if (newItems != null) {
+                items.addAll(newItems);
+            }
+            notifyDataSetChanged();
+        }
+
+        @NonNull
+        @Override
+        public GlobalSearchVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.item_search_channel, parent, false);
+            return new GlobalSearchVH(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull GlobalSearchVH holder, int position) {
+            GlobalSearchResult result = items.get(position);
+            boolean header = result != null && result.type == GLOBAL_SEARCH_HEADER;
+            holder.logo.setVisibility(header ? View.GONE : View.VISIBLE);
+            holder.meta.setVisibility(header || result == null || result.meta == null || result.meta.trim().isEmpty() ? View.GONE : View.VISIBLE);
+            holder.type.setVisibility(header || result == null || result.badge == null || result.badge.trim().isEmpty() ? View.GONE : View.VISIBLE);
+            holder.name.setText(result == null ? "" : result.title);
+            holder.name.setTextColor(header ? 0xFF9BD0FF : 0xFFFFFFFF);
+            holder.name.setTextSize(header ? 13f : 18f);
+            holder.name.setTypeface(Typeface.DEFAULT, header ? Typeface.BOLD : Typeface.BOLD);
+            holder.meta.setText(result == null ? "" : result.meta);
+            holder.type.setText(result == null ? "" : result.badge);
+            holder.itemView.setFocusable(!header);
+            holder.itemView.setClickable(!header);
+            holder.itemView.setBackgroundColor(header ? 0x00000000 : 0xFF182638);
+            if (!header && result != null) {
+                bindGlobalSearchImage(holder.logo, result);
+                holder.itemView.setOnClickListener(v -> {
+                    if (listener != null) {
+                        listener.onGlobalSearchResultChosen(result);
+                    }
+                });
+                holder.itemView.setOnLongClickListener(v -> {
+                    showGlobalSearchActions(result);
+                    return true;
+                });
+            } else {
+                holder.itemView.setOnClickListener(null);
+                holder.itemView.setOnLongClickListener(null);
+            }
+        }
+
+        private void bindGlobalSearchImage(ImageView logo, GlobalSearchResult result) {
+            if (result == null || logo == null) {
+                return;
+            }
+            if (result.channel != null) {
+                bindChannelLogo(logo, result.channel.logoUrl, displayName(result.channel), 42, 42);
+                return;
+            }
+            if (result.epgResult != null) {
+                EpgRepository.EpgProgram program = result.epgResult.program;
+                ChannelItem channel = result.epgResult.channel;
+                String poster = program == null || program.icon == null || program.icon.trim().isEmpty()
+                        ? (channel == null ? "" : channel.logoUrl)
+                        : program.icon.trim();
+                bindProgramPoster(logo, poster);
+                return;
+            }
+            if (result.recording != null) {
+                bindRecordingPoster(logo, result.recording.poster);
+                return;
+            }
+            logo.setImageDrawable(null);
+        }
+
+        @Override
+        public int getItemCount() {
+            return items.size();
+        }
+
+        final class GlobalSearchVH extends RecyclerView.ViewHolder {
+            final TextView name;
+            final TextView meta;
+            final TextView type;
+            final ImageView logo;
+
+            GlobalSearchVH(@NonNull View itemView) {
+                super(itemView);
+                name = itemView.findViewById(R.id.searchChannelNameText);
+                meta = itemView.findViewById(R.id.searchChannelMetaText);
+                type = itemView.findViewById(R.id.searchChannelTypeText);
+                logo = itemView.findViewById(R.id.searchChannelLogo);
             }
         }
     }

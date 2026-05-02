@@ -265,6 +265,19 @@
     <string name="search_channel_dialog_hint">Escribe el nombre del canal</string>
     <string name="search_channel_dialog_action">Buscar</string>
     <string name="search_channel_results_title">Resultados para %1$s</string>
+    <string name="title_global_search">Busqueda global</string>
+    <string name="global_search_hint">Canal, programa, VOD o grabacion</string>
+    <string name="global_search_empty_hint">Escribe para buscar en TV, VOD, EPG y grabaciones</string>
+    <string name="global_search_no_local_results">Buscando en EPG y grabaciones...</string>
+    <string name="global_search_section_recent_searches">Busquedas recientes</string>
+    <string name="global_search_section_suggestions">Sugerencias</string>
+    <string name="global_search_section_recent_channels">Canales recientes</string>
+    <string name="global_search_section_channels">Canales</string>
+    <string name="global_search_section_vod">VOD</string>
+    <string name="global_search_section_epg">Programas EPG</string>
+    <string name="global_search_section_recordings">Grabaciones</string>
+    <string name="global_search_history_hint">OK busca de nuevo</string>
+    <string name="global_search_badge_history">REC</string>
     <string name="quick_search_result">%1$s
 %2$s</string>
     <string name="quick_search_result_index">Resultado %1$d de %2$d</string>

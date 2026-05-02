@@ -194,6 +194,7 @@
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="status_retry_channel">Reintentando: %1$s</string>
     <string name="tools_menu_title">Herramientas v%1$s</string>
+    <string name="tools_menu_title_short">Herramientas</string>
     <string name="tools_menu_quick_hub">Hub rapido</string>
     <string name="tools_menu_search_channels">Buscar canal</string>
     <string name="tools_menu_visual_epg">EPG visual</string>

@@ -264,7 +264,7 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isRecordingsPanelVisible()) {
-            host.switchRecordingsMode(false);
+            host.showRecordingActionsDialog();
             return true;
         }
         if (host.isOverlayVisible()) {

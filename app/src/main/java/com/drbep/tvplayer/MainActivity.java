@@ -2283,36 +2283,30 @@ public class MainActivity extends FragmentActivity {
         if (channel == null) {
             return;
         }
-        String[] options = new String[]{
-                getString(R.string.vod_action_play),
-                getString(R.string.vod_action_continue),
-                getString(R.string.menu_personal_lists),
-                getString(R.string.diagnostics_action_temporary_mode),
-                getString(R.string.tools_menu_playback_diagnostics),
-                getString(R.string.vod_action_clear_progress)
-        };
-        new AlertDialog.Builder(this)
-                .setTitle(displayName(channel))
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        clearVodResumePosition(channel.id);
-                        playChannelItemInternal(channel, true, 0L);
-                    } else if (which == 1) {
-                        playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
-                    } else if (which == 2) {
-                        showPersonalListsDialog(channel);
-                    } else if (which == 3) {
-                        showTemporaryPlaybackModeDialog(channel);
-                    } else if (which == 4) {
-                        currentPlaybackVodId = channel.id;
-                        showPlaybackDiagnosticsDialog();
-                    } else if (which == 5) {
-                        clearVodResumePosition(channel.id);
-                        showStatus(getString(R.string.vod_status_progress_cleared));
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.vod_action_play));
+        actions.add(() -> {
+            clearVodResumePosition(channel.id);
+            playChannelItemInternal(channel, true, 0L);
+        });
+        options.add(getString(R.string.vod_action_continue));
+        actions.add(() -> playChannelItemInternal(channel, true, getVodResumePosition(channel.id)));
+        options.add(getString(R.string.menu_personal_lists));
+        actions.add(() -> showPersonalListsDialog(channel));
+        options.add(getString(R.string.diagnostics_action_temporary_mode));
+        actions.add(() -> showTemporaryPlaybackModeDialog(channel));
+        options.add(getString(R.string.tools_menu_playback_diagnostics));
+        actions.add(() -> {
+            currentPlaybackVodId = channel.id;
+            showPlaybackDiagnosticsDialog();
+        });
+        options.add(getString(R.string.vod_action_clear_progress));
+        actions.add(() -> {
+            clearVodResumePosition(channel.id);
+            showStatus(getString(R.string.vod_status_progress_cleared));
+        });
+        showTvOptionsDialog(R.string.title_touch_vod_info, displayName(channel), options, actions);
     }
 
     private String buildVodInfoMeta(ChannelItem channel) {
@@ -4563,7 +4557,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showV12ToolsMenu() {
-        clearQuickSearchOverlay();
+        prepareModalSurface();
         String[] options = new String[]{
                 getString(R.string.tools_menu_quick_hub),
                 getString(R.string.tools_menu_timeline_guide),
@@ -4583,9 +4577,9 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_multiview_open_preset),
                 getString(R.string.tools_menu_multiview_save_preset)
         };
-        new AlertDialog.Builder(this)
+        AlertDialog toolsDialog = new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.tools_menu_title, BuildConfig.VERSION_NAME))
-                .setItems(options, (dialog, which) -> {
+                .setItems(options, (d, which) -> {
                     if (which == 0) {
                         showQuickHubDialog();
                     } else if (which == 1) {
@@ -4623,10 +4617,12 @@ public class MainActivity extends FragmentActivity {
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
-                .show();
+                .create();
+        showTvDialog(toolsDialog);
     }
 
     private void showInstallStatusDialog() {
+        prepareModalSurface();
         String packageName = getPackageName();
         String versionName = BuildConfig.VERSION_NAME;
         int versionCode = BuildConfig.VERSION_CODE;
@@ -4647,11 +4643,59 @@ public class MainActivity extends FragmentActivity {
                 updatedAt,
                 "com.drbep.tv.v2.fixed"
         );
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.title_install_status)
                 .setMessage(message)
                 .setPositiveButton(R.string.dialog_close, null)
-                .show();
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private void prepareModalSurface() {
+        clearQuickSearchOverlay();
+        hideOverlay();
+        hideRecordingsPanel();
+        if (touchHomeHub != null) {
+            touchHomeHub.setVisibility(View.GONE);
+        }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+        }
+    }
+
+    private void showTvDialog(AlertDialog dialog) {
+        if (dialog == null) {
+            return;
+        }
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnShowListener(d -> {
+            android.widget.ListView listView = dialog.getListView();
+            if (listView != null) {
+                listView.setFocusable(true);
+                listView.setFocusableInTouchMode(true);
+                listView.requestFocus();
+                if (listView.getCount() > 0) {
+                    listView.setSelection(0);
+                }
+            }
+        });
+        dialog.show();
+    }
+
+    private void showTvOptionsDialog(int titleResId, String message, List<String> options, List<Runnable> actions) {
+        prepareModalSurface();
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(titleResId)
+                .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    if (which >= 0 && which < actions.size()) {
+                        actions.get(which).run();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_close, null);
+        if (message != null && !message.trim().isEmpty()) {
+            builder.setMessage(message);
+        }
+        showTvDialog(builder.create());
     }
 
     private void maybeShowStartupHub() {
@@ -4691,16 +4735,12 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.tools_menu_install_status));
         actions.add(this::showInstallStatusDialog);
 
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.startup_hub_title)
-                .setMessage(getString(R.string.startup_hub_message, BuildConfig.VERSION_NAME, buildCurrentFilterLabel(), channels.size()))
-                .setItems(options.toArray(new String[0]), (dialog, which) -> {
-                    if (which >= 0 && which < actions.size()) {
-                        actions.get(which).run();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_close, null)
-                .show();
+        showTvOptionsDialog(
+                R.string.startup_hub_title,
+                getString(R.string.startup_hub_message, BuildConfig.VERSION_NAME, buildCurrentFilterLabel(), channels.size()),
+                options,
+                actions
+        );
     }
 
     private String buildCurrentFilterLabel() {
@@ -4716,48 +4756,36 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showQuickHubDialog() {
-        String[] options = new String[]{
-                getString(R.string.quick_hub_continue),
-                getString(R.string.quick_hub_recent),
-                getString(R.string.quick_hub_favorites),
-                getString(R.string.quick_hub_recordings),
-                getString(R.string.quick_hub_continue_vod),
-                getString(R.string.quick_hub_search_vod),
-                getString(R.string.quick_hub_lists),
-                getString(R.string.quick_hub_add_current_to_list),
-                getString(R.string.quick_hub_timeline),
-                getString(R.string.quick_hub_epg_search)
-        };
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_quick_hub)
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        ChannelItem current = getCurrentPlaybackChannelItem();
-                        if (current != null) {
-                            tuneChannelById(current.id);
-                        }
-                    } else if (which == 1) {
-                        showRecentChannelsQuickDialog();
-                    } else if (which == 2) {
-                        showFavoriteChannelsQuickDialog();
-                    } else if (which == 3) {
-                        openRecordingsBrowser();
-                    } else if (which == 4) {
-                        openLastVod();
-                    } else if (which == 5) {
-                        showVodSearchDialog();
-                    } else if (which == 6) {
-                        showPersonalListsManagerDialog();
-                    } else if (which == 7) {
-                        openCurrentChannelPersonalLists();
-                    } else if (which == 8) {
-                        openTimelineGuideAroundSelection();
-                    } else if (which == 9) {
-                        showEpgSearchDialog();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_close, null)
-                .show();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.quick_hub_continue));
+        actions.add(() -> {
+            ChannelItem current = getCurrentPlaybackChannelItem();
+            if (current != null) {
+                tuneChannelById(current.id);
+            }
+        });
+        options.add(getString(R.string.quick_hub_continue_vod));
+        actions.add(this::openLastVod);
+        options.add(getString(R.string.quick_hub_recent));
+        actions.add(this::showRecentChannelsQuickDialog);
+        options.add(getString(R.string.quick_hub_favorites));
+        actions.add(this::showFavoriteChannelsQuickDialog);
+        options.add(getString(R.string.quick_hub_lists));
+        actions.add(this::showPersonalListsManagerDialog);
+        options.add(getString(R.string.quick_hub_search_vod));
+        actions.add(this::showVodSearchDialog);
+        options.add(getString(R.string.quick_hub_recordings));
+        actions.add(this::openRecordingsBrowser);
+        options.add(getString(R.string.quick_hub_timeline));
+        actions.add(this::openTimelineGuideAroundSelection);
+        options.add(getString(R.string.quick_hub_epg_search));
+        actions.add(this::showEpgSearchDialog);
+        options.add(getString(R.string.tools_menu_playback_diagnostics));
+        actions.add(this::showPlaybackDiagnosticsDialog);
+        options.add(getString(R.string.tools_menu_title_short));
+        actions.add(this::showV12ToolsMenu);
+        showTvOptionsDialog(R.string.title_quick_hub, null, options, actions);
     }
 
     private void showVodSearchDialog() {
@@ -6210,36 +6238,23 @@ public class MainActivity extends FragmentActivity {
         if (channelItem == null) {
             return;
         }
-        String[] options = new String[]{
-                getString(R.string.diagnostics_action_test_auto),
-                getString(R.string.diagnostics_action_test_direct),
-                getString(R.string.diagnostics_action_test_proxy),
-                getString(R.string.diagnostics_action_temporary_mode),
-                getString(R.string.diagnostics_action_permanent_mode),
-                getString(R.string.diagnostics_action_history),
-                getString(R.string.diagnostics_action_clear_error)
-        };
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_playback_diagnostics)
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_AUTO);
-                    } else if (which == 1) {
-                        testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_DIRECT);
-                    } else if (which == 2) {
-                        testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_PROXY);
-                    } else if (which == 3) {
-                        showTemporaryPlaybackModeDialog(channelItem);
-                    } else if (which == 4) {
-                        showPlaybackModeDialog(channelItem);
-                    } else if (which == 5) {
-                        showPlaybackDiagnosticsHistoryDialog();
-                    } else if (which == 6) {
-                        clearPlaybackDiagnosticsError(channelItem);
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.diagnostics_action_test_auto));
+        actions.add(() -> testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_AUTO));
+        options.add(getString(R.string.diagnostics_action_test_direct));
+        actions.add(() -> testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_DIRECT));
+        options.add(getString(R.string.diagnostics_action_test_proxy));
+        actions.add(() -> testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_PROXY));
+        options.add(getString(R.string.diagnostics_action_temporary_mode));
+        actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
+        options.add(getString(R.string.diagnostics_action_permanent_mode));
+        actions.add(() -> showPlaybackModeDialog(channelItem));
+        options.add(getString(R.string.diagnostics_action_history));
+        actions.add(this::showPlaybackDiagnosticsHistoryDialog);
+        options.add(getString(R.string.diagnostics_action_clear_error));
+        actions.add(() -> clearPlaybackDiagnosticsError(channelItem));
+        showTvOptionsDialog(R.string.title_playback_diagnostics, displayName(channelItem), options, actions);
     }
 
     private void testPlaybackModeNow(ChannelItem channelItem, String playbackMode) {

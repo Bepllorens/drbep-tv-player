@@ -186,11 +186,17 @@
     <string name="tools_menu_personal_lists_current">Listas del canal actual</string>
     <string name="tools_menu_channel_profile_current">Perfil del canal actual</string>
     <string name="tools_menu_playback_mode_temporary">Modo temporal del canal</string>
+    <string name="tools_menu_install_status">Estado de instalacion</string>
     <string name="tools_menu_favorites_zap_on">Zapping solo favoritos: ON</string>
     <string name="tools_menu_favorites_zap_off">Zapping solo favoritos: OFF</string>
     <string name="tools_menu_playback_diagnostics">Diagnostico de playback</string>
     <string name="diagnostics_action_retry">Reintentar</string>
     <string name="diagnostics_action_mode">Modo canal</string>
+    <string name="diagnostics_action_more">Acciones</string>
+    <string name="diagnostics_action_temporary_mode">Modo temporal</string>
+    <string name="diagnostics_action_permanent_mode">Modo permanente</string>
+    <string name="diagnostics_action_clear_error">Limpiar ultimo fallo</string>
+    <string name="status_diagnostics_error_cleared">Ultimo fallo limpiado</string>
     <string name="diagnostics_actions_hint">Reintentar vuelve a probar el canal actual. Modo canal cambia entre Auto, Directo y Proxy.</string>
     <string name="tools_menu_recordings_panel">Panel de grabaciones</string>
     <string name="tools_menu_multiview">Multiview 2x2</string>
@@ -222,6 +228,8 @@
     <string name="quick_hub_lists">Mis listas</string>
     <string name="quick_hub_timeline">Guia timeline</string>
     <string name="title_playback_diagnostics">Diagnostico de playback</string>
+    <string name="title_install_status">Estado de instalacion</string>
+    <string name="install_status_message">Paquete activo: %1$s\nVersion: %2$s (%3$d)\nActivity: %4$s\nActualizado: %5$s\n\nPaquete antiguo conocido: %6$s\nSi vuelve a aparecer una version vieja, ejecuta scripts/check_tv_install.sh y scripts/install_tv.sh.</string>
     <string name="recent_channel_item">%1$s  ·  %2$s</string>
     <string name="guide_program_progress">En curso: %1$d%%  ·  %2$s</string>
     <string name="guide_program_meta">Programado  ·  %1$s</string>

@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.text.Editable;
@@ -4412,6 +4413,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_channel_profile_current),
                 getString(R.string.tools_menu_playback_mode_temporary),
                 getString(R.string.tools_menu_playback_diagnostics),
+                getString(R.string.tools_menu_install_status),
                 getString(R.string.tools_menu_recordings_panel),
                 getString(R.string.tools_menu_multiview),
                 getString(R.string.tools_menu_multiview_open_preset),
@@ -4443,16 +4445,46 @@ public class MainActivity extends FragmentActivity {
                     } else if (which == 10) {
                         showPlaybackDiagnosticsDialog();
                     } else if (which == 11) {
-                        openRecordingsBrowser();
+                        showInstallStatusDialog();
                     } else if (which == 12) {
-                        openMultiView();
+                        openRecordingsBrowser();
                     } else if (which == 13) {
-                        showOpenMultiViewPresetDialog();
+                        openMultiView();
                     } else if (which == 14) {
+                        showOpenMultiViewPresetDialog();
+                    } else if (which == 15) {
                         showSaveMultiViewPresetDialog();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void showInstallStatusDialog() {
+        String packageName = getPackageName();
+        String versionName = BuildConfig.VERSION_NAME;
+        int versionCode = BuildConfig.VERSION_CODE;
+        String updatedAt = getString(R.string.diagnostics_value_unknown);
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(packageName, 0);
+            if (info != null && info.lastUpdateTime > 0L) {
+                updatedAt = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(info.lastUpdateTime));
+            }
+        } catch (Exception ignored) {
+        }
+        String message = getString(
+                R.string.install_status_message,
+                packageName,
+                versionName,
+                versionCode,
+                ".MainActivity",
+                updatedAt,
+                "com.drbep.tv.v2.fixed"
+        );
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_install_status)
+                .setMessage(message)
+                .setPositiveButton(R.string.dialog_close, null)
                 .show();
     }
 
@@ -5498,9 +5530,9 @@ public class MainActivity extends FragmentActivity {
                     .setTitle(R.string.title_playback_diagnostics)
                     .setMessage(message)
                     .setPositiveButton(R.string.diagnostics_action_retry, (dialog, which) -> retryCurrentPlayback())
-                    .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_mode, (dialog, which) -> {
+                    .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_more, (dialog, which) -> {
                         if (currentChannel != null) {
-                            showPlaybackModeDialog(currentChannel);
+                            showPlaybackDiagnosticsActionsDialog(currentChannel);
                         }
                     })
                     .setNegativeButton(R.string.dialog_close, null)
@@ -5537,13 +5569,50 @@ public class MainActivity extends FragmentActivity {
                 .setTitle(R.string.title_playback_diagnostics)
                 .setMessage(message.toString().trim())
                 .setPositiveButton(R.string.diagnostics_action_retry, (dialog, which) -> retryCurrentPlayback())
-                .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_mode, (dialog, which) -> {
+                .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_more, (dialog, which) -> {
                     if (currentChannel != null) {
-                        showPlaybackModeDialog(currentChannel);
+                        showPlaybackDiagnosticsActionsDialog(currentChannel);
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void showPlaybackDiagnosticsActionsDialog(ChannelItem channelItem) {
+        if (channelItem == null) {
+            return;
+        }
+        String[] options = new String[]{
+                getString(R.string.diagnostics_action_temporary_mode),
+                getString(R.string.diagnostics_action_permanent_mode),
+                getString(R.string.diagnostics_action_clear_error)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_playback_diagnostics)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        showTemporaryPlaybackModeDialog(channelItem);
+                    } else if (which == 1) {
+                        showPlaybackModeDialog(channelItem);
+                    } else if (which == 2) {
+                        clearPlaybackDiagnosticsError(channelItem);
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void clearPlaybackDiagnosticsError(ChannelItem channelItem) {
+        if (channelItem == null) {
+            return;
+        }
+        if (playbackDiagnosticsStore != null) {
+            playbackDiagnosticsStore.clear(channelItem.id);
+        }
+        if (playerController != null) {
+            playerController.clearLastError();
+        }
+        showStatus(getString(R.string.status_diagnostics_error_cleared));
     }
 
     private void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {

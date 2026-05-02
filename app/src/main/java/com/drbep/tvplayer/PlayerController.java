@@ -340,6 +340,10 @@ final class PlayerController {
         );
     }
 
+    void clearLastError() {
+        lastErrorSummary = null;
+    }
+
     boolean isPlaying() {
         return player != null && player.isPlaying();
     }

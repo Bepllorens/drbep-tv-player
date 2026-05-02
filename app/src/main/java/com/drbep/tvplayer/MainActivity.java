@@ -299,6 +299,16 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private static final class EpgSearchResult {
+        final ChannelItem channel;
+        final EpgRepository.EpgProgram program;
+
+        EpgSearchResult(ChannelItem channel, EpgRepository.EpgProgram program) {
+            this.channel = channel;
+            this.program = program;
+        }
+    }
+
     private final Runnable hideOverlayRunnable = this::hideOverlay;
     private final Runnable hideStatusRunnable = () -> {
         if (statusText != null) {
@@ -465,6 +475,13 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void tuneSelectedChannel() {
                 MainActivity.this.tuneSelectedChannel();
+            }
+
+            @Override
+            public void tuneChannel(ChannelItem channelItem) {
+                if (channelItem != null) {
+                    MainActivity.this.tuneChannelById(channelItem.id);
+                }
             }
 
             @Override
@@ -1514,6 +1531,14 @@ public class MainActivity extends FragmentActivity {
                 ? selectedOverlayIndex
                 : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
         lastTimelineFocusedCenterMinute = -1;
+        openTimelineGuide(anchorIndex, System.currentTimeMillis());
+    }
+
+    private void openTimelineGuideForChannel(ChannelItem channel) {
+        int anchorIndex = channel == null ? -1 : findChannelIndexById(channel.id);
+        if (anchorIndex < 0) {
+            anchorIndex = currentIndex;
+        }
         openTimelineGuide(anchorIndex, System.currentTimeMillis());
     }
 
@@ -4405,6 +4430,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_quick_hub),
                 getString(R.string.tools_menu_timeline_guide),
                 getString(R.string.tools_menu_visual_epg),
+                getString(R.string.tools_menu_epg_search),
                 getString(R.string.tools_menu_search_channels),
                 getString(R.string.tools_menu_recent_channels),
                 getString(R.string.tools_menu_favorite_channels),
@@ -4429,30 +4455,32 @@ public class MainActivity extends FragmentActivity {
                     } else if (which == 2) {
                         openVisualEpgAroundSelection();
                     } else if (which == 3) {
-                        showChannelSearchDialog();
+                        showEpgSearchDialog();
                     } else if (which == 4) {
-                        showRecentChannelsDialog();
+                        showChannelSearchDialog();
                     } else if (which == 5) {
-                        showFavoriteChannelsQuickDialog();
+                        showRecentChannelsDialog();
                     } else if (which == 6) {
-                        showPersonalListsManagerDialog();
+                        showFavoriteChannelsQuickDialog();
                     } else if (which == 7) {
-                        openCurrentChannelPersonalLists();
+                        showPersonalListsManagerDialog();
                     } else if (which == 8) {
-                        openCurrentChannelProfile();
+                        openCurrentChannelPersonalLists();
                     } else if (which == 9) {
-                        openCurrentTemporaryPlaybackMode();
+                        openCurrentChannelProfile();
                     } else if (which == 10) {
-                        showPlaybackDiagnosticsDialog();
+                        openCurrentTemporaryPlaybackMode();
                     } else if (which == 11) {
-                        showInstallStatusDialog();
+                        showPlaybackDiagnosticsDialog();
                     } else if (which == 12) {
-                        openRecordingsBrowser();
+                        showInstallStatusDialog();
                     } else if (which == 13) {
-                        openMultiView();
+                        openRecordingsBrowser();
                     } else if (which == 14) {
-                        showOpenMultiViewPresetDialog();
+                        openMultiView();
                     } else if (which == 15) {
+                        showOpenMultiViewPresetDialog();
+                    } else if (which == 16) {
                         showSaveMultiViewPresetDialog();
                     }
                 })
@@ -4496,7 +4524,8 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.quick_hub_recordings),
                 getString(R.string.quick_hub_lists),
                 getString(R.string.quick_hub_add_current_to_list),
-                getString(R.string.quick_hub_timeline)
+                getString(R.string.quick_hub_timeline),
+                getString(R.string.quick_hub_epg_search)
         };
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_quick_hub)
@@ -4518,6 +4547,8 @@ public class MainActivity extends FragmentActivity {
                         openCurrentChannelPersonalLists();
                     } else if (which == 6) {
                         openTimelineGuideAroundSelection();
+                    } else if (which == 7) {
+                        showEpgSearchDialog();
                     }
                 })
                 .setNegativeButton(R.string.dialog_close, null)
@@ -4903,16 +4934,165 @@ public class MainActivity extends FragmentActivity {
         adapter.submitList(searchChannels(query, 25));
     }
 
-    private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(new GuideProgramAdapter(channel, items));
+    private void showEpgSearchDialog() {
+        clearQuickSearchOverlay();
+        hideOverlay();
+        hideRecordingsPanel();
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.epg_search_hint);
+        input.setSelectAllOnFocus(true);
         new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.title_guide, channel.name))
+                .setTitle(R.string.title_epg_search)
+                .setMessage(R.string.epg_search_scanned_hint)
+                .setView(input)
+                .setPositiveButton(R.string.search_channel_dialog_action, (dialog, which) -> {
+                    String query = input.getText() == null ? "" : input.getText().toString();
+                    searchEpgPrograms(query);
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void searchEpgPrograms(String query) {
+        String trimmedQuery = query == null ? "" : query.trim();
+        if (trimmedQuery.length() < 2) {
+            showStatus(getString(R.string.epg_search_empty));
+            return;
+        }
+        showStatus(getString(R.string.status_searching_epg));
+        ioExecutor.execute(() -> {
+            try {
+                List<EpgSearchResult> results = buildEpgSearchResults(trimmedQuery);
+                uiHandler.post(() -> showEpgSearchResultsDialog(trimmedQuery, results));
+            } catch (Exception e) {
+                Log.w(TAG, "EPG search failed", e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+            }
+        });
+    }
+
+    private List<EpgSearchResult> buildEpgSearchResults(String query) throws Exception {
+        String normalizedQuery = safeLower(query);
+        List<EpgSearchResult> results = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        List<ChannelItem> searchScope = new ArrayList<>();
+        for (ChannelItem item : channels) {
+            if (item != null && !item.isVod && item.id != null && !item.id.trim().isEmpty()) {
+                searchScope.add(item);
+            }
+        }
+        if (searchScope.isEmpty()) {
+            for (ChannelItem item : allChannels) {
+                if (item != null && !item.isVod && item.id != null && !item.id.trim().isEmpty()) {
+                    searchScope.add(item);
+                }
+            }
+        }
+        int maxChannels = Math.min(80, searchScope.size());
+        for (int i = 0; i < maxChannels; i++) {
+            ChannelItem channel = searchScope.get(i);
+            List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel.id, 18);
+            for (EpgRepository.EpgProgram program : programs) {
+                if (program == null) {
+                    continue;
+                }
+                String haystack = safeLower(program.title) + " " + safeLower(program.description) + " " + safeLower(channel.name);
+                if (!haystack.contains(normalizedQuery)) {
+                    continue;
+                }
+                String key = channel.id + "|" + String.valueOf(program.title).trim() + "|" + String.valueOf(program.startTime).trim();
+                if (seen.add(key)) {
+                    results.add(new EpgSearchResult(channel, program));
+                }
+                if (results.size() >= 60) {
+                    return sortEpgSearchResults(results);
+                }
+            }
+        }
+        return sortEpgSearchResults(results);
+    }
+
+    private List<EpgSearchResult> sortEpgSearchResults(List<EpgSearchResult> results) {
+        results.sort((left, right) -> Long.compare(
+                left == null || left.program == null ? Long.MAX_VALUE : parseIsoMillis(left.program.startTime),
+                right == null || right.program == null ? Long.MAX_VALUE : parseIsoMillis(right.program.startTime)
+        ));
+        return results;
+    }
+
+    private void showEpgSearchResultsDialog(String query, List<EpgSearchResult> results) {
+        if (results == null || results.isEmpty()) {
+            showStatus(getString(R.string.epg_search_empty));
+            return;
+        }
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
+        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
+        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
+        if (panelTitle != null) {
+            panelTitle.setText(getString(R.string.epg_search_results_title, query));
+            panelTitle.setVisibility(View.VISIBLE);
+        }
+        if (panelSubtitle != null) {
+            panelSubtitle.setText(getString(R.string.epg_search_results_hint, results.size()));
+            panelSubtitle.setVisibility(View.VISIBLE);
+        }
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        EpgSearchResultAdapter adapter = new EpgSearchResultAdapter(results, result -> {
+            AlertDialog activeDialog = dialogHolder[0];
+            if (activeDialog != null && activeDialog.isShowing()) {
+                activeDialog.dismiss();
+            }
+            if (result != null) {
+                uiHandler.post(() -> channelActionsCoordinator.showProgramActionMenu(result.channel, result.program));
+            }
+        });
+        recyclerView.setAdapter(adapter);
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(dialogView)
                 .setNegativeButton(R.string.dialog_close, null)
-                .show();
+                .create();
+        dialogHolder[0] = dialog;
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        recyclerView.post(() -> {
+            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
+            if (layoutManager != null) {
+                View firstItem = layoutManager.findViewByPosition(0);
+                if (firstItem != null) {
+                    firstItem.requestFocus();
+                    return;
+                }
+            }
+            recyclerView.requestFocus();
+        });
+    }
+
+    private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
+        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
+        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
+        if (panelTitle != null) {
+            panelTitle.setText(getString(R.string.title_guide, displayName(channel)));
+            panelTitle.setVisibility(View.VISIBLE);
+        }
+        if (panelSubtitle != null) {
+            panelSubtitle.setText(getString(R.string.mini_guide_hint, items == null ? 0 : items.size()));
+            panelSubtitle.setVisibility(View.VISIBLE);
+        }
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setAdapter(new GuideProgramAdapter(channel, items));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .setPositiveButton(R.string.quick_hub_timeline, (d, which) -> openTimelineGuideForChannel(channel))
+                .setNeutralButton(R.string.quick_hub_epg_search, (d, which) -> showEpgSearchDialog())
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
     }
 
     private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId, List<RecordingsRepository.RecordingItem> scheduledItems) {
@@ -6718,6 +6898,75 @@ public class MainActivity extends FragmentActivity {
                 title = itemView.findViewById(R.id.programTitleText);
                 progressBar = itemView.findViewById(R.id.programProgressBar);
                 meta = itemView.findViewById(R.id.programMetaText);
+            }
+        }
+    }
+
+    private final class EpgSearchResultAdapter extends RecyclerView.Adapter<EpgSearchResultAdapter.EpgSearchResultVH> {
+        interface OnEpgSearchResultChosenListener {
+            void onEpgSearchResultChosen(EpgSearchResult result);
+        }
+
+        private final List<EpgSearchResult> items = new ArrayList<>();
+        private final OnEpgSearchResultChosenListener listener;
+
+        EpgSearchResultAdapter(List<EpgSearchResult> initialItems, OnEpgSearchResultChosenListener listener) {
+            this.listener = listener;
+            if (initialItems != null) {
+                items.addAll(initialItems);
+            }
+        }
+
+        @NonNull
+        @Override
+        public EpgSearchResultVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.item_epg_search_result, parent, false);
+            return new EpgSearchResultVH(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull EpgSearchResultVH holder, int position) {
+            EpgSearchResult result = items.get(position);
+            ChannelItem channel = result == null ? null : result.channel;
+            EpgRepository.EpgProgram program = result == null ? null : result.program;
+            String title = program == null || program.title == null || program.title.trim().isEmpty()
+                    ? getString(R.string.label_program_default)
+                    : program.title.trim();
+            holder.title.setText(title);
+            String channelName = channel == null ? "" : displayName(channel);
+            String time = program == null ? "" : shortTime(program.startTime) + " - " + shortTime(program.endTime);
+            holder.meta.setText((channelName + "  ·  " + time).trim());
+            boolean live = program != null && program.progress >= 0;
+            holder.badge.setText(live ? R.string.epg_search_badge_live : R.string.epg_search_badge_next);
+            holder.badge.setBackgroundTintList(ColorStateList.valueOf(live ? 0xFF276B49 : 0xFF1E2D3E));
+            String poster = program == null || program.icon == null || program.icon.trim().isEmpty()
+                    ? (channel == null ? "" : channel.logoUrl)
+                    : program.icon.trim();
+            bindProgramPoster(holder.poster, poster);
+            holder.itemView.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onEpgSearchResultChosen(result);
+                }
+            });
+        }
+
+        @Override
+        public int getItemCount() {
+            return items.size();
+        }
+
+        final class EpgSearchResultVH extends RecyclerView.ViewHolder {
+            final ImageView poster;
+            final TextView title;
+            final TextView meta;
+            final TextView badge;
+
+            EpgSearchResultVH(@NonNull View itemView) {
+                super(itemView);
+                poster = itemView.findViewById(R.id.epgSearchPosterImage);
+                title = itemView.findViewById(R.id.epgSearchTitleText);
+                meta = itemView.findViewById(R.id.epgSearchMetaText);
+                badge = itemView.findViewById(R.id.epgSearchBadgeText);
             }
         }
     }

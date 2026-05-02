@@ -29,6 +29,7 @@
     <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
     <string name="status_loading_guide">Cargando guia...</string>
+    <string name="status_searching_epg">Buscando programas...</string>
     <string name="status_loading_visual_epg">Cargando EPG visual...</string>
     <string name="status_loading_recordings">Cargando grabaciones...</string>
     <string name="status_loading_scheduled_recordings">Cargando grabaciones programadas...</string>
@@ -68,6 +69,14 @@
     <string name="error_unknown_reason">desconocido</string>
     <string name="error_playback_details">Error de reproduccion\n\n%1$s\n\nBase URL: %2$s\n\nPulsa MENU para abrir la lista o reintentar</string>
     <string name="title_guide">Guia: %1$s</string>
+    <string name="title_epg_search">Buscar programas</string>
+    <string name="epg_search_hint">Titulo o texto del programa</string>
+    <string name="epg_search_empty">Sin programas para esa busqueda</string>
+    <string name="epg_search_results_title">Programas: %1$s</string>
+    <string name="epg_search_results_hint">%1$d resultados  ·  OK abre acciones</string>
+    <string name="epg_search_scanned_hint">Busca en los canales visibles y usa la cache EPG reciente</string>
+    <string name="epg_search_badge_live">AHORA</string>
+    <string name="epg_search_badge_next">EPG</string>
     <string name="title_timeline_guide">Guia timeline</string>
     <string name="title_visual_epg">EPG visual</string>
     <string name="visual_epg_subtitle">%1$s  ·  %2$d programas</string>
@@ -89,6 +98,7 @@
     <string name="timeline_channel_next_button">Siguiente</string>
     <string name="timeline_next_button">+2h</string>
     <string name="tools_menu_timeline_guide">Guia timeline</string>
+    <string name="tools_menu_epg_search">Buscar programas EPG</string>
     <string name="title_recordings">Grabaciones</string>
     <string name="title_recordings_visual">Grabaciones recientes</string>
     <string name="title_recordings_completed">Grabaciones completadas</string>
@@ -228,6 +238,7 @@
     <string name="quick_hub_lists">Mis listas</string>
     <string name="quick_hub_add_current_to_list">Añadir canal actual a lista</string>
     <string name="quick_hub_timeline">Guia timeline</string>
+    <string name="quick_hub_epg_search">Buscar programas</string>
     <string name="title_playback_diagnostics">Diagnostico de playback</string>
     <string name="title_install_status">Estado de instalacion</string>
     <string name="install_status_message">Paquete activo: %1$s\nVersion: %2$s (%3$d)\nActivity: %4$s\nActualizado: %5$s\n\nPaquete antiguo conocido: %6$s\nSi vuelve a aparecer una version vieja, ejecuta scripts/check_tv_install.sh y scripts/install_tv.sh.</string>
@@ -295,6 +306,7 @@
     <string name="guide_program_later">DESPUES</string>
     <string name="quick_channel_count">%1$d canales</string>
     <string name="quick_channel_hint">Toca un canal para sintonizar</string>
+    <string name="mini_guide_hint">%1$d programas  ·  OK abre acciones  ·  Arriba/abajo navega</string>
     <string name="recording_status_ready">Lista</string>
     <string name="recording_status_completed_short">LISTA</string>
     <string name="recording_status_recording_short">REC</string>

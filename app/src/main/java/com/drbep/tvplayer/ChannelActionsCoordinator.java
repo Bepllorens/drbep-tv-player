@@ -10,6 +10,8 @@ final class ChannelActionsCoordinator {
     interface Host {
         void tuneSelectedChannel();
 
+        void tuneChannel(ChannelItem channelItem);
+
         void toggleFavoriteSelected();
 
         void moveFavoriteSelected(int delta);
@@ -103,20 +105,29 @@ final class ChannelActionsCoordinator {
 
         String title = program.title == null || program.title.trim().isEmpty() ? context.getString(R.string.label_program_default) : program.title;
         boolean scheduled = host.isProgramScheduled(channelItem, program);
-        String[] options = scheduled
-                ? new String[]{context.getString(R.string.recording_action_cancel), context.getString(R.string.menu_reminder)}
-                : context.getResources().getStringArray(R.array.program_action_menu_options);
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(context.getString(R.string.menu_tune_channel));
+        actions.add(() -> host.tuneChannel(channelItem));
+        options.add(context.getString(scheduled ? R.string.recording_action_cancel : R.string.menu_record));
+        actions.add(() -> {
+            if (scheduled) {
+                host.cancelScheduledProgram(channelItem, program);
+            } else {
+                host.scheduleProgram(channelItem, program);
+            }
+        });
+        options.add(context.getString(R.string.menu_reminder));
+        actions.add(() -> host.createReminder(channelItem, program));
+        options.add(context.getString(R.string.menu_playback_mode_temporary));
+        actions.add(() -> host.openPlaybackModeSelector(channelItem));
+        options.add(context.getString(R.string.menu_mini_guide));
+        actions.add(() -> host.openMiniGuide(channelItem));
         new AlertDialog.Builder(context)
                 .setTitle(title)
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        if (scheduled) {
-                            host.cancelScheduledProgram(channelItem, program);
-                        } else {
-                            host.scheduleProgram(channelItem, program);
-                        }
-                    } else if (which == 1) {
-                        host.createReminder(channelItem, program);
+                .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    if (which >= 0 && which < actions.size()) {
+                        actions.get(which).run();
                     }
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)

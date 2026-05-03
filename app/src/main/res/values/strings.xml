@@ -232,6 +232,7 @@
     <string name="tools_section_current_channel">Canal actual</string>
     <string name="tools_section_playback">Reproduccion</string>
     <string name="tools_section_navigation">Buscar y navegar</string>
+    <string name="tools_section_vod">Biblioteca VOD</string>
     <string name="tools_section_lists">Listas y favoritos</string>
     <string name="tools_section_recordings">Grabaciones</string>
     <string name="tools_section_multiview">Multiview</string>
@@ -417,6 +418,16 @@
     <string name="vod_search_all">Ver VOD</string>
     <string name="vod_search_empty">No hay VOD para esa busqueda</string>
     <string name="vod_search_results_title">VOD: %1$s</string>
+    <string name="vod_library_summary">Total VOD: %1$d\nAdulto: %2$d  -  Con progreso: %3$d</string>
+    <string name="vod_library_continue">Continuar viendo</string>
+    <string name="vod_library_recent">VOD recientes</string>
+    <string name="vod_library_tivify">Tivify VOD</string>
+    <string name="vod_library_tivify_adult">Tivify Adulto</string>
+    <string name="vod_library_runtime">Runtime Peliculas</string>
+    <string name="vod_library_with_progress">Con progreso</string>
+    <string name="vod_library_not_started">Sin empezar</string>
+    <string name="vod_library_manage_progress">Gestionar progreso VOD</string>
+    <string name="vod_library_empty">No hay contenidos VOD en esta seccion</string>
     <string name="vod_info_desc">Contenido bajo demanda. Puedes reproducirlo, pausarlo y avanzar con la barra inferior.</string>
     <string name="vod_info_desc_adult">Contenido adulto bajo demanda. Puedes reproducirlo, pausarlo y avanzar con la barra inferior.</string>
     <string name="vod_row_hint">Toca para reproducir</string>

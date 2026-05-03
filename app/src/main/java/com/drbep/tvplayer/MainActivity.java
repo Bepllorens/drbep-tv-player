@@ -2440,8 +2440,15 @@ public class MainActivity extends FragmentActivity {
             clearVodResumePosition(channel.id);
             playChannelItemInternal(channel, true, 0L);
         });
-        options.add(getString(R.string.vod_action_continue));
-        actions.add(() -> playChannelItemInternal(channel, true, getVodResumePosition(channel.id)));
+        if (getVodResumePosition(channel.id) > 30_000L) {
+            options.add(getString(R.string.vod_action_continue));
+            actions.add(() -> playChannelItemInternal(channel, true, getVodResumePosition(channel.id)));
+            options.add(getString(R.string.vod_action_start_over));
+            actions.add(() -> {
+                clearVodResumePosition(channel.id);
+                playChannelItemInternal(channel, true, 0L);
+            });
+        }
         options.add(getString(R.string.menu_personal_lists));
         actions.add(() -> showPersonalListsDialog(channel));
         options.add(getString(R.string.diagnostics_action_temporary_mode));
@@ -5047,6 +5054,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showPlaybackToolsDialog);
         options.add(getString(R.string.tools_section_navigation));
         actions.add(this::showNavigationToolsDialog);
+        options.add(getString(R.string.tools_section_vod));
+        actions.add(this::showVodLibraryDialog);
         options.add(getString(R.string.tools_section_lists));
         actions.add(this::showListsToolsDialog);
         options.add(getString(R.string.tools_section_recordings));
@@ -5090,6 +5099,31 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.tools_menu_recent_channels));
         actions.add(this::showRecentChannelsDialog);
         showTvOptionsDialog(R.string.tools_section_navigation, null, options, actions);
+    }
+
+    private void showVodLibraryDialog() {
+        rememberCurrentVodPosition();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.vod_library_continue));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_continue, buildVodContinueItems(), true));
+        options.add(getString(R.string.vod_library_recent));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_recent, buildRecentVodItems(), false));
+        options.add(getString(R.string.vod_library_tivify));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify, buildVodItemsByFilter("vod:tivify:general", false), false));
+        options.add(getString(R.string.vod_library_tivify_adult));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify_adult, buildVodItemsByFilter("vod:tivify:adult", true), false));
+        options.add(getString(R.string.vod_library_runtime));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_runtime, buildVodItemsByFilter("vod:runtime:movies", false), false));
+        options.add(getString(R.string.vod_library_with_progress));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_with_progress, buildVodProgressItems(), true));
+        options.add(getString(R.string.vod_library_not_started));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_not_started, buildVodNotStartedItems(), false));
+        options.add(getString(R.string.quick_hub_search_vod));
+        actions.add(this::showVodSearchDialog);
+        options.add(getString(R.string.vod_library_manage_progress));
+        actions.add(this::showVodProgressManagerDialog);
+        showTvOptionsDialog(R.string.tools_section_vod, buildVodLibrarySummary(), options, actions);
     }
 
     private void showListsToolsDialog() {
@@ -5872,6 +5906,8 @@ public class MainActivity extends FragmentActivity {
         }
         options.add(getString(R.string.quick_hub_global_search));
         actions.add(this::showGlobalSearchDialog);
+        options.add(getString(R.string.tools_section_vod));
+        actions.add(this::showVodLibraryDialog);
         options.add(getString(R.string.tools_section_navigation));
         actions.add(this::showNavigationToolsDialog);
         options.add(getString(R.string.quick_hub_recent));
@@ -5880,8 +5916,6 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showFavoriteChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_lists));
         actions.add(this::showPersonalListsManagerDialog);
-        options.add(getString(R.string.quick_hub_search_vod));
-        actions.add(this::showVodSearchDialog);
         options.add(getString(R.string.quick_hub_recordings));
         actions.add(this::openRecordingsBrowser);
         options.add(getString(R.string.quick_hub_timeline));
@@ -5933,6 +5967,176 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private void showVodLibraryList(int titleResId, List<ChannelItem> items, boolean progressFirst) {
+        if (progressFirst) {
+            sortVodLibraryItems(items);
+        }
+        showQuickChannelListDialog(
+                getString(titleResId),
+                items,
+                getString(R.string.vod_library_empty),
+                item -> showVodInfoDialog(item)
+        );
+    }
+
+    private String buildVodLibrarySummary() {
+        int total = 0;
+        int adult = 0;
+        int progress = 0;
+        for (ChannelItem item : allChannels) {
+            if (item == null || !item.isVod) {
+                continue;
+            }
+            total++;
+            if (item.isAdultVod) {
+                adult++;
+            }
+            if (getVodResumePosition(item.id) > 30_000L) {
+                progress++;
+            }
+        }
+        return getString(R.string.vod_library_summary, total, adult, progress);
+    }
+
+    private List<ChannelItem> buildVodContinueItems() {
+        List<ChannelItem> items = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        ChannelItem last = findChannelItemById(lastVodId);
+        if (last != null && last.isVod && getVodResumePosition(last.id) > 30_000L && added.add(last.id)) {
+            items.add(last);
+        }
+        for (ChannelItem item : buildRecentVodItems()) {
+            if (item != null && getVodResumePosition(item.id) > 30_000L && added.add(item.id)) {
+                items.add(item);
+            }
+        }
+        for (ChannelItem item : buildVodProgressItems()) {
+            if (item != null && added.add(item.id)) {
+                items.add(item);
+            }
+        }
+        sortVodLibraryItems(items);
+        return items;
+    }
+
+    private List<ChannelItem> buildRecentVodItems() {
+        List<ChannelItem> items = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        List<RecentChannelsStore.RecentChannelItem> recents = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        for (RecentChannelsStore.RecentChannelItem recent : recents) {
+            if (recent == null || recent.channelId == null || !added.add(recent.channelId)) {
+                continue;
+            }
+            ChannelItem item = findChannelItemById(recent.channelId);
+            if (item != null && item.isVod) {
+                items.add(item);
+            }
+            if (items.size() >= 80) {
+                break;
+            }
+        }
+        return items;
+    }
+
+    private List<ChannelItem> buildVodItemsByFilter(String vodFilterKey, boolean includeAdult) {
+        List<ChannelItem> items = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (item == null || !item.isVod) {
+                continue;
+            }
+            if (!includeAdult && item.isAdultVod) {
+                continue;
+            }
+            if (vodFilterKey != null && !vodFilterKey.equals(item.vodFilterKey)) {
+                continue;
+            }
+            items.add(item);
+        }
+        sortVodLibraryItems(items);
+        return items;
+    }
+
+    private List<ChannelItem> buildVodProgressItems() {
+        List<ChannelItem> items = new ArrayList<>();
+        for (Map.Entry<String, Long> entry : vodResumePositions.entrySet()) {
+            if (entry == null || entry.getKey() == null || entry.getValue() == null || entry.getValue() <= 30_000L) {
+                continue;
+            }
+            ChannelItem item = findChannelItemById(entry.getKey());
+            if (item != null && item.isVod) {
+                items.add(item);
+            }
+        }
+        sortVodLibraryItems(items);
+        return items;
+    }
+
+    private List<ChannelItem> buildVodNotStartedItems() {
+        List<ChannelItem> items = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (item == null || !item.isVod || item.isAdultVod || getVodResumePosition(item.id) > 0L) {
+                continue;
+            }
+            items.add(item);
+            if (items.size() >= 120) {
+                break;
+            }
+        }
+        sortVodLibraryItems(items);
+        return items;
+    }
+
+    private void sortVodLibraryItems(List<ChannelItem> items) {
+        if (items == null) {
+            return;
+        }
+        items.sort((left, right) -> {
+            long leftProgress = getVodResumePosition(left == null ? null : left.id);
+            long rightProgress = getVodResumePosition(right == null ? null : right.id);
+            int progressCompare = Long.compare(rightProgress, leftProgress);
+            if (progressCompare != 0) {
+                return progressCompare;
+            }
+            String leftPlatform = left == null || left.platformName == null ? "" : left.platformName;
+            String rightPlatform = right == null || right.platformName == null ? "" : right.platformName;
+            int platformCompare = leftPlatform.compareToIgnoreCase(rightPlatform);
+            if (platformCompare != 0) {
+                return platformCompare;
+            }
+            return displayName(left).compareToIgnoreCase(displayName(right));
+        });
+    }
+
+    private void showVodProgressManagerDialog() {
+        showQuickChannelListDialog(
+                getString(R.string.vod_library_manage_progress),
+                buildVodProgressItems(),
+                getString(R.string.vod_continue_empty),
+                this::showVodProgressActionsDialog
+        );
+    }
+
+    private void showVodProgressActionsDialog(ChannelItem item) {
+        if (item == null) {
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.vod_action_continue));
+        actions.add(() -> playChannelItemInternal(item, true, getVodResumePosition(item.id)));
+        options.add(getString(R.string.vod_action_start_over));
+        actions.add(() -> {
+            clearVodResumePosition(item.id);
+            playChannelItemInternal(item, true, 0L);
+        });
+        options.add(getString(R.string.vod_action_clear_progress));
+        actions.add(() -> {
+            clearVodResumePosition(item.id);
+            showStatus(getString(R.string.vod_status_progress_cleared));
+        });
+        showTvOptionsDialog(R.string.vod_library_manage_progress, displayName(item), options, actions);
+    }
+
     private List<ChannelItem> buildVodSearchResults(String query, boolean includeAdult) {
         List<ChannelItem> results = new ArrayList<>();
         for (ChannelItem item : allChannels) {
@@ -5948,6 +6152,7 @@ public class MainActivity extends FragmentActivity {
                 break;
             }
         }
+        sortVodLibraryItems(results);
         return results;
     }
 

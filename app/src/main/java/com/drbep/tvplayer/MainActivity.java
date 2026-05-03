@@ -2384,7 +2384,7 @@ public class MainActivity extends FragmentActivity {
         int padding = dp(16);
         panel.setPadding(padding, padding, padding, padding);
         panel.setBackgroundColor(0xF0181E28);
-        panel.setLayoutParams(new ViewGroup.LayoutParams(dp(680), ViewGroup.LayoutParams.WRAP_CONTENT));
+        panel.setLayoutParams(new ViewGroup.LayoutParams(dp(640), ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -2392,7 +2392,7 @@ public class MainActivity extends FragmentActivity {
         panel.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ImageView posterView = new ImageView(this);
-        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(dp(156), dp(214));
+        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(dp(132), dp(176));
         posterParams.setMarginEnd(dp(16));
         posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         posterView.setBackgroundColor(0xFF0E1820);
@@ -2425,7 +2425,7 @@ public class MainActivity extends FragmentActivity {
         descView.setText(buildVodDescription(channel));
         descView.setTextColor(0xFFD5E6F8);
         descView.setTextSize(15f);
-        descView.setMaxLines(6);
+        descView.setMaxLines(3);
         infoColumn.addView(descView, descParams);
 
         long resumeMs = getVodResumePosition(channel.id);
@@ -2479,7 +2479,6 @@ public class MainActivity extends FragmentActivity {
             }
             showVodActionsDialog(channel);
         });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_diagnostics), () -> showVodDiagnosticsDialog(channel));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(panel)

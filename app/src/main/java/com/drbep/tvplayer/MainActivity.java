@@ -104,6 +104,8 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_CHANNEL_COLLECTIONS = "channel_collections";
     private static final String PREF_CHANNEL_PROFILES = "channel_profiles";
     private static final String PREF_PLAYBACK_DIAGNOSTICS = "playback_diagnostics";
+    private static final String PREF_PLAYBACK_REPAIR_ENABLED = "playback_repair_enabled";
+    private static final String PREF_PLAYBACK_LEARNED_MODES = "playback_learned_modes";
     private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
     private static final int MULTIVIEW_PRESET_COUNT = 3;
     private static final String PREF_TABLET_ORIENTATION_LOCK = "tablet_orientation_lock";
@@ -277,6 +279,8 @@ public class MainActivity extends FragmentActivity {
     private int quickSearchSelectionIndex = 0;
     private final Set<String> favoriteChannelIds = new HashSet<>();
     private final Map<String, String> temporaryPlaybackModesByChannelId = new HashMap<>();
+    private final Map<String, String> learnedPlaybackModesByChannelId = new HashMap<>();
+    private final Map<String, Set<String>> playbackRepairAttemptsByChannelId = new HashMap<>();
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private RecordingsAdapter recordingsAdapter;
     private final RecordingsController recordingsController = new RecordingsController();
@@ -284,6 +288,7 @@ public class MainActivity extends FragmentActivity {
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
     private boolean touchDeviceMode;
     private boolean recordingsAutoRefreshEnabled;
+    private boolean playbackRepairEnabled = true;
     private float touchGestureDownX = Float.NaN;
     private float touchGestureDownY = Float.NaN;
     private boolean timeshiftSeekUserDragging;
@@ -538,6 +543,7 @@ public class MainActivity extends FragmentActivity {
         loadRecordingResumePositions();
         loadVodResumePositions();
         loadGlobalSearchRecents();
+        loadLearnedPlaybackModes();
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
@@ -630,6 +636,7 @@ public class MainActivity extends FragmentActivity {
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         selectedFilterKey = prefs.getString(PREF_LAST_FILTER_KEY, "all");
         favoritesOnly = prefs.getBoolean(PREF_FAVORITES_ONLY, false);
+        playbackRepairEnabled = prefs.getBoolean(PREF_PLAYBACK_REPAIR_ENABLED, true);
         lastVodId = prefs.getString(PREF_LAST_VOD_ID, "");
         favoritesOnly = false;
         remoteInputRouter = new RemoteInputRouter(createRemoteInputHost(), MENU_DOUBLE_PRESS_MS);
@@ -713,6 +720,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void showHdrBadge(String label) {
                 MainActivity.this.showHdrBadge(label);
+            }
+
+            @Override
+            public boolean isPlaybackRepairEnabled() {
+                return MainActivity.this.playbackRepairEnabled;
             }
 
             @Override
@@ -1566,6 +1578,7 @@ public class MainActivity extends FragmentActivity {
         if (playbackRequest != null && !playbackRequest.directPlayback) {
             playerController.resolveStreamInfoAndReplayIfNeeded(playbackRequest, autoPlay, streamInfoByChannelId, resumePositionMs);
         }
+        scheduleLearnCurrentPlaybackRoute(ch.id, playbackRequest == null ? PlaybackModeStore.MODE_AUTO : playbackRequest.playbackMode);
 
         hideError();
         showStatus(displayName(ch));
@@ -3938,13 +3951,28 @@ public class MainActivity extends FragmentActivity {
                 channelItem.platformName,
                 channelItem.playUrl,
                 channelItem.fallbackPlayUrl,
-                temporaryPlaybackModesByChannelId.containsKey(channelItem.id)
-                        ? temporaryPlaybackModesByChannelId.get(channelItem.id)
-                        : (playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id)),
+                resolvePlaybackModeForRequest(channelItem),
                 channelItem.drmScheme,
                 channelItem.drmLicenseUrl,
                 channelItem.directPlayback
         );
+    }
+
+    private String resolvePlaybackModeForRequest(ChannelItem channelItem) {
+        if (channelItem == null || channelItem.id == null) {
+            return PlaybackModeStore.MODE_AUTO;
+        }
+        if (temporaryPlaybackModesByChannelId.containsKey(channelItem.id)) {
+            return sanitizePlaybackMode(temporaryPlaybackModesByChannelId.get(channelItem.id));
+        }
+        String permanentMode = playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id);
+        if (!PlaybackModeStore.MODE_AUTO.equals(permanentMode)) {
+            return permanentMode;
+        }
+        if (!playbackRepairEnabled) {
+            return PlaybackModeStore.MODE_AUTO;
+        }
+        return sanitizePlaybackMode(learnedPlaybackModesByChannelId.get(channelItem.id));
     }
 
     private ChannelItem getCurrentPlaybackChannelItem() {
@@ -4569,6 +4597,11 @@ public class MainActivity extends FragmentActivity {
                 }
 
                 @Override
+                public boolean isPlaybackRepairEnabled() {
+                    return MainActivity.this.playbackRepairEnabled;
+                }
+
+                @Override
                 public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
                     MainActivity.this.recordPlaybackError(request, diagnostics);
                 }
@@ -5120,10 +5153,14 @@ public class MainActivity extends FragmentActivity {
     private void showPlaybackSettingsDialog() {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        options.add(getString(playbackRepairEnabled ? R.string.settings_playback_repair_disable : R.string.settings_playback_repair_enable));
+        actions.add(this::togglePlaybackRepair);
         options.add(getString(R.string.settings_playback_current_mode));
         actions.add(this::openCurrentTemporaryPlaybackMode);
         options.add(getString(R.string.settings_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
+        options.add(getString(R.string.settings_playback_clear_learned));
+        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_learned, R.string.settings_confirm_clear_learned_routes, this::clearLearnedPlaybackModes));
         options.add(getString(R.string.settings_playback_clear_modes));
         actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_modes, R.string.settings_confirm_clear_modes, this::clearPlaybackModes));
         options.add(getString(R.string.settings_playback_clear_diagnostics));
@@ -5135,9 +5172,16 @@ public class MainActivity extends FragmentActivity {
 
     private String buildPlaybackSettingsSummary() {
         ChannelItem current = getCurrentPlaybackChannelItem();
-        String currentMode = current == null ? getString(R.string.diagnostics_value_unknown) : playbackModeStore.getMode(current.id);
+        String currentMode = current == null ? getString(R.string.diagnostics_value_unknown) : formatPlaybackModeLabel(resolvePlaybackModeForRequest(current));
         int errors = playbackDiagnosticsStore == null ? 0 : playbackDiagnosticsStore.getRecentErrors(100).size();
-        return getString(R.string.settings_playback_summary, currentMode, temporaryPlaybackModesByChannelId.size(), errors);
+        return getString(
+                R.string.settings_playback_summary,
+                currentMode,
+                temporaryPlaybackModesByChannelId.size(),
+                learnedPlaybackModesByChannelId.size(),
+                playbackRepairEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                errors
+        );
     }
 
     private void showSearchSettingsDialog() {
@@ -5272,6 +5316,22 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.settings_status_playback_modes_cleared));
     }
 
+    private void togglePlaybackRepair() {
+        playbackRepairEnabled = !playbackRepairEnabled;
+        if (prefs != null) {
+            prefs.edit().putBoolean(PREF_PLAYBACK_REPAIR_ENABLED, playbackRepairEnabled).apply();
+        }
+        showStatus(getString(playbackRepairEnabled ? R.string.status_playback_repair_enabled : R.string.status_playback_repair_disabled));
+    }
+
+    private void clearLearnedPlaybackModes() {
+        learnedPlaybackModesByChannelId.clear();
+        if (prefs != null) {
+            prefs.edit().remove(PREF_PLAYBACK_LEARNED_MODES).apply();
+        }
+        showStatus(getString(R.string.settings_status_learned_routes_cleared));
+    }
+
     private void clearAllPlaybackDiagnostics() {
         if (playbackDiagnosticsStore != null) {
             playbackDiagnosticsStore.clearAll();
@@ -5364,6 +5424,11 @@ public class MainActivity extends FragmentActivity {
 
     private void resetPlaybackSettings() {
         clearPlaybackModes();
+        clearLearnedPlaybackModes();
+        playbackRepairEnabled = true;
+        if (prefs != null) {
+            prefs.edit().putBoolean(PREF_PLAYBACK_REPAIR_ENABLED, true).apply();
+        }
         clearAllPlaybackDiagnostics();
     }
 
@@ -7334,6 +7399,9 @@ public class MainActivity extends FragmentActivity {
         if (currentChannel != null && temporaryPlaybackModesByChannelId.containsKey(currentChannel.id)) {
             appendDiagnosticLine(message, getString(R.string.diagnostics_temporary_mode, formatPlaybackModeLabel(temporaryPlaybackModesByChannelId.get(currentChannel.id))));
         }
+        if (currentChannel != null && learnedPlaybackModesByChannelId.containsKey(currentChannel.id)) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_learned_mode, formatPlaybackModeLabel(learnedPlaybackModesByChannelId.get(currentChannel.id))));
+        }
         appendDiagnosticLine(message, getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
         appendDiagnosticLine(message, getString(R.string.diagnostics_actions_hint));
 
@@ -7356,6 +7424,8 @@ public class MainActivity extends FragmentActivity {
         }
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.diagnostics_action_retry_next_route));
+        actions.add(() -> retryCurrentPlaybackWithNextRoute(channelItem));
         options.add(getString(R.string.diagnostics_action_test_auto));
         actions.add(() -> testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_AUTO));
         options.add(getString(R.string.diagnostics_action_test_direct));
@@ -7366,6 +7436,10 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
         options.add(getString(R.string.diagnostics_action_permanent_mode));
         actions.add(() -> showPlaybackModeDialog(channelItem));
+        options.add(getString(R.string.diagnostics_action_save_learned));
+        actions.add(() -> saveCurrentRouteAsLearned(channelItem));
+        options.add(getString(R.string.diagnostics_action_clear_learned));
+        actions.add(() -> clearLearnedPlaybackMode(channelItem));
         options.add(getString(R.string.diagnostics_action_history));
         actions.add(this::showPlaybackDiagnosticsHistoryDialog);
         options.add(getString(R.string.diagnostics_action_clear_error));
@@ -7383,7 +7457,34 @@ public class MainActivity extends FragmentActivity {
             temporaryPlaybackModesByChannelId.put(channelItem.id, playbackMode);
         }
         showStatus(getString(R.string.status_playback_mode_temporary_changed, formatPlaybackModeLabel(playbackMode)));
+        scheduleLearnCurrentPlaybackRoute(channelItem.id, playbackMode);
         retryCurrentPlayback();
+    }
+
+    private void retryCurrentPlaybackWithNextRoute(ChannelItem channelItem) {
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        String nextMode = nextPlaybackMode(resolvePlaybackModeForRequest(channelItem));
+        if (PlaybackModeStore.MODE_AUTO.equals(nextMode)) {
+            temporaryPlaybackModesByChannelId.remove(channelItem.id);
+        } else {
+            temporaryPlaybackModesByChannelId.put(channelItem.id, nextMode);
+        }
+        showStatus(getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(nextMode)));
+        scheduleLearnCurrentPlaybackRoute(channelItem.id, nextMode);
+        retryCurrentPlayback();
+    }
+
+    private String nextPlaybackMode(String currentMode) {
+        if (PlaybackModeStore.MODE_AUTO.equals(currentMode)) {
+            return PlaybackModeStore.MODE_DIRECT;
+        }
+        if (PlaybackModeStore.MODE_DIRECT.equals(currentMode)) {
+            return PlaybackModeStore.MODE_PROXY;
+        }
+        return PlaybackModeStore.MODE_AUTO;
     }
 
     private void showPlaybackDiagnosticsHistoryDialog() {
@@ -7427,6 +7528,28 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_diagnostics_error_cleared));
     }
 
+    private void saveCurrentRouteAsLearned(ChannelItem channelItem) {
+        if (channelItem == null) {
+            return;
+        }
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        String mode = diagnostics == null ? resolvePlaybackModeForRequest(channelItem) : inferPlaybackModeFromDiagnostics(diagnostics);
+        if (PlaybackModeStore.MODE_AUTO.equals(mode)) {
+            mode = nextPlaybackMode(mode);
+        }
+        setLearnedPlaybackMode(channelItem.id, mode, true);
+    }
+
+    private void clearLearnedPlaybackMode(ChannelItem channelItem) {
+        if (channelItem == null || channelItem.id == null) {
+            return;
+        }
+        if (learnedPlaybackModesByChannelId.remove(channelItem.id) != null) {
+            saveLearnedPlaybackModes();
+        }
+        showStatus(getString(R.string.status_playback_learned_cleared));
+    }
+
     private void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
         if (playbackDiagnosticsStore == null || request == null || diagnostics == null) {
             return;
@@ -7438,6 +7561,77 @@ public class MainActivity extends FragmentActivity {
                 diagnostics.routeLabel,
                 diagnostics.playbackMode
         );
+        maybeRepairPlaybackAfterError(request);
+    }
+
+    private void maybeRepairPlaybackAfterError(PlayerController.PlaybackRequest request) {
+        if (!playbackRepairEnabled || request == null || request.channelId == null || request.channelId.trim().isEmpty() || request.directPlayback) {
+            return;
+        }
+        String currentMode = sanitizePlaybackMode(request.playbackMode);
+        if (PlaybackModeStore.MODE_AUTO.equals(currentMode) || PlaybackModeStore.MODE_PROXY.equals(currentMode)) {
+            return;
+        }
+        String nextMode = nextPlaybackMode(currentMode);
+        if (PlaybackModeStore.MODE_AUTO.equals(nextMode)) {
+            return;
+        }
+        Set<String> attempts = playbackRepairAttemptsByChannelId.get(request.channelId);
+        if (attempts == null) {
+            attempts = new HashSet<>();
+            playbackRepairAttemptsByChannelId.put(request.channelId, attempts);
+        }
+        if (!attempts.add(nextMode)) {
+            return;
+        }
+        temporaryPlaybackModesByChannelId.put(request.channelId, nextMode);
+        showStatus(getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(nextMode)));
+        uiHandler.postDelayed(() -> {
+            ChannelItem current = getCurrentPlaybackChannelItem();
+            if (current != null && request.channelId.equals(current.id)) {
+                retryCurrentPlayback();
+            }
+        }, 700L);
+    }
+
+    private void scheduleLearnCurrentPlaybackRoute(String channelId, String playbackMode) {
+        String mode = sanitizePlaybackMode(playbackMode);
+        if (!playbackRepairEnabled || PlaybackModeStore.MODE_AUTO.equals(mode) || channelId == null || channelId.trim().isEmpty()) {
+            return;
+        }
+        uiHandler.postDelayed(() -> learnPlaybackModeIfStillCurrent(channelId, mode), 18_000L);
+    }
+
+    private void learnPlaybackModeIfStillCurrent(String channelId, String playbackMode) {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current == null || !channelId.equals(current.id)) {
+            return;
+        }
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        if (diagnostics == null || !PlaybackModeStore.MODE_AUTO.equals(sanitizePlaybackMode(diagnostics.playbackMode)) && !playbackMode.equals(sanitizePlaybackMode(diagnostics.playbackMode))) {
+            return;
+        }
+        if (diagnostics.lastError != null && !diagnostics.lastError.trim().isEmpty()) {
+            return;
+        }
+        String state = diagnostics.playbackState == null ? "" : diagnostics.playbackState.trim();
+        if (!"READY".equals(state)) {
+            return;
+        }
+        playbackRepairAttemptsByChannelId.remove(channelId);
+        setLearnedPlaybackMode(channelId, playbackMode, false);
+    }
+
+    private void setLearnedPlaybackMode(String channelId, String playbackMode, boolean announce) {
+        String mode = sanitizePlaybackMode(playbackMode);
+        if (channelId == null || channelId.trim().isEmpty() || PlaybackModeStore.MODE_AUTO.equals(mode)) {
+            return;
+        }
+        learnedPlaybackModesByChannelId.put(channelId, mode);
+        saveLearnedPlaybackModes();
+        if (announce) {
+            showStatus(getString(R.string.status_playback_learned_saved, formatPlaybackModeLabel(mode)));
+        }
     }
 
     private String formatPlaybackDiagnosticsHistoryItem(PlaybackDiagnosticsStore.ErrorRecord record) {
@@ -7507,6 +7701,31 @@ public class MainActivity extends FragmentActivity {
             return getString(R.string.playback_mode_proxy);
         }
         return getString(R.string.playback_mode_auto);
+    }
+
+    private String sanitizePlaybackMode(String playbackMode) {
+        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
+            return PlaybackModeStore.MODE_DIRECT;
+        }
+        if (PlaybackModeStore.MODE_PROXY.equals(playbackMode)) {
+            return PlaybackModeStore.MODE_PROXY;
+        }
+        return PlaybackModeStore.MODE_AUTO;
+    }
+
+    private String inferPlaybackModeFromDiagnostics(PlayerController.PlaybackDiagnostics diagnostics) {
+        String mode = diagnostics == null ? PlaybackModeStore.MODE_AUTO : sanitizePlaybackMode(diagnostics.playbackMode);
+        if (!PlaybackModeStore.MODE_AUTO.equals(mode)) {
+            return mode;
+        }
+        String route = diagnostics == null ? "" : safeLower(diagnostics.routeLabel);
+        if (route.contains("proxy")) {
+            return PlaybackModeStore.MODE_PROXY;
+        }
+        if (route.contains("direct")) {
+            return PlaybackModeStore.MODE_DIRECT;
+        }
+        return PlaybackModeStore.MODE_AUTO;
     }
 
     private static String safeText(String value) {
@@ -7839,6 +8058,51 @@ public class MainActivity extends FragmentActivity {
             prefs.edit().putString(PREF_GLOBAL_SEARCH_RECENTS, array.toString()).apply();
         } catch (Exception e) {
             Log.w(TAG, "failed to save global search recents", e);
+        }
+    }
+
+    private void loadLearnedPlaybackModes() {
+        learnedPlaybackModesByChannelId.clear();
+        if (prefs == null) {
+            return;
+        }
+        String raw = prefs.getString(PREF_PLAYBACK_LEARNED_MODES, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject json = new JSONObject(raw);
+            java.util.Iterator<String> keys = json.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                String mode = sanitizePlaybackMode(json.optString(key, PlaybackModeStore.MODE_AUTO));
+                if (!PlaybackModeStore.MODE_AUTO.equals(mode)) {
+                    learnedPlaybackModesByChannelId.put(key, mode);
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "failed to load learned playback modes", e);
+        }
+    }
+
+    private void saveLearnedPlaybackModes() {
+        if (prefs == null) {
+            return;
+        }
+        try {
+            JSONObject json = new JSONObject();
+            for (Map.Entry<String, String> entry : learnedPlaybackModesByChannelId.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().trim().isEmpty()) {
+                    continue;
+                }
+                String mode = sanitizePlaybackMode(entry.getValue());
+                if (!PlaybackModeStore.MODE_AUTO.equals(mode)) {
+                    json.put(entry.getKey(), mode);
+                }
+            }
+            prefs.edit().putString(PREF_PLAYBACK_LEARNED_MODES, json.toString()).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save learned playback modes", e);
         }
     }
 

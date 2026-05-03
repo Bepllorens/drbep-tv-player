@@ -43,6 +43,8 @@ final class PlayerController {
 
         void showHdrBadge(String label);
 
+        boolean isPlaybackRepairEnabled();
+
         void recordPlaybackError(PlaybackRequest request, PlaybackDiagnostics diagnostics);
     }
 
@@ -259,6 +261,9 @@ final class PlayerController {
         if (request.directPlayback) {
             return false;
         }
+        if (!host.isPlaybackRepairEnabled()) {
+            return false;
+        }
         if (decision.allowCompatibilityFallback && !usingPlaybackFallback && request.hasFallback()) {
             usingPlaybackFallback = true;
             attemptedRecoveryRoutes.add(routeAttemptKey(decision));
@@ -273,8 +278,8 @@ final class PlayerController {
         }
         attemptedRecoveryRoutes.add(routeAttemptKey(decision));
         PlaybackRequest[] alternatives = new PlaybackRequest[]{
-                cloneRequestWithMode(request, PlaybackModeStore.MODE_PROXY),
-                cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT)
+                cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT),
+                cloneRequestWithMode(request, PlaybackModeStore.MODE_PROXY)
         };
         for (PlaybackRequest alternative : alternatives) {
             PlaybackRouteResolver.Decision alternativeDecision = buildPlaybackDecision(alternative, false, currentStreamInfo);
@@ -286,11 +291,21 @@ final class PlayerController {
             Log.w(TAG, "retrying automatic playback recovery channel=" + describeRequest(request)
                     + " via mode=" + alternative.playbackMode
                     + " decision=" + describeDecision(alternativeDecision));
-            host.showStatus(context.getString(R.string.status_retry_compat));
+            host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(alternative.playbackMode)));
             playChannelInternal(alternative, true, false, currentStreamInfo);
             return true;
         }
         return false;
+    }
+
+    private String formatPlaybackModeLabel(String playbackMode) {
+        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
+            return context.getString(R.string.playback_mode_direct);
+        }
+        if (PlaybackModeStore.MODE_PROXY.equals(playbackMode)) {
+            return context.getString(R.string.playback_mode_proxy);
+        }
+        return context.getString(R.string.playback_mode_auto);
     }
 
     private PlaybackRequest cloneRequestWithMode(PlaybackRequest request, String playbackMode) {

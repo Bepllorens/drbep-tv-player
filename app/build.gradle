@@ -43,8 +43,8 @@ android {
         applicationId "com.drbep.tvplayer"
         minSdk 23
         targetSdk 34
-        versionCode 60
-        versionName "1.4.45"
+        versionCode 61
+        versionName "1.4.46"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

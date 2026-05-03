@@ -1598,6 +1598,7 @@ public class MainActivity extends FragmentActivity {
             if (prefs != null) {
                 prefs.edit().putString(PREF_LAST_VOD_ID, ch.id).apply();
             }
+            showStatus(getString(R.string.vod_status_preparing, displayName(ch)));
         }
         playerController.resetFallbackState();
         updateTimeshiftBar();
@@ -2400,7 +2401,7 @@ public class MainActivity extends FragmentActivity {
         LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         descParams.topMargin = dp(12);
         descView.setLayoutParams(descParams);
-        descView.setText(channel.isAdultVod ? getString(R.string.vod_info_desc_adult) : getString(R.string.vod_info_desc));
+        descView.setText(buildVodDescription(channel));
         descView.setTextColor(0xFFD5E6F8);
         descView.setTextSize(15f);
         container.addView(descView);
@@ -2449,8 +2450,14 @@ public class MainActivity extends FragmentActivity {
                 playChannelItemInternal(channel, true, 0L);
             });
         }
+        options.add(getString(favoriteChannelIds.contains(channel.id) ? R.string.menu_remove_favorite : R.string.menu_add_favorite));
+        actions.add(() -> toggleFavoriteForChannel(channel));
         options.add(getString(R.string.menu_personal_lists));
         actions.add(() -> showPersonalListsDialog(channel));
+        options.add(getString(R.string.vod_action_diagnostics));
+        actions.add(() -> showVodDiagnosticsDialog(channel));
+        options.add(getString(R.string.diagnostics_action_retry_next_route));
+        actions.add(() -> retryCurrentPlaybackWithNextRoute(channel));
         options.add(getString(R.string.diagnostics_action_temporary_mode));
         actions.add(() -> showTemporaryPlaybackModeDialog(channel));
         options.add(getString(R.string.tools_menu_playback_diagnostics));
@@ -2475,7 +2482,58 @@ public class MainActivity extends FragmentActivity {
         if (channel.group != null && !channel.group.trim().isEmpty()) {
             parts.add(channel.group.trim());
         }
+        if (channel.vodYear != null && !channel.vodYear.trim().isEmpty()) {
+            parts.add(channel.vodYear.trim());
+        }
+        if (channel.vodDurationSeconds > 0L) {
+            parts.add(formatDurationShort(channel.vodDurationSeconds * 1000L));
+        }
+        long resumeMs = getVodResumePosition(channel.id);
+        if (resumeMs > 30_000L) {
+            parts.add(getString(R.string.vod_resume_meta, formatDurationShort(resumeMs)));
+        }
         return TextUtils.join("  ·  ", parts);
+    }
+
+    private String buildVodDescription(ChannelItem channel) {
+        if (channel == null) {
+            return "";
+        }
+        if (channel.vodDescription != null && !channel.vodDescription.trim().isEmpty()) {
+            return channel.vodDescription.trim();
+        }
+        return channel.isAdultVod ? getString(R.string.vod_info_desc_adult) : getString(R.string.vod_info_desc);
+    }
+
+    private void showVodDiagnosticsDialog(ChannelItem channel) {
+        if (channel == null) {
+            return;
+        }
+        PlayerController.PlaybackRequest request = toPlaybackRequest(channel);
+        PlaybackRouteResolver.Decision decision = request == null
+                ? null
+                : new PlaybackRouteResolver(baseUrl).buildDecision(request, false, streamInfoByChannelId.get(channel.id));
+        StringBuilder message = new StringBuilder();
+        appendDiagnosticLine(message, getString(R.string.diagnostics_channel, displayName(channel)));
+        appendDiagnosticLine(message, getString(R.string.vod_diagnostics_source, fallbackUnknown(channel.platformName)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_playback_mode, formatPlaybackModeLabel(resolvePlaybackModeForRequest(channel))));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_target, decision == null ? fallbackUnknown(channel.playUrl) : fallbackUnknown(decision.targetUrl)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_mime, decision == null ? fallbackUnknown(PlaybackRouteResolver.inferMimeType(channel.playUrl)) : fallbackUnknown(decision.mimeType)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_drm, fallbackUnknown(channel.drmScheme)));
+        appendDiagnosticLine(message, getString(R.string.vod_diagnostics_direct, getString(channel.directPlayback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        if (channel.vodFilterKey != null && !channel.vodFilterKey.trim().isEmpty()) {
+            appendDiagnosticLine(message, getString(R.string.vod_diagnostics_filter, channel.vodFilterKey));
+        }
+        if (channel.playUrl != null && channel.playUrl.contains("/api/vod/runtime/stream/")) {
+            appendDiagnosticLine(message, getString(R.string.vod_diagnostics_runtime_hls));
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.vod_action_diagnostics)
+                .setMessage(message.toString().trim())
+                .setPositiveButton(R.string.vod_action_play, (d, which) -> playVodItem(channel, true))
+                .setNeutralButton(R.string.diagnostics_action_temporary_mode, (d, which) -> showTemporaryPlaybackModeDialog(channel))
+                .setNegativeButton(R.string.dialog_close, null)
+                .show();
     }
 
     private void showCurrentProgramInfoDialog(ChannelItem channel, EpgRepository.EpgProgram program) {
@@ -5110,6 +5168,7 @@ public class MainActivity extends FragmentActivity {
         List<ChannelItem> runtimeItems = buildVodItemsByFilter("vod:runtime:movies", false);
         List<ChannelItem> progressItems = buildVodProgressItems();
         List<ChannelItem> notStartedItems = buildVodNotStartedItems();
+        List<ChannelItem> allVodItems = buildAllVodLibraryItems(false);
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_continue, continueItems));
@@ -5126,6 +5185,14 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> showVodLibraryList(R.string.vod_library_with_progress, progressItems, true));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_not_started, notStartedItems));
         actions.add(() -> showVodLibraryList(R.string.vod_library_not_started, notStartedItems, false));
+        options.add(getString(R.string.vod_library_categories));
+        actions.add(this::showVodCategoriesDialog);
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_all_alpha, allVodItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_all_alpha, buildVodSortedItems(VodSortMode.ALPHA), false));
+        options.add(getString(R.string.vod_library_sort_year));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_sort_year, buildVodSortedItems(VodSortMode.YEAR_DESC), false));
+        options.add(getString(R.string.vod_library_sort_duration));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_sort_duration, buildVodSortedItems(VodSortMode.DURATION_DESC), false));
         options.add(getString(R.string.quick_hub_search_vod));
         actions.add(this::showVodSearchDialog);
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_manage_progress, progressItems));
@@ -6008,6 +6075,94 @@ public class MainActivity extends FragmentActivity {
     private String buildVodLibraryOptionLabel(int titleResId, List<ChannelItem> items) {
         int count = items == null ? 0 : items.size();
         return getString(titleResId) + " (" + count + ")";
+    }
+
+    private enum VodSortMode {
+        ALPHA,
+        YEAR_DESC,
+        DURATION_DESC
+    }
+
+    private List<ChannelItem> buildAllVodLibraryItems(boolean includeAdult) {
+        List<ChannelItem> items = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (item == null || !item.isVod) {
+                continue;
+            }
+            if (!includeAdult && item.isAdultVod) {
+                continue;
+            }
+            items.add(item);
+        }
+        sortVodLibraryItems(items);
+        return items;
+    }
+
+    private List<ChannelItem> buildVodSortedItems(VodSortMode sortMode) {
+        List<ChannelItem> items = buildAllVodLibraryItems(false);
+        if (sortMode == VodSortMode.YEAR_DESC) {
+            items.sort((left, right) -> {
+                int yearCompare = Integer.compare(parseVodYear(right), parseVodYear(left));
+                if (yearCompare != 0) {
+                    return yearCompare;
+                }
+                return displayName(left).compareToIgnoreCase(displayName(right));
+            });
+        } else if (sortMode == VodSortMode.DURATION_DESC) {
+            items.sort((left, right) -> {
+                int durationCompare = Long.compare(right == null ? 0L : right.vodDurationSeconds, left == null ? 0L : left.vodDurationSeconds);
+                if (durationCompare != 0) {
+                    return durationCompare;
+                }
+                return displayName(left).compareToIgnoreCase(displayName(right));
+            });
+        }
+        return items;
+    }
+
+    private int parseVodYear(ChannelItem item) {
+        if (item == null || item.vodYear == null || item.vodYear.trim().isEmpty()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(item.vodYear.trim());
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private void showVodCategoriesDialog() {
+        LinkedHashMap<String, List<ChannelItem>> categories = new LinkedHashMap<>();
+        for (ChannelItem item : buildAllVodLibraryItems(false)) {
+            String category = item.group == null || item.group.trim().isEmpty() ? getString(R.string.vod_library_uncategorized) : item.group.trim();
+            List<ChannelItem> bucket = categories.get(category);
+            if (bucket == null) {
+                bucket = new ArrayList<>();
+                categories.put(category, bucket);
+            }
+            bucket.add(item);
+        }
+        if (categories.isEmpty()) {
+            showStatus(getString(R.string.vod_library_empty));
+            return;
+        }
+        List<Map.Entry<String, List<ChannelItem>>> entries = new ArrayList<>(categories.entrySet());
+        entries.sort((left, right) -> {
+            int countCompare = Integer.compare(right.getValue().size(), left.getValue().size());
+            if (countCompare != 0) {
+                return countCompare;
+            }
+            return left.getKey().compareToIgnoreCase(right.getKey());
+        });
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (Map.Entry<String, List<ChannelItem>> entry : entries) {
+            List<ChannelItem> categoryItems = new ArrayList<>(entry.getValue());
+            sortVodLibraryItems(categoryItems);
+            options.add(entry.getKey() + " (" + categoryItems.size() + ")");
+            actions.add(() -> showQuickChannelListDialog(entry.getKey(), categoryItems, getString(R.string.vod_library_empty), this::showVodInfoDialog));
+        }
+        showTvOptionsDialog(R.string.vod_library_categories, null, options, actions);
     }
 
     private List<ChannelItem> buildVodContinueItems() {
@@ -9244,6 +9399,12 @@ public class MainActivity extends FragmentActivity {
         if (channel.group != null && !channel.group.trim().isEmpty()) {
             parts.add(channel.group.trim());
         }
+        if (channel.vodYear != null && !channel.vodYear.trim().isEmpty()) {
+            parts.add(channel.vodYear.trim());
+        }
+        if (channel.vodDurationSeconds > 0L) {
+            parts.add(formatDurationShort(channel.vodDurationSeconds * 1000L));
+        }
         long resumeMs = getVodResumePosition(channel.id);
         if (resumeMs > 30_000L) {
             parts.add(getString(R.string.vod_resume_meta, formatDurationShort(resumeMs)));
@@ -9793,7 +9954,7 @@ public class MainActivity extends FragmentActivity {
         public void onBindViewHolder(@NonNull SearchChannelVH holder, int position) {
             ChannelItem item = items.get(position);
             holder.name.setText(item.favorite ? "★ " + displayName(item) : displayName(item));
-            String primaryMeta = item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group;
+            String primaryMeta = item.isVod ? buildVodRowMeta(item) : (item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group);
             if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
                 primaryMeta = getString(R.string.search_channel_action_hint);
             }

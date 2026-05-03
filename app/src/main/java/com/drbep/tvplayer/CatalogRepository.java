@@ -216,6 +216,9 @@ final class CatalogRepository {
             }
             String logo = row.optString("poster", "").trim();
             String group = firstNonEmpty(row.optString("group", ""), row.optString("carousel", ""), adult ? "VOD Adulto" : "VOD");
+            String description = row.optString("description", "").trim();
+            String year = row.optString("year", "").trim();
+            long durationSeconds = parseLongSafe(firstNonEmpty(row.optString("duration", ""), row.optString("duration_seconds", "")));
             boolean hasKeys = row.optBoolean("has_keys", false);
             JSONObject clearKeys = row.optJSONObject("clear_keys");
             if (!hasKeys && clearKeys != null && clearKeys.length() > 0) {
@@ -239,7 +242,10 @@ final class CatalogRepository {
                     hasKeys ? "clearkey" : "",
                     hasKeys ? buildVodLicenseUrl(selectedUrl) : "",
                     adult ? "vod:tivify:adult" : "vod:tivify:general",
-                    true
+                    true,
+                    description,
+                    year,
+                    durationSeconds
             ));
         }
     }
@@ -283,6 +289,9 @@ final class CatalogRepository {
             }
             String logo = row.optString("poster", "").trim();
             String group = firstNonEmpty(row.optString("categories", ""), row.optString("kind", ""), platformName);
+            String description = row.optString("description", "").trim();
+            String year = row.optString("year", "").trim();
+            long durationSeconds = parseLongSafe(firstNonEmpty(row.optString("duration", ""), row.optString("duration_seconds", "")));
 
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, false),
@@ -301,7 +310,10 @@ final class CatalogRepository {
                     "",
                     "",
                     vodFilterKey,
-                    true
+                    true,
+                    description,
+                    year,
+                    durationSeconds
             ));
         }
     }
@@ -454,6 +466,17 @@ final class CatalogRepository {
         return "";
     }
 
+    private static long parseLongSafe(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
     private static String sanitizeFilterKey(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
@@ -590,10 +613,17 @@ final class ChannelItem {
     final String drmLicenseUrl;
     final String vodFilterKey;
     final boolean directPlayback;
+    final String vodDescription;
+    final String vodYear;
+    final long vodDurationSeconds;
     boolean favorite;
     String nowProgram;
 
     ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback) {
+        this(id, name, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, "", "", 0L);
+    }
+
+    ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback, String vodDescription, String vodYear, long vodDurationSeconds) {
         this.id = id;
         this.name = name;
         this.logoUrl = logoUrl;
@@ -611,6 +641,9 @@ final class ChannelItem {
         this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
         this.vodFilterKey = vodFilterKey == null ? "" : vodFilterKey.trim().toLowerCase(Locale.ROOT);
         this.directPlayback = directPlayback;
+        this.vodDescription = vodDescription == null ? "" : vodDescription.trim();
+        this.vodYear = vodYear == null ? "" : vodYear.trim();
+        this.vodDurationSeconds = Math.max(0L, vodDurationSeconds);
         this.nowProgram = "";
     }
 }

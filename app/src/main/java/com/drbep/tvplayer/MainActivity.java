@@ -10445,9 +10445,12 @@ public class MainActivity extends FragmentActivity {
             }
             bindRecordingPoster(holder.poster, item == null ? "" : item.logoUrl);
             holder.itemView.setOnClickListener(v -> showVodInfoDialog(item));
-            holder.itemView.setOnLongClickListener(v -> {
-                showVodActionsDialog(item);
-                return true;
+            holder.itemView.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_MENU) {
+                    showVodActionsDialog(item);
+                    return true;
+                }
+                return false;
             });
         }
 

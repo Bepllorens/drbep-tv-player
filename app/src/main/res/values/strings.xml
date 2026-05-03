@@ -228,6 +228,15 @@
     <string name="status_retry_channel">Reintentando: %1$s</string>
     <string name="tools_menu_title">Herramientas v%1$s</string>
     <string name="tools_menu_title_short">Herramientas</string>
+    <string name="tools_menu_overview">Version %1$s\nElige un bloque: canal actual, reproduccion, busqueda, listas, grabaciones, multiview o ajustes.</string>
+    <string name="tools_section_current_channel">Canal actual</string>
+    <string name="tools_section_playback">Reproduccion</string>
+    <string name="tools_section_navigation">Buscar y navegar</string>
+    <string name="tools_section_lists">Listas y favoritos</string>
+    <string name="tools_section_recordings">Grabaciones</string>
+    <string name="tools_section_multiview">Multiview</string>
+    <string name="tools_section_settings">Ajustes y diagnostico</string>
+    <string name="tools_current_channel_message">%1$s\n%2$s</string>
     <string name="tools_menu_settings_center">Ajustes 2.0</string>
     <string name="tools_menu_quick_hub">Hub rapido</string>
     <string name="tools_menu_search_channels">Buscar canal</string>

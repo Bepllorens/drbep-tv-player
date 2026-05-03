@@ -3133,6 +3133,40 @@ public class MainActivity extends FragmentActivity {
         showOverlay();
     }
 
+    private void toggleFavoriteForChannel(ChannelItem channelItem) {
+        if (channelItem == null || channelItem.id == null || channelItem.id.trim().isEmpty()) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        int index = findChannelIndexById(channelItem.id);
+        if (index >= 0) {
+            selectedOverlayIndex = index;
+            toggleFavoriteSelected();
+            return;
+        }
+        boolean added;
+        if (favoriteChannelIds.contains(channelItem.id)) {
+            favoriteChannelIds.remove(channelItem.id);
+            channelItem.favorite = false;
+            favoriteOrderStore.remove(channelItem.id);
+            added = false;
+        } else {
+            favoriteChannelIds.add(channelItem.id);
+            channelItem.favorite = true;
+            favoriteOrderStore.addIfMissing(channelItem.id);
+            added = true;
+        }
+        for (ChannelItem item : allChannels) {
+            if (item != null && channelItem.id.equals(item.id)) {
+                item.favorite = channelItem.favorite;
+            }
+        }
+        saveFavorites();
+        channelAdapter.notifyDataSetChanged();
+        updateOverlaySearchState();
+        showStatus(getString(added ? R.string.status_favorite_added : R.string.status_favorite_removed));
+    }
+
     private void toggleFavoriteChannel(ChannelItem channel) {
         if (channel == null || channel.id == null || channel.id.trim().isEmpty()) {
             return;
@@ -4998,74 +5032,142 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showV12ToolsMenu() {
-        prepareModalSurface();
-        String[] options = new String[]{
-                getString(R.string.tools_menu_settings_center),
-                getString(R.string.tools_menu_quick_hub),
-                getString(R.string.tools_menu_timeline_guide),
-                getString(R.string.tools_menu_visual_epg),
-                getString(R.string.tools_menu_epg_search),
-                getString(R.string.tools_menu_search_channels),
-                getString(R.string.tools_menu_recent_channels),
-                getString(R.string.tools_menu_favorite_channels),
-                getString(R.string.tools_menu_manage_personal_lists),
-                getString(R.string.tools_menu_personal_lists_current),
-                getString(R.string.tools_menu_channel_profile_current),
-                getString(R.string.tools_menu_playback_mode_temporary),
-                getString(R.string.diagnostics_action_retry_next_route),
-                getString(R.string.tools_menu_playback_diagnostics),
-                getString(R.string.tools_menu_install_status),
-                getString(R.string.tools_menu_recordings_panel),
-                getString(R.string.tools_menu_multiview),
-                getString(R.string.tools_menu_multiview_open_preset),
-                getString(R.string.tools_menu_multiview_save_preset)
-        };
-        AlertDialog toolsDialog = new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.tools_menu_title, BuildConfig.VERSION_NAME))
-                .setItems(options, (d, which) -> {
-                    if (which == 0) {
-                        showSettingsCenterDialog();
-                    } else if (which == 1) {
-                        showQuickHubDialog();
-                    } else if (which == 2) {
-                        openTimelineGuideAroundSelection();
-                    } else if (which == 3) {
-                        openVisualEpgAroundSelection();
-                    } else if (which == 4) {
-                        showEpgSearchDialog();
-                    } else if (which == 5) {
-                        showChannelSearchDialog();
-                    } else if (which == 6) {
-                        showRecentChannelsDialog();
-                    } else if (which == 7) {
-                        showFavoriteChannelsQuickDialog();
-                    } else if (which == 8) {
-                        showPersonalListsManagerDialog();
-                    } else if (which == 9) {
-                        openCurrentChannelPersonalLists();
-                    } else if (which == 10) {
-                        openCurrentChannelProfile();
-                    } else if (which == 11) {
-                        openCurrentTemporaryPlaybackMode();
-                    } else if (which == 12) {
-                        retryCurrentPlaybackWithNextRoute(getCurrentPlaybackChannelItem());
-                    } else if (which == 13) {
-                        showPlaybackDiagnosticsDialog();
-                    } else if (which == 14) {
-                        showInstallStatusDialog();
-                    } else if (which == 15) {
-                        openRecordingsBrowser();
-                    } else if (which == 16) {
-                        openMultiView();
-                    } else if (which == 17) {
-                        showOpenMultiViewPresetDialog();
-                    } else if (which == 18) {
-                        showSaveMultiViewPresetDialog();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
-        showTvDialog(toolsDialog);
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_section_current_channel));
+        actions.add(this::showCurrentChannelQuickActionsDialog);
+        options.add(getString(R.string.tools_section_playback));
+        actions.add(this::showPlaybackToolsDialog);
+        options.add(getString(R.string.tools_section_navigation));
+        actions.add(this::showNavigationToolsDialog);
+        options.add(getString(R.string.tools_section_lists));
+        actions.add(this::showListsToolsDialog);
+        options.add(getString(R.string.tools_section_recordings));
+        actions.add(this::showRecordingsToolsDialog);
+        options.add(getString(R.string.tools_section_multiview));
+        actions.add(this::showMultiviewToolsDialog);
+        options.add(getString(R.string.tools_section_settings));
+        actions.add(this::showSettingsAndDiagnosticsToolsDialog);
+        showTvOptionsDialog(R.string.tools_menu_title_short, getString(R.string.tools_menu_overview, BuildConfig.VERSION_NAME), options, actions);
+    }
+
+    private void showPlaybackToolsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.diagnostics_action_retry_next_route));
+        actions.add(() -> retryCurrentPlaybackWithNextRoute(getCurrentPlaybackChannelItem()));
+        options.add(getString(R.string.diagnostics_action_retry));
+        actions.add(this::retryCurrentPlayback);
+        options.add(getString(R.string.tools_menu_playback_mode_temporary));
+        actions.add(this::openCurrentTemporaryPlaybackMode);
+        options.add(getString(R.string.tools_menu_playback_diagnostics));
+        actions.add(this::showPlaybackDiagnosticsDialog);
+        showTvOptionsDialog(R.string.tools_section_playback, buildCurrentChannelToolsMessage(), options, actions);
+    }
+
+    private void showNavigationToolsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_quick_hub));
+        actions.add(this::showQuickHubDialog);
+        options.add(getString(R.string.tools_menu_search_channels));
+        actions.add(this::showChannelSearchDialog);
+        options.add(getString(R.string.quick_hub_global_search));
+        actions.add(this::showGlobalSearchDialog);
+        options.add(getString(R.string.tools_menu_timeline_guide));
+        actions.add(this::openTimelineGuideAroundSelection);
+        options.add(getString(R.string.tools_menu_visual_epg));
+        actions.add(this::openVisualEpgAroundSelection);
+        options.add(getString(R.string.tools_menu_epg_search));
+        actions.add(this::showEpgSearchDialog);
+        options.add(getString(R.string.tools_menu_recent_channels));
+        actions.add(this::showRecentChannelsDialog);
+        showTvOptionsDialog(R.string.tools_section_navigation, buildCurrentFilterLabel(), options, actions);
+    }
+
+    private void showListsToolsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_favorite_channels));
+        actions.add(this::showFavoriteChannelsQuickDialog);
+        options.add(getString(R.string.tools_menu_manage_personal_lists));
+        actions.add(this::showPersonalListsManagerDialog);
+        options.add(getString(R.string.tools_menu_personal_lists_current));
+        actions.add(this::openCurrentChannelPersonalLists);
+        options.add(getString(R.string.tools_menu_channel_profile_current));
+        actions.add(this::openCurrentChannelProfile);
+        showTvOptionsDialog(R.string.tools_section_lists, buildCurrentChannelToolsMessage(), options, actions);
+    }
+
+    private void showRecordingsToolsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_recordings_panel));
+        actions.add(this::openRecordingsBrowser);
+        options.add(getString(R.string.menu_record_current_program));
+        actions.add(() -> createScheduleFromEndpoint(getCurrentPlaybackChannelItem(), false));
+        options.add(getString(R.string.menu_record_next_program));
+        actions.add(() -> createScheduleFromEndpoint(getCurrentPlaybackChannelItem(), true));
+        showTvOptionsDialog(R.string.tools_section_recordings, buildCurrentChannelToolsMessage(), options, actions);
+    }
+
+    private void showMultiviewToolsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_multiview));
+        actions.add(this::openMultiView);
+        options.add(getString(R.string.tools_menu_multiview_open_preset));
+        actions.add(this::showOpenMultiViewPresetDialog);
+        options.add(getString(R.string.tools_menu_multiview_save_preset));
+        actions.add(this::showSaveMultiViewPresetDialog);
+        showTvOptionsDialog(R.string.tools_section_multiview, null, options, actions);
+    }
+
+    private void showSettingsAndDiagnosticsToolsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_settings_center));
+        actions.add(this::showSettingsCenterDialog);
+        options.add(getString(R.string.settings_section_diagnostics));
+        actions.add(this::showSettingsDiagnosticsDialog);
+        options.add(getString(R.string.tools_menu_install_status));
+        actions.add(this::showInstallStatusDialog);
+        showTvOptionsDialog(R.string.tools_section_settings, null, options, actions);
+    }
+
+    private void showCurrentChannelQuickActionsDialog() {
+        ChannelItem channelItem = getCurrentPlaybackChannelItem();
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        boolean favorite = favoriteChannelIds.contains(channelItem.id);
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.diagnostics_action_retry_next_route));
+        actions.add(() -> retryCurrentPlaybackWithNextRoute(channelItem));
+        options.add(getString(R.string.diagnostics_action_temporary_mode));
+        actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
+        options.add(getString(favorite ? R.string.menu_remove_favorite : R.string.menu_add_favorite));
+        actions.add(() -> toggleFavoriteForChannel(channelItem));
+        options.add(getString(R.string.menu_personal_lists));
+        actions.add(() -> showPersonalListsDialog(channelItem));
+        options.add(getString(R.string.menu_channel_profile));
+        actions.add(() -> showChannelProfileDialog(channelItem));
+        options.add(getString(R.string.menu_mini_guide));
+        actions.add(() -> openMiniGuideForChannel(channelItem));
+        options.add(getString(R.string.tools_menu_playback_diagnostics));
+        actions.add(this::showPlaybackDiagnosticsDialog);
+        showTvOptionsDialog(R.string.tools_section_current_channel, buildCurrentChannelToolsMessage(), options, actions);
+    }
+
+    private String buildCurrentChannelToolsMessage() {
+        ChannelItem channelItem = getCurrentPlaybackChannelItem();
+        if (channelItem == null) {
+            return getString(R.string.diagnostics_none);
+        }
+        String meta = channelItem.isVod ? buildVodInfoMeta(channelItem) : fallbackUnknown(channelItem.group);
+        return getString(R.string.tools_current_channel_message, displayName(channelItem), meta);
     }
 
     private void showInstallStatusDialog() {
@@ -5734,6 +5836,8 @@ public class MainActivity extends FragmentActivity {
     private void showQuickHubDialog() {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_section_current_channel));
+        actions.add(this::showCurrentChannelQuickActionsDialog);
         options.add(getString(R.string.quick_hub_continue));
         actions.add(() -> {
             ChannelItem current = getCurrentPlaybackChannelItem();
@@ -5750,6 +5854,8 @@ public class MainActivity extends FragmentActivity {
         }
         options.add(getString(R.string.quick_hub_global_search));
         actions.add(this::showGlobalSearchDialog);
+        options.add(getString(R.string.tools_section_navigation));
+        actions.add(this::showNavigationToolsDialog);
         options.add(getString(R.string.quick_hub_recent));
         actions.add(this::showRecentChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_favorites));
@@ -5764,8 +5870,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::openTimelineGuideAroundSelection);
         options.add(getString(R.string.quick_hub_epg_search));
         actions.add(this::showEpgSearchDialog);
-        options.add(getString(R.string.tools_menu_playback_diagnostics));
-        actions.add(this::showPlaybackDiagnosticsDialog);
+        options.add(getString(R.string.tools_section_playback));
+        actions.add(this::showPlaybackToolsDialog);
         if (prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false)) {
             options.add(getString(R.string.quick_hub_enable_startup));
             actions.add(this::enableStartupHub);

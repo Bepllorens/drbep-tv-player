@@ -442,6 +442,7 @@
     <string name="vod_action_more">Acciones</string>
     <string name="vod_action_diagnostics">Diagnostico VOD</string>
     <string name="vod_action_clear_progress">Borrar progreso</string>
+    <string name="vod_detail_action_hint">OK abre una accion. BACK cierra la ficha.</string>
     <string name="vod_status_preparing">Preparando VOD: %1$s</string>
     <string name="vod_resume_meta">Progreso: %1$s</string>
     <string name="vod_continue_prompt">Tienes progreso guardado en %1$s. ¿Quieres continuar?</string>

@@ -2366,68 +2366,148 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         rememberCurrentVodPosition();
-        LinearLayout container = new LinearLayout(this);
-        container.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(18);
-        container.setPadding(padding, padding, padding, padding);
+        prepareModalSurface();
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(16);
+        panel.setPadding(padding, padding, padding, padding);
+        panel.setBackgroundColor(0xF0181E28);
+        panel.setLayoutParams(new ViewGroup.LayoutParams(dp(680), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.TOP);
+        panel.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ImageView posterView = new ImageView(this);
-        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260));
-        posterView.setLayoutParams(posterParams);
+        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(dp(156), dp(214));
+        posterParams.setMarginEnd(dp(16));
         posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        container.addView(posterView);
+        posterView.setBackgroundColor(0xFF0E1820);
+        header.addView(posterView, posterParams);
         bindRecordingPoster(posterView, channel.logoUrl);
 
+        LinearLayout infoColumn = new LinearLayout(this);
+        infoColumn.setOrientation(LinearLayout.VERTICAL);
+        header.addView(infoColumn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
         TextView titleView = new TextView(this);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleParams.topMargin = dp(14);
-        titleView.setLayoutParams(titleParams);
         titleView.setText(channel.name == null || channel.name.trim().isEmpty() ? getString(R.string.label_program_default) : channel.name.trim());
         titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(20f);
+        titleView.setTextSize(22f);
         titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        container.addView(titleView);
+        titleView.setMaxLines(2);
+        infoColumn.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView metaView = new TextView(this);
         LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         metaParams.topMargin = dp(8);
-        metaView.setLayoutParams(metaParams);
         metaView.setText(buildVodInfoMeta(channel));
         metaView.setTextColor(0xFF9BD0FF);
         metaView.setTextSize(14f);
-        container.addView(metaView);
+        infoColumn.addView(metaView, metaParams);
 
         TextView descView = new TextView(this);
         LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         descParams.topMargin = dp(12);
-        descView.setLayoutParams(descParams);
         descView.setText(buildVodDescription(channel));
         descView.setTextColor(0xFFD5E6F8);
         descView.setTextSize(15f);
-        container.addView(descView);
+        descView.setMaxLines(6);
+        infoColumn.addView(descView, descParams);
 
         long resumeMs = getVodResumePosition(channel.id);
         if (resumeMs > 0L) {
             TextView resumeView = new TextView(this);
             LinearLayout.LayoutParams resumeParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             resumeParams.topMargin = dp(12);
-            resumeView.setLayoutParams(resumeParams);
             resumeView.setText(getString(R.string.vod_resume_meta, formatDurationShort(resumeMs)));
             resumeView.setTextColor(0xFFFFD082);
             resumeView.setTextSize(14f);
             resumeView.setTypeface(Typeface.DEFAULT_BOLD);
-            container.addView(resumeView);
+            infoColumn.addView(resumeView, resumeParams);
         }
 
+        TextView hintView = new TextView(this);
+        LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hintParams.topMargin = dp(14);
+        hintView.setText(R.string.vod_detail_action_hint);
+        hintView.setTextColor(0xFFB7C4D6);
+        hintView.setTextSize(13f);
+        panel.addView(hintView, hintParams);
+
+        LinearLayout actionsColumn = new LinearLayout(this);
+        actionsColumn.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionsParams.topMargin = dp(10);
+        panel.addView(actionsColumn, actionsParams);
+
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        List<TextView> actionRows = new ArrayList<>();
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_play), () -> {
+            AlertDialog activeDialog = dialogHolder[0];
+            if (activeDialog != null && activeDialog.isShowing()) {
+                activeDialog.dismiss();
+            }
+            playVodItem(channel, true);
+        });
+        if (resumeMs > 30_000L) {
+            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_continue), () -> {
+                AlertDialog activeDialog = dialogHolder[0];
+                if (activeDialog != null && activeDialog.isShowing()) {
+                    activeDialog.dismiss();
+                }
+                playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
+            });
+        }
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_more), () -> {
+            AlertDialog activeDialog = dialogHolder[0];
+            if (activeDialog != null && activeDialog.isShowing()) {
+                activeDialog.dismiss();
+            }
+            showVodActionsDialog(channel);
+        });
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_diagnostics), () -> showVodDiagnosticsDialog(channel));
+
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.title_touch_vod_info))
-                .setView(container)
-                .setPositiveButton(R.string.vod_action_play, (d, which) -> playVodItem(channel, true))
-                .setNeutralButton(R.string.vod_action_more, (d, which) -> showVodActionsDialog(channel))
+                .setView(panel)
                 .setNegativeButton(R.string.dialog_close, null)
                 .create();
+        dialogHolder[0] = dialog;
         dialog.setOnDismissListener(d -> Glide.with(this).clear(posterView));
-        dialog.show();
+        showTvDialog(dialog);
+        if (!actionRows.isEmpty()) {
+            actionRows.get(0).post(() -> actionRows.get(0).requestFocus());
+        }
+    }
+
+    private void addVodDetailAction(LinearLayout parent, List<TextView> actionRows, String label, Runnable action) {
+        if (parent == null || label == null) {
+            return;
+        }
+        TextView row = new TextView(this);
+        row.setText(label);
+        row.setTextColor(0xFFFFFFFF);
+        row.setTextSize(16f);
+        row.setTypeface(Typeface.DEFAULT_BOLD);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinHeight(dp(48));
+        row.setPadding(dp(14), 0, dp(14), 0);
+        row.setBackgroundResource(R.drawable.search_channel_item_bg);
+        row.setFocusable(true);
+        row.setFocusableInTouchMode(true);
+        row.setClickable(true);
+        row.setOnClickListener(v -> {
+            if (action != null) {
+                action.run();
+            }
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        params.topMargin = actionRows == null || actionRows.isEmpty() ? 0 : dp(8);
+        parent.addView(row, params);
+        if (actionRows != null) {
+            actionRows.add(row);
+        }
     }
 
     private void showVodActionsDialog(ChannelItem channel) {

@@ -88,6 +88,7 @@ public class MainActivity extends FragmentActivity {
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
     private static final long RECORDINGS_AUTO_REFRESH_MS = 60000L;
+    private static final int VOD_VISUAL_SECTION_LIMIT = 18;
     private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
     private static final int SEARCH_LOGO_PREFETCH_LIMIT = 18;
     private static final String PREFS = "drbep_tv_prefs";
@@ -5363,6 +5364,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodLibraryDialog() {
+        showVodVisualLibraryDialog();
+    }
+
+    private void showVodLibraryMenuDialog() {
         rememberCurrentVodPosition();
         List<ChannelItem> continueItems = buildVodContinueItems();
         List<ChannelItem> recentItems = buildRecentVodItems();
@@ -5401,6 +5406,129 @@ public class MainActivity extends FragmentActivity {
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_manage_progress, progressItems));
         actions.add(this::showVodProgressManagerDialog);
         showTvOptionsDialog(R.string.tools_section_vod, null, options, actions);
+    }
+
+    private void showVodVisualLibraryDialog() {
+        rememberCurrentVodPosition();
+        prepareModalSurface();
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(16);
+        content.setPadding(padding, padding, padding, padding);
+        content.setBackgroundColor(0xF0181E28);
+
+        TextView titleView = new TextView(this);
+        titleView.setText(R.string.tools_section_vod);
+        titleView.setTextColor(0xFFFFFFFF);
+        titleView.setTextSize(24f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        content.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView subtitleView = new TextView(this);
+        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subtitleParams.topMargin = dp(4);
+        subtitleView.setText(buildVodLibrarySummary());
+        subtitleView.setTextColor(0xFFB7C4D6);
+        subtitleView.setTextSize(13f);
+        content.addView(subtitleView, subtitleParams);
+
+        LinearLayout actionsRow = new LinearLayout(this);
+        actionsRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionsParams.topMargin = dp(12);
+        content.addView(actionsRow, actionsParams);
+        addVodVisualAction(actionsRow, getString(R.string.quick_hub_search_vod), this::showVodSearchDialog);
+        addVodVisualAction(actionsRow, getString(R.string.vod_library_categories), this::showVodCategoriesDialog);
+        addVodVisualAction(actionsRow, getString(R.string.vod_library_manage_progress), this::showVodProgressManagerDialog);
+        addVodVisualAction(actionsRow, getString(R.string.vod_library_dense_view), this::showVodLibraryMenuDialog);
+
+        addVodShelf(content, getString(R.string.vod_library_continue), buildVodContinueItems(), true);
+        addVodShelf(content, getString(R.string.vod_library_recent), buildRecentVodItems(), false);
+        addVodShelf(content, getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
+        addVodShelf(content, getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
+        addVodShelf(content, getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
+        addVodShelf(content, getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
+
+        android.widget.ScrollView scrollView = new android.widget.ScrollView(this);
+        scrollView.setLayoutParams(new ViewGroup.LayoutParams(dp(820), dp(650)));
+        scrollView.setFillViewport(false);
+        scrollView.addView(content);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(scrollView)
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private void addVodVisualAction(LinearLayout parent, String label, Runnable action) {
+        if (parent == null || label == null) {
+            return;
+        }
+        TextView button = new TextView(this);
+        button.setText(label);
+        button.setTextColor(0xFFFFFFFF);
+        button.setTextSize(13f);
+        button.setTypeface(Typeface.DEFAULT_BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setMinHeight(dp(42));
+        button.setPadding(dp(12), 0, dp(12), 0);
+        button.setBackgroundResource(R.drawable.channel_overlay_chip_bg);
+        button.setFocusable(true);
+        button.setFocusableInTouchMode(true);
+        button.setClickable(true);
+        button.setOnClickListener(v -> {
+            if (action != null) {
+                action.run();
+            }
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        params.setMarginEnd(dp(8));
+        parent.addView(button, params);
+    }
+
+    private void addVodShelf(LinearLayout parent, String title, List<ChannelItem> items, boolean progressFirst) {
+        if (parent == null || items == null || items.isEmpty()) {
+            return;
+        }
+        if (progressFirst) {
+            sortVodLibraryItems(items);
+        }
+        TextView titleView = new TextView(this);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = dp(18);
+        titleView.setText(getString(R.string.vod_visual_section_title, title, items.size()));
+        titleView.setTextColor(0xFFFFFFFF);
+        titleView.setTextSize(17f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        parent.addView(titleView, titleParams);
+
+        RecyclerView recyclerView = new RecyclerView(this);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false));
+        recyclerView.setHasFixedSize(true);
+        recyclerView.setItemViewCacheSize(8);
+        recyclerView.setFocusable(true);
+        recyclerView.setFocusableInTouchMode(true);
+        recyclerView.setAdapter(new VodPosterAdapter(limitVodItems(items, VOD_VISUAL_SECTION_LIMIT)));
+        LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(248));
+        listParams.topMargin = dp(8);
+        parent.addView(recyclerView, listParams);
+    }
+
+    private List<ChannelItem> limitVodItems(List<ChannelItem> items, int limit) {
+        List<ChannelItem> limited = new ArrayList<>();
+        if (items == null || limit <= 0) {
+            return limited;
+        }
+        int count = Math.min(limit, items.size());
+        for (int i = 0; i < count; i++) {
+            ChannelItem item = items.get(i);
+            if (item != null) {
+                limited.add(item);
+            }
+        }
+        return limited;
     }
 
     private void showListsToolsDialog() {
@@ -10283,6 +10411,80 @@ public class MainActivity extends FragmentActivity {
                 meta = itemView.findViewById(R.id.searchChannelMetaText);
                 type = itemView.findViewById(R.id.searchChannelTypeText);
                 logo = itemView.findViewById(R.id.searchChannelLogo);
+            }
+        }
+    }
+
+    private final class VodPosterAdapter extends RecyclerView.Adapter<VodPosterAdapter.VodPosterVH> {
+        private final List<ChannelItem> items = new ArrayList<>();
+
+        VodPosterAdapter(List<ChannelItem> initialItems) {
+            if (initialItems != null) {
+                items.addAll(initialItems);
+            }
+        }
+
+        @NonNull
+        @Override
+        public VodPosterVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.item_vod_poster, parent, false);
+            return new VodPosterVH(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull VodPosterVH holder, int position) {
+            ChannelItem item = items.get(position);
+            holder.title.setText(displayName(item));
+            holder.meta.setText(buildVodPosterMeta(item));
+            long progressMs = getVodResumePosition(item == null ? null : item.id);
+            if (progressMs > 30_000L) {
+                holder.progress.setText(formatDurationShort(progressMs));
+                holder.progress.setVisibility(View.VISIBLE);
+            } else {
+                holder.progress.setVisibility(View.GONE);
+            }
+            bindRecordingPoster(holder.poster, item == null ? "" : item.logoUrl);
+            holder.itemView.setOnClickListener(v -> showVodInfoDialog(item));
+            holder.itemView.setOnLongClickListener(v -> {
+                showVodActionsDialog(item);
+                return true;
+            });
+        }
+
+        @Override
+        public int getItemCount() {
+            return items.size();
+        }
+
+        private String buildVodPosterMeta(ChannelItem item) {
+            if (item == null) {
+                return "";
+            }
+            List<String> parts = new ArrayList<>();
+            if (item.vodYear != null && !item.vodYear.trim().isEmpty()) {
+                parts.add(item.vodYear.trim());
+            }
+            if (item.platformName != null && !item.platformName.trim().isEmpty()) {
+                parts.add(item.platformName.trim());
+            }
+            if (parts.isEmpty() && item.group != null && !item.group.trim().isEmpty()) {
+                parts.add(item.group.trim());
+            }
+            return TextUtils.join("  ·  ", parts);
+        }
+
+        final class VodPosterVH extends RecyclerView.ViewHolder {
+            final ImageView poster;
+            final TextView title;
+            final TextView meta;
+            final TextView progress;
+
+            VodPosterVH(@NonNull View itemView) {
+                super(itemView);
+                poster = itemView.findViewById(R.id.vodPosterImage);
+                title = itemView.findViewById(R.id.vodPosterTitleText);
+                meta = itemView.findViewById(R.id.vodPosterMetaText);
+                progress = itemView.findViewById(R.id.vodProgressBadgeText);
             }
         }
     }

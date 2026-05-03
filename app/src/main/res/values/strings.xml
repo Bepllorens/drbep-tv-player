@@ -208,6 +208,8 @@
     <string name="touch_button_list">Lista</string>
     <string name="touch_button_guide">Guia</string>
     <string name="touch_button_previous">Anterior</string>
+    <string name="touch_button_vod_library">Biblioteca VOD</string>
+    <string name="touch_button_vod_detail">Ficha VOD</string>
     <string name="touch_button_tools">Grab</string>
     <string name="touch_button_recordings">Grab</string>
     <string name="touch_button_tools_hint">Pulsacion larga: Tools</string>
@@ -223,6 +225,7 @@
     <string name="touch_button_rewind">-30s</string>
     <string name="touch_button_play_pause">Play/Pause</string>
     <string name="touch_button_forward">+30s</string>
+    <string name="vod_playback_seek_label">%1$s  %2$s / %3$s</string>
     <string name="touch_previous_unavailable">No hay un canal anterior reciente</string>
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>

@@ -1288,6 +1288,23 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/touchVodLibraryButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:background="@drawable/channel_overlay_chip_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingLeft="@dimen/touch_button_padding_horizontal"
+            android:paddingTop="@dimen/touch_button_padding_vertical"
+            android:paddingRight="@dimen/touch_button_padding_horizontal"
+            android:paddingBottom="@dimen/touch_button_padding_vertical"
+            android:text="@string/touch_button_vod_library"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/touchToolsButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

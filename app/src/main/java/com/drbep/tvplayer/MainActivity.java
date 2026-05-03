@@ -198,6 +198,7 @@ public class MainActivity extends FragmentActivity {
     private TextView touchGuideButton;
     private TextView touchPreviousButton;
     private TextView touchInfoButton;
+    private TextView touchVodLibraryButton;
     private TextView touchToolsButton;
     private TextView touchRotateButton;
     private TextView touchRewindButton;
@@ -502,6 +503,7 @@ public class MainActivity extends FragmentActivity {
         touchGuideButton = findViewById(R.id.touchGuideButton);
         touchPreviousButton = findViewById(R.id.touchPreviousButton);
         touchInfoButton = findViewById(R.id.touchInfoButton);
+        touchVodLibraryButton = findViewById(R.id.touchVodLibraryButton);
         touchToolsButton = findViewById(R.id.touchToolsButton);
         touchRotateButton = findViewById(R.id.touchRotateButton);
         touchRewindButton = findViewById(R.id.touchRewindButton);
@@ -862,6 +864,7 @@ public class MainActivity extends FragmentActivity {
             if (timeshiftBarContainer != null) {
                 timeshiftBarContainer.setVisibility(View.GONE);
             }
+            updateVodTouchControlsState();
             if (touchPrevFilterButton != null) {
                 touchPrevFilterButton.setVisibility(View.GONE);
             }
@@ -871,6 +874,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         touchControlsBar.setVisibility(View.VISIBLE);
+        updateVodTouchControlsState();
         updateTouchHomeHub();
         updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
@@ -1038,13 +1042,23 @@ public class MainActivity extends FragmentActivity {
         if (touchGuideButton != null) {
             touchGuideButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
-                openTimelineGuideAroundSelection();
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                if (current != null && current.isVod) {
+                    showVodLibraryDialog();
+                } else {
+                    openTimelineGuideAroundSelection();
+                }
             });
         }
         if (touchPreviousButton != null) {
             touchPreviousButton.setOnClickListener(v -> {
                 showTouchControlsTemporarily();
-                tunePreviousChannel();
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                if (current != null && current.isVod) {
+                    showVodInfoDialog(current);
+                } else {
+                    tunePreviousChannel();
+                }
             });
         }
         if (touchInfoButton != null) {
@@ -1056,6 +1070,12 @@ public class MainActivity extends FragmentActivity {
                 showTouchControlsTemporarily();
                 showPlaybackDiagnosticsDialog();
                 return true;
+            });
+        }
+        if (touchVodLibraryButton != null) {
+            touchVodLibraryButton.setOnClickListener(v -> {
+                showTouchControlsTemporarily();
+                showVodLibraryDialog();
             });
         }
         if (touchToolsButton != null) {
@@ -1159,6 +1179,7 @@ public class MainActivity extends FragmentActivity {
             updatePlaybackStateBadge(null);
             return;
         }
+        updateVodTouchControlsState();
         if (timeshiftLiveButton != null) {
             timeshiftLiveButton.setVisibility(View.GONE);
         }
@@ -1185,14 +1206,46 @@ public class MainActivity extends FragmentActivity {
             long range = Math.max(1L, state.endMs - state.startMs);
             int progress = (int) Math.max(0L, Math.min(1000L, Math.round(((state.currentMs - state.startMs) * 1000f) / range)));
             timeshiftSeekBar.setProgress(progress);
-            timeshiftStatusText.setText(state.label);
+            timeshiftStatusText.setText(buildPlaybackSeekLabel(state));
         }
         updatePlaybackStateBadge(playerController.getTimeshiftState());
+    }
+
+    private String buildPlaybackSeekLabel(PlayerController.PlaybackSeekState state) {
+        if (state == null) {
+            return "";
+        }
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current != null && current.isVod && !state.liveCapable) {
+            return getString(R.string.vod_playback_seek_label, displayName(current), formatDurationLabel(state.currentMs), formatDurationLabel(state.endMs));
+        }
+        return state.label;
+    }
+
+    private void updateVodTouchControlsState() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        boolean vod = current != null && current.isVod;
+        if (touchVodLibraryButton != null) {
+            touchVodLibraryButton.setVisibility(vod ? View.VISIBLE : View.GONE);
+        }
+        if (touchGuideButton != null) {
+            touchGuideButton.setText(vod ? R.string.touch_button_vod_library : R.string.touch_button_guide);
+        }
+        if (touchPreviousButton != null) {
+            touchPreviousButton.setText(vod ? R.string.touch_button_vod_detail : R.string.touch_button_previous);
+        }
+        if (touchInfoButton != null) {
+            touchInfoButton.setText(vod ? R.string.touch_button_vod_detail : R.string.touch_button_info);
+        }
     }
 
     private String formatPlaybackPreviewLabel(PlayerController.PlaybackSeekState state, long targetMs) {
         if (state == null) {
             return getString(R.string.timeshift_status_unavailable);
+        }
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current != null && current.isVod && !state.liveCapable) {
+            return getString(R.string.vod_playback_seek_label, displayName(current), formatDurationLabel(targetMs), formatDurationLabel(state.endMs));
         }
         if (state.liveCapable) {
             long offsetMs = Math.max(0L, state.endMs - targetMs);

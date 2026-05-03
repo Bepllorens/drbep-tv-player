@@ -5048,7 +5048,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showMultiviewToolsDialog);
         options.add(getString(R.string.tools_section_settings));
         actions.add(this::showSettingsAndDiagnosticsToolsDialog);
-        showTvOptionsDialog(R.string.tools_menu_title_short, getString(R.string.tools_menu_overview, BuildConfig.VERSION_NAME), options, actions);
+        showTvOptionsDialog(R.string.tools_menu_title_short, null, options, actions);
     }
 
     private void showPlaybackToolsDialog() {
@@ -5062,7 +5062,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::openCurrentTemporaryPlaybackMode);
         options.add(getString(R.string.tools_menu_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
-        showTvOptionsDialog(R.string.tools_section_playback, buildCurrentChannelToolsMessage(), options, actions);
+        showTvOptionsDialog(R.string.tools_section_playback, null, options, actions);
     }
 
     private void showNavigationToolsDialog() {
@@ -5082,7 +5082,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showEpgSearchDialog);
         options.add(getString(R.string.tools_menu_recent_channels));
         actions.add(this::showRecentChannelsDialog);
-        showTvOptionsDialog(R.string.tools_section_navigation, buildCurrentFilterLabel(), options, actions);
+        showTvOptionsDialog(R.string.tools_section_navigation, null, options, actions);
     }
 
     private void showListsToolsDialog() {
@@ -5096,7 +5096,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::openCurrentChannelPersonalLists);
         options.add(getString(R.string.tools_menu_channel_profile_current));
         actions.add(this::openCurrentChannelProfile);
-        showTvOptionsDialog(R.string.tools_section_lists, buildCurrentChannelToolsMessage(), options, actions);
+        showTvOptionsDialog(R.string.tools_section_lists, null, options, actions);
     }
 
     private void showRecordingsToolsDialog() {
@@ -5108,7 +5108,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> createScheduleFromEndpoint(getCurrentPlaybackChannelItem(), false));
         options.add(getString(R.string.menu_record_next_program));
         actions.add(() -> createScheduleFromEndpoint(getCurrentPlaybackChannelItem(), true));
-        showTvOptionsDialog(R.string.tools_section_recordings, buildCurrentChannelToolsMessage(), options, actions);
+        showTvOptionsDialog(R.string.tools_section_recordings, null, options, actions);
     }
 
     private void showMultiviewToolsDialog() {
@@ -5158,7 +5158,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> openMiniGuideForChannel(channelItem));
         options.add(getString(R.string.tools_menu_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
-        showTvOptionsDialog(R.string.tools_section_current_channel, buildCurrentChannelToolsMessage(), options, actions);
+        showTvOptionsDialog(R.string.tools_section_current_channel, displayName(channelItem), options, actions);
     }
 
     private String buildCurrentChannelToolsMessage() {

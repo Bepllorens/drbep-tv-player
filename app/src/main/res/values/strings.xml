@@ -29,6 +29,7 @@
     <string name="status_buffering">Cargando stream...</string>
     <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
+    <string name="status_channels_ready">%1$d canales listos en %2$d ms</string>
     <string name="startup_hub_title">Inicio DRBEP TV</string>
     <string name="startup_hub_message">Version %1$s activa\nFiltro restaurado: %2$s\n%3$d elementos visibles</string>
     <string name="startup_hub_message_v2">Version %1$s activa\nFiltro: %2$s  ·  TV %3$d  ·  VOD %4$d  ·  Adult %5$d\nFavoritos %6$d  ·  Recientes %7$d  ·  Grabaciones %8$d/%9$d programadas</string>
@@ -516,7 +517,7 @@
     <string name="settings_data_clear_recent_channels">Limpiar canales recientes</string>
     <string name="settings_data_clear_favorites">Limpiar favoritos</string>
     <string name="settings_data_reset_lists_profiles">Reset listas y perfiles</string>
-    <string name="settings_diagnostics_message">Paquete: %1$s\nVersion: %2$s (%3$d)\nServidor: %4$s\nFiltro: %5$s\nSolo favoritos: %6$s\nHub inicio: %7$s\nAuto grabaciones: %8$s\nCanales visibles/totales: %9$d/%10$d\nModos temporales: %11$d</string>
+    <string name="settings_diagnostics_message">Paquete: %1$s\nVersion: %2$s (%3$d)\nServidor: %4$s\nFiltro: %5$s\nSolo favoritos: %6$s\nHub inicio: %7$s\nAuto grabaciones: %8$s\nCanales visibles/totales: %9$d/%10$d\nModos temporales: %11$d\nMemoria usada/max: %12$s / %13$s\nCache logos SVG: %14$d\nCache stream info: %15$d\nCarga catalogo: %16$d ms\nAplicar lista: %17$d ms\nEPG ahora: %18$d ms\nUltima limpieza cache: %19$s</string>
     <string name="settings_reset_summary">Restaura solo el bloque elegido. No toca la instalacion ni el servidor.</string>
     <string name="settings_reset_search">Reset busqueda</string>
     <string name="settings_reset_playback">Reset reproduccion</string>
@@ -537,6 +538,8 @@
     <string name="settings_confirm_reset_local_data">Se limpiaran progresos, recientes y busquedas.</string>
     <string name="settings_status_playback_modes_cleared">Modos playback limpiados</string>
     <string name="settings_status_learned_routes_cleared">Rutas aprendidas limpiadas</string>
+    <string name="settings_performance_clear_caches">Limpiar caches</string>
+    <string name="settings_status_runtime_caches_cleared">Caches de runtime limpiadas</string>
     <string name="status_playback_repair_enabled">Auto-reparacion activada</string>
     <string name="status_playback_repair_disabled">Auto-reparacion desactivada</string>
     <string name="status_playback_learned_saved">Ruta preferida guardada: %1$s</string>

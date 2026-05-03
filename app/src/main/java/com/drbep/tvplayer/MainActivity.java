@@ -74,6 +74,7 @@ import java.util.concurrent.Executors;
 import androidx.fragment.app.FragmentActivity;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -87,6 +88,8 @@ public class MainActivity extends FragmentActivity {
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
     private static final long RECORDINGS_AUTO_REFRESH_MS = 60000L;
+    private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
+    private static final int SEARCH_LOGO_PREFETCH_LIMIT = 18;
     private static final String PREFS = "drbep_tv_prefs";
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_LAST_FILTER_KEY = "last_filter_key";
@@ -289,6 +292,10 @@ public class MainActivity extends FragmentActivity {
     private boolean touchDeviceMode;
     private boolean recordingsAutoRefreshEnabled;
     private boolean playbackRepairEnabled = true;
+    private long lastCatalogLoadDurationMs;
+    private long lastEpgNowLoadDurationMs;
+    private long lastApplyChannelsDurationMs;
+    private long lastImageCacheClearMs;
     private float touchGestureDownX = Float.NaN;
     private float touchGestureDownY = Float.NaN;
     private boolean timeshiftSeekUserDragging;
@@ -738,6 +745,8 @@ public class MainActivity extends FragmentActivity {
     private void setupChannelList() {
         channelAdapter = new ChannelAdapter();
         channelList.setLayoutManager(new LinearLayoutManager(this));
+        channelList.setHasFixedSize(true);
+        channelList.setItemViewCacheSize(24);
         channelList.setAdapter(channelAdapter);
     }
 
@@ -1449,15 +1458,24 @@ public class MainActivity extends FragmentActivity {
 
     private void loadChannels() {
         showStatus(getString(R.string.status_loading_channels));
+        long startMs = System.currentTimeMillis();
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
-                uiHandler.post(() -> applyLoadedChannels(result));
+                long durationMs = System.currentTimeMillis() - startMs;
+                uiHandler.post(() -> {
+                    lastCatalogLoadDurationMs = durationMs;
+                    applyLoadedChannels(result);
+                });
             } catch (Exception catalogErr) {
                 Log.w(TAG, "catalog load failed, fallback to /api/channels", catalogErr);
                 try {
                     CatalogLoadResult fallback = catalogRepository.fetchActiveChannels();
-                    uiHandler.post(() -> applyLoadedChannels(fallback));
+                    long durationMs = System.currentTimeMillis() - startMs;
+                    uiHandler.post(() -> {
+                        lastCatalogLoadDurationMs = durationMs;
+                        applyLoadedChannels(fallback);
+                    });
                 } catch (Exception e) {
                     Log.e(TAG, "load channels failed", e);
                     uiHandler.post(() -> {
@@ -1480,6 +1498,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void applyLoadedChannels(CatalogLoadResult result) {
+        long startMs = System.currentTimeMillis();
         syncOverlayCoordinator();
         channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
         syncOverlayStateFromCoordinator();
@@ -1501,8 +1520,11 @@ public class MainActivity extends FragmentActivity {
             }
         }
         tuneToIndex(startIndex, true);
-        loadEpgNow();
-        maybeShowStartupHub();
+        lastApplyChannelsDurationMs = System.currentTimeMillis() - startMs;
+        showStatus(getString(R.string.status_channels_ready, channels.size(), lastCatalogLoadDurationMs));
+        prefetchCurrentChannelLogos();
+        uiHandler.postDelayed(this::loadEpgNow, 450L);
+        uiHandler.postDelayed(this::maybeShowStartupHub, 700L);
     }
 
     private void tuneToIndex(int index, boolean autoPlay) {
@@ -1647,11 +1669,13 @@ public class MainActivity extends FragmentActivity {
 
 
     private void loadEpgNow() {
+        long startMs = System.currentTimeMillis();
         ioExecutor.execute(() -> {
             try {
                 Map<String, String> updates = epgRepository.fetchNowPrograms();
 
                 uiHandler.post(() -> {
+                    lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                     epgNowByChannelId.clear();
                     epgNowByChannelId.putAll(updates);
                     for (ChannelItem item : allChannels) {
@@ -1661,6 +1685,7 @@ public class MainActivity extends FragmentActivity {
                     updateOverlayPanel();
                 });
             } catch (Exception e) {
+                lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                 Log.w(TAG, "load epg now failed", e);
             }
         });
@@ -5247,12 +5272,16 @@ public class MainActivity extends FragmentActivity {
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.settings_section_diagnostics)
                 .setMessage(buildSettingsDiagnosticsMessage())
+                .setNeutralButton(R.string.settings_performance_clear_caches, (dialogInterface, which) -> clearRuntimeCaches())
                 .setPositiveButton(R.string.dialog_close, null)
                 .create();
         showTvDialog(dialog);
     }
 
     private String buildSettingsDiagnosticsMessage() {
+        Runtime runtime = Runtime.getRuntime();
+        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+        long maxMemory = runtime.maxMemory();
         return getString(
                 R.string.settings_diagnostics_message,
                 getPackageName(),
@@ -5265,7 +5294,15 @@ public class MainActivity extends FragmentActivity {
                 recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 channels.size(),
                 allChannels.size(),
-                temporaryPlaybackModesByChannelId.size()
+                temporaryPlaybackModesByChannelId.size(),
+                humanReadableSize(usedMemory),
+                humanReadableSize(maxMemory),
+                channelLogoCache.size(),
+                streamInfoByChannelId.size(),
+                lastCatalogLoadDurationMs,
+                lastApplyChannelsDurationMs,
+                lastEpgNowLoadDurationMs,
+                lastImageCacheClearMs <= 0L ? getString(R.string.diagnostics_value_unknown) : new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date(lastImageCacheClearMs))
         );
     }
 
@@ -5333,6 +5370,26 @@ public class MainActivity extends FragmentActivity {
             prefs.edit().remove(PREF_PLAYBACK_LEARNED_MODES).apply();
         }
         showStatus(getString(R.string.settings_status_learned_routes_cleared));
+    }
+
+    private void clearRuntimeCaches() {
+        streamInfoByChannelId.clear();
+        epgNowByChannelId.clear();
+        channelLogoCache.evictAll();
+        lastImageCacheClearMs = System.currentTimeMillis();
+        try {
+            Glide.get(this).clearMemory();
+            ioExecutor.execute(() -> {
+                try {
+                    Glide.get(getApplicationContext()).clearDiskCache();
+                } catch (Exception e) {
+                    Log.w(TAG, "failed to clear glide disk cache", e);
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "failed to clear glide memory cache", e);
+        }
+        showStatus(getString(R.string.settings_status_runtime_caches_cleared));
     }
 
     private void clearAllPlaybackDiagnostics() {
@@ -5941,7 +5998,7 @@ public class MainActivity extends FragmentActivity {
         if (touchHomeHub != null) {
             touchHomeHub.setVisibility(View.GONE);
         }
-        prefetchChannelLogos(items, 18, 42, 42);
+        prefetchChannelLogos(items, SEARCH_LOGO_PREFETCH_LIMIT, 42, 42);
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
         TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
         TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
@@ -7187,7 +7244,7 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
-        prefetchChannelLogos(items, 18, 42, 42);
+        prefetchChannelLogos(items, SEARCH_LOGO_PREFETCH_LIMIT, 42, 42);
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
         TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
         TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
@@ -8299,6 +8356,7 @@ public class MainActivity extends FragmentActivity {
                 Glide.with(getApplicationContext())
                         .load(trimmedLogoUrl)
                         .fitCenter()
+                        .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                         .preload(dp(widthDp), dp(heightDp));
             }
             count++;
@@ -8306,6 +8364,25 @@ public class MainActivity extends FragmentActivity {
                 break;
             }
         }
+    }
+
+    private void prefetchCurrentChannelLogos() {
+        if (channels.isEmpty()) {
+            return;
+        }
+        List<ChannelItem> warmList = new ArrayList<>();
+        int start = currentIndex >= 0 ? currentIndex : 0;
+        for (int offset = 0; offset < channels.size() && warmList.size() < CHANNEL_LOGO_PREFETCH_LIMIT; offset++) {
+            int forward = start + offset;
+            if (forward >= 0 && forward < channels.size()) {
+                warmList.add(channels.get(forward));
+            }
+            int backward = start - offset - 1;
+            if (backward >= 0 && warmList.size() < CHANNEL_LOGO_PREFETCH_LIMIT) {
+                warmList.add(channels.get(backward));
+            }
+        }
+        prefetchChannelLogos(warmList, CHANNEL_LOGO_PREFETCH_LIMIT, 42, 42);
     }
 
     private void bindChannelLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
@@ -8328,6 +8405,7 @@ public class MainActivity extends FragmentActivity {
         Glide.with(imageView.getContext())
                 .load(trimmedLogoUrl)
                 .fitCenter()
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .placeholder(fallback)
                 .error(fallback)
                 .into(imageView);
@@ -8482,22 +8560,27 @@ public class MainActivity extends FragmentActivity {
         }
         if (posterUrl == null || posterUrl.trim().isEmpty()) {
             imageView.setVisibility(View.GONE);
-            Glide.with(this).clear(imageView);
+            Glide.with(imageView.getContext()).clear(imageView);
+            imageView.setTag(null);
             return;
         }
+        String trimmedPosterUrl = posterUrl.trim();
         imageView.setVisibility(View.VISIBLE);
+        imageView.setTag(trimmedPosterUrl);
         if (fitInside) {
             imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            Glide.with(this)
-                    .load(posterUrl.trim())
+            Glide.with(imageView.getContext())
+                    .load(trimmedPosterUrl)
                     .fitCenter()
+                    .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                     .into(imageView);
             return;
         }
         imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        Glide.with(this)
-                .load(posterUrl.trim())
+        Glide.with(imageView.getContext())
+                .load(trimmedPosterUrl)
                 .centerCrop()
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .into(imageView);
     }
 
@@ -8618,6 +8701,7 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void onBindViewHolder(@NonNull ChannelVH holder, int position) {
             ChannelItem ch = channels.get(position);
+            holder.logo.setTag(null);
             String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
             holder.name.setText(buildHighlightedText(displayName(ch), query, ch.favorite));
             if (ch.isVod) {

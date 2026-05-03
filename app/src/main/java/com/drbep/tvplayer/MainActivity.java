@@ -2460,7 +2460,7 @@ public class MainActivity extends FragmentActivity {
                 playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
             });
         }
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_more), () -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_more_vod), () -> {
             AlertDialog activeDialog = dialogHolder[0];
             if (activeDialog != null && activeDialog.isShowing()) {
                 activeDialog.dismiss();
@@ -2523,7 +2523,7 @@ public class MainActivity extends FragmentActivity {
         panel.setLayoutParams(new ViewGroup.LayoutParams(dp(560), ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView titleView = new TextView(this);
-        titleView.setText(displayName(channel));
+        titleView.setText(getString(R.string.vod_actions_title, displayName(channel)));
         titleView.setTextColor(0xFFFFFFFF);
         titleView.setTextSize(20f);
         titleView.setTypeface(Typeface.DEFAULT_BOLD);
@@ -2546,42 +2546,42 @@ public class MainActivity extends FragmentActivity {
 
         final AlertDialog[] dialogHolder = new AlertDialog[1];
         List<TextView> actionRows = new ArrayList<>();
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_play), () -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_play_vod), () -> {
             dismissDialog(dialogHolder[0]);
             clearVodResumePosition(channel.id);
             playChannelItemInternal(channel, true, 0L);
         });
         if (getVodResumePosition(channel.id) > 30_000L) {
-            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_continue), () -> {
+            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_continue_vod), () -> {
                 dismissDialog(dialogHolder[0]);
                 playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
             });
-            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_start_over), () -> {
+            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_start_over_vod), () -> {
                 dismissDialog(dialogHolder[0]);
                 clearVodResumePosition(channel.id);
                 playChannelItemInternal(channel, true, 0L);
             });
         }
-        addVodDetailAction(actionsColumn, actionRows, getString(favoriteChannelIds.contains(channel.id) ? R.string.menu_remove_favorite : R.string.menu_add_favorite), () -> toggleFavoriteForChannel(channel));
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.menu_personal_lists), () -> {
-            dismissDialog(dialogHolder[0]);
-            showPersonalListsDialog(channel);
-        });
         addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_diagnostics), () -> showVodDiagnosticsDialog(channel));
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.diagnostics_action_retry_next_route), () -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_retry_route), () -> {
             dismissDialog(dialogHolder[0]);
             retryCurrentPlaybackWithNextRoute(channel);
         });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.diagnostics_action_temporary_mode), () -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_temporary_mode), () -> {
             dismissDialog(dialogHolder[0]);
             showTemporaryPlaybackModeDialog(channel);
         });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.tools_menu_playback_diagnostics), () -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(favoriteChannelIds.contains(channel.id) ? R.string.vod_action_remove_favorite : R.string.vod_action_add_favorite), () -> toggleFavoriteForChannel(channel));
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_personal_lists), () -> {
+            dismissDialog(dialogHolder[0]);
+            showPersonalListsDialog(channel);
+        });
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_playback_diagnostics), () -> {
             dismissDialog(dialogHolder[0]);
             currentPlaybackVodId = channel.id;
             showPlaybackDiagnosticsDialog();
         });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_clear_progress), () -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_clear_progress_vod), () -> {
             clearVodResumePosition(channel.id);
             showStatus(getString(R.string.vod_status_progress_cleared));
         });

@@ -294,9 +294,23 @@
     <string name="global_search_section_channels">Canales</string>
     <string name="global_search_section_vod">VOD</string>
     <string name="global_search_section_epg">Programas EPG</string>
+    <string name="global_search_section_epg_now">EPG ahora</string>
+    <string name="global_search_section_epg_today">EPG hoy</string>
+    <string name="global_search_section_epg_upcoming">EPG proximos dias</string>
     <string name="global_search_section_recordings">Grabaciones</string>
     <string name="global_search_history_hint">OK busca de nuevo</string>
+    <string name="global_search_history_search_again">Buscar otra vez</string>
+    <string name="global_search_history_delete_one">Borrar esta busqueda</string>
+    <string name="global_search_history_deleted">Busqueda reciente borrada</string>
     <string name="global_search_badge_history">REC</string>
+    <string name="global_search_filter_all">Todo</string>
+    <string name="global_search_filter_tv">TV</string>
+    <string name="global_search_filter_vod">VOD</string>
+    <string name="global_search_filter_favorites">Favoritos</string>
+    <string name="global_search_filter_epg">EPG</string>
+    <string name="global_search_filter_recordings">Grabaciones</string>
+    <string name="global_search_meta_favorite">Favorito</string>
+    <string name="global_search_meta_progress">Progreso %1$s</string>
     <string name="quick_search_result">%1$s
 %2$s</string>
     <string name="quick_search_result_index">Resultado %1$d de %2$d</string>

@@ -4942,6 +4942,7 @@ public class MainActivity extends FragmentActivity {
     private void showV12ToolsMenu() {
         prepareModalSurface();
         String[] options = new String[]{
+                getString(R.string.tools_menu_settings_center),
                 getString(R.string.tools_menu_quick_hub),
                 getString(R.string.tools_menu_timeline_guide),
                 getString(R.string.tools_menu_visual_epg),
@@ -4964,38 +4965,40 @@ public class MainActivity extends FragmentActivity {
                 .setTitle(getString(R.string.tools_menu_title, BuildConfig.VERSION_NAME))
                 .setItems(options, (d, which) -> {
                     if (which == 0) {
-                        showQuickHubDialog();
+                        showSettingsCenterDialog();
                     } else if (which == 1) {
-                        openTimelineGuideAroundSelection();
+                        showQuickHubDialog();
                     } else if (which == 2) {
-                        openVisualEpgAroundSelection();
+                        openTimelineGuideAroundSelection();
                     } else if (which == 3) {
-                        showEpgSearchDialog();
+                        openVisualEpgAroundSelection();
                     } else if (which == 4) {
-                        showChannelSearchDialog();
+                        showEpgSearchDialog();
                     } else if (which == 5) {
-                        showRecentChannelsDialog();
+                        showChannelSearchDialog();
                     } else if (which == 6) {
-                        showFavoriteChannelsQuickDialog();
+                        showRecentChannelsDialog();
                     } else if (which == 7) {
-                        showPersonalListsManagerDialog();
+                        showFavoriteChannelsQuickDialog();
                     } else if (which == 8) {
-                        openCurrentChannelPersonalLists();
+                        showPersonalListsManagerDialog();
                     } else if (which == 9) {
-                        openCurrentChannelProfile();
+                        openCurrentChannelPersonalLists();
                     } else if (which == 10) {
-                        openCurrentTemporaryPlaybackMode();
+                        openCurrentChannelProfile();
                     } else if (which == 11) {
-                        showPlaybackDiagnosticsDialog();
+                        openCurrentTemporaryPlaybackMode();
                     } else if (which == 12) {
-                        showInstallStatusDialog();
+                        showPlaybackDiagnosticsDialog();
                     } else if (which == 13) {
-                        openRecordingsBrowser();
+                        showInstallStatusDialog();
                     } else if (which == 14) {
-                        openMultiView();
+                        openRecordingsBrowser();
                     } else if (which == 15) {
-                        showOpenMultiViewPresetDialog();
+                        openMultiView();
                     } else if (which == 16) {
+                        showOpenMultiViewPresetDialog();
+                    } else if (which == 17) {
                         showSaveMultiViewPresetDialog();
                     }
                 })
@@ -5032,6 +5035,341 @@ public class MainActivity extends FragmentActivity {
                 .setPositiveButton(R.string.dialog_close, null)
                 .create();
         showTvDialog(dialog);
+    }
+
+    private void showSettingsCenterDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.settings_section_startup));
+        actions.add(this::showStartupSettingsDialog);
+        options.add(getString(R.string.settings_section_playback));
+        actions.add(this::showPlaybackSettingsDialog);
+        options.add(getString(R.string.settings_section_search));
+        actions.add(this::showSearchSettingsDialog);
+        options.add(getString(R.string.settings_section_recordings));
+        actions.add(this::showRecordingSettingsDialog);
+        options.add(getString(R.string.settings_section_local_data));
+        actions.add(this::showLocalDataSettingsDialog);
+        options.add(getString(R.string.settings_section_diagnostics));
+        actions.add(this::showSettingsDiagnosticsDialog);
+        options.add(getString(R.string.settings_section_reset));
+        actions.add(this::showResetSettingsDialog);
+        showTvOptionsDialog(R.string.title_settings_center, buildSettingsSummary(), options, actions);
+    }
+
+    private String buildSettingsSummary() {
+        return getString(
+                R.string.settings_summary,
+                BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE,
+                prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false) ? getString(R.string.diagnostics_value_no) : getString(R.string.diagnostics_value_yes),
+                recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                globalSearchRecents.size(),
+                vodResumePositions.size(),
+                recordingResumePositions.size()
+        );
+    }
+
+    private void showStartupSettingsDialog() {
+        boolean startupEnabled = prefs == null || !prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false);
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(startupEnabled ? R.string.settings_startup_disable : R.string.settings_startup_enable));
+        actions.add(() -> {
+            if (startupEnabled) {
+                disableStartupHub();
+            } else {
+                enableStartupHub();
+            }
+        });
+        options.add(getString(R.string.settings_startup_show_now));
+        actions.add(this::loadStartupHubStateAndShow);
+        options.add(getString(R.string.settings_startup_set_current_channel));
+        actions.add(() -> {
+            ChannelItem current = getCurrentPlaybackChannelItem();
+            if (current != null) {
+                saveLastChannelId(current.id);
+                showStatus(getString(R.string.status_channel_startup_set));
+            }
+        });
+        options.add(getString(R.string.settings_startup_clear_last_vod));
+        actions.add(() -> {
+            lastVodId = "";
+            if (prefs != null) {
+                prefs.edit().remove(PREF_LAST_VOD_ID).apply();
+            }
+            showStatus(getString(R.string.settings_status_last_vod_cleared));
+        });
+        showTvOptionsDialog(R.string.settings_section_startup, buildStartupSettingsSummary(), options, actions);
+    }
+
+    private String buildStartupSettingsSummary() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        ChannelItem lastVod = findChannelItemById(lastVodId);
+        return getString(
+                R.string.settings_startup_summary,
+                prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false) ? getString(R.string.diagnostics_value_no) : getString(R.string.diagnostics_value_yes),
+                current == null ? getString(R.string.diagnostics_value_unknown) : displayName(current),
+                lastVod == null ? getString(R.string.diagnostics_value_unknown) : displayName(lastVod)
+        );
+    }
+
+    private void showPlaybackSettingsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.settings_playback_current_mode));
+        actions.add(this::openCurrentTemporaryPlaybackMode);
+        options.add(getString(R.string.settings_playback_diagnostics));
+        actions.add(this::showPlaybackDiagnosticsDialog);
+        options.add(getString(R.string.settings_playback_clear_modes));
+        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_modes, R.string.settings_confirm_clear_modes, this::clearPlaybackModes));
+        options.add(getString(R.string.settings_playback_clear_diagnostics));
+        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_diagnostics, R.string.settings_confirm_clear_diagnostics, this::clearAllPlaybackDiagnostics));
+        showTvOptionsDialog(R.string.settings_section_playback, buildPlaybackSettingsSummary(), options, actions);
+    }
+
+    private String buildPlaybackSettingsSummary() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        String currentMode = current == null ? getString(R.string.diagnostics_value_unknown) : playbackModeStore.getMode(current.id);
+        int errors = playbackDiagnosticsStore == null ? 0 : playbackDiagnosticsStore.getRecentErrors(100).size();
+        return getString(R.string.settings_playback_summary, currentMode, temporaryPlaybackModesByChannelId.size(), errors);
+    }
+
+    private void showSearchSettingsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.quick_hub_global_search));
+        actions.add(this::showGlobalSearchDialog);
+        options.add(getString(R.string.settings_search_clear_recent));
+        actions.add(() -> confirmSettingsAction(R.string.settings_search_clear_recent, R.string.settings_confirm_clear_searches, this::clearGlobalSearchRecents));
+        showTvOptionsDialog(R.string.settings_section_search, getString(R.string.settings_search_summary, globalSearchRecents.size()), options, actions);
+    }
+
+    private void showRecordingSettingsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(recordingsAutoRefreshEnabled ? R.string.settings_recordings_auto_off : R.string.settings_recordings_auto_on));
+        actions.add(this::toggleRecordingsAutoRefresh);
+        options.add(getString(R.string.tools_menu_recordings_panel));
+        actions.add(this::openRecordingsBrowser);
+        options.add(getString(R.string.settings_recordings_clear_progress));
+        actions.add(() -> confirmSettingsAction(R.string.settings_recordings_clear_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress));
+        showTvOptionsDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_summary, recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no), recordingResumePositions.size()), options, actions);
+    }
+
+    private void showLocalDataSettingsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.settings_data_clear_vod_progress));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_vod_progress, R.string.settings_confirm_clear_vod_progress, this::clearAllVodProgress));
+        options.add(getString(R.string.settings_data_clear_recording_progress));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_recording_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress));
+        options.add(getString(R.string.settings_data_clear_recent_channels));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_recent_channels, R.string.settings_confirm_clear_recent_channels, this::clearRecentChannels));
+        options.add(getString(R.string.settings_data_clear_favorites));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_favorites, R.string.settings_confirm_clear_favorites, this::clearFavorites));
+        options.add(getString(R.string.settings_data_reset_lists_profiles));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_reset_lists_profiles, R.string.settings_confirm_reset_lists_profiles, this::resetListsAndProfiles));
+        showTvOptionsDialog(R.string.settings_section_local_data, buildLocalDataSummary(), options, actions);
+    }
+
+    private String buildLocalDataSummary() {
+        return getString(
+                R.string.settings_data_summary,
+                buildRecentQuickChannels().size(),
+                favoriteChannelIds.size(),
+                globalSearchRecents.size(),
+                vodResumePositions.size(),
+                recordingResumePositions.size(),
+                channelCollectionStore == null ? 0 : channelCollectionStore.getCollections().size()
+        );
+    }
+
+    private void showSettingsDiagnosticsDialog() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.settings_section_diagnostics)
+                .setMessage(buildSettingsDiagnosticsMessage())
+                .setPositiveButton(R.string.dialog_close, null)
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private String buildSettingsDiagnosticsMessage() {
+        return getString(
+                R.string.settings_diagnostics_message,
+                getPackageName(),
+                BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE,
+                baseUrl == null ? "" : baseUrl,
+                selectedFilterKey == null ? "all" : selectedFilterKey,
+                favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false) ? getString(R.string.diagnostics_value_no) : getString(R.string.diagnostics_value_yes),
+                recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                channels.size(),
+                allChannels.size(),
+                temporaryPlaybackModesByChannelId.size()
+        );
+    }
+
+    private void showResetSettingsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.settings_reset_search));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_search, R.string.settings_confirm_reset_search, this::clearGlobalSearchRecents));
+        options.add(getString(R.string.settings_reset_playback));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_playback, R.string.settings_confirm_reset_playback, this::resetPlaybackSettings));
+        options.add(getString(R.string.settings_reset_startup));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_startup, R.string.settings_confirm_reset_startup, this::resetStartupSettings));
+        options.add(getString(R.string.settings_reset_local_data));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_local_data, R.string.settings_confirm_reset_local_data, this::resetLocalData));
+        showTvOptionsDialog(R.string.settings_section_reset, getString(R.string.settings_reset_summary), options, actions);
+    }
+
+    private void confirmSettingsAction(int titleResId, int messageResId, Runnable action) {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(titleResId)
+                .setMessage(messageResId)
+                .setPositiveButton(android.R.string.ok, (unused, which) -> {
+                    if (action != null) {
+                        action.run();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private void clearPlaybackModes() {
+        temporaryPlaybackModesByChannelId.clear();
+        if (prefs != null) {
+            prefs.edit().remove(PREF_PLAYBACK_MODES).apply();
+        }
+        if (playbackModeStore != null) {
+            playbackModeStore.load();
+        }
+        showStatus(getString(R.string.settings_status_playback_modes_cleared));
+    }
+
+    private void clearAllPlaybackDiagnostics() {
+        if (playbackDiagnosticsStore != null) {
+            playbackDiagnosticsStore.clearAll();
+        }
+        if (playerController != null) {
+            playerController.clearLastError();
+        }
+        showStatus(getString(R.string.status_diagnostics_history_cleared));
+    }
+
+    private void clearGlobalSearchRecents() {
+        globalSearchRecents.clear();
+        if (prefs != null) {
+            prefs.edit().remove(PREF_GLOBAL_SEARCH_RECENTS).apply();
+        }
+        showStatus(getString(R.string.settings_status_searches_cleared));
+    }
+
+    private void clearAllVodProgress() {
+        rememberCurrentVodPosition();
+        vodResumePositions.clear();
+        if (prefs != null) {
+            prefs.edit().remove(PREF_VOD_RESUME_POSITIONS).apply();
+        }
+        showStatus(getString(R.string.settings_status_vod_progress_cleared));
+    }
+
+    private void clearAllRecordingProgress() {
+        rememberCurrentRecordingPosition();
+        recordingResumePositions.clear();
+        if (prefs != null) {
+            prefs.edit().remove(PREF_RECORDING_RESUME_POSITIONS).apply();
+        }
+        if (recordingsAdapter != null) {
+            recordingsAdapter.notifyDataSetChanged();
+        }
+        updateRecordingsDetailPanel();
+        showStatus(getString(R.string.settings_status_recording_progress_cleared));
+    }
+
+    private void clearRecentChannels() {
+        if (prefs != null) {
+            prefs.edit().remove(PREF_RECENT_CHANNELS).apply();
+        }
+        if (recentChannelsStore != null) {
+            recentChannelsStore.load();
+        }
+        updateQuickAccessButtons();
+        updateTouchHomeHub();
+        showStatus(getString(R.string.settings_status_recent_channels_cleared));
+    }
+
+    private void clearFavorites() {
+        favoriteChannelIds.clear();
+        if (prefs != null) {
+            prefs.edit().remove(PREF_FAVORITES).remove(PREF_FAVORITE_ORDER).putBoolean(PREF_FAVORITES_ONLY, false).apply();
+        }
+        favoritesOnly = false;
+        if (favoriteOrderStore != null) {
+            favoriteOrderStore.load();
+        }
+        for (ChannelItem item : allChannels) {
+            if (item != null) {
+                item.favorite = false;
+            }
+        }
+        refreshLocalChannelFilters(lastChannelId);
+        channelAdapter.notifyDataSetChanged();
+        updateQuickAccessButtons();
+        updateTouchHomeHub();
+        showStatus(getString(R.string.settings_status_favorites_cleared));
+    }
+
+    private void resetListsAndProfiles() {
+        if (prefs != null) {
+            prefs.edit().remove(PREF_CHANNEL_COLLECTIONS).remove(PREF_CHANNEL_PROFILES).apply();
+        }
+        if (channelCollectionStore != null) {
+            channelCollectionStore.load();
+        }
+        if (channelProfileStore != null) {
+            channelProfileStore.load();
+        }
+        refreshLocalChannelFilters(lastChannelId);
+        channelAdapter.notifyDataSetChanged();
+        updateFilterText();
+        updateTouchHomeHub();
+        showStatus(getString(R.string.settings_status_lists_profiles_reset));
+    }
+
+    private void resetPlaybackSettings() {
+        clearPlaybackModes();
+        clearAllPlaybackDiagnostics();
+    }
+
+    private void resetStartupSettings() {
+        if (prefs != null) {
+            prefs.edit()
+                    .remove(PREF_STARTUP_HUB_DISABLED)
+                    .remove(PREF_LAST_CHANNEL_ID)
+                    .remove(PREF_LAST_FILTER_KEY)
+                    .remove(PREF_FAVORITES_ONLY)
+                    .remove(PREF_LAST_VOD_ID)
+                    .apply();
+        }
+        lastVodId = "";
+        selectedFilterKey = "all";
+        favoritesOnly = false;
+        persistNavigationState();
+        updateFilterText();
+        updateTouchHomeHub();
+        showStatus(getString(R.string.settings_status_startup_reset));
+    }
+
+    private void resetLocalData() {
+        clearAllVodProgress();
+        clearAllRecordingProgress();
+        clearRecentChannels();
+        clearGlobalSearchRecents();
     }
 
     private void prepareModalSurface() {

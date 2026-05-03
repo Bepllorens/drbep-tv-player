@@ -5054,7 +5054,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showSettingsDiagnosticsDialog);
         options.add(getString(R.string.settings_section_reset));
         actions.add(this::showResetSettingsDialog);
-        showTvOptionsDialog(R.string.title_settings_center, buildSettingsSummary(), options, actions);
+        showTvOptionsDialog(R.string.title_settings_center, null, options, actions);
     }
 
     private String buildSettingsSummary() {
@@ -5101,7 +5101,9 @@ public class MainActivity extends FragmentActivity {
             }
             showStatus(getString(R.string.settings_status_last_vod_cleared));
         });
-        showTvOptionsDialog(R.string.settings_section_startup, buildStartupSettingsSummary(), options, actions);
+        options.add(getString(R.string.settings_action_view_summary));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_startup, buildStartupSettingsSummary()));
+        showTvOptionsDialog(R.string.settings_section_startup, null, options, actions);
     }
 
     private String buildStartupSettingsSummary() {
@@ -5126,7 +5128,9 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_modes, R.string.settings_confirm_clear_modes, this::clearPlaybackModes));
         options.add(getString(R.string.settings_playback_clear_diagnostics));
         actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_diagnostics, R.string.settings_confirm_clear_diagnostics, this::clearAllPlaybackDiagnostics));
-        showTvOptionsDialog(R.string.settings_section_playback, buildPlaybackSettingsSummary(), options, actions);
+        options.add(getString(R.string.settings_action_view_summary));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_playback, buildPlaybackSettingsSummary()));
+        showTvOptionsDialog(R.string.settings_section_playback, null, options, actions);
     }
 
     private String buildPlaybackSettingsSummary() {
@@ -5143,7 +5147,9 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showGlobalSearchDialog);
         options.add(getString(R.string.settings_search_clear_recent));
         actions.add(() -> confirmSettingsAction(R.string.settings_search_clear_recent, R.string.settings_confirm_clear_searches, this::clearGlobalSearchRecents));
-        showTvOptionsDialog(R.string.settings_section_search, getString(R.string.settings_search_summary, globalSearchRecents.size()), options, actions);
+        options.add(getString(R.string.settings_action_view_summary));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_search, getString(R.string.settings_search_summary, globalSearchRecents.size())));
+        showTvOptionsDialog(R.string.settings_section_search, null, options, actions);
     }
 
     private void showRecordingSettingsDialog() {
@@ -5155,7 +5161,9 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::openRecordingsBrowser);
         options.add(getString(R.string.settings_recordings_clear_progress));
         actions.add(() -> confirmSettingsAction(R.string.settings_recordings_clear_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress));
-        showTvOptionsDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_summary, recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no), recordingResumePositions.size()), options, actions);
+        options.add(getString(R.string.settings_action_view_summary));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_summary, recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no), recordingResumePositions.size())));
+        showTvOptionsDialog(R.string.settings_section_recordings, null, options, actions);
     }
 
     private void showLocalDataSettingsDialog() {
@@ -5171,7 +5179,9 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_favorites, R.string.settings_confirm_clear_favorites, this::clearFavorites));
         options.add(getString(R.string.settings_data_reset_lists_profiles));
         actions.add(() -> confirmSettingsAction(R.string.settings_data_reset_lists_profiles, R.string.settings_confirm_reset_lists_profiles, this::resetListsAndProfiles));
-        showTvOptionsDialog(R.string.settings_section_local_data, buildLocalDataSummary(), options, actions);
+        options.add(getString(R.string.settings_action_view_summary));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_local_data, buildLocalDataSummary()));
+        showTvOptionsDialog(R.string.settings_section_local_data, null, options, actions);
     }
 
     private String buildLocalDataSummary() {
@@ -5223,7 +5233,18 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> confirmSettingsAction(R.string.settings_reset_startup, R.string.settings_confirm_reset_startup, this::resetStartupSettings));
         options.add(getString(R.string.settings_reset_local_data));
         actions.add(() -> confirmSettingsAction(R.string.settings_reset_local_data, R.string.settings_confirm_reset_local_data, this::resetLocalData));
-        showTvOptionsDialog(R.string.settings_section_reset, getString(R.string.settings_reset_summary), options, actions);
+        options.add(getString(R.string.settings_action_view_summary));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_reset, getString(R.string.settings_reset_summary)));
+        showTvOptionsDialog(R.string.settings_section_reset, null, options, actions);
+    }
+
+    private void showSettingsInfoDialog(int titleResId, String message) {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(titleResId)
+                .setMessage(message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message)
+                .setPositiveButton(R.string.dialog_close, null)
+                .create();
+        showTvDialog(dialog);
     }
 
     private void confirmSettingsAction(int titleResId, int messageResId, Runnable action) {

@@ -483,6 +483,7 @@
     <string name="settings_section_local_data">Datos locales</string>
     <string name="settings_section_diagnostics">Diagnostico de configuracion</string>
     <string name="settings_section_reset">Reset selectivo</string>
+    <string name="settings_action_view_summary">Ver resumen de esta seccion</string>
     <string name="settings_startup_summary">Hub al arrancar: %1$s\nCanal actual: %2$s\nUltimo VOD: %3$s</string>
     <string name="settings_startup_disable">No mostrar hub al arrancar</string>
     <string name="settings_startup_enable">Mostrar hub al arrancar</string>

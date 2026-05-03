@@ -226,7 +226,18 @@ final class PlayerController {
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " playWhenReady=" + (player != null && player.getPlayWhenReady()));
                 if (playbackState == Player.STATE_BUFFERING) {
-                    host.showStatus(context.getString(R.string.status_buffering));
+                    if (currentRequest != null && currentRequest.directPlayback) {
+                        String mimeType = currentPlaybackDecision == null ? "" : currentPlaybackDecision.mimeType;
+                        if (mimeType != null && mimeType.toLowerCase(java.util.Locale.ROOT).contains("mpegurl")) {
+                            host.showStatus(context.getString(R.string.vod_status_detecting_hls));
+                        } else if (mimeType != null && mimeType.toLowerCase(java.util.Locale.ROOT).contains("mpd")) {
+                            host.showStatus(context.getString(R.string.vod_status_detecting_dash));
+                        } else {
+                            host.showStatus(context.getString(R.string.vod_status_detecting_stream));
+                        }
+                    } else {
+                        host.showStatus(context.getString(R.string.status_buffering));
+                    }
                 } else if (playbackState == Player.STATE_READY) {
                     if (forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
                         player.seekToDefaultPosition();
@@ -237,9 +248,13 @@ final class PlayerController {
                         Log.d(TAG, "forced live edge on ready for channel=" + describeRequest(currentRequest));
                     }
                     host.hideError();
-                    host.showStatus(currentRequest != null && currentRequest.channelName != null && !currentRequest.channelName.trim().isEmpty()
-                            ? currentRequest.channelName
-                            : context.getString(R.string.status_ready));
+                    if (currentRequest != null && currentRequest.directPlayback) {
+                        host.showStatus(context.getString(R.string.vod_status_ready, currentRequest.channelName));
+                    } else {
+                        host.showStatus(currentRequest != null && currentRequest.channelName != null && !currentRequest.channelName.trim().isEmpty()
+                                ? currentRequest.channelName
+                                : context.getString(R.string.status_ready));
+                    }
                     maybeShowHdrBadge();
                 }
             }
@@ -660,9 +675,20 @@ final class PlayerController {
         player.prepare();
         player.setPlayWhenReady(autoPlay);
 
-        host.showStatus(useFallback
-            ? context.getString(R.string.status_channel_compat, request.channelName)
-            : request.channelName);
+        if (request.directPlayback) {
+            String platform = request.platformName == null ? "" : request.platformName.toLowerCase(java.util.Locale.ROOT);
+            if (platform.contains("runtime")) {
+                host.showStatus(context.getString(R.string.vod_status_opening_runtime));
+            } else if (platform.contains("tivify")) {
+                host.showStatus(context.getString(R.string.vod_status_opening_tivify));
+            } else {
+                host.showStatus(context.getString(R.string.vod_status_preparing, request.channelName));
+            }
+        } else {
+            host.showStatus(useFallback
+                ? context.getString(R.string.status_channel_compat, request.channelName)
+                : request.channelName);
+        }
     }
 
     private PlaybackRouteResolver.Decision buildPlaybackDecision(PlaybackRequest request, boolean useFallback, StreamInfo streamInfo) {

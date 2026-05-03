@@ -251,6 +251,13 @@ public class MainActivity extends FragmentActivity {
             uiHandler.postDelayed(this, RECORDINGS_AUTO_REFRESH_MS);
         }
     };
+    private final Runnable vodProgressSaveRunnable = new Runnable() {
+        @Override
+        public void run() {
+            rememberCurrentVodPosition();
+            uiHandler.postDelayed(this, 15_000L);
+        }
+    };
     private final List<ChannelItem> channels = new ArrayList<>();
     private final List<ChannelItem> allChannels = new ArrayList<>();
     private final List<ChannelFilter> filters = new ArrayList<>();
@@ -685,6 +692,7 @@ public class MainActivity extends FragmentActivity {
         enableImmersiveMode();
         loadChannels();
         uiHandler.postDelayed(reminderTickRunnable, 30000L);
+        uiHandler.postDelayed(vodProgressSaveRunnable, 15_000L);
     }
 
     private String resolveBaseUrl() {
@@ -1611,7 +1619,11 @@ public class MainActivity extends FragmentActivity {
         scheduleLearnCurrentPlaybackRoute(ch.id, playbackRequest == null ? PlaybackModeStore.MODE_AUTO : playbackRequest.playbackMode);
 
         hideError();
-        showStatus(displayName(ch));
+        if (ch.isVod) {
+            showStatus(getString(R.string.vod_status_preparing, displayName(ch)));
+        } else {
+            showStatus(displayName(ch));
+        }
         updateOverlayPanel();
         showZapBanner(ch);
     }
@@ -3895,6 +3907,16 @@ public class MainActivity extends FragmentActivity {
 
     private void showError(String reason) {
         if (errorText == null) {
+            return;
+        }
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current != null && current.isVod) {
+            errorText.setVisibility(View.VISIBLE);
+            errorText.setText(getString(
+                    R.string.error_vod_playback_details,
+                    reason == null ? getString(R.string.error_unknown_reason) : reason,
+                    displayName(current)
+            ));
             return;
         }
         errorText.setVisibility(View.VISIBLE);
@@ -8420,6 +8442,14 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.diagnostics_none));
             return;
         }
+        if (channelItem.isVod && channelItem.directPlayback) {
+            showStatus(channelItem.playUrl != null && channelItem.playUrl.contains("/api/vod/runtime/stream/")
+                    ? getString(R.string.vod_status_refreshing_runtime)
+                    : getString(R.string.vod_status_retrying));
+            streamInfoByChannelId.remove(channelItem.id);
+            playVodItem(channelItem, true);
+            return;
+        }
         String nextMode = nextPlaybackMode(resolvePlaybackModeForRequest(channelItem));
         if (PlaybackModeStore.MODE_AUTO.equals(nextMode)) {
             temporaryPlaybackModesByChannelId.remove(channelItem.id);
@@ -8515,7 +8545,82 @@ public class MainActivity extends FragmentActivity {
                 diagnostics.routeLabel,
                 diagnostics.playbackMode
         );
+        ChannelItem item = findChannelItemById(request.channelId);
+        if (item != null && item.isVod) {
+            rememberCurrentVodPosition();
+            showStatus(getString(R.string.vod_status_failed));
+            uiHandler.postDelayed(() -> {
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                if (current != null && request.channelId.equals(current.id)) {
+                    showVodPlaybackRecoveryPanel(current, diagnostics);
+                }
+            }, 500L);
+            return;
+        }
         maybeRepairPlaybackAfterError(request);
+    }
+
+    private void showVodPlaybackRecoveryPanel(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {
+        if (channel == null) {
+            return;
+        }
+        prepareModalSurface();
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(16);
+        panel.setPadding(padding, padding, padding, padding);
+        panel.setBackgroundColor(0xF0181E28);
+
+        TextView titleView = new TextView(this);
+        titleView.setText(getString(R.string.vod_recovery_title, displayName(channel)));
+        titleView.setTextColor(0xFFFFFFFF);
+        titleView.setTextSize(20f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        titleView.setMaxLines(2);
+        panel.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView messageView = new TextView(this);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        messageParams.topMargin = dp(8);
+        String error = diagnostics == null || diagnostics.lastError == null || diagnostics.lastError.trim().isEmpty()
+                ? getString(R.string.error_unknown_reason)
+                : diagnostics.lastError.trim();
+        messageView.setText(getString(R.string.vod_recovery_message, error));
+        messageView.setTextColor(0xFFD5E6F8);
+        messageView.setTextSize(14f);
+        panel.addView(messageView, messageParams);
+
+        LinearLayout actionsColumn = new LinearLayout(this);
+        actionsColumn.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionsParams.topMargin = dp(12);
+        panel.addView(actionsColumn, actionsParams);
+
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        List<TextView> actionRows = new ArrayList<>();
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_recovery_retry), () -> {
+            dismissDialog(dialogHolder[0]);
+            playVodItem(channel, true);
+        });
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_retry_route), () -> {
+            dismissDialog(dialogHolder[0]);
+            retryCurrentPlaybackWithNextRoute(channel);
+        });
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_diagnostics), () -> showVodDiagnosticsDialog(channel));
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_recovery_library), () -> {
+            dismissDialog(dialogHolder[0]);
+            showVodLibraryDialog();
+        });
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(panel)
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+        dialogHolder[0] = dialog;
+        showTvDialog(dialog);
+        if (!actionRows.isEmpty()) {
+            actionRows.get(0).post(() -> actionRows.get(0).requestFocus());
+        }
     }
 
     private void maybeRepairPlaybackAfterError(PlayerController.PlaybackRequest request) {

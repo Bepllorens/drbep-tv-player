@@ -27,6 +27,7 @@
     <string name="status_retry_compat">Reintentando modo compat...</string>
     <string name="status_playback_repair_trying">Auto-reparacion: probando %1$s</string>
     <string name="status_buffering">Cargando stream...</string>
+    <string name="error_vod_playback_details">Error reproduciendo VOD\n\n%1$s\n\nContenido: %2$s\n\nPulsa MENU para abrir herramientas o espera el panel de recuperacion.</string>
     <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
     <string name="status_channels_ready">%1$d canales listos en %2$d ms</string>
@@ -456,6 +457,19 @@
     <string name="vod_action_clear_progress_vod">Borrar progreso de este VOD</string>
     <string name="vod_detail_action_hint">OK abre una accion. BACK cierra la ficha.</string>
     <string name="vod_status_preparing">Preparando VOD: %1$s</string>
+    <string name="vod_status_opening_runtime">Abriendo Runtime VOD...</string>
+    <string name="vod_status_opening_tivify">Abriendo Tivify VOD...</string>
+    <string name="vod_status_detecting_hls">Detectando HLS del VOD...</string>
+    <string name="vod_status_detecting_dash">Detectando DASH del VOD...</string>
+    <string name="vod_status_detecting_stream">Detectando stream VOD...</string>
+    <string name="vod_status_ready">VOD listo: %1$s</string>
+    <string name="vod_status_failed">VOD no arranco. Abriendo recuperacion...</string>
+    <string name="vod_status_retrying">Reintentando VOD...</string>
+    <string name="vod_status_refreshing_runtime">Refrescando endpoint Runtime VOD...</string>
+    <string name="vod_recovery_title">Recuperar VOD: %1$s</string>
+    <string name="vod_recovery_message">El VOD no ha arrancado.\n%1$s</string>
+    <string name="vod_recovery_retry">Reintentar VOD</string>
+    <string name="vod_recovery_library">Volver a Biblioteca VOD</string>
     <string name="vod_resume_meta">Progreso: %1$s</string>
     <string name="vod_continue_prompt">Tienes progreso guardado en %1$s. ¿Quieres continuar?</string>
     <string name="vod_continue_empty">Aun no hay VOD reciente para continuar</string>

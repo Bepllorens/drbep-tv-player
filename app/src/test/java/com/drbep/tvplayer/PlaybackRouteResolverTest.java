@@ -123,6 +123,19 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void runtimeVodEndpointWithoutExtensionIsTreatedAsHls() {
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                request("vod-runtime-1008", "https://iptv.example.com/api/vod/runtime/stream/1008", "", PlaybackModeStore.MODE_AUTO, true, ""),
+                false,
+                null
+        );
+
+        assertEquals("https://iptv.example.com/api/vod/runtime/stream/1008", decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_M3U8, decision.mimeType);
+        assertEquals("", decision.drmType);
+    }
+
+    @Test
     public void inferMimeTypeIsNullSafe() {
         assertNull(PlaybackRouteResolver.inferMimeType(null));
     }

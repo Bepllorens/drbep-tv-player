@@ -205,6 +205,9 @@ final class PlaybackRouteResolver {
         if (lower.contains(".m3u8")) {
             return MimeTypes.APPLICATION_M3U8;
         }
+        if (lower.contains("/api/vod/runtime/stream/")) {
+            return MimeTypes.APPLICATION_M3U8;
+        }
         if (lower.contains(".mp4")) {
             return MimeTypes.VIDEO_MP4;
         }

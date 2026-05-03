@@ -4987,6 +4987,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.tools_menu_personal_lists_current),
                 getString(R.string.tools_menu_channel_profile_current),
                 getString(R.string.tools_menu_playback_mode_temporary),
+                getString(R.string.diagnostics_action_retry_next_route),
                 getString(R.string.tools_menu_playback_diagnostics),
                 getString(R.string.tools_menu_install_status),
                 getString(R.string.tools_menu_recordings_panel),
@@ -5022,16 +5023,18 @@ public class MainActivity extends FragmentActivity {
                     } else if (which == 11) {
                         openCurrentTemporaryPlaybackMode();
                     } else if (which == 12) {
-                        showPlaybackDiagnosticsDialog();
+                        retryCurrentPlaybackWithNextRoute(getCurrentPlaybackChannelItem());
                     } else if (which == 13) {
-                        showInstallStatusDialog();
+                        showPlaybackDiagnosticsDialog();
                     } else if (which == 14) {
-                        openRecordingsBrowser();
+                        showInstallStatusDialog();
                     } else if (which == 15) {
-                        openMultiView();
+                        openRecordingsBrowser();
                     } else if (which == 16) {
-                        showOpenMultiViewPresetDialog();
+                        openMultiView();
                     } else if (which == 17) {
+                        showOpenMultiViewPresetDialog();
+                    } else if (which == 18) {
                         showSaveMultiViewPresetDialog();
                     }
                 })
@@ -7365,7 +7368,13 @@ public class MainActivity extends FragmentActivity {
             new AlertDialog.Builder(this)
                     .setTitle(R.string.title_playback_diagnostics)
                     .setMessage(message)
-                    .setPositiveButton(R.string.diagnostics_action_retry, (dialog, which) -> retryCurrentPlayback())
+                    .setPositiveButton(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route, (dialog, which) -> {
+                        if (currentChannel == null) {
+                            retryCurrentPlayback();
+                        } else {
+                            retryCurrentPlaybackWithNextRoute(currentChannel);
+                        }
+                    })
                     .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_more, (dialog, which) -> {
                         if (currentChannel != null) {
                             showPlaybackDiagnosticsActionsDialog(currentChannel);
@@ -7408,7 +7417,13 @@ public class MainActivity extends FragmentActivity {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_playback_diagnostics)
                 .setMessage(message.toString().trim())
-                .setPositiveButton(R.string.diagnostics_action_retry, (dialog, which) -> retryCurrentPlayback())
+                .setPositiveButton(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route, (dialog, which) -> {
+                    if (currentChannel == null) {
+                        retryCurrentPlayback();
+                    } else {
+                        retryCurrentPlaybackWithNextRoute(currentChannel);
+                    }
+                })
                 .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_more, (dialog, which) -> {
                     if (currentChannel != null) {
                         showPlaybackDiagnosticsActionsDialog(currentChannel);
@@ -7426,6 +7441,8 @@ public class MainActivity extends FragmentActivity {
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.diagnostics_action_retry_next_route));
         actions.add(() -> retryCurrentPlaybackWithNextRoute(channelItem));
+        options.add(getString(R.string.diagnostics_action_retry));
+        actions.add(this::retryCurrentPlayback);
         options.add(getString(R.string.diagnostics_action_test_auto));
         actions.add(() -> testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_AUTO));
         options.add(getString(R.string.diagnostics_action_test_direct));

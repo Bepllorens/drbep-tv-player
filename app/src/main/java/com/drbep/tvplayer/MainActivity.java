@@ -5103,27 +5103,34 @@ public class MainActivity extends FragmentActivity {
 
     private void showVodLibraryDialog() {
         rememberCurrentVodPosition();
+        List<ChannelItem> continueItems = buildVodContinueItems();
+        List<ChannelItem> recentItems = buildRecentVodItems();
+        List<ChannelItem> tivifyItems = buildVodItemsByFilter("vod:tivify:general", false);
+        List<ChannelItem> tivifyAdultItems = buildVodItemsByFilter("vod:tivify:adult", true);
+        List<ChannelItem> runtimeItems = buildVodItemsByFilter("vod:runtime:movies", false);
+        List<ChannelItem> progressItems = buildVodProgressItems();
+        List<ChannelItem> notStartedItems = buildVodNotStartedItems();
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
-        options.add(getString(R.string.vod_library_continue));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_continue, buildVodContinueItems(), true));
-        options.add(getString(R.string.vod_library_recent));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_recent, buildRecentVodItems(), false));
-        options.add(getString(R.string.vod_library_tivify));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify, buildVodItemsByFilter("vod:tivify:general", false), false));
-        options.add(getString(R.string.vod_library_tivify_adult));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify_adult, buildVodItemsByFilter("vod:tivify:adult", true), false));
-        options.add(getString(R.string.vod_library_runtime));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_runtime, buildVodItemsByFilter("vod:runtime:movies", false), false));
-        options.add(getString(R.string.vod_library_with_progress));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_with_progress, buildVodProgressItems(), true));
-        options.add(getString(R.string.vod_library_not_started));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_not_started, buildVodNotStartedItems(), false));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_continue, continueItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_continue, continueItems, true));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_recent, recentItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_recent, recentItems, false));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_tivify, tivifyItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify, tivifyItems, false));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_tivify_adult, tivifyAdultItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify_adult, tivifyAdultItems, false));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_runtime, runtimeItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_runtime, runtimeItems, false));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_with_progress, progressItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_with_progress, progressItems, true));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_not_started, notStartedItems));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_not_started, notStartedItems, false));
         options.add(getString(R.string.quick_hub_search_vod));
         actions.add(this::showVodSearchDialog);
-        options.add(getString(R.string.vod_library_manage_progress));
+        options.add(buildVodLibraryOptionLabel(R.string.vod_library_manage_progress, progressItems));
         actions.add(this::showVodProgressManagerDialog);
-        showTvOptionsDialog(R.string.tools_section_vod, buildVodLibrarySummary(), options, actions);
+        showTvOptionsDialog(R.string.tools_section_vod, null, options, actions);
     }
 
     private void showListsToolsDialog() {
@@ -5996,6 +6003,11 @@ public class MainActivity extends FragmentActivity {
             }
         }
         return getString(R.string.vod_library_summary, total, adult, progress);
+    }
+
+    private String buildVodLibraryOptionLabel(int titleResId, List<ChannelItem> items) {
+        int count = items == null ? 0 : items.size();
+        return getString(titleResId) + " (" + count + ")";
     }
 
     private List<ChannelItem> buildVodContinueItems() {

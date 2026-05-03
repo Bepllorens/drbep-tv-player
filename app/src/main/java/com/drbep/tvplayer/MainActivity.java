@@ -2514,43 +2514,92 @@ public class MainActivity extends FragmentActivity {
         if (channel == null) {
             return;
         }
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add(getString(R.string.vod_action_play));
-        actions.add(() -> {
+        prepareModalSurface();
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(16);
+        panel.setPadding(padding, padding, padding, padding);
+        panel.setBackgroundColor(0xF0181E28);
+        panel.setLayoutParams(new ViewGroup.LayoutParams(dp(560), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView titleView = new TextView(this);
+        titleView.setText(displayName(channel));
+        titleView.setTextColor(0xFFFFFFFF);
+        titleView.setTextSize(20f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        titleView.setMaxLines(2);
+        panel.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView metaView = new TextView(this);
+        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        metaParams.topMargin = dp(6);
+        metaView.setText(buildVodInfoMeta(channel));
+        metaView.setTextColor(0xFFB7C4D6);
+        metaView.setTextSize(13f);
+        panel.addView(metaView, metaParams);
+
+        LinearLayout actionsColumn = new LinearLayout(this);
+        actionsColumn.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionsParams.topMargin = dp(12);
+        panel.addView(actionsColumn, actionsParams);
+
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        List<TextView> actionRows = new ArrayList<>();
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_play), () -> {
+            dismissDialog(dialogHolder[0]);
             clearVodResumePosition(channel.id);
             playChannelItemInternal(channel, true, 0L);
         });
         if (getVodResumePosition(channel.id) > 30_000L) {
-            options.add(getString(R.string.vod_action_continue));
-            actions.add(() -> playChannelItemInternal(channel, true, getVodResumePosition(channel.id)));
-            options.add(getString(R.string.vod_action_start_over));
-            actions.add(() -> {
+            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_continue), () -> {
+                dismissDialog(dialogHolder[0]);
+                playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
+            });
+            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_start_over), () -> {
+                dismissDialog(dialogHolder[0]);
                 clearVodResumePosition(channel.id);
                 playChannelItemInternal(channel, true, 0L);
             });
         }
-        options.add(getString(favoriteChannelIds.contains(channel.id) ? R.string.menu_remove_favorite : R.string.menu_add_favorite));
-        actions.add(() -> toggleFavoriteForChannel(channel));
-        options.add(getString(R.string.menu_personal_lists));
-        actions.add(() -> showPersonalListsDialog(channel));
-        options.add(getString(R.string.vod_action_diagnostics));
-        actions.add(() -> showVodDiagnosticsDialog(channel));
-        options.add(getString(R.string.diagnostics_action_retry_next_route));
-        actions.add(() -> retryCurrentPlaybackWithNextRoute(channel));
-        options.add(getString(R.string.diagnostics_action_temporary_mode));
-        actions.add(() -> showTemporaryPlaybackModeDialog(channel));
-        options.add(getString(R.string.tools_menu_playback_diagnostics));
-        actions.add(() -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(favoriteChannelIds.contains(channel.id) ? R.string.menu_remove_favorite : R.string.menu_add_favorite), () -> toggleFavoriteForChannel(channel));
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.menu_personal_lists), () -> {
+            dismissDialog(dialogHolder[0]);
+            showPersonalListsDialog(channel);
+        });
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_diagnostics), () -> showVodDiagnosticsDialog(channel));
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.diagnostics_action_retry_next_route), () -> {
+            dismissDialog(dialogHolder[0]);
+            retryCurrentPlaybackWithNextRoute(channel);
+        });
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.diagnostics_action_temporary_mode), () -> {
+            dismissDialog(dialogHolder[0]);
+            showTemporaryPlaybackModeDialog(channel);
+        });
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.tools_menu_playback_diagnostics), () -> {
+            dismissDialog(dialogHolder[0]);
             currentPlaybackVodId = channel.id;
             showPlaybackDiagnosticsDialog();
         });
-        options.add(getString(R.string.vod_action_clear_progress));
-        actions.add(() -> {
+        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_clear_progress), () -> {
             clearVodResumePosition(channel.id);
             showStatus(getString(R.string.vod_status_progress_cleared));
         });
-        showTvOptionsDialog(R.string.title_touch_vod_info, displayName(channel), options, actions);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(panel)
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+        dialogHolder[0] = dialog;
+        showTvDialog(dialog);
+        if (!actionRows.isEmpty()) {
+            actionRows.get(0).post(() -> actionRows.get(0).requestFocus());
+        }
+    }
+
+    private void dismissDialog(AlertDialog dialog) {
+        if (dialog != null && dialog.isShowing()) {
+            dialog.dismiss();
+        }
     }
 
     private String buildVodInfoMeta(ChannelItem channel) {

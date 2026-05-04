@@ -5492,17 +5492,17 @@ public class MainActivity extends FragmentActivity {
 
         List<RecyclerView> shelfRows = new ArrayList<>();
         if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_recent), buildRecentVodItems(), false);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
+            addVodShelf(content, scrollView, filtersRow, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
+            addVodShelf(content, scrollView, filtersRow, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_recent), buildRecentVodItems(), false);
+            addVodShelf(content, scrollView, filtersRow, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
+            addVodShelf(content, scrollView, filtersRow, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
+            addVodShelf(content, scrollView, filtersRow, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
+            addVodShelf(content, scrollView, filtersRow, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
         } else {
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), false);
+            addVodShelf(content, scrollView, filtersRow, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), false);
         }
 
-        wireVodVisualActionsNavigation(actionsRow, shelfRows, scrollView);
+        wireVodVisualHeaderNavigation(actionsRow, filtersRow, shelfRows, scrollView);
         scrollView.addView(content, new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         android.widget.FrameLayout root = new android.widget.FrameLayout(this);
@@ -5550,7 +5550,7 @@ public class MainActivity extends FragmentActivity {
         parent.addView(button, params);
     }
 
-    private void addVodShelf(LinearLayout parent, android.widget.ScrollView scrollView, List<RecyclerView> shelfRows, int shelfWidth, String title, List<ChannelItem> items, boolean progressFirst) {
+    private void addVodShelf(LinearLayout parent, android.widget.ScrollView scrollView, LinearLayout filtersRow, List<RecyclerView> shelfRows, int shelfWidth, String title, List<ChannelItem> items, boolean progressFirst) {
         if (parent == null || items == null || items.isEmpty()) {
             return;
         }
@@ -5578,30 +5578,70 @@ public class MainActivity extends FragmentActivity {
         recyclerView.setFocusableInTouchMode(true);
         recyclerView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         recyclerView.setMinimumWidth(shelfWidth);
-        recyclerView.setAdapter(new VodPosterAdapter(items, shelfRows, rowIndex, scrollView));
+        recyclerView.setAdapter(new VodPosterAdapter(items, filtersRow, shelfRows, rowIndex, scrollView));
         LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(shelfWidth, dp(248));
         listParams.topMargin = dp(8);
         parent.addView(recyclerView, listParams);
     }
 
-    private void wireVodVisualActionsNavigation(LinearLayout actionsRow, List<RecyclerView> shelfRows, android.widget.ScrollView scrollView) {
-        if (actionsRow == null) {
+    private void wireVodVisualHeaderNavigation(LinearLayout actionsRow, LinearLayout filtersRow, List<RecyclerView> shelfRows, android.widget.ScrollView scrollView) {
+        wireVodVisualRowNavigation(actionsRow, null, filtersRow, scrollView);
+        wireVodVisualRowNavigation(filtersRow, actionsRow, null, scrollView);
+        if (filtersRow == null) {
             return;
         }
-        for (int i = 0; i < actionsRow.getChildCount(); i++) {
-            final int actionIndex = i;
-            View child = actionsRow.getChildAt(i);
+        for (int i = 0; i < filtersRow.getChildCount(); i++) {
+            final int filterIndex = i;
+            View child = filtersRow.getChildAt(i);
             child.setOnKeyListener((v, keyCode, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN) {
                     return false;
                 }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    return focusVodVisualRowButton(actionsRow, filterIndex, scrollView);
+                }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    focusVodShelfItem(shelfRows, 0, actionIndex, scrollView);
-                    return true;
+                    return focusVodShelfItem(shelfRows, 0, filterIndex, scrollView);
                 }
                 return false;
             });
         }
+    }
+
+    private void wireVodVisualRowNavigation(LinearLayout row, LinearLayout upRow, LinearLayout downRow, android.widget.ScrollView scrollView) {
+        if (row == null) {
+            return;
+        }
+        for (int i = 0; i < row.getChildCount(); i++) {
+            final int actionIndex = i;
+            View child = row.getChildAt(i);
+            child.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                    return false;
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && upRow != null) {
+                    return focusVodVisualRowButton(upRow, actionIndex, scrollView);
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    return focusVodVisualRowButton(downRow, actionIndex, scrollView);
+                }
+                return false;
+            });
+        }
+    }
+
+    private boolean focusVodVisualRowButton(LinearLayout row, int index, android.widget.ScrollView scrollView) {
+        if (row == null || row.getChildCount() == 0) {
+            return false;
+        }
+        int targetIndex = Math.max(0, Math.min(index, row.getChildCount() - 1));
+        View target = row.getChildAt(targetIndex);
+        if (target == null) {
+            return false;
+        }
+        target.requestFocus();
+        ensureVodVisualItemVisible(scrollView, target);
+        return true;
     }
 
     private boolean focusVodShelfItem(List<RecyclerView> shelfRows, int rowIndex, int itemIndex, android.widget.ScrollView scrollView) {
@@ -10710,14 +10750,16 @@ public class MainActivity extends FragmentActivity {
 
     private final class VodPosterAdapter extends RecyclerView.Adapter<VodPosterAdapter.VodPosterVH> {
         private final List<ChannelItem> items = new ArrayList<>();
+        private final LinearLayout filtersRow;
         private final List<RecyclerView> shelfRows;
         private final int rowIndex;
         private final android.widget.ScrollView scrollView;
 
-        VodPosterAdapter(List<ChannelItem> initialItems, List<RecyclerView> shelfRows, int rowIndex, android.widget.ScrollView scrollView) {
+        VodPosterAdapter(List<ChannelItem> initialItems, LinearLayout filtersRow, List<RecyclerView> shelfRows, int rowIndex, android.widget.ScrollView scrollView) {
             if (initialItems != null) {
                 items.addAll(initialItems);
             }
+            this.filtersRow = filtersRow;
             this.shelfRows = shelfRows;
             this.rowIndex = rowIndex;
             this.scrollView = scrollView;
@@ -10774,6 +10816,9 @@ public class MainActivity extends FragmentActivity {
                     return false;
                 }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    if (rowIndex == 0) {
+                        return focusVodVisualRowButton(filtersRow, currentIndex, scrollView);
+                    }
                     return focusVodShelfItem(shelfRows, rowIndex - 1, currentIndex, scrollView);
                 }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {

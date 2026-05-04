@@ -5412,14 +5412,17 @@ public class MainActivity extends FragmentActivity {
         prepareModalSurface();
 
         android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int dialogWidth = Math.max(dp(760), metrics.widthPixels - dp(64));
+        int dialogWidth = Math.max(dp(760), metrics.widthPixels - dp(48));
         int dialogHeight = Math.max(dp(560), metrics.heightPixels - dp(84));
+        int contentWidth = Math.max(dp(720), dialogWidth - dp(48));
         android.widget.ScrollView scrollView = new android.widget.ScrollView(this);
         scrollView.setLayoutParams(new ViewGroup.LayoutParams(dialogWidth, dialogHeight));
-        scrollView.setFillViewport(false);
+        scrollView.setFillViewport(true);
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
+        content.setMinimumWidth(contentWidth);
+        content.setLayoutParams(new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
         int padding = dp(16);
         content.setPadding(padding, padding, padding, padding);
         content.setBackgroundColor(0xF0181E28);
@@ -5459,15 +5462,15 @@ public class MainActivity extends FragmentActivity {
         addVodVisualAction(actionsRow, getString(R.string.vod_library_dense_view), this::showVodLibraryMenuDialog);
 
         List<RecyclerView> shelfRows = new ArrayList<>();
-        addVodShelf(content, scrollView, shelfRows, getString(R.string.vod_library_continue), buildVodContinueItems(), true);
-        addVodShelf(content, scrollView, shelfRows, getString(R.string.vod_library_recent), buildRecentVodItems(), false);
-        addVodShelf(content, scrollView, shelfRows, getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
-        addVodShelf(content, scrollView, shelfRows, getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
-        addVodShelf(content, scrollView, shelfRows, getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
-        addVodShelf(content, scrollView, shelfRows, getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
+        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
+        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_recent), buildRecentVodItems(), false);
+        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
+        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
+        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
+        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
 
         wireVodVisualActionsNavigation(actionsRow, shelfRows, scrollView);
-        scrollView.addView(content);
+        scrollView.addView(content, new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(scrollView)
@@ -5506,7 +5509,7 @@ public class MainActivity extends FragmentActivity {
         parent.addView(button, params);
     }
 
-    private void addVodShelf(LinearLayout parent, android.widget.ScrollView scrollView, List<RecyclerView> shelfRows, String title, List<ChannelItem> items, boolean progressFirst) {
+    private void addVodShelf(LinearLayout parent, android.widget.ScrollView scrollView, List<RecyclerView> shelfRows, int shelfWidth, String title, List<ChannelItem> items, boolean progressFirst) {
         if (parent == null || items == null || items.isEmpty()) {
             return;
         }
@@ -5533,8 +5536,9 @@ public class MainActivity extends FragmentActivity {
         recyclerView.setFocusable(true);
         recyclerView.setFocusableInTouchMode(true);
         recyclerView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        recyclerView.setMinimumWidth(shelfWidth);
         recyclerView.setAdapter(new VodPosterAdapter(items, shelfRows, rowIndex, scrollView));
-        LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(248));
+        LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(shelfWidth, dp(248));
         listParams.topMargin = dp(8);
         parent.addView(recyclerView, listParams);
     }

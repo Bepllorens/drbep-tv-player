@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
@@ -26,6 +27,7 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.inputmethod.InputMethodManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -5412,9 +5414,9 @@ public class MainActivity extends FragmentActivity {
         prepareModalSurface();
 
         android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int dialogWidth = Math.max(dp(760), metrics.widthPixels - dp(48));
-        int dialogHeight = Math.max(dp(560), metrics.heightPixels - dp(84));
-        int contentWidth = Math.max(dp(720), dialogWidth - dp(48));
+        int dialogWidth = Math.max(dp(900), metrics.widthPixels - dp(56));
+        int dialogHeight = Math.max(dp(560), metrics.heightPixels - dp(80));
+        int contentWidth = dialogWidth;
         android.widget.ScrollView scrollView = new android.widget.ScrollView(this);
         scrollView.setLayoutParams(new ViewGroup.LayoutParams(dialogWidth, dialogHeight));
         scrollView.setFillViewport(true);
@@ -5472,13 +5474,20 @@ public class MainActivity extends FragmentActivity {
         wireVodVisualActionsNavigation(actionsRow, shelfRows, scrollView);
         scrollView.addView(content, new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(scrollView)
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
-        showTvDialog(dialog);
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setLayout(dialogWidth, dialogHeight);
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.setBackgroundColor(0xCC000000);
+        android.widget.FrameLayout.LayoutParams scrollParams = new android.widget.FrameLayout.LayoutParams(dialogWidth, dialogHeight, Gravity.CENTER);
+        root.addView(scrollView, scrollParams);
+
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(root);
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
         }
         focusVodShelfItem(shelfRows, 0, 0, scrollView);
     }

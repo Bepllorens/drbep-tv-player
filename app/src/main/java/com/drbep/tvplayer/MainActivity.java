@@ -5514,6 +5514,18 @@ public class MainActivity extends FragmentActivity {
         dialogHolder[0] = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(root);
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP && !shelfRows.isEmpty() && isFocusInsideView(shelfRows.get(0))) {
+                return focusVodVisualRowButton(filtersRow, findFocusedVodShelfPosition(shelfRows.get(0)), scrollView);
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && isFocusInsideView(filtersRow)) {
+                return focusVodShelfItem(shelfRows, 0, findFocusedChildIndex(filtersRow), scrollView);
+            }
+            return false;
+        });
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
         Window window = dialog.getWindow();
@@ -5653,6 +5665,54 @@ public class MainActivity extends FragmentActivity {
             ensureVodVisualItemVisible(scrollView, target);
         });
         return true;
+    }
+
+    private boolean isFocusInsideView(View container) {
+        if (container == null) {
+            return false;
+        }
+        View focused = getCurrentFocus();
+        while (focused != null) {
+            if (focused == container) {
+                return true;
+            }
+            Object parent = focused.getParent();
+            focused = parent instanceof View ? (View) parent : null;
+        }
+        return false;
+    }
+
+    private int findFocusedChildIndex(LinearLayout row) {
+        if (row == null || row.getChildCount() == 0) {
+            return 0;
+        }
+        View focused = getCurrentFocus();
+        for (int i = 0; i < row.getChildCount(); i++) {
+            if (row.getChildAt(i) == focused) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private int findFocusedVodShelfPosition(RecyclerView recyclerView) {
+        if (recyclerView == null) {
+            return 0;
+        }
+        View focused = getCurrentFocus();
+        if (focused == null) {
+            return 0;
+        }
+        View child = focused;
+        while (child != null && child.getParent() != recyclerView) {
+            Object parent = child.getParent();
+            child = parent instanceof View ? (View) parent : null;
+        }
+        if (child == null) {
+            return 0;
+        }
+        int position = recyclerView.getChildAdapterPosition(child);
+        return position == RecyclerView.NO_POSITION ? 0 : position;
     }
 
     private boolean focusVodShelfItem(List<RecyclerView> shelfRows, int rowIndex, int itemIndex, android.widget.ScrollView scrollView) {

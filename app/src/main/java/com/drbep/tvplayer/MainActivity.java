@@ -2662,7 +2662,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private void dismissDialog(AlertDialog dialog) {
+    private void dismissDialog(Dialog dialog) {
         if (dialog != null && dialog.isShowing()) {
             dialog.dismiss();
         }
@@ -5368,6 +5368,10 @@ public class MainActivity extends FragmentActivity {
         showVodVisualLibraryDialog();
     }
 
+    private void showVodVisualLibraryDialog() {
+        showVodVisualLibraryDialog(VodVisualTypeFilter.GENERAL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART);
+    }
+
     private void showVodLibraryMenuDialog() {
         rememberCurrentVodPosition();
         List<ChannelItem> continueItems = buildVodContinueItems();
@@ -5409,7 +5413,7 @@ public class MainActivity extends FragmentActivity {
         showTvOptionsDialog(R.string.tools_section_vod, null, options, actions);
     }
 
-    private void showVodVisualLibraryDialog() {
+    private void showVodVisualLibraryDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
         rememberCurrentVodPosition();
         prepareModalSurface();
 
@@ -5458,18 +5462,45 @@ public class MainActivity extends FragmentActivity {
         LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         actionsParams.topMargin = dp(12);
         content.addView(actionsRow, actionsParams);
+        final Dialog[] dialogHolder = new Dialog[1];
         addVodVisualAction(actionsRow, getString(R.string.quick_hub_search_vod), this::showVodSearchDialog);
         addVodVisualAction(actionsRow, getString(R.string.vod_library_categories), this::showVodCategoriesDialog);
         addVodVisualAction(actionsRow, getString(R.string.vod_library_manage_progress), this::showVodProgressManagerDialog);
         addVodVisualAction(actionsRow, getString(R.string.vod_library_dense_view), this::showVodLibraryMenuDialog);
 
+        LinearLayout filtersRow = new LinearLayout(this);
+        filtersRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams filtersParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        filtersParams.topMargin = dp(10);
+        content.addView(filtersRow, filtersParams);
+        addVodVisualAction(filtersRow, "Tipo: " + typeFilter.label, () -> {
+            dismissDialog(dialogHolder[0]);
+            showVodVisualLibraryDialog(typeFilter.next(), platformFilter, statusFilter, sortFilter);
+        });
+        addVodVisualAction(filtersRow, "Fuente: " + platformFilter.label, () -> {
+            dismissDialog(dialogHolder[0]);
+            showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter);
+        });
+        addVodVisualAction(filtersRow, "Estado: " + statusFilter.label, () -> {
+            dismissDialog(dialogHolder[0]);
+            showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter);
+        });
+        addVodVisualAction(filtersRow, "Orden: " + sortFilter.label, () -> {
+            dismissDialog(dialogHolder[0]);
+            showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next());
+        });
+
         List<RecyclerView> shelfRows = new ArrayList<>();
-        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
-        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_recent), buildRecentVodItems(), false);
-        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
-        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
-        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
-        addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
+        if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_recent), buildRecentVodItems(), false);
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
+        } else {
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), false);
+        }
 
         wireVodVisualActionsNavigation(actionsRow, shelfRows, scrollView);
         scrollView.addView(content, new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -5480,6 +5511,7 @@ public class MainActivity extends FragmentActivity {
         root.addView(scrollView, scrollParams);
 
         Dialog dialog = new Dialog(this);
+        dialogHolder[0] = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(root);
         dialog.setOnDismissListener(d -> enableImmersiveMode());
@@ -6505,6 +6537,174 @@ public class MainActivity extends FragmentActivity {
         ALPHA,
         YEAR_DESC,
         DURATION_DESC
+    }
+
+    private enum VodVisualTypeFilter {
+        GENERAL("General"),
+        ADULT("Adulto"),
+        ALL("Todo");
+
+        final String label;
+
+        VodVisualTypeFilter(String label) {
+            this.label = label;
+        }
+
+        VodVisualTypeFilter next() {
+            VodVisualTypeFilter[] values = values();
+            return values[(ordinal() + 1) % values.length];
+        }
+    }
+
+    private enum VodVisualPlatformFilter {
+        ALL("Todo"),
+        TIVIFY("Tivify"),
+        RUNTIME("Runtime"),
+        OTHER("Otros");
+
+        final String label;
+
+        VodVisualPlatformFilter(String label) {
+            this.label = label;
+        }
+
+        VodVisualPlatformFilter next() {
+            VodVisualPlatformFilter[] values = values();
+            return values[(ordinal() + 1) % values.length];
+        }
+    }
+
+    private enum VodVisualStatusFilter {
+        ALL("Todo"),
+        CONTINUE("Continuar"),
+        PROGRESS("Con progreso"),
+        NOT_STARTED("Sin empezar");
+
+        final String label;
+
+        VodVisualStatusFilter(String label) {
+            this.label = label;
+        }
+
+        VodVisualStatusFilter next() {
+            VodVisualStatusFilter[] values = values();
+            return values[(ordinal() + 1) % values.length];
+        }
+    }
+
+    private enum VodVisualSortFilter {
+        SMART("Recomendado"),
+        ALPHA("A-Z"),
+        RECENT("Recientes"),
+        YEAR("Ano"),
+        DURATION("Duracion");
+
+        final String label;
+
+        VodVisualSortFilter(String label) {
+            this.label = label;
+        }
+
+        VodVisualSortFilter next() {
+            VodVisualSortFilter[] values = values();
+            return values[(ordinal() + 1) % values.length];
+        }
+    }
+
+    private boolean isDefaultVodVisualFilter(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
+        return typeFilter == VodVisualTypeFilter.GENERAL
+                && platformFilter == VodVisualPlatformFilter.ALL
+                && statusFilter == VodVisualStatusFilter.ALL
+                && sortFilter == VodVisualSortFilter.SMART;
+    }
+
+    private List<ChannelItem> buildVodVisualFilteredItems(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
+        List<ChannelItem> items = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (item == null || !item.isVod || !matchesVodVisualType(item, typeFilter) || !matchesVodVisualPlatform(item, platformFilter) || !matchesVodVisualStatus(item, statusFilter)) {
+                continue;
+            }
+            items.add(item);
+        }
+        sortVodVisualFilteredItems(items, sortFilter);
+        return items;
+    }
+
+    private boolean matchesVodVisualType(ChannelItem item, VodVisualTypeFilter typeFilter) {
+        if (typeFilter == VodVisualTypeFilter.ALL) {
+            return true;
+        }
+        return typeFilter == VodVisualTypeFilter.ADULT ? item.isAdultVod : !item.isAdultVod;
+    }
+
+    private boolean matchesVodVisualPlatform(ChannelItem item, VodVisualPlatformFilter platformFilter) {
+        if (platformFilter == VodVisualPlatformFilter.ALL) {
+            return true;
+        }
+        String filterKey = item.vodFilterKey == null ? "" : item.vodFilterKey.toLowerCase(Locale.ROOT);
+        String platform = item.platformName == null ? "" : item.platformName.toLowerCase(Locale.ROOT);
+        boolean isTivify = filterKey.contains("tivify") || platform.contains("tivify");
+        boolean isRuntime = filterKey.contains("runtime") || platform.contains("runtime");
+        if (platformFilter == VodVisualPlatformFilter.TIVIFY) {
+            return isTivify;
+        }
+        if (platformFilter == VodVisualPlatformFilter.RUNTIME) {
+            return isRuntime;
+        }
+        return !isTivify && !isRuntime;
+    }
+
+    private boolean matchesVodVisualStatus(ChannelItem item, VodVisualStatusFilter statusFilter) {
+        if (statusFilter == VodVisualStatusFilter.ALL) {
+            return true;
+        }
+        long progress = getVodResumePosition(item == null ? null : item.id);
+        if (statusFilter == VodVisualStatusFilter.CONTINUE || statusFilter == VodVisualStatusFilter.PROGRESS) {
+            return progress > 30_000L;
+        }
+        return progress <= 0L;
+    }
+
+    private void sortVodVisualFilteredItems(List<ChannelItem> items, VodVisualSortFilter sortFilter) {
+        if (items == null) {
+            return;
+        }
+        if (sortFilter == VodVisualSortFilter.ALPHA) {
+            items.sort((left, right) -> displayName(left).compareToIgnoreCase(displayName(right)));
+        } else if (sortFilter == VodVisualSortFilter.YEAR) {
+            items.sort((left, right) -> {
+                int yearCompare = Integer.compare(parseVodYear(right), parseVodYear(left));
+                return yearCompare != 0 ? yearCompare : displayName(left).compareToIgnoreCase(displayName(right));
+            });
+        } else if (sortFilter == VodVisualSortFilter.DURATION) {
+            items.sort((left, right) -> {
+                int durationCompare = Long.compare(right == null ? 0L : right.vodDurationSeconds, left == null ? 0L : left.vodDurationSeconds);
+                return durationCompare != 0 ? durationCompare : displayName(left).compareToIgnoreCase(displayName(right));
+            });
+        } else if (sortFilter == VodVisualSortFilter.RECENT) {
+            Map<String, Integer> recentRanks = buildRecentVodRankMap();
+            items.sort((left, right) -> {
+                int leftRank = recentRanks.getOrDefault(left == null ? "" : left.id, Integer.MAX_VALUE);
+                int rightRank = recentRanks.getOrDefault(right == null ? "" : right.id, Integer.MAX_VALUE);
+                int rankCompare = Integer.compare(leftRank, rightRank);
+                return rankCompare != 0 ? rankCompare : displayName(left).compareToIgnoreCase(displayName(right));
+            });
+        } else {
+            sortVodLibraryItems(items);
+        }
+    }
+
+    private Map<String, Integer> buildRecentVodRankMap() {
+        Map<String, Integer> ranks = new HashMap<>();
+        List<RecentChannelsStore.RecentChannelItem> recents = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        int rank = 0;
+        for (RecentChannelsStore.RecentChannelItem recent : recents) {
+            if (recent == null || recent.channelId == null || ranks.containsKey(recent.channelId)) {
+                continue;
+            }
+            ranks.put(recent.channelId, rank++);
+        }
+        return ranks;
     }
 
     private List<ChannelItem> buildAllVodLibraryItems(boolean includeAdult) {

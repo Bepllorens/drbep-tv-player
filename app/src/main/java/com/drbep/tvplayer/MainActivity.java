@@ -5540,6 +5540,9 @@ public class MainActivity extends FragmentActivity {
         button.setFocusable(true);
         button.setFocusableInTouchMode(true);
         button.setClickable(true);
+        if (button.getId() == View.NO_ID) {
+            button.setId(View.generateViewId());
+        }
         button.setOnClickListener(v -> {
             if (action != null) {
                 action.run();
@@ -5579,6 +5582,12 @@ public class MainActivity extends FragmentActivity {
         recyclerView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         recyclerView.setMinimumWidth(shelfWidth);
         recyclerView.setAdapter(new VodPosterAdapter(items, filtersRow, shelfRows, rowIndex, scrollView));
+        recyclerView.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_UP && rowIndex == 0) {
+                return focusVodVisualRowButton(filtersRow, 0, scrollView);
+            }
+            return false;
+        });
         LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(shelfWidth, dp(248));
         listParams.topMargin = dp(8);
         parent.addView(recyclerView, listParams);
@@ -5639,8 +5648,10 @@ public class MainActivity extends FragmentActivity {
         if (target == null) {
             return false;
         }
-        target.requestFocus();
-        ensureVodVisualItemVisible(scrollView, target);
+        target.post(() -> {
+            target.requestFocus();
+            ensureVodVisualItemVisible(scrollView, target);
+        });
         return true;
     }
 
@@ -10785,6 +10796,15 @@ public class MainActivity extends FragmentActivity {
                 holder.progress.setVisibility(View.GONE);
             }
             bindRecordingPoster(holder.poster, item == null ? "" : item.logoUrl);
+            if (rowIndex == 0 && filtersRow != null && filtersRow.getChildCount() > 0) {
+                int filterIndex = Math.max(0, Math.min(position, filtersRow.getChildCount() - 1));
+                View filterButton = filtersRow.getChildAt(filterIndex);
+                if (filterButton != null && filterButton.getId() != View.NO_ID) {
+                    holder.itemView.setNextFocusUpId(filterButton.getId());
+                }
+            } else {
+                holder.itemView.setNextFocusUpId(View.NO_ID);
+            }
             holder.itemView.setOnClickListener(v -> showVodInfoDialog(item));
             holder.itemView.setOnFocusChangeListener((v, hasFocus) -> {
                 if (hasFocus) {

@@ -88,7 +88,6 @@ public class MainActivity extends FragmentActivity {
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
     private static final long RECORDINGS_AUTO_REFRESH_MS = 60000L;
-    private static final int VOD_VISUAL_SECTION_LIMIT = 18;
     private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
     private static final int SEARCH_LOGO_PREFETCH_LIMIT = 18;
     private static final String PREFS = "drbep_tv_prefs";
@@ -5412,8 +5411,11 @@ public class MainActivity extends FragmentActivity {
         rememberCurrentVodPosition();
         prepareModalSurface();
 
+        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int dialogWidth = Math.max(dp(760), metrics.widthPixels - dp(64));
+        int dialogHeight = Math.max(dp(560), metrics.heightPixels - dp(84));
         android.widget.ScrollView scrollView = new android.widget.ScrollView(this);
-        scrollView.setLayoutParams(new ViewGroup.LayoutParams(dp(820), dp(650)));
+        scrollView.setLayoutParams(new ViewGroup.LayoutParams(dialogWidth, dialogHeight));
         scrollView.setFillViewport(false);
 
         LinearLayout content = new LinearLayout(this);
@@ -5472,6 +5474,9 @@ public class MainActivity extends FragmentActivity {
                 .setNegativeButton(R.string.dialog_close, null)
                 .create();
         showTvDialog(dialog);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(dialogWidth, dialogHeight);
+        }
         focusVodShelfItem(shelfRows, 0, 0, scrollView);
     }
 
@@ -5528,7 +5533,7 @@ public class MainActivity extends FragmentActivity {
         recyclerView.setFocusable(true);
         recyclerView.setFocusableInTouchMode(true);
         recyclerView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
-        recyclerView.setAdapter(new VodPosterAdapter(limitVodItems(items, VOD_VISUAL_SECTION_LIMIT), shelfRows, rowIndex, scrollView));
+        recyclerView.setAdapter(new VodPosterAdapter(items, shelfRows, rowIndex, scrollView));
         LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(248));
         listParams.topMargin = dp(8);
         parent.addView(recyclerView, listParams);
@@ -5604,21 +5609,6 @@ public class MainActivity extends FragmentActivity {
                 scrollView.smoothScrollTo(0, Math.max(0, rect.bottom - scrollView.getHeight() + bottomPadding));
             }
         });
-    }
-
-    private List<ChannelItem> limitVodItems(List<ChannelItem> items, int limit) {
-        List<ChannelItem> limited = new ArrayList<>();
-        if (items == null || limit <= 0) {
-            return limited;
-        }
-        int count = Math.min(limit, items.size());
-        for (int i = 0; i < count; i++) {
-            ChannelItem item = items.get(i);
-            if (item != null) {
-                limited.add(item);
-            }
-        }
-        return limited;
     }
 
     private void showListsToolsDialog() {
@@ -10554,11 +10544,27 @@ public class MainActivity extends FragmentActivity {
                     showVodActionsDialog(item);
                     return true;
                 }
+                int currentIndex = holder.getBindingAdapterPosition();
+                if (currentIndex == RecyclerView.NO_POSITION) {
+                    return false;
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    if (currentIndex > 0) {
+                        return focusVodShelfItem(shelfRows, rowIndex, currentIndex - 1, scrollView);
+                    }
+                    return false;
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    if (currentIndex + 1 < getItemCount()) {
+                        return focusVodShelfItem(shelfRows, rowIndex, currentIndex + 1, scrollView);
+                    }
+                    return false;
+                }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                    return focusVodShelfItem(shelfRows, rowIndex - 1, holder.getBindingAdapterPosition(), scrollView);
+                    return focusVodShelfItem(shelfRows, rowIndex - 1, currentIndex, scrollView);
                 }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    return focusVodShelfItem(shelfRows, rowIndex + 1, holder.getBindingAdapterPosition(), scrollView);
+                    return focusVodShelfItem(shelfRows, rowIndex + 1, currentIndex, scrollView);
                 }
                 return false;
             });

@@ -5510,22 +5510,24 @@ public class MainActivity extends FragmentActivity {
         android.widget.FrameLayout.LayoutParams scrollParams = new android.widget.FrameLayout.LayoutParams(dialogWidth, dialogHeight, Gravity.CENTER);
         root.addView(scrollView, scrollParams);
 
-        Dialog dialog = new Dialog(this);
+        Dialog dialog = new Dialog(this) {
+            @Override
+            public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    View focused = getCurrentFocus();
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP && !shelfRows.isEmpty() && isFocusInsideView(shelfRows.get(0), focused)) {
+                        return focusVodVisualRowButton(filtersRow, findFocusedVodShelfPosition(shelfRows.get(0), focused), scrollView);
+                    }
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN && isFocusInsideView(filtersRow, focused)) {
+                        return focusVodShelfItem(shelfRows, 0, findFocusedChildIndex(filtersRow, focused), scrollView);
+                    }
+                }
+                return super.dispatchKeyEvent(event);
+            }
+        };
         dialogHolder[0] = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(root);
-        dialog.setOnKeyListener((d, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                return false;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP && !shelfRows.isEmpty() && isFocusInsideView(shelfRows.get(0))) {
-                return focusVodVisualRowButton(filtersRow, findFocusedVodShelfPosition(shelfRows.get(0)), scrollView);
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && isFocusInsideView(filtersRow)) {
-                return focusVodShelfItem(shelfRows, 0, findFocusedChildIndex(filtersRow), scrollView);
-            }
-            return false;
-        });
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
         Window window = dialog.getWindow();
@@ -5668,10 +5670,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isFocusInsideView(View container) {
+        return isFocusInsideView(container, getCurrentFocus());
+    }
+
+    private boolean isFocusInsideView(View container, View focused) {
         if (container == null) {
             return false;
         }
-        View focused = getCurrentFocus();
         while (focused != null) {
             if (focused == container) {
                 return true;
@@ -5683,10 +5688,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private int findFocusedChildIndex(LinearLayout row) {
+        return findFocusedChildIndex(row, getCurrentFocus());
+    }
+
+    private int findFocusedChildIndex(LinearLayout row, View focused) {
         if (row == null || row.getChildCount() == 0) {
             return 0;
         }
-        View focused = getCurrentFocus();
         for (int i = 0; i < row.getChildCount(); i++) {
             if (row.getChildAt(i) == focused) {
                 return i;
@@ -5696,10 +5704,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private int findFocusedVodShelfPosition(RecyclerView recyclerView) {
+        return findFocusedVodShelfPosition(recyclerView, getCurrentFocus());
+    }
+
+    private int findFocusedVodShelfPosition(RecyclerView recyclerView, View focused) {
         if (recyclerView == null) {
             return 0;
         }
-        View focused = getCurrentFocus();
         if (focused == null) {
             return 0;
         }

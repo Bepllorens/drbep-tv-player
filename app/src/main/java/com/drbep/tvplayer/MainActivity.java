@@ -5583,8 +5583,8 @@ public class MainActivity extends FragmentActivity {
         titleView.setTypeface(Typeface.DEFAULT_BOLD);
         parent.addView(titleView, titleParams);
 
-        RecyclerView recyclerView = new RecyclerView(this);
         int rowIndex = shelfRows == null ? 0 : shelfRows.size();
+        RecyclerView recyclerView = new VodShelfRecyclerView(filtersRow, shelfRows, rowIndex, scrollView);
         if (shelfRows != null) {
             shelfRows.add(recyclerView);
         }
@@ -10827,6 +10827,35 @@ public class MainActivity extends FragmentActivity {
                 type = itemView.findViewById(R.id.searchChannelTypeText);
                 logo = itemView.findViewById(R.id.searchChannelLogo);
             }
+        }
+    }
+
+    private final class VodShelfRecyclerView extends RecyclerView {
+        private final LinearLayout filtersRow;
+        private final List<RecyclerView> shelfRows;
+        private final int rowIndex;
+        private final android.widget.ScrollView scrollView;
+
+        VodShelfRecyclerView(LinearLayout filtersRow, List<RecyclerView> shelfRows, int rowIndex, android.widget.ScrollView scrollView) {
+            super(MainActivity.this);
+            this.filtersRow = filtersRow;
+            this.shelfRows = shelfRows;
+            this.rowIndex = rowIndex;
+            this.scrollView = scrollView;
+        }
+
+        @Override
+        public boolean dispatchKeyEvent(KeyEvent event) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                int focusedPosition = findFocusedVodShelfPosition(this, findFocus());
+                if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP && rowIndex == 0) {
+                    return focusVodVisualRowButton(filtersRow, focusedPosition, scrollView);
+                }
+                if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    return focusVodShelfItem(shelfRows, rowIndex + 1, focusedPosition, scrollView);
+                }
+            }
+            return super.dispatchKeyEvent(event);
         }
     }
 

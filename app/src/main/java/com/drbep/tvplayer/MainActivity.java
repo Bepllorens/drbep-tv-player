@@ -5535,7 +5535,7 @@ public class MainActivity extends FragmentActivity {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setDimAmount(0f);
         }
-        focusVodShelfItem(shelfRows, 0, 0, scrollView);
+        focusVodVisualRowButton(filtersRow, 0, scrollView);
     }
 
     private void addVodVisualAction(LinearLayout parent, String label, Runnable action) {
@@ -10848,6 +10848,9 @@ public class MainActivity extends FragmentActivity {
         public boolean dispatchKeyEvent(KeyEvent event) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 int focusedPosition = findFocusedVodShelfPosition(this, findFocus());
+                if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT && rowIndex == 0 && focusedPosition <= 0) {
+                    return focusVodVisualRowButton(filtersRow, 0, scrollView);
+                }
                 if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP && rowIndex == 0) {
                     return focusVodVisualRowButton(filtersRow, focusedPosition, scrollView);
                 }
@@ -10926,6 +10929,9 @@ public class MainActivity extends FragmentActivity {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
                     if (currentIndex > 0) {
                         return focusVodShelfItem(shelfRows, rowIndex, currentIndex - 1, scrollView);
+                    }
+                    if (rowIndex == 0) {
+                        return focusVodVisualRowButton(filtersRow, 0, scrollView);
                     }
                     return false;
                 }

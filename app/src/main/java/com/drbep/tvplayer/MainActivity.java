@@ -5457,22 +5457,6 @@ public class MainActivity extends FragmentActivity {
         helpView.setTypeface(Typeface.DEFAULT_BOLD);
         content.addView(helpView, helpParams);
 
-        LinearLayout actionsRow = new LinearLayout(this);
-        actionsRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsParams.topMargin = dp(12);
-        content.addView(actionsRow, actionsParams);
-        final Dialog[] dialogHolder = new Dialog[1];
-        final TextView[] initialFocusButton = new TextView[1];
-        initialFocusButton[0] = addVodVisualAction(actionsRow, getString(R.string.vod_visual_filters), () -> {
-            dismissDialog(dialogHolder[0]);
-            showVodVisualFiltersDialog(typeFilter, platformFilter, statusFilter, sortFilter);
-        });
-        addVodVisualAction(actionsRow, getString(R.string.quick_hub_search_vod), this::showVodSearchDialog);
-        addVodVisualAction(actionsRow, getString(R.string.vod_library_categories), this::showVodCategoriesDialog);
-        addVodVisualAction(actionsRow, getString(R.string.vod_library_manage_progress), this::showVodProgressManagerDialog);
-        addVodVisualAction(actionsRow, getString(R.string.vod_library_dense_view), this::showVodLibraryMenuDialog);
-
         List<RecyclerView> shelfRows = new ArrayList<>();
         if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
             addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
@@ -5485,7 +5469,6 @@ public class MainActivity extends FragmentActivity {
             addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), false);
         }
 
-        wireVodVisualHeaderNavigation(actionsRow, shelfRows, scrollView);
         scrollView.addView(content, new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         android.widget.FrameLayout root = new android.widget.FrameLayout(this);
@@ -5493,19 +5476,7 @@ public class MainActivity extends FragmentActivity {
         android.widget.FrameLayout.LayoutParams scrollParams = new android.widget.FrameLayout.LayoutParams(dialogWidth, dialogHeight, Gravity.CENTER);
         root.addView(scrollView, scrollParams);
 
-        Dialog dialog = new Dialog(this) {
-            @Override
-            public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
-                if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    View focused = getCurrentFocus();
-                    if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN && isFocusInsideView(actionsRow, focused)) {
-                        return focusVodShelfItem(shelfRows, 0, findFocusedChildIndex(actionsRow, focused), scrollView);
-                    }
-                }
-                return super.dispatchKeyEvent(event);
-            }
-        };
-        dialogHolder[0] = dialog;
+        Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(root);
         dialog.setOnDismissListener(d -> enableImmersiveMode());
@@ -5515,25 +5486,7 @@ public class MainActivity extends FragmentActivity {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setDimAmount(0f);
         }
-        if (initialFocusButton[0] != null) {
-            initialFocusButton[0].post(() -> initialFocusButton[0].requestFocus());
-        }
-    }
-
-    private void showVodVisualFiltersDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add("Tipo: " + typeFilter.label);
-        actions.add(() -> showVodVisualLibraryDialog(typeFilter.next(), platformFilter, statusFilter, sortFilter));
-        options.add("Fuente: " + platformFilter.label);
-        actions.add(() -> showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter));
-        options.add("Estado: " + statusFilter.label);
-        actions.add(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter));
-        options.add("Orden: " + sortFilter.label);
-        actions.add(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next()));
-        options.add("Limpiar filtros");
-        actions.add(this::showVodVisualLibraryDialog);
-        showTvOptionsDialog(R.string.vod_visual_filters, null, options, actions);
+        focusVodShelfItem(shelfRows, 0, 0, scrollView);
     }
 
     private TextView addVodVisualAction(LinearLayout parent, String label, Runnable action) {

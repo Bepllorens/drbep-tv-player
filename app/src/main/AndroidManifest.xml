@@ -5,26 +5,46 @@
 
     <uses-feature
         android:name="android.software.leanback"
+        android:required="true" />
+
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <uses-feature
+        android:name="android.hardware.faketouch"
         android:required="false" />
 
     <application
         android:allowBackup="true"
-        android:banner="@drawable/logo_tv"
-        android:icon="@drawable/logo_tv_icon"
+        android:banner="@drawable/drbep_launcher_banner"
+        android:icon="@drawable/drbep_launcher_icon"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/logo_tv_icon"
+        android:logo="@drawable/drbep_launcher_banner"
+        android:roundIcon="@drawable/drbep_launcher_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.DrbepTvPlayer">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:banner="@drawable/logo_tv"
+            android:banner="@drawable/drbep_launcher_banner"
+            android:icon="@drawable/drbep_launcher_icon"
             android:label="@string/app_name"
+            android:logo="@drawable/drbep_launcher_banner"
+            android:screenOrientation="sensorLandscape" />
+
+        <activity
+            android:name=".TvLauncherActivity"
+            android:exported="true"
+            android:banner="@drawable/drbep_launcher_banner"
+            android:icon="@drawable/drbep_launcher_icon"
+            android:label="@string/app_name"
+            android:logo="@drawable/drbep_launcher_banner"
+            android:roundIcon="@drawable/drbep_launcher_icon"
             android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>

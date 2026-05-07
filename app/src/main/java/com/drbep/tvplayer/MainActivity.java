@@ -5812,7 +5812,7 @@ public class MainActivity extends FragmentActivity {
                 versionCode,
                 ".MainActivity",
                 updatedAt,
-                "com.drbep.tv.v2.fixed"
+                "com.drbep.tvplayer.firetv, com.drbep.tvplayer, com.drbep.tv.v2.fixed"
         );
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.title_install_status)

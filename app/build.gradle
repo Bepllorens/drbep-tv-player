@@ -40,11 +40,11 @@ android {
     compileSdk 36
 
     defaultConfig {
-        applicationId "com.drbep.tvplayer"
+        applicationId "com.drbep.tvplayer.firestick"
         minSdk 23
         targetSdk 34
-        versionCode 86
-        versionName "1.4.71"
+        versionCode 106
+        versionName "1.4.91"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

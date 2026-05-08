@@ -43,8 +43,8 @@ android {
         applicationId "com.drbep.tvplayer.firestick"
         minSdk 23
         targetSdk 34
-        versionCode 109
-        versionName "1.4.94"
+        versionCode 112
+        versionName "1.4.97"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -472,7 +472,9 @@
     <string name="vod_action_personal_lists">Listas personales para este VOD</string>
     <string name="vod_action_clear_progress">Borrar progreso</string>
     <string name="vod_action_clear_progress_vod">Borrar progreso de este VOD</string>
-    <string name="vod_detail_action_hint">OK abre una accion. BACK cierra la ficha.</string>
+    <string name="vod_detail_primary_actions">Reproduccion</string>
+    <string name="vod_detail_secondary_actions">Mas opciones</string>
+    <string name="vod_detail_action_hint">OK abre una accion  ·  ARRIBA/ABAJO cambia bloque  ·  BACK cierra la ficha.</string>
     <string name="vod_status_preparing">Preparando VOD: %1$s</string>
     <string name="vod_status_opening_runtime">Abriendo Runtime VOD...</string>
     <string name="vod_status_opening_tivify">Abriendo Tivify VOD...</string>
@@ -488,6 +490,7 @@
     <string name="vod_recovery_retry">Reintentar VOD</string>
     <string name="vod_recovery_library">Volver a Biblioteca VOD</string>
     <string name="vod_resume_meta">Progreso: %1$s</string>
+    <string name="vod_resume_meta_percent">Progreso: %1$s (%2$d%%)</string>
     <string name="vod_continue_prompt">Tienes progreso guardado en %1$s. ¿Quieres continuar?</string>
     <string name="vod_continue_empty">Aun no hay VOD reciente para continuar</string>
     <string name="vod_status_progress_cleared">Progreso VOD borrado</string>

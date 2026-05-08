@@ -2435,12 +2435,20 @@ public class MainActivity extends FragmentActivity {
         }
         rememberCurrentVodPosition();
         prepareModalSurface();
+
+        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int panelWidth = Math.min(dp(880), Math.max(dp(720), metrics.widthPixels - dp(140)));
+        int panelMaxHeight = Math.max(dp(420), metrics.heightPixels - dp(120));
+        android.widget.ScrollView panelScrollView = new android.widget.ScrollView(this);
+        panelScrollView.setFillViewport(false);
+        panelScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        panelScrollView.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, panelMaxHeight));
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         int padding = dp(16);
         panel.setPadding(padding, padding, padding, padding);
         panel.setBackgroundColor(0xF0181E28);
-        panel.setLayoutParams(new ViewGroup.LayoutParams(dp(640), ViewGroup.LayoutParams.WRAP_CONTENT));
+        panel.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -2448,8 +2456,8 @@ public class MainActivity extends FragmentActivity {
         panel.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ImageView posterView = new ImageView(this);
-        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(dp(132), dp(176));
-        posterParams.setMarginEnd(dp(16));
+        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(dp(150), dp(202));
+        posterParams.setMarginEnd(dp(18));
         posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         posterView.setBackgroundColor(0xFF0E1820);
         header.addView(posterView, posterParams);
@@ -2462,7 +2470,7 @@ public class MainActivity extends FragmentActivity {
         TextView titleView = new TextView(this);
         titleView.setText(channel.name == null || channel.name.trim().isEmpty() ? getString(R.string.label_program_default) : channel.name.trim());
         titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(22f);
+        titleView.setTextSize(23f);
         titleView.setTypeface(Typeface.DEFAULT_BOLD);
         titleView.setMaxLines(2);
         infoColumn.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -2472,15 +2480,15 @@ public class MainActivity extends FragmentActivity {
         metaParams.topMargin = dp(8);
         metaView.setText(buildVodInfoMeta(channel));
         metaView.setTextColor(0xFF9BD0FF);
-        metaView.setTextSize(14f);
+        metaView.setTextSize(15f);
         infoColumn.addView(metaView, metaParams);
 
         TextView descView = new TextView(this);
         LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        descParams.topMargin = dp(12);
+        descParams.topMargin = dp(14);
         descView.setText(buildVodDescription(channel));
         descView.setTextColor(0xFFD5E6F8);
-        descView.setTextSize(15f);
+        descView.setTextSize(14f);
         descView.setMaxLines(3);
         infoColumn.addView(descView, descParams);
 
@@ -2488,63 +2496,191 @@ public class MainActivity extends FragmentActivity {
         if (resumeMs > 0L) {
             TextView resumeView = new TextView(this);
             LinearLayout.LayoutParams resumeParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            resumeParams.topMargin = dp(12);
-            resumeView.setText(getString(R.string.vod_resume_meta, formatDurationShort(resumeMs)));
+            resumeParams.topMargin = dp(14);
+            resumeView.setText(buildVodProgressLabel(channel, resumeMs));
             resumeView.setTextColor(0xFFFFD082);
             resumeView.setTextSize(14f);
             resumeView.setTypeface(Typeface.DEFAULT_BOLD);
+            resumeView.setGravity(Gravity.CENTER_VERTICAL);
+            resumeView.setMinHeight(dp(38));
+            resumeView.setPadding(dp(12), 0, dp(12), 0);
+            resumeView.setBackground(makeRoundedBackground(0xFF2F3A25, 0xFFFFD782, dp(1), dp(8)));
             infoColumn.addView(resumeView, resumeParams);
         }
 
-        TextView hintView = new TextView(this);
-        LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hintParams.topMargin = dp(14);
-        hintView.setText(R.string.vod_detail_action_hint);
-        hintView.setTextColor(0xFFB7C4D6);
-        hintView.setTextSize(13f);
-        panel.addView(hintView, hintParams);
+        TextView primaryTitle = new TextView(this);
+        LinearLayout.LayoutParams primaryTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        primaryTitleParams.topMargin = dp(18);
+        primaryTitle.setText(R.string.vod_detail_primary_actions);
+        primaryTitle.setTextColor(0xFFFFFFFF);
+        primaryTitle.setTextSize(15f);
+        primaryTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        panel.addView(primaryTitle, primaryTitleParams);
 
-        LinearLayout actionsColumn = new LinearLayout(this);
-        actionsColumn.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsParams.topMargin = dp(10);
-        panel.addView(actionsColumn, actionsParams);
+        LinearLayout primaryActionsRow = new LinearLayout(this);
+        primaryActionsRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams primaryActionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54));
+        primaryActionsParams.topMargin = dp(8);
+        panel.addView(primaryActionsRow, primaryActionsParams);
 
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
-        List<TextView> actionRows = new ArrayList<>();
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_play), () -> {
-            AlertDialog activeDialog = dialogHolder[0];
+        final Dialog[] dialogHolder = new Dialog[1];
+        List<TextView> primaryActions = new ArrayList<>();
+        addVodDetailPrimaryAction(primaryActionsRow, primaryActions, getString(R.string.vod_action_play), () -> {
+            Dialog activeDialog = dialogHolder[0];
             if (activeDialog != null && activeDialog.isShowing()) {
                 activeDialog.dismiss();
             }
             playVodItem(channel, true);
         });
         if (resumeMs > 30_000L) {
-            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_continue), () -> {
-                AlertDialog activeDialog = dialogHolder[0];
+            addVodDetailPrimaryAction(primaryActionsRow, primaryActions, getString(R.string.vod_action_continue), () -> {
+                Dialog activeDialog = dialogHolder[0];
                 if (activeDialog != null && activeDialog.isShowing()) {
                     activeDialog.dismiss();
                 }
                 playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
             });
+            addVodDetailPrimaryAction(primaryActionsRow, primaryActions, getString(R.string.vod_action_start_over), () -> {
+                Dialog activeDialog = dialogHolder[0];
+                if (activeDialog != null && activeDialog.isShowing()) {
+                    activeDialog.dismiss();
+                }
+                clearVodResumePosition(channel.id);
+                playChannelItemInternal(channel, true, 0L);
+            });
         }
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_more_vod), () -> {
-            AlertDialog activeDialog = dialogHolder[0];
+
+        TextView secondaryTitle = new TextView(this);
+        LinearLayout.LayoutParams secondaryTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        secondaryTitleParams.topMargin = dp(16);
+        secondaryTitle.setText(R.string.vod_detail_secondary_actions);
+        secondaryTitle.setTextColor(0xFFB7C4D6);
+        secondaryTitle.setTextSize(13f);
+        secondaryTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        panel.addView(secondaryTitle, secondaryTitleParams);
+
+        TextView hintView = new TextView(this);
+        LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hintParams.topMargin = dp(6);
+        hintView.setText(R.string.vod_detail_action_hint);
+        hintView.setTextColor(0xFFB7C4D6);
+        hintView.setTextSize(12f);
+        panel.addView(hintView, hintParams);
+
+        LinearLayout actionsColumn = new LinearLayout(this);
+        actionsColumn.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionsParams.topMargin = dp(8);
+        panel.addView(actionsColumn, actionsParams);
+
+        List<TextView> secondaryActions = new ArrayList<>();
+        addVodDetailAction(actionsColumn, secondaryActions, getString(R.string.vod_action_more_vod), () -> {
+            Dialog activeDialog = dialogHolder[0];
             if (activeDialog != null && activeDialog.isShowing()) {
                 activeDialog.dismiss();
             }
             showVodActionsDialog(channel);
         });
+        addVodDetailAction(actionsColumn, secondaryActions, getString(favoriteChannelIds.contains(channel.id) ? R.string.vod_action_remove_favorite : R.string.vod_action_add_favorite), () -> toggleFavoriteForChannel(channel));
+        if (resumeMs > 30_000L) {
+            addVodDetailAction(actionsColumn, secondaryActions, getString(R.string.vod_action_clear_progress_vod), () -> {
+                clearVodResumePosition(channel.id);
+                showStatus(getString(R.string.vod_status_progress_cleared));
+            });
+        }
+        wireVodDetailActions(primaryActions, secondaryActions, panelScrollView);
+        panelScrollView.addView(panel, new android.widget.ScrollView.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(panel)
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        Dialog dialog = showCenteredTvPanelDialog(panelScrollView, () -> Glide.with(this).clear(posterView));
         dialogHolder[0] = dialog;
-        dialog.setOnDismissListener(d -> Glide.with(this).clear(posterView));
-        showTvDialog(dialog);
-        if (!actionRows.isEmpty()) {
-            actionRows.get(0).post(() -> actionRows.get(0).requestFocus());
+        if (!primaryActions.isEmpty()) {
+            primaryActions.get(0).post(() -> {
+                panelScrollView.scrollTo(0, 0);
+                primaryActions.get(0).requestFocus();
+            });
+        }
+    }
+
+    private Dialog showCenteredTvPanelDialog(View contentView, Runnable onDismiss) {
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.setBackgroundColor(0xCC000000);
+        android.widget.FrameLayout.LayoutParams contentParams = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+        );
+        root.addView(contentView, contentParams);
+
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(root);
+        dialog.setOnDismissListener(d -> {
+            if (onDismiss != null) {
+                onDismiss.run();
+            }
+            enableImmersiveMode();
+        });
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
+        return dialog;
+    }
+
+    private String buildVodProgressLabel(ChannelItem channel, long resumeMs) {
+        String progress = getString(R.string.vod_resume_meta, formatDurationShort(resumeMs));
+        if (channel != null && channel.vodDurationSeconds > 0L) {
+            long durationMs = channel.vodDurationSeconds * 1000L;
+            int percent = (int) Math.max(1L, Math.min(99L, (resumeMs * 100L) / Math.max(1L, durationMs)));
+            return getString(R.string.vod_resume_meta_percent, formatDurationShort(resumeMs), percent);
+        }
+        return progress;
+    }
+
+    private Drawable makeRoundedBackground(int fillColor, int strokeColor, int strokeWidth, int radius) {
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(radius);
+        background.setColor(fillColor);
+        background.setStroke(strokeWidth, strokeColor);
+        return background;
+    }
+
+    private void addVodDetailPrimaryAction(LinearLayout parent, List<TextView> actionRows, String label, Runnable action) {
+        if (parent == null || label == null) {
+            return;
+        }
+        TextView row = new TextView(this);
+        row.setText(label);
+        row.setTextColor(0xFF111820);
+        row.setTextSize(15f);
+        row.setTypeface(Typeface.DEFAULT_BOLD);
+        row.setGravity(Gravity.CENTER);
+        row.setSingleLine(true);
+        row.setEllipsize(TextUtils.TruncateAt.END);
+        row.setMinHeight(dp(54));
+        row.setPadding(dp(12), 0, dp(12), 0);
+        row.setBackground(makeRoundedBackground(0xFFFFD782, 0xFFFFFFFF, dp(1), dp(10)));
+        row.setFocusable(true);
+        row.setFocusableInTouchMode(true);
+        row.setClickable(true);
+        row.setOnFocusChangeListener((v, hasFocus) -> row.setBackground(hasFocus
+                ? makeRoundedBackground(0xFFFFFFFF, 0xFFFFD782, dp(3), dp(10))
+                : makeRoundedBackground(0xFFFFD782, 0xFFFFFFFF, dp(1), dp(10))));
+        row.setOnClickListener(v -> {
+            if (action != null) {
+                action.run();
+            }
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(54), 1f);
+        if (actionRows != null && !actionRows.isEmpty()) {
+            params.setMarginStart(dp(8));
+        }
+        parent.addView(row, params);
+        if (actionRows != null) {
+            actionRows.add(row);
         }
     }
 
@@ -2577,17 +2713,85 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void wireVodDetailActions(List<TextView> primaryActions, List<TextView> secondaryActions, android.widget.ScrollView scrollView) {
+        if (primaryActions != null) {
+            for (int i = 0; i < primaryActions.size(); i++) {
+                final int index = i;
+                TextView action = primaryActions.get(i);
+                action.setOnFocusChangeListener((v, hasFocus) -> {
+                    action.setBackground(hasFocus
+                            ? makeRoundedBackground(0xFFFFFFFF, 0xFFFFD782, dp(3), dp(10))
+                            : makeRoundedBackground(0xFFFFD782, 0xFFFFFFFF, dp(1), dp(10)));
+                    if (hasFocus) {
+                        ensureVodVisualItemVisible(scrollView, action);
+                    }
+                });
+                action.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                        return false;
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && index > 0) {
+                        return primaryActions.get(index - 1).requestFocus();
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && index + 1 < primaryActions.size()) {
+                        return primaryActions.get(index + 1).requestFocus();
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && secondaryActions != null && !secondaryActions.isEmpty()) {
+                        return secondaryActions.get(Math.min(index, secondaryActions.size() - 1)).requestFocus();
+                    }
+                    return false;
+                });
+            }
+        }
+        if (secondaryActions != null) {
+            for (int i = 0; i < secondaryActions.size(); i++) {
+                final int index = i;
+                TextView action = secondaryActions.get(i);
+                action.setOnFocusChangeListener((v, hasFocus) -> {
+                    action.setSelected(hasFocus);
+                    if (hasFocus) {
+                        ensureVodVisualItemVisible(scrollView, action);
+                    }
+                });
+                action.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                        return false;
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        if (index == 0 && primaryActions != null && !primaryActions.isEmpty()) {
+                            return primaryActions.get(0).requestFocus();
+                        }
+                        if (index > 0) {
+                            return secondaryActions.get(index - 1).requestFocus();
+                        }
+                    }
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index + 1 < secondaryActions.size()) {
+                        return secondaryActions.get(index + 1).requestFocus();
+                    }
+                    return false;
+                });
+            }
+        }
+    }
+
     private void showVodActionsDialog(ChannelItem channel) {
         if (channel == null) {
             return;
         }
         prepareModalSurface();
+        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int panelWidth = Math.min(dp(720), Math.max(dp(620), metrics.widthPixels - dp(220)));
+        int panelMaxHeight = Math.max(dp(420), metrics.heightPixels - dp(120));
+        android.widget.ScrollView panelScrollView = new android.widget.ScrollView(this);
+        panelScrollView.setFillViewport(false);
+        panelScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        panelScrollView.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, panelMaxHeight));
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         int padding = dp(16);
         panel.setPadding(padding, padding, padding, padding);
         panel.setBackgroundColor(0xF0181E28);
-        panel.setLayoutParams(new ViewGroup.LayoutParams(dp(560), ViewGroup.LayoutParams.WRAP_CONTENT));
+        panel.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView titleView = new TextView(this);
         titleView.setText(getString(R.string.vod_actions_title, displayName(channel)));
@@ -2611,7 +2815,7 @@ public class MainActivity extends FragmentActivity {
         actionsParams.topMargin = dp(12);
         panel.addView(actionsColumn, actionsParams);
 
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        final Dialog[] dialogHolder = new Dialog[1];
         List<TextView> actionRows = new ArrayList<>();
         addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_play_vod), () -> {
             dismissDialog(dialogHolder[0]);
@@ -2652,14 +2856,43 @@ public class MainActivity extends FragmentActivity {
             clearVodResumePosition(channel.id);
             showStatus(getString(R.string.vod_status_progress_cleared));
         });
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(panel)
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        wireVodActionRows(actionRows, panelScrollView);
+        panelScrollView.addView(panel, new android.widget.ScrollView.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+        Dialog dialog = showCenteredTvPanelDialog(panelScrollView, null);
         dialogHolder[0] = dialog;
-        showTvDialog(dialog);
         if (!actionRows.isEmpty()) {
-            actionRows.get(0).post(() -> actionRows.get(0).requestFocus());
+            actionRows.get(0).post(() -> {
+                panelScrollView.scrollTo(0, 0);
+                actionRows.get(0).requestFocus();
+            });
+        }
+    }
+
+    private void wireVodActionRows(List<TextView> actionRows, android.widget.ScrollView scrollView) {
+        if (actionRows == null) {
+            return;
+        }
+        for (int i = 0; i < actionRows.size(); i++) {
+            final int index = i;
+            TextView action = actionRows.get(i);
+            action.setOnFocusChangeListener((v, hasFocus) -> {
+                action.setSelected(hasFocus);
+                if (hasFocus) {
+                    ensureVodVisualItemVisible(scrollView, action);
+                }
+            });
+            action.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                    return false;
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && index > 0) {
+                    return actionRows.get(index - 1).requestFocus();
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index + 1 < actionRows.size()) {
+                    return actionRows.get(index + 1).requestFocus();
+                }
+                return false;
+            });
         }
     }
 

@@ -215,6 +215,7 @@ public class MainActivity extends FragmentActivity {
     private TextView recordingDetailPathText;
     private TextView recordingDetailActionText;
     private android.app.Dialog activeTimelineDialog;
+    private LinearLayout activeVodVisualFilterRow;
     private List<TimelineChannelPrograms> activeTimelineRows = new ArrayList<>();
     private List<RecordingsRepository.RecordingItem> activeTimelineScheduledItems = new ArrayList<>();
     private List<RecordingsRepository.RecordingItem> activeProgramScheduledItems = new ArrayList<>();
@@ -5369,7 +5370,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodVisualLibraryDialog() {
-        showVodVisualLibraryDialog(VodVisualTypeFilter.GENERAL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART);
+        showVodVisualLibraryDialog(VodVisualTypeFilter.GENERAL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, "");
     }
 
     private void showVodLibraryMenuDialog() {
@@ -5414,8 +5415,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodVisualLibraryDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
+        showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, "");
+    }
+
+    private void showVodVisualLibraryDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String searchQuery) {
         rememberCurrentVodPosition();
         prepareModalSurface();
+        final Dialog[] dialogHolder = new Dialog[1];
+        String trimmedSearchQuery = searchQuery == null ? "" : searchQuery.trim();
+        boolean searchMode = !trimmedSearchQuery.isEmpty();
 
         android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
         int dialogWidth = Math.max(dp(900), metrics.widthPixels - dp(56));
@@ -5434,7 +5442,7 @@ public class MainActivity extends FragmentActivity {
         content.setBackgroundColor(0xF0181E28);
 
         TextView titleView = new TextView(this);
-        titleView.setText(R.string.tools_section_vod);
+        titleView.setText(searchMode ? getString(R.string.vod_search_results_title, trimmedSearchQuery) : getString(R.string.tools_section_vod));
         titleView.setTextColor(0xFFFFFFFF);
         titleView.setTextSize(24f);
         titleView.setTypeface(Typeface.DEFAULT_BOLD);
@@ -5443,7 +5451,7 @@ public class MainActivity extends FragmentActivity {
         TextView subtitleView = new TextView(this);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         subtitleParams.topMargin = dp(4);
-        subtitleView.setText(buildVodLibrarySummary());
+        subtitleView.setText(searchMode ? buildVodSearchSummary(trimmedSearchQuery) : buildVodLibrarySummary());
         subtitleView.setTextColor(0xFFB7C4D6);
         subtitleView.setTextSize(13f);
         content.addView(subtitleView, subtitleParams);
@@ -5457,8 +5465,57 @@ public class MainActivity extends FragmentActivity {
         helpView.setTypeface(Typeface.DEFAULT_BOLD);
         content.addView(helpView, helpParams);
 
+        LinearLayout filtersRow = new LinearLayout(this);
+        filtersRow.setOrientation(LinearLayout.HORIZONTAL);
+        filtersRow.setGravity(Gravity.CENTER_VERTICAL);
+        filtersRow.setFocusable(false);
+        LinearLayout.LayoutParams filtersParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        filtersParams.topMargin = dp(12);
+        content.addView(filtersRow, filtersParams);
+        activeVodVisualFilterRow = filtersRow;
+
+        if (searchMode) {
+            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_edit_search), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(() -> showVodSearchDialog(trimmedSearchQuery));
+            });
+        }
+        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_type, typeFilter.label), true, () -> {
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter.next(), platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
+        });
+        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> {
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter, trimmedSearchQuery));
+        });
+        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_status, statusFilter.label), true, () -> {
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter, trimmedSearchQuery));
+        });
+        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_sort, sortFilter.label), true, () -> {
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next(), trimmedSearchQuery));
+        });
+        if (searchMode) {
+            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_clear_search), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(this::showVodVisualLibraryDialog);
+            });
+        } else {
+            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_search), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(this::showVodSearchDialog);
+            });
+            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_list_view), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(this::showVodLibraryMenuDialog);
+            });
+        }
+
         List<RecyclerView> shelfRows = new ArrayList<>();
-        if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
+        if (searchMode) {
+            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery), false);
+        } else if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
             addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
             addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_recent), buildRecentVodItems(), false);
             addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
@@ -5467,6 +5524,15 @@ public class MainActivity extends FragmentActivity {
             addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
         } else {
             addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), false);
+        }
+        if (shelfRows.isEmpty()) {
+            TextView emptyView = new TextView(this);
+            LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            emptyParams.topMargin = dp(22);
+            emptyView.setText(R.string.vod_library_empty);
+            emptyView.setTextColor(0xFFB7C4D6);
+            emptyView.setTextSize(15f);
+            content.addView(emptyView, emptyParams);
         }
 
         scrollView.addView(content, new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -5477,19 +5543,38 @@ public class MainActivity extends FragmentActivity {
         root.addView(scrollView, scrollParams);
 
         Dialog dialog = new Dialog(this);
+        dialogHolder[0] = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(root);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> {
+            if (activeVodVisualFilterRow == filtersRow) {
+                activeVodVisualFilterRow = null;
+            }
+            enableImmersiveMode();
+        });
         dialog.show();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setDimAmount(0f);
         }
-        focusVodShelfItem(shelfRows, 0, 0, scrollView);
+        wireVodVisualHeaderNavigation(filtersRow, shelfRows, scrollView);
+        if (!focusVodShelfItem(shelfRows, 0, 0, scrollView)) {
+            focusVodVisualRowButton(filtersRow, 0, scrollView);
+        }
+    }
+
+    private void dismissVodVisualDialog(Dialog dialog) {
+        if (dialog != null && dialog.isShowing()) {
+            dialog.dismiss();
+        }
     }
 
     private TextView addVodVisualAction(LinearLayout parent, String label, Runnable action) {
+        return addVodVisualAction(parent, label, false, action);
+    }
+
+    private TextView addVodVisualAction(LinearLayout parent, String label, boolean filterButton, Runnable action) {
         if (parent == null || label == null) {
             return null;
         }
@@ -5499,9 +5584,12 @@ public class MainActivity extends FragmentActivity {
         button.setTextSize(13f);
         button.setTypeface(Typeface.DEFAULT_BOLD);
         button.setGravity(Gravity.CENTER);
+        button.setSingleLine(true);
+        button.setEllipsize(TextUtils.TruncateAt.END);
         button.setMinHeight(dp(42));
         button.setPadding(dp(12), 0, dp(12), 0);
-        button.setBackgroundResource(R.drawable.channel_overlay_chip_bg);
+        applyVodVisualActionStyle(button, filterButton, false);
+        button.setOnFocusChangeListener((v, hasFocus) -> applyVodVisualActionStyle(button, filterButton, hasFocus));
         button.setFocusable(true);
         button.setFocusableInTouchMode(true);
         button.setClickable(true);
@@ -5517,6 +5605,29 @@ public class MainActivity extends FragmentActivity {
         params.setMarginEnd(dp(8));
         parent.addView(button, params);
         return button;
+    }
+
+    private void applyVodVisualActionStyle(TextView button, boolean filterButton, boolean focused) {
+        if (button == null) {
+            return;
+        }
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(8));
+        if (focused) {
+            background.setColor(0xFFFFD782);
+            background.setStroke(dp(2), 0xFFFFFFFF);
+            button.setTextColor(0xFF111820);
+        } else if (filterButton) {
+            background.setColor(0xFF235D78);
+            background.setStroke(dp(1), 0xFF7FD8FF);
+            button.setTextColor(0xFFFFFFFF);
+        } else {
+            background.setColor(0xFF263645);
+            background.setStroke(dp(1), 0xFF54677A);
+            button.setTextColor(0xFFD8E4F2);
+        }
+        button.setBackground(background);
     }
 
     private void addVodShelf(LinearLayout parent, android.widget.ScrollView scrollView, List<RecyclerView> shelfRows, int shelfWidth, String title, List<ChannelItem> items, boolean progressFirst) {
@@ -5576,6 +5687,12 @@ public class MainActivity extends FragmentActivity {
                 }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                     return focusVodShelfItem(shelfRows, 0, actionIndex, scrollView);
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    return focusVodVisualRowButton(row, actionIndex - 1, scrollView);
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    return focusVodVisualRowButton(row, actionIndex + 1, scrollView);
                 }
                 return false;
             });
@@ -5656,6 +5773,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean focusVodShelfItem(List<RecyclerView> shelfRows, int rowIndex, int itemIndex, android.widget.ScrollView scrollView) {
+        if (rowIndex < 0) {
+            return focusVodVisualRowButton(activeVodVisualFilterRow, itemIndex, scrollView);
+        }
         if (shelfRows == null || rowIndex < 0 || rowIndex >= shelfRows.size()) {
             return false;
         }
@@ -6515,11 +6635,19 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodSearchDialog() {
+        showVodSearchDialog("");
+    }
+
+    private void showVodSearchDialog(String initialQuery) {
         clearQuickSearchOverlay();
         hideOverlay();
         EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setHint(R.string.vod_search_hint);
+        if (initialQuery != null && !initialQuery.trim().isEmpty()) {
+            input.setText(initialQuery.trim());
+            input.setSelectAllOnFocus(true);
+        }
         new AlertDialog.Builder(this)
                 .setTitle(R.string.title_vod_search)
                 .setView(input)
@@ -6533,19 +6661,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodSearchResults(String query) {
-        List<ChannelItem> results = buildVodSearchResults(query, false);
-        if (results.isEmpty()) {
-            showStatus(getString(R.string.vod_search_empty));
+        String trimmed = query == null ? "" : query.trim();
+        if (trimmed.isEmpty()) {
+            showVodVisualLibraryDialog();
             return;
         }
-        showQuickChannelListDialog(
-                query == null || query.trim().isEmpty()
-                        ? getString(R.string.title_vod_search)
-                        : getString(R.string.vod_search_results_title, query.trim()),
-                results,
-                getString(R.string.vod_search_empty),
-                item -> showVodInfoDialog(item)
-        );
+        showVodVisualLibraryDialog(VodVisualTypeFilter.ALL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, trimmed);
     }
 
     private void showVodLibraryList(int titleResId, List<ChannelItem> items, boolean progressFirst) {
@@ -6670,15 +6791,59 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> buildVodVisualFilteredItems(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
+        return buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, "");
+    }
+
+    private List<ChannelItem> buildVodVisualFilteredItems(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String query) {
+        String trimmedQuery = query == null ? "" : query.trim();
         List<ChannelItem> items = new ArrayList<>();
         for (ChannelItem item : allChannels) {
             if (item == null || !item.isVod || !matchesVodVisualType(item, typeFilter) || !matchesVodVisualPlatform(item, platformFilter) || !matchesVodVisualStatus(item, statusFilter)) {
+                continue;
+            }
+            if (!matchesVodSearchQuery(item, trimmedQuery)) {
                 continue;
             }
             items.add(item);
         }
         sortVodVisualFilteredItems(items, sortFilter);
         return items;
+    }
+
+    private boolean matchesVodSearchQuery(ChannelItem item, String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return true;
+        }
+        if (item == null) {
+            return false;
+        }
+        String haystack = displayName(item) + " " + item.group + " " + item.platformName + " " + item.vodYear;
+        return matchesSearch(haystack, query);
+    }
+
+    private String buildVodSearchSummary(String query) {
+        List<ChannelItem> all = buildVodVisualFilteredItems(VodVisualTypeFilter.ALL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, query);
+        int tivify = 0;
+        int runtime = 0;
+        int adult = 0;
+        int progress = 0;
+        for (ChannelItem item : all) {
+            if (item == null) {
+                continue;
+            }
+            if (item.isAdultVod) {
+                adult++;
+            }
+            if (matchesVodVisualPlatform(item, VodVisualPlatformFilter.TIVIFY)) {
+                tivify++;
+            } else if (matchesVodVisualPlatform(item, VodVisualPlatformFilter.RUNTIME)) {
+                runtime++;
+            }
+            if (getVodResumePosition(item.id) > 30_000L) {
+                progress++;
+            }
+        }
+        return getString(R.string.vod_search_visual_summary, all.size(), tivify, runtime, adult, progress);
     }
 
     private boolean matchesVodVisualType(ChannelItem item, VodVisualTypeFilter typeFilter) {

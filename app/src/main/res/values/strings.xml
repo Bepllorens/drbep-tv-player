@@ -422,6 +422,7 @@
     <string name="vod_search_all">Ver VOD</string>
     <string name="vod_search_empty">No hay VOD para esa busqueda</string>
     <string name="vod_search_results_title">VOD: %1$s</string>
+    <string name="vod_search_visual_summary">%1$d resultados  ·  Tivify %2$d  ·  Runtime %3$d  ·  Adulto %4$d  ·  Con progreso %5$d</string>
     <string name="vod_library_summary">Total VOD: %1$d\nAdulto: %2$d  -  Con progreso: %3$d</string>
     <string name="vod_library_continue">Continuar viendo</string>
     <string name="vod_library_recent">VOD recientes</string>
@@ -437,6 +438,14 @@
     <string name="vod_visual_help">OK: ficha  ·  Menu: acciones</string>
     <string name="vod_visual_results">Resultados VOD</string>
     <string name="vod_visual_filters">Filtros VOD</string>
+    <string name="vod_visual_filter_type">Tipo: %1$s</string>
+    <string name="vod_visual_filter_platform">Origen: %1$s</string>
+    <string name="vod_visual_filter_status">Estado: %1$s</string>
+    <string name="vod_visual_filter_sort">Orden: %1$s</string>
+    <string name="vod_visual_filter_search">Buscar</string>
+    <string name="vod_visual_filter_list_view">Vista lista</string>
+    <string name="vod_visual_filter_edit_search">Editar busqueda</string>
+    <string name="vod_visual_filter_clear_search">Biblioteca</string>
     <string name="vod_library_sort_year">Ordenar por ano</string>
     <string name="vod_library_sort_duration">Ordenar por duracion</string>
     <string name="vod_library_uncategorized">Sin categoria</string>

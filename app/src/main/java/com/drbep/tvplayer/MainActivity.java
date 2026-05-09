@@ -6377,6 +6377,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.offline_catalog_action_set_url));
         actions.add(this::showOfflineCatalogUrlDialog);
+        options.add(getString(R.string.offline_catalog_action_set_token));
+        actions.add(this::showOfflineCatalogTokenDialog);
         options.add(getString(R.string.offline_catalog_action_clear));
         actions.add(() -> confirmSettingsAction(R.string.offline_catalog_action_clear, R.string.offline_catalog_confirm_clear, this::clearOfflineCatalog));
         options.add(getString(R.string.settings_action_view_summary));
@@ -6386,20 +6388,28 @@ public class MainActivity extends FragmentActivity {
 
     private String buildOfflineCatalogSummary() {
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
-                ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0, 0, "")
+                ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0L, false, 0, 0, "", "", "", "", false)
                 : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         String updatedAt = status.updatedAtMs <= 0L
                 ? getString(R.string.diagnostics_value_unknown)
                 : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(status.updatedAtMs));
+        String expiresAt = status.expiresAtMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(status.expiresAtMs));
         return getString(
                 R.string.offline_catalog_summary,
                 BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
-                status.available ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                status.available ? status.expired ? getString(R.string.offline_catalog_value_expired) : getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 updatedAt,
+                expiresAt,
                 status.channelCount,
                 status.vodCount,
                 humanReadableSize(status.sizeBytes),
-                status.sourceUrl == null || status.sourceUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceUrl
+                status.sourceUrl == null || status.sourceUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceUrl,
+                status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
+                status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                status.subject == null || status.subject.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.subject,
+                status.permissions == null || status.permissions.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.permissions
         );
     }
 
@@ -6435,6 +6445,33 @@ public class MainActivity extends FragmentActivity {
                         catalogSnapshotStore.setSourceUrl(input.getText() == null ? "" : input.getText().toString());
                     }
                     showStatus(getString(R.string.offline_catalog_status_url_saved));
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private void showOfflineCatalogTokenDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.offline_catalog_token_hint);
+        String current = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+        input.setText(current == null || current.trim().isEmpty() ? "" : current);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.offline_catalog_action_set_token)
+                .setMessage(catalogSnapshotStore == null ? "" : getString(R.string.offline_catalog_device_message, catalogSnapshotStore.getDeviceId()))
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (unused, which) -> {
+                    if (catalogSnapshotStore != null) {
+                        catalogSnapshotStore.setAccessToken(input.getText() == null ? "" : input.getText().toString());
+                    }
+                    showStatus(getString(R.string.offline_catalog_status_token_saved));
+                })
+                .setNeutralButton(R.string.offline_catalog_action_clear_token, (unused, which) -> {
+                    if (catalogSnapshotStore != null) {
+                        catalogSnapshotStore.setAccessToken("");
+                    }
+                    showStatus(getString(R.string.offline_catalog_status_token_cleared));
                 })
                 .setNegativeButton(R.string.dialog_cancel, null)
                 .create();

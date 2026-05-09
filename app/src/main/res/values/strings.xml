@@ -612,6 +612,7 @@
     <string name="settings_data_reset_lists_profiles">Reset listas y perfiles</string>
     <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nCaduca: %4$s\nCanales: %5$d  ·  VOD: %6$d\nTamano: %7$s\nURL: %8$s\nDispositivo: %9$s\nToken: %10$s\nUsuario: %11$s\nPermisos: %12$s</string>
     <string name="offline_catalog_action_refresh">Actualizar catalogo local</string>
+    <string name="offline_catalog_action_activate_code">Activar con codigo</string>
     <string name="offline_catalog_action_set_url">Configurar URL del catalogo</string>
     <string name="offline_catalog_action_set_token">Configurar token de usuario</string>
     <string name="offline_catalog_action_clear_token">Borrar token</string>
@@ -620,6 +621,12 @@
     <string name="offline_catalog_url_hint">https://...</string>
     <string name="offline_catalog_token_hint">Token de acceso</string>
     <string name="offline_catalog_device_message">ID de este dispositivo:\n%1$s</string>
+    <string name="offline_catalog_activation_title">Activacion offline</string>
+    <string name="offline_catalog_activation_message">Introduce este codigo en el dashboard:\n\n%1$s\n\nUsuario seleccionado > Activaciones offline > Autorizar para este usuario.</string>
+    <string name="offline_catalog_activation_waiting">Esperando autorizacion...</string>
+    <string name="offline_catalog_activation_approved">Activacion aprobada</string>
+    <string name="offline_catalog_activation_expired">El codigo ha caducado. Genera uno nuevo.</string>
+    <string name="offline_catalog_activation_error">Error activando: %1$s</string>
     <string name="offline_catalog_status_refreshing">Actualizando catalogo local...</string>
     <string name="offline_catalog_status_refreshed">Catalogo local actualizado</string>
     <string name="offline_catalog_status_url_saved">URL de catalogo guardada</string>

@@ -8,6 +8,7 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -76,6 +77,37 @@ final class CatalogSnapshotStore {
         validateSnapshotForThisDevice(payload);
         saveSnapshotObject(payload, sourceUrl);
         return payload;
+    }
+
+    JSONObject startActivation(String baseUrl, String label) throws Exception {
+        String endpoint = joinUrl(baseUrl, "/api/offline/activation/start");
+        JSONObject request = new JSONObject()
+                .put("device_id", getDeviceId())
+                .put("label", label == null || label.trim().isEmpty() ? "Fire Stick offline" : label.trim());
+        HttpClient.Response response = httpClient.postJson(endpoint, request, 10000, 20000, jsonHeaders());
+        httpClient.requireSuccess(response, "creando codigo de activacion");
+        return new JSONObject(response.body == null ? "" : response.body);
+    }
+
+    JSONObject pollActivation(String baseUrl, String code) throws Exception {
+        String cleanCode = code == null ? "" : code.replaceAll("\\D", "");
+        String endpoint = joinUrl(baseUrl, "/api/offline/activation/" + cleanCode + "?device_id=" + getDeviceId());
+        HttpClient.Response response = httpClient.get(endpoint, 10000, 20000, jsonHeaders());
+        httpClient.requireSuccess(response, "consultando activacion");
+        return new JSONObject(response.body == null ? "" : response.body);
+    }
+
+    void applyActivationPayload(JSONObject payload, String baseUrl) throws Exception {
+        if (payload == null) {
+            throw new IllegalArgumentException("activacion vacia");
+        }
+        String token = payload.optString("token", "").trim();
+        String snapshotUrl = payload.optString("snapshot_url", "").trim();
+        if (token.isEmpty() || snapshotUrl.isEmpty()) {
+            throw new IllegalStateException("activacion sin token o URL");
+        }
+        setAccessToken(token);
+        setSourceUrl(resolveUrl(baseUrl, snapshotUrl));
     }
 
     void saveSnapshotObject(JSONObject payload, String sourceUrl) throws Exception {
@@ -188,6 +220,36 @@ final class CatalogSnapshotStore {
             headers.put("X-DRBEP-Device-Id", deviceId.trim());
         }
         return headers;
+    }
+
+    private static Map<String, String> jsonHeaders() {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Accept", "application/json");
+        headers.put("Content-Type", "application/json");
+        return headers;
+    }
+
+    private static String joinUrl(String baseUrl, String path) {
+        String base = baseUrl == null ? "" : baseUrl.trim();
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + path;
+    }
+
+    private static String resolveUrl(String baseUrl, String maybeRelative) throws Exception {
+        if (maybeRelative == null || maybeRelative.trim().isEmpty()) {
+            return "";
+        }
+        URI uri = new URI(maybeRelative.trim());
+        if (uri.isAbsolute()) {
+            return uri.toString();
+        }
+        String base = baseUrl == null ? "" : baseUrl.trim();
+        if (base.isEmpty()) {
+            return maybeRelative.trim();
+        }
+        return new URI(base.endsWith("/") ? base : base + "/").resolve(maybeRelative.trim()).toString();
     }
 
     private void ensureDeviceId() {

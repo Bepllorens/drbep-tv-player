@@ -23,6 +23,7 @@ def releaseForceFirestickUrl = (project.findProperty('releaseForceFirestickUrl')
 def releaseFirestickLockedUrl = (project.findProperty('releaseFirestickLockedUrl') ?: '').toString()
 def standaloneMode = (project.findProperty('standaloneMode') ?: 'true').toString().toBoolean()
 def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toString()
+def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://iptv.bepllorens.com').toString()
 
 def escapedDebugPlayerUrl = debugPlayerUrl
         .replace('\\', '\\\\')
@@ -39,6 +40,9 @@ def escapedReleaseFirestickLockedUrl = releaseFirestickLockedUrl
 def escapedCatalogSnapshotUrl = catalogSnapshotUrl
         .replace('\\', '\\\\')
         .replace('"', '\\"')
+def escapedOfflineBaseUrl = offlineBaseUrl
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
 
 android {
     namespace 'com.drbep.tvplayer'
@@ -48,8 +52,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 1
-        versionName "2.0.0-offline-alpha"
+        versionCode 2
+        versionName "2.0.1-offline-alpha"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -61,6 +65,7 @@ android {
             buildConfigField "String", "FIRESTICK_LOCKED_URL", "\"${escapedDebugFirestickLockedUrl}\""
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
+            buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
         }
         release {
             buildConfigField "String", "PLAYER_URL", "\"${escapedReleasePlayerUrl}\""
@@ -69,6 +74,7 @@ android {
             buildConfigField "String", "FIRESTICK_LOCKED_URL", "\"${escapedReleaseFirestickLockedUrl}\""
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
+            buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

@@ -6373,6 +6373,8 @@ public class MainActivity extends FragmentActivity {
     private void showOfflineCatalogSettingsDialog() {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.offline_catalog_action_activate_code));
+        actions.add(this::startOfflineActivationCodeFlow);
         options.add(getString(R.string.offline_catalog_action_refresh));
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.offline_catalog_action_set_url));
@@ -6384,6 +6386,93 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.settings_action_view_summary));
         actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogSummary()));
         showTvOptionsDialog(R.string.settings_section_offline_catalog, null, options, actions);
+    }
+
+    private void startOfflineActivationCodeFlow() {
+        if (catalogSnapshotStore == null) {
+            return;
+        }
+        showStatus(getString(R.string.offline_catalog_activation_waiting));
+        ioExecutor.execute(() -> {
+            try {
+                JSONObject payload = catalogSnapshotStore.startActivation(BuildConfig.OFFLINE_BASE_URL, "Fire Stick offline");
+                String code = payload.optString("code", "").trim();
+                uiHandler.post(() -> showOfflineActivationCodeDialog(code));
+            } catch (Exception e) {
+                Log.e(TAG, "offline activation start failed", e);
+                uiHandler.post(() -> showError(getString(R.string.offline_catalog_activation_error, e.getMessage())));
+            }
+        });
+    }
+
+    private void showOfflineActivationCodeDialog(String code) {
+        if (code == null || code.trim().isEmpty()) {
+            showError(getString(R.string.offline_catalog_activation_error, "codigo vacio"));
+            return;
+        }
+        TextView codeView = new TextView(this);
+        codeView.setText(getString(R.string.offline_catalog_activation_message, formatActivationCode(code)));
+        codeView.setTextSize(22f);
+        codeView.setTypeface(Typeface.DEFAULT_BOLD);
+        codeView.setGravity(Gravity.CENTER);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        codeView.setPadding(pad, pad, pad, pad);
+        final boolean[] active = {true};
+        final int[] attempts = {0};
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.offline_catalog_activation_title)
+                .setView(codeView)
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .create();
+        dialog.setOnDismissListener(unused -> active[0] = false);
+        showTvDialog(dialog);
+        pollOfflineActivationCode(code, active, attempts, dialog);
+    }
+
+    private void pollOfflineActivationCode(String code, boolean[] active, int[] attempts, Dialog dialog) {
+        if (active == null || !active[0]) {
+            return;
+        }
+        if (attempts == null || attempts.length == 0 || attempts[0] >= 120) {
+            if (dialog != null && dialog.isShowing()) {
+                dialog.dismiss();
+            }
+            showError(getString(R.string.offline_catalog_activation_expired));
+            return;
+        }
+        attempts[0]++;
+        ioExecutor.execute(() -> {
+            try {
+                JSONObject payload = catalogSnapshotStore == null ? null : catalogSnapshotStore.pollActivation(BuildConfig.OFFLINE_BASE_URL, code);
+                String status = payload == null ? "" : payload.optString("status", "");
+                if ("approved".equalsIgnoreCase(status)) {
+                    if (catalogSnapshotStore != null) {
+                        catalogSnapshotStore.applyActivationPayload(payload, BuildConfig.OFFLINE_BASE_URL);
+                    }
+                    uiHandler.post(() -> {
+                        active[0] = false;
+                        if (dialog != null && dialog.isShowing()) {
+                            dialog.dismiss();
+                        }
+                        showStatus(getString(R.string.offline_catalog_activation_approved));
+                        refreshOfflineCatalogFromSettings();
+                    });
+                    return;
+                }
+                uiHandler.postDelayed(() -> pollOfflineActivationCode(code, active, attempts, dialog), 3000L);
+            } catch (Exception e) {
+                Log.e(TAG, "offline activation poll failed", e);
+                uiHandler.postDelayed(() -> pollOfflineActivationCode(code, active, attempts, dialog), 3000L);
+            }
+        });
+    }
+
+    private static String formatActivationCode(String code) {
+        String clean = code == null ? "" : code.replaceAll("\\D", "");
+        if (clean.length() == 6) {
+            return clean.substring(0, 3) + " " + clean.substring(3);
+        }
+        return code == null ? "" : code;
     }
 
     private String buildOfflineCatalogSummary() {

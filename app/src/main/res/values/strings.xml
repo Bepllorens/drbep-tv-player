@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">DRBEP TV Player</string>
+    <string name="app_name">DRBEP TV Offline</string>
     <string name="channels_title">Canales</string>
     <string name="filter_all_label">Filtro activo: Todos</string>
     <string name="filter_navigation_hint">Usa IZQ/DER para cambiar el filtro</string>
@@ -579,6 +579,7 @@
     <string name="settings_section_search">Busqueda</string>
     <string name="settings_section_recordings">Grabaciones</string>
     <string name="settings_section_local_data">Datos locales</string>
+    <string name="settings_section_offline_catalog">Catalogo independiente</string>
     <string name="settings_section_diagnostics">Diagnostico de configuracion</string>
     <string name="settings_section_reset">Reset selectivo</string>
     <string name="settings_action_view_summary">Ver resumen de esta seccion</string>
@@ -609,6 +610,17 @@
     <string name="settings_data_clear_recent_channels">Limpiar canales recientes</string>
     <string name="settings_data_clear_favorites">Limpiar favoritos</string>
     <string name="settings_data_reset_lists_profiles">Reset listas y perfiles</string>
+    <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nCanales: %4$d  ·  VOD: %5$d\nTamano: %6$s\nURL: %7$s</string>
+    <string name="offline_catalog_action_refresh">Actualizar catalogo local</string>
+    <string name="offline_catalog_action_set_url">Configurar URL del catalogo</string>
+    <string name="offline_catalog_action_clear">Borrar catalogo local</string>
+    <string name="offline_catalog_confirm_clear">Se borrara el snapshot local. La app independiente no podra cargar canales hasta descargar otro catalogo.</string>
+    <string name="offline_catalog_url_hint">https://...</string>
+    <string name="offline_catalog_status_refreshing">Actualizando catalogo local...</string>
+    <string name="offline_catalog_status_refreshed">Catalogo local actualizado</string>
+    <string name="offline_catalog_status_url_saved">URL de catalogo guardada</string>
+    <string name="offline_catalog_status_cleared">Catalogo local borrado</string>
+    <string name="catalog_snapshot_refresh_ready">Catalogo local descargado</string>
     <string name="settings_diagnostics_message">Paquete: %1$s\nVersion: %2$s (%3$d)\nServidor: %4$s\nFiltro: %5$s\nSolo favoritos: %6$s\nHub inicio: %7$s\nAuto grabaciones: %8$s\nCanales visibles/totales: %9$d/%10$d\nModos temporales: %11$d\nMemoria usada/max: %12$s / %13$s\nCache logos SVG: %14$d\nCache stream info: %15$d\nCarga catalogo: %16$d ms\nAplicar lista: %17$d ms\nEPG ahora: %18$d ms\nUltima limpieza cache: %19$s</string>
     <string name="settings_reset_summary">Restaura solo el bloque elegido. No toca la instalacion ni el servidor.</string>
     <string name="settings_reset_search">Reset busqueda</string>

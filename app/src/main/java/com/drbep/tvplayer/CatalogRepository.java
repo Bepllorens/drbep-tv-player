@@ -26,20 +26,57 @@ final class CatalogRepository {
 
     private final String baseUrl;
     private final HttpClient httpClient;
+    private final CatalogSnapshotStore snapshotStore;
+    private final boolean standaloneMode;
 
     CatalogRepository(String baseUrl) {
+        this(baseUrl, null, false);
+    }
+
+    CatalogRepository(String baseUrl, CatalogSnapshotStore snapshotStore, boolean standaloneMode) {
         this.baseUrl = baseUrl;
         this.httpClient = new HttpClient();
+        this.snapshotStore = snapshotStore;
+        this.standaloneMode = standaloneMode;
     }
 
     CatalogLoadResult fetchCatalogChannels() throws Exception {
-        JSONObject payload = httpClient.getJsonObject(
+        if (standaloneMode) {
+            if (snapshotStore == null) {
+                throw new IllegalStateException("catalogo local no configurado");
+            }
+            return parseCatalogPayload(snapshotStore.loadSnapshotObject(), false);
+        }
+        JSONObject payload = fetchRemoteCatalogPayload();
+        return parseCatalogPayload(payload, true);
+    }
+
+    CatalogLoadResult refreshSnapshotFromConfiguredUrl(String fallbackUrl) throws Exception {
+        if (snapshotStore == null) {
+            throw new IllegalStateException("catalogo local no configurado");
+        }
+        return parseCatalogPayload(snapshotStore.refreshFromConfiguredUrl(fallbackUrl), false);
+    }
+
+    CatalogLoadResult fetchLocalSnapshotCatalog() throws Exception {
+        if (snapshotStore == null) {
+            throw new IllegalStateException("catalogo local no configurado");
+        }
+        return parseCatalogPayload(snapshotStore.loadSnapshotObject(), false);
+    }
+
+    private JSONObject fetchRemoteCatalogPayload() throws Exception {
+        return httpClient.getJsonObject(
                 baseUrl + "/api/channels/catalog?include_disabled=0",
                 10000,
                 15000,
                 java.util.Collections.singletonMap("Accept", "application/json"),
                 "cargando catalogo"
         );
+    }
+
+    private CatalogLoadResult parseCatalogPayload(JSONObject rawPayload, boolean appendRemoteVod) {
+        JSONObject payload = normalizeSnapshotPayload(rawPayload);
         JSONArray channelsArray = payload.optJSONArray("channels");
         if (channelsArray == null) {
             channelsArray = new JSONArray();
@@ -67,7 +104,14 @@ final class CatalogRepository {
 
             String logo = channel.optString("logo", "").trim();
             String sourceGroup = channel.optString("group", "").trim();
-            String playbackUrl = baseUrl + "/live/" + id;
+            String playbackUrl = standaloneMode
+                    ? firstNonEmpty(
+                    channel.optString("play_url", ""),
+                    channel.optString("stream_url", ""),
+                    channel.optString("url", ""),
+                    channel.optString("source_url", "")
+            )
+                    : baseUrl + "/live/" + id;
             String fallbackUrl = buildFallbackPlayUrl(id);
             String tvgId = channel.optString("tvg_id", "").trim();
             int platformId = (int) channel.optLong("platform_id", 0L);
@@ -107,20 +151,52 @@ final class CatalogRepository {
                     platformId,
                     platformName,
                     customGroups,
+                    firstNonEmpty(channel.optString("drm_scheme", ""), channel.optString("drm_type", "")),
+                    firstNonEmpty(channel.optString("drm_license_url", ""), channel.optString("license_url", ""), buildClearKeyDataLicenseUrl(channel.optJSONObject("clearkey"))),
                     "",
-                    "",
-                    "",
-                    false
+                    standaloneMode
             ));
         }
 
-        appendTivifyVodItems(parsed);
-        appendRuntimeVodItems(parsed);
+        appendSnapshotVodItems(parsed, payload);
+        if (appendRemoteVod) {
+            appendTivifyVodItems(parsed);
+            appendRuntimeVodItems(parsed);
+        }
 
         long activePlatformId = payload.optLong("active_platform_id", 0L);
         StartupFilterConfig startupConfig = parseStartupFilterConfig(payload.optJSONObject("tv_player_startup"));
         List<ChannelFilter> filters = buildFiltersFromCatalog(parsed, activePlatformId, startupConfig);
         return new CatalogLoadResult(parsed, filters, resolveDefaultFilterKey(filters, startupConfig));
+    }
+
+    private JSONObject normalizeSnapshotPayload(JSONObject rawPayload) {
+        if (rawPayload == null) {
+            return new JSONObject();
+        }
+        JSONObject catalog = rawPayload.optJSONObject("catalog");
+        if (catalog != null) {
+            copyIfMissing(rawPayload, catalog, "vod");
+            copyIfMissing(rawPayload, catalog, "adult");
+            copyIfMissing(rawPayload, catalog, "adult_vod");
+            copyIfMissing(rawPayload, catalog, "tivify_vod");
+            copyIfMissing(rawPayload, catalog, "tivify_adult");
+            copyIfMissing(rawPayload, catalog, "runtime_movies");
+            copyIfMissing(rawPayload, catalog, "runtime_vod");
+            copyIfMissing(rawPayload, catalog, "movies");
+            return catalog;
+        }
+        return rawPayload;
+    }
+
+    private static void copyIfMissing(JSONObject source, JSONObject target, String key) {
+        if (source == null || target == null || key == null || target.has(key) || !source.has(key)) {
+            return;
+        }
+        try {
+            target.put(key, source.opt(key));
+        } catch (Exception ignored) {
+        }
     }
 
     CatalogLoadResult fetchActiveChannels() throws Exception {
@@ -194,6 +270,28 @@ final class CatalogRepository {
         }
     }
 
+    private void appendSnapshotVodItems(List<ChannelItem> parsed, JSONObject payload) {
+        if (payload == null) {
+            return;
+        }
+        appendVodArray(parsed, firstArray(payload, "vod", "tivify_vod"), false);
+        appendVodArray(parsed, firstArray(payload, "adult", "adult_vod", "tivify_adult"), true);
+        appendRuntimeVodArray(parsed, firstArray(payload, "runtime_movies", "movies", "runtime_vod"), "vod:runtime:movies", "Runtime Peliculas");
+    }
+
+    private static JSONArray firstArray(JSONObject payload, String... keys) {
+        if (payload == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            JSONArray array = payload.optJSONArray(key);
+            if (array != null) {
+                return array;
+            }
+        }
+        return null;
+    }
+
     private void appendVodArray(List<ChannelItem> parsed, JSONArray rows, boolean adult) {
         if (rows == null) {
             return;
@@ -207,7 +305,10 @@ final class CatalogRepository {
             String selectedUrl = firstNonEmpty(
                     row.optString("selected_url", ""),
                     row.optString("dash_url", ""),
-                    row.optString("hls_url", "")
+                    row.optString("hls_url", ""),
+                    row.optString("play_url", ""),
+                    row.optString("url", ""),
+                    row.optString("stream_url", "")
             );
             if (selectedUrl.isEmpty()) {
                 continue;
@@ -242,7 +343,7 @@ final class CatalogRepository {
                     "Tivify VOD",
                     new ArrayList<>(),
                     hasKeys ? "clearkey" : "",
-                    hasKeys ? buildVodLicenseUrl(selectedUrl) : "",
+                    hasKeys ? firstNonEmpty(row.optString("license_url", ""), buildClearKeyDataLicenseUrl(clearKeys), standaloneMode ? "" : buildVodLicenseUrl(selectedUrl)) : "",
                     adult ? "vod:tivify:adult" : "vod:tivify:general",
                     true,
                     description,
@@ -404,6 +505,9 @@ final class CatalogRepository {
     }
 
     private String buildFallbackPlayUrl(String id) {
+        if (standaloneMode) {
+            return "";
+        }
         if (id == null || id.trim().isEmpty()) {
             return "";
         }
@@ -446,6 +550,59 @@ final class CatalogRepository {
     private String buildVodLicenseUrl(String selectedUrl) {
         String token = Base64.encodeToString(selectedUrl.getBytes(StandardCharsets.UTF_8), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
         return baseUrl + "/api/vod/tivify/clearkey?u=" + token;
+    }
+
+    private static String buildClearKeyDataLicenseUrl(JSONObject clearKeys) {
+        if (clearKeys == null || clearKeys.length() == 0) {
+            return "";
+        }
+        try {
+            JSONArray keys = new JSONArray();
+            java.util.Iterator<String> iterator = clearKeys.keys();
+            while (iterator.hasNext()) {
+                String kidHex = iterator.next();
+                String keyHex = clearKeys.optString(kidHex, "");
+                String kid = encodeHexAsBase64Url(kidHex);
+                String key = encodeHexAsBase64Url(keyHex);
+                if (kid.isEmpty() || key.isEmpty()) {
+                    continue;
+                }
+                JSONObject entry = new JSONObject();
+                entry.put("kty", "oct");
+                entry.put("kid", kid);
+                entry.put("k", key);
+                keys.put(entry);
+            }
+            if (keys.length() == 0) {
+                return "";
+            }
+            JSONObject license = new JSONObject();
+            license.put("keys", keys);
+            license.put("type", "temporary");
+            return "data:application/json;base64," + Base64.encodeToString(license.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String encodeHexAsBase64Url(String hex) {
+        if (hex == null) {
+            return "";
+        }
+        String normalized = hex.trim();
+        if (normalized.isEmpty() || normalized.length() % 2 != 0) {
+            return "";
+        }
+        try {
+            byte[] bytes = new byte[normalized.length() / 2];
+            for (int i = 0; i < bytes.length; i++) {
+                int index = i * 2;
+                bytes[i] = (byte) Integer.parseInt(normalized.substring(index, index + 2), 16);
+            }
+            return Base64.encodeToString(bytes, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private static String buildVodItemId(String selectedUrl, String title, boolean adult) {

@@ -21,6 +21,8 @@ def releasePlayerUrl = (project.findProperty('releasePlayerUrl') ?: 'https://ipt
 def releaseAllowInsecureSsl = (project.findProperty('releaseAllowInsecureSsl') ?: 'false').toString().toBoolean()
 def releaseForceFirestickUrl = (project.findProperty('releaseForceFirestickUrl') ?: 'false').toString().toBoolean()
 def releaseFirestickLockedUrl = (project.findProperty('releaseFirestickLockedUrl') ?: '').toString()
+def standaloneMode = (project.findProperty('standaloneMode') ?: 'true').toString().toBoolean()
+def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toString()
 
 def escapedDebugPlayerUrl = debugPlayerUrl
         .replace('\\', '\\\\')
@@ -34,17 +36,20 @@ def escapedReleasePlayerUrl = releasePlayerUrl
 def escapedReleaseFirestickLockedUrl = releaseFirestickLockedUrl
         .replace('\\', '\\\\')
         .replace('"', '\\"')
+def escapedCatalogSnapshotUrl = catalogSnapshotUrl
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
 
 android {
     namespace 'com.drbep.tvplayer'
     compileSdk 36
 
     defaultConfig {
-        applicationId "com.drbep.tvplayer.firestick"
+        applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 121
-        versionName "1.4.106"
+        versionCode 1
+        versionName "2.0.0-offline-alpha"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -54,12 +59,16 @@ android {
             buildConfigField "boolean", "ALLOW_INSECURE_SSL", debugAllowInsecureSsl.toString()
             buildConfigField "boolean", "FORCE_FIRESTICK_URL", debugForceFirestickUrl.toString()
             buildConfigField "String", "FIRESTICK_LOCKED_URL", "\"${escapedDebugFirestickLockedUrl}\""
+            buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
+            buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
         }
         release {
             buildConfigField "String", "PLAYER_URL", "\"${escapedReleasePlayerUrl}\""
             buildConfigField "boolean", "ALLOW_INSECURE_SSL", releaseAllowInsecureSsl.toString()
             buildConfigField "boolean", "FORCE_FIRESTICK_URL", releaseForceFirestickUrl.toString()
             buildConfigField "String", "FIRESTICK_LOCKED_URL", "\"${escapedReleaseFirestickLockedUrl}\""
+            buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
+            buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

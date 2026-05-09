@@ -269,6 +269,7 @@ public class MainActivity extends FragmentActivity {
     private final LruCache<String, Drawable> channelLogoCache = new LruCache<>(96);
     private ChannelAdapter channelAdapter;
     private CatalogRepository catalogRepository;
+    private CatalogSnapshotStore catalogSnapshotStore;
     private EpgRepository epgRepository;
     private RecordingsRepository recordingsRepository;
     private ReminderStore reminderStore;
@@ -553,8 +554,9 @@ public class MainActivity extends FragmentActivity {
         }
 
         baseUrl = resolveBaseUrl();
-    catalogRepository = new CatalogRepository(baseUrl);
-    epgRepository = new EpgRepository(baseUrl);
+        catalogSnapshotStore = new CatalogSnapshotStore(this);
+        catalogRepository = new CatalogRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
+        epgRepository = new EpgRepository(baseUrl);
         recordingsRepository = new RecordingsRepository(baseUrl);
     httpClient = new HttpClient();
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -1539,6 +1541,25 @@ public class MainActivity extends FragmentActivity {
                     applyLoadedChannels(result);
                 });
             } catch (Exception catalogErr) {
+                if (BuildConfig.STANDALONE_MODE) {
+                    Log.w(TAG, "local catalog load failed in standalone mode", catalogErr);
+                    try {
+                        CatalogLoadResult refreshed = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
+                        long durationMs = System.currentTimeMillis() - startMs;
+                        uiHandler.post(() -> {
+                            lastCatalogLoadDurationMs = durationMs;
+                            showStatus(getString(R.string.catalog_snapshot_refresh_ready));
+                            applyLoadedChannels(refreshed);
+                        });
+                    } catch (Exception e) {
+                        Log.e(TAG, "standalone catalog load failed", e);
+                        uiHandler.post(() -> {
+                            showError(getString(R.string.error_load_channels, e.getMessage()));
+                            showCatalogRecoveryDialog(e.getMessage());
+                        });
+                    }
+                    return;
+                }
                 Log.w(TAG, "catalog load failed, fallback to /api/channels", catalogErr);
                 try {
                     CatalogLoadResult fallback = catalogRepository.fetchActiveChannels();
@@ -1594,7 +1615,9 @@ public class MainActivity extends FragmentActivity {
         lastApplyChannelsDurationMs = System.currentTimeMillis() - startMs;
         showStatus(getString(R.string.status_channels_ready, channels.size(), lastCatalogLoadDurationMs));
         prefetchCurrentChannelLogos();
-        uiHandler.postDelayed(this::loadEpgNow, 450L);
+        if (!BuildConfig.STANDALONE_MODE) {
+            uiHandler.postDelayed(this::loadEpgNow, 450L);
+        }
         uiHandler.postDelayed(this::maybeShowStartupHub, 700L);
     }
 
@@ -6188,6 +6211,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showRecordingSettingsDialog);
         options.add(getString(R.string.settings_section_local_data));
         actions.add(this::showLocalDataSettingsDialog);
+        options.add(getString(R.string.settings_section_offline_catalog));
+        actions.add(this::showOfflineCatalogSettingsDialog);
         options.add(getString(R.string.settings_section_diagnostics));
         actions.add(this::showSettingsDiagnosticsDialog);
         options.add(getString(R.string.settings_section_reset));
@@ -6343,6 +6368,84 @@ public class MainActivity extends FragmentActivity {
                 recordingResumePositions.size(),
                 channelCollectionStore == null ? 0 : channelCollectionStore.getCollections().size()
         );
+    }
+
+    private void showOfflineCatalogSettingsDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.offline_catalog_action_refresh));
+        actions.add(this::refreshOfflineCatalogFromSettings);
+        options.add(getString(R.string.offline_catalog_action_set_url));
+        actions.add(this::showOfflineCatalogUrlDialog);
+        options.add(getString(R.string.offline_catalog_action_clear));
+        actions.add(() -> confirmSettingsAction(R.string.offline_catalog_action_clear, R.string.offline_catalog_confirm_clear, this::clearOfflineCatalog));
+        options.add(getString(R.string.settings_action_view_summary));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogSummary()));
+        showTvOptionsDialog(R.string.settings_section_offline_catalog, null, options, actions);
+    }
+
+    private String buildOfflineCatalogSummary() {
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
+                ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0, 0, "")
+                : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        String updatedAt = status.updatedAtMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(status.updatedAtMs));
+        return getString(
+                R.string.offline_catalog_summary,
+                BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                status.available ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                updatedAt,
+                status.channelCount,
+                status.vodCount,
+                humanReadableSize(status.sizeBytes),
+                status.sourceUrl == null || status.sourceUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceUrl
+        );
+    }
+
+    private void refreshOfflineCatalogFromSettings() {
+        showStatus(getString(R.string.offline_catalog_status_refreshing));
+        long startMs = System.currentTimeMillis();
+        ioExecutor.execute(() -> {
+            try {
+                CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
+                long durationMs = System.currentTimeMillis() - startMs;
+                uiHandler.post(() -> {
+                    lastCatalogLoadDurationMs = durationMs;
+                    applyLoadedChannels(result);
+                    showStatus(getString(R.string.offline_catalog_status_refreshed));
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "offline catalog refresh failed", e);
+                uiHandler.post(() -> showError(getString(R.string.error_load_channels, e.getMessage())));
+            }
+        });
+    }
+
+    private void showOfflineCatalogUrlDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.offline_catalog_url_hint);
+        input.setText(catalogSnapshotStore == null ? BuildConfig.CATALOG_SNAPSHOT_URL : catalogSnapshotStore.getSourceUrl(BuildConfig.CATALOG_SNAPSHOT_URL));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.offline_catalog_action_set_url)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, (unused, which) -> {
+                    if (catalogSnapshotStore != null) {
+                        catalogSnapshotStore.setSourceUrl(input.getText() == null ? "" : input.getText().toString());
+                    }
+                    showStatus(getString(R.string.offline_catalog_status_url_saved));
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .create();
+        showTvDialog(dialog);
+    }
+
+    private void clearOfflineCatalog() {
+        if (catalogSnapshotStore != null) {
+            catalogSnapshotStore.clear();
+        }
+        showStatus(getString(R.string.offline_catalog_status_cleared));
     }
 
     private void showSettingsDiagnosticsDialog() {

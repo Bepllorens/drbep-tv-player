@@ -5,12 +5,31 @@ Proyecto alternativo para instalar una app Fire Stick independiente en otra vivi
 ## Flujo previsto
 
 1. El dashboard sigue siendo el origen maestro.
-2. Un exportador genera `catalog_snapshot.json` desde el backend.
-3. Ese JSON se publica en una URL externa segura.
+2. Se crea un usuario con permisos concretos para la vivienda/dispositivo.
+3. Desde Gestion de usuarios y accesos se genera un token offline revocable.
 4. La app `com.drbep.tvplayer.offline` descarga el snapshot desde Ajustes > Catalogo independiente.
-5. En los siguientes arranques, la app usa el catalogo local sin conectar con la red privada.
+5. En los siguientes arranques, la app usa el catalogo local hasta que caduque o se actualice.
+
+## Generar token desde dashboard
+
+En el backend, la rama `codex/offline-user-snapshots` anade:
+
+- `GET /api/offline/snapshot`: genera el snapshot filtrado por permisos del usuario autenticado.
+- `POST /api/users/{id}/offline-token`: crea un token Bearer para un usuario concreto.
+- Boton `Token offline` dentro de Gestion de usuarios y accesos.
+
+El token se muestra una sola vez. Para desactivarlo basta con revocar la sesion `DRBEP Offline` del usuario.
+
+La app debe configurarse con:
+
+- URL: `https://TU_DOMINIO/api/offline/snapshot?device_id=DEVICE_ID_DE_LA_APP`
+- Token: el Bearer generado en el dashboard
+
+Tambien se envia `X-DRBEP-Device-Id`, asi que el snapshot queda vinculado al dispositivo esperado.
 
 ## Exportar snapshot
+
+El exportador manual sigue disponible para pruebas o snapshots publicados en un almacenamiento externo:
 
 ```bash
 scripts/export_offline_catalog.py \
@@ -48,6 +67,8 @@ El formato actual incluye:
 - Rechaza snapshots cuyo `device_id` no coincide con el dispositivo local
 - Ajustes para ver estado, cambiar URL, actualizar y borrar snapshot
 - Si no hay snapshot local, intenta descargar desde `catalogSnapshotUrl`
+- Backend con endpoint de snapshot filtrado por permisos de usuario
+- Dashboard con generacion de tokens offline revocables
 
 ## Pendiente
 
@@ -55,4 +76,4 @@ El formato actual incluye:
 - EPG offline opcional
 - Tratamiento de canales que dependan de proxy vivo
 - Firma/verificacion del snapshot antes de aplicarlo
-- Dashboard para crear usuarios, tokens, permisos y snapshots por dispositivo
+- Flujo guiado para copiar URL/token al Fire Stick sin introducirlo a mano

@@ -3,9 +3,11 @@ package com.drbep.tvplayer;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
+import android.util.Base64;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.ColorInfo;
 import androidx.media3.common.MediaItem;
@@ -13,21 +15,38 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager;
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider;
+import androidx.media3.exoplayer.drm.DrmSessionManager;
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider;
+import androidx.media3.exoplayer.drm.ExoMediaDrm;
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm;
+import androidx.media3.exoplayer.drm.MediaDrmCallback;
+import androidx.media3.exoplayer.drm.MediaDrmCallbackException;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.ui.PlayerView;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 final class PlayerController {
     private static final String TAG = "PlayerController";
     private static final String PREFS = "drbep_tv_prefs";
+    private static final String CLEARKEY_DATA_URI_PREFIX = "data:application/json;base64,";
     private static final long TIMESHIFT_MAX_BACK_MS = 2L * 60L * 60L * 1000L;
     private static final long TIMESHIFT_SEEK_STEP_MS = 30_000L;
 
@@ -79,6 +98,11 @@ final class PlayerController {
     static final class StreamInfo {
         String drmType;
         String licenseUrl;
+        String clearKeyLicenseDataUri;
+        String clearKeyKidHex;
+        String clearKeyKeyHex;
+        String patchedClearKeyManifestDataUri;
+        String sourceUrl;
         String type;
         boolean encrypted;
     }
@@ -188,6 +212,11 @@ final class PlayerController {
 
         player = new ExoPlayer.Builder(context)
                 .setTrackSelector(trackSelector)
+                .setLoadControl(new DefaultLoadControl.Builder()
+                        .setBufferDurationsMs(20_000, 75_000, 4_000, 8_000)
+                        .build())
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(context)
+                        .setDrmSessionManagerProvider(createDrmSessionManagerProvider()))
                 .setSeekBackIncrementMs(TIMESHIFT_SEEK_STEP_MS)
                 .setSeekForwardIncrementMs(TIMESHIFT_SEEK_STEP_MS)
                 .build();
@@ -267,6 +296,62 @@ final class PlayerController {
         forceLiveEdgeOnNextReady = false;
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         Log.d(TAG, "compatibility fallback state reset");
+    }
+
+    private DrmSessionManagerProvider createDrmSessionManagerProvider() {
+        DefaultDrmSessionManagerProvider defaultProvider = new DefaultDrmSessionManagerProvider();
+        return mediaItem -> {
+            if (mediaItem.localConfiguration == null || mediaItem.localConfiguration.drmConfiguration == null) {
+                return DrmSessionManager.DRM_UNSUPPORTED;
+            }
+            MediaItem.DrmConfiguration drmConfiguration = mediaItem.localConfiguration.drmConfiguration;
+            String licenseUri = drmConfiguration.licenseUri == null ? "" : drmConfiguration.licenseUri.toString();
+            if (C.CLEARKEY_UUID.equals(drmConfiguration.scheme) && licenseUri.startsWith(CLEARKEY_DATA_URI_PREFIX)) {
+                byte[] clearKeyResponse = decodeClearKeyDataUri(licenseUri);
+                if (clearKeyResponse != null && clearKeyResponse.length > 0) {
+                    DefaultDrmSessionManager drmSessionManager = new DefaultDrmSessionManager.Builder()
+                            .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+                            .setMultiSession(drmConfiguration.multiSession)
+                            .setPlayClearSamplesWithoutKeys(drmConfiguration.playClearContentWithoutKey)
+                            .build(new LocalClearKeyMediaDrmCallback(clearKeyResponse));
+                    drmSessionManager.setMode(DefaultDrmSessionManager.MODE_PLAYBACK, drmConfiguration.getKeySetId());
+                    return drmSessionManager;
+                }
+                Log.w(TAG, "invalid local clearkey response, falling back to default DRM provider");
+            }
+            return defaultProvider.get(mediaItem);
+        };
+    }
+
+    @Nullable
+    private static byte[] decodeClearKeyDataUri(String licenseUri) {
+        if (licenseUri == null || !licenseUri.startsWith(CLEARKEY_DATA_URI_PREFIX)) {
+            return null;
+        }
+        try {
+            return Base64.decode(licenseUri.substring(CLEARKEY_DATA_URI_PREFIX.length()), Base64.DEFAULT);
+        } catch (Exception e) {
+            Log.w(TAG, "failed to decode local clearkey response", e);
+            return null;
+        }
+    }
+
+    private static final class LocalClearKeyMediaDrmCallback implements MediaDrmCallback {
+        private final byte[] keyResponse;
+
+        LocalClearKeyMediaDrmCallback(byte[] keyResponse) {
+            this.keyResponse = keyResponse;
+        }
+
+        @Override
+        public Response executeProvisionRequest(UUID uuid, ExoMediaDrm.ProvisionRequest request) throws MediaDrmCallbackException {
+            return new Response(new byte[0]);
+        }
+
+        @Override
+        public Response executeKeyRequest(UUID uuid, ExoMediaDrm.KeyRequest request) throws MediaDrmCallbackException {
+            return new Response(keyResponse);
+        }
     }
 
     private boolean tryAutoRecovery(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
@@ -645,6 +730,15 @@ final class PlayerController {
         }
 
         MediaItem.Builder builder = new MediaItem.Builder().setUri(decision.targetUrl);
+        if (isHevcHlsDecision(decision)) {
+            builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(18_000)
+                    .setMinOffsetMs(12_000)
+                    .setMaxOffsetMs(30_000)
+                    .setMinPlaybackSpeed(0.97f)
+                    .setMaxPlaybackSpeed(1.02f)
+                    .build());
+        }
         if (decision.mimeType != null && !decision.mimeType.trim().isEmpty()) {
             builder.setMimeType(decision.mimeType);
         }
@@ -658,6 +752,10 @@ final class PlayerController {
         } else if ("clearkey".equals(decision.drmType)) {
             String licenseUrl = request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
                     ? request.drmLicenseUrl
+                    : streamInfo != null && streamInfo.clearKeyLicenseDataUri != null && !streamInfo.clearKeyLicenseDataUri.trim().isEmpty()
+                    ? streamInfo.clearKeyLicenseDataUri
+                    : streamInfo != null && streamInfo.licenseUrl != null && !streamInfo.licenseUrl.trim().isEmpty()
+                    ? streamInfo.licenseUrl
                     : baseUrl + "/api/clearkey/" + request.channelId;
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
                     .setLicenseUri(licenseUrl)
@@ -693,6 +791,13 @@ final class PlayerController {
 
     private PlaybackRouteResolver.Decision buildPlaybackDecision(PlaybackRequest request, boolean useFallback, StreamInfo streamInfo) {
         return playbackRouteResolver.buildDecision(request, useFallback, streamInfo);
+    }
+
+    private boolean isHevcHlsDecision(PlaybackRouteResolver.Decision decision) {
+        return decision != null
+                && decision.targetUrl != null
+                && decision.targetUrl.contains("/hls/1071554/")
+                && decision.targetUrl.contains("codec=hevc");
     }
 
     private void maybeShowHdrBadge() {
@@ -822,13 +927,178 @@ final class PlayerController {
             StreamInfo info = new StreamInfo();
             info.drmType = jsonObject.optString("drm_type", "").trim();
             info.licenseUrl = jsonObject.optString("license_url", "").trim();
+            info.sourceUrl = jsonObject.optString("url", "").trim();
             info.type = jsonObject.optString("type", "").trim();
             info.encrypted = jsonObject.optBoolean("encrypted", false);
+            JSONObject clearKeyObject = jsonObject.optJSONObject("clearkey");
+            info.clearKeyLicenseDataUri = buildClearKeyLicenseDataUri(clearKeyObject);
+            populateFirstClearKey(info, clearKeyObject);
+            info.patchedClearKeyManifestDataUri = buildPatchedClearKeyProxyManifestDataUri(channelId, info);
             Log.d(TAG, "fetchStreamInfo success channelId=" + channelId + " streamInfo=" + describeStreamInfo(info));
             return info;
         } catch (Exception e) {
             Log.w(TAG, "stream info fetch failed for channel " + channelId, e);
             return null;
+        }
+    }
+
+    private void populateFirstClearKey(StreamInfo info, JSONObject clearKeyObject) {
+        if (info == null || clearKeyObject == null || clearKeyObject.length() == 0) {
+            return;
+        }
+        java.util.Iterator<String> iterator = clearKeyObject.keys();
+        while (iterator.hasNext()) {
+            String kidHex = iterator.next();
+            String keyHex = clearKeyObject.optString(kidHex, "");
+            if (!encodeHexAsBase64Url(kidHex).isEmpty() && !encodeHexAsBase64Url(keyHex).isEmpty()) {
+                info.clearKeyKidHex = kidHex.trim();
+                info.clearKeyKeyHex = keyHex.trim();
+                return;
+            }
+        }
+    }
+
+    private String buildPatchedClearKeyProxyManifestDataUri(String channelId, StreamInfo info) {
+        if (!"1071554".equals(channelId)
+                || info == null
+                || isBlank(info.sourceUrl)
+                || isBlank(info.clearKeyKidHex)
+                || isBlank(info.clearKeyKeyHex)
+                || !"clearkey".equals(safeLower(info.drmType))) {
+            return "";
+        }
+        try {
+            HttpClient.Response response = httpClient.get(baseUrl + "/proxy/manifest/" + channelId + "?nodrm=1", 5000, 12000, java.util.Collections.singletonMap("Accept", "application/dash+xml"));
+            if (!response.isSuccessful() || isBlank(response.body)) {
+                Log.w(TAG, "patched clearkey manifest unavailable channelId=" + channelId + " code=" + response.code);
+                return "";
+            }
+            String originBaseUrl = info.sourceUrl.substring(0, info.sourceUrl.lastIndexOf('/') + 1) + "6/";
+            String patched = response.body.replaceAll("(?s)\\s*<BaseURL>.*?</BaseURL>", "");
+            patched = rewriteDashTemplateAttribute(patched, "initialization", originBaseUrl, null, null, null);
+            patched = rewriteDashTemplateAttribute(patched, "media", originBaseUrl, baseUrl + "/proxy/segment/" + channelId, info.clearKeyKidHex, info.clearKeyKeyHex);
+            String encoded = Base64.encodeToString(patched.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+            Log.i(TAG, "built patched clearkey proxy manifest channelId=" + channelId + " bytes=" + patched.length());
+            return "data:application/dash+xml;base64," + encoded;
+        } catch (Exception e) {
+            Log.w(TAG, "failed to build patched clearkey proxy manifest channelId=" + channelId, e);
+            return "";
+        }
+    }
+
+    private static String rewriteDashTemplateAttribute(String manifest, String attribute, String originBaseUrl, String proxySegmentUrl, String kidHex, String keyHex) throws Exception {
+        Pattern pattern = Pattern.compile(attribute + "=\"([^\"]+)\"");
+        Matcher matcher = pattern.matcher(manifest);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            String attributeUrl = xmlUnescape(matcher.group(1));
+            String template = extractQueryParam(attributeUrl, "template");
+            if (isBlank(template)) {
+                matcher.appendReplacement(output, Matcher.quoteReplacement(matcher.group(0)));
+                continue;
+            }
+            String replacementUrl;
+            if (proxySegmentUrl == null) {
+                replacementUrl = originBaseUrl + template;
+            } else {
+                String mediaUrl = originBaseUrl + template;
+                String encodedMediaUrl = URLEncoder.encode(mediaUrl, StandardCharsets.UTF_8.name())
+                        .replace("%24RepresentationID%24", "$RepresentationID$")
+                        .replace("%24Time%24", "$Time$");
+                replacementUrl = proxySegmentUrl
+                        + "?key=" + keyHex
+                        + "&kid=" + kidHex
+                        + "&method=CTR"
+                        + "&url=" + encodedMediaUrl;
+            }
+            matcher.appendReplacement(output, Matcher.quoteReplacement(attribute + "=\"" + xmlEscape(replacementUrl) + "\""));
+        }
+        matcher.appendTail(output);
+        return output.toString();
+    }
+
+    private static String extractQueryParam(String url, String name) {
+        int queryStart = url.indexOf('?');
+        if (queryStart < 0 || queryStart >= url.length() - 1) {
+            return "";
+        }
+        String[] params = url.substring(queryStart + 1).split("&");
+        for (String param : params) {
+            int equals = param.indexOf('=');
+            if (equals <= 0) {
+                continue;
+            }
+            if (name.equals(param.substring(0, equals))) {
+                try {
+                    return java.net.URLDecoder.decode(param.substring(equals + 1), StandardCharsets.UTF_8.name());
+                } catch (Exception e) {
+                    return "";
+                }
+            }
+        }
+        return "";
+    }
+
+    private static String xmlEscape(String value) {
+        return value == null ? "" : value.replace("&", "&amp;").replace("\"", "&quot;");
+    }
+
+    private static String xmlUnescape(String value) {
+        return value == null ? "" : value.replace("&amp;", "&").replace("&quot;", "\"");
+    }
+
+    private static String buildClearKeyLicenseDataUri(JSONObject clearKeyObject) {
+        if (clearKeyObject == null || clearKeyObject.length() == 0) {
+            return "";
+        }
+        try {
+            JSONArray keys = new JSONArray();
+            java.util.Iterator<String> iterator = clearKeyObject.keys();
+            while (iterator.hasNext()) {
+                String kidHex = iterator.next();
+                String keyHex = clearKeyObject.optString(kidHex, "");
+                String kid = encodeHexAsBase64Url(kidHex);
+                String key = encodeHexAsBase64Url(keyHex);
+                if (kid.isEmpty() || key.isEmpty()) {
+                    continue;
+                }
+                JSONObject entry = new JSONObject();
+                entry.put("kty", "oct");
+                entry.put("kid", kid);
+                entry.put("k", key);
+                keys.put(entry);
+            }
+            if (keys.length() == 0) {
+                return "";
+            }
+            JSONObject license = new JSONObject();
+            license.put("keys", keys);
+            license.put("type", "temporary");
+            String encoded = Base64.encodeToString(license.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), Base64.NO_WRAP);
+            return "data:application/json;base64," + encoded;
+        } catch (Exception e) {
+            Log.w(TAG, "failed to build clearkey data uri", e);
+            return "";
+        }
+    }
+
+    private static String encodeHexAsBase64Url(String hex) {
+        if (hex == null) {
+            return "";
+        }
+        String normalized = hex.trim();
+        if (normalized.length() == 0 || normalized.length() % 2 != 0) {
+            return "";
+        }
+        try {
+            byte[] bytes = new byte[normalized.length() / 2];
+            for (int i = 0; i < bytes.length; i++) {
+                int index = i * 2;
+                bytes[i] = (byte) Integer.parseInt(normalized.substring(index, index + 2), 16);
+            }
+            return Base64.encodeToString(bytes, Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
+        } catch (Exception e) {
+            return "";
         }
     }
 
@@ -860,7 +1130,13 @@ final class PlayerController {
                 + ",type=" + safeLogValue(streamInfo.type)
                 + ",encrypted=" + streamInfo.encrypted
                 + ",license=" + shortenUrl(streamInfo.licenseUrl)
+                + ",source=" + shortenUrl(streamInfo.sourceUrl)
+                + ",clearKeyData=" + (!isBlank(streamInfo.clearKeyLicenseDataUri))
                 + "}";
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private String describeRouteLabel(PlaybackRouteResolver.Decision decision) {

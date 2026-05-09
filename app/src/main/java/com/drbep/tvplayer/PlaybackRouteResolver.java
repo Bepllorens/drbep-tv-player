@@ -76,6 +76,17 @@ final class PlaybackRouteResolver {
             );
         }
 
+        if ("1071554".equals(request.channelId)) {
+            return new Decision(
+                    hevcHlsUrl(request.channelId),
+                    MimeTypes.APPLICATION_M3U8,
+                    "",
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
+
         if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
             return new Decision(
                     proxyManifestUrl(request.channelId),
@@ -195,6 +206,14 @@ final class PlaybackRouteResolver {
 
     private String proxyManifestUrl(String channelId) {
         return baseUrl + "/proxy/manifest/" + channelId;
+    }
+
+    private String liveStreamUrl(String channelId) {
+        return baseUrl + "/live/" + channelId + "?client=firestick";
+    }
+
+    private String hevcHlsUrl(String channelId) {
+        return baseUrl + "/hls/" + channelId + "/playlist.m3u8?codec=hevc";
     }
 
     static String inferMimeType(String url) {

@@ -72,8 +72,10 @@ final class CatalogRepository {
             String tvgId = channel.optString("tvg_id", "").trim();
             int platformId = (int) channel.optLong("platform_id", 0L);
             String platformName = channel.optString("platform_name", "").trim();
-            int sortOrder = channel.optInt("sort_order", Integer.MAX_VALUE);
-            if (sortOrder <= 0) {
+            int sortOrder = channel.has("sort_order") && !channel.isNull("sort_order")
+                    ? channel.optInt("sort_order", Integer.MAX_VALUE)
+                    : Integer.MAX_VALUE;
+            if (sortOrder == Integer.MAX_VALUE) {
                 sortOrder = channel.optInt("dial", i + 1);
             }
             List<String> customGroups = new ArrayList<>();

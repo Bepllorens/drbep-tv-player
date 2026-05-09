@@ -79,6 +79,57 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void clearkeyStreamInfoUsesDrmProxyRoute() {
+        PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
+        streamInfo.drmType = "clearkey";
+        streamInfo.type = "dash";
+        streamInfo.encrypted = true;
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                request("1071555", "https://iptv.example.com/live/1071555", "https://iptv.example.com/proxy/manifest/1071555", PlaybackModeStore.MODE_AUTO, false, ""),
+                false,
+                streamInfo
+        );
+
+        assertEquals("https://iptv.example.com/proxy/manifest/1071555", decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_MPD, decision.mimeType);
+        assertEquals("clearkey", decision.drmType);
+    }
+
+    @Test
+    public void espn4ClearKeyUsesServerSideLiveRoute() {
+        PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
+        streamInfo.drmType = "clearkey";
+        streamInfo.type = "dash";
+        streamInfo.encrypted = true;
+        streamInfo.sourceUrl = "https://origin.example.com/live/espn4/default.mpd";
+        streamInfo.clearKeyLicenseDataUri = "data:application/json;base64,abc";
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                request("1071554", "https://iptv.example.com/live/1071554", "https://iptv.example.com/proxy/manifest/1071554", PlaybackModeStore.MODE_DIRECT, false, ""),
+                false,
+                streamInfo
+        );
+
+        assertEquals("https://iptv.example.com/hls/1071554/playlist.m3u8?codec=hevc", decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_M3U8, decision.mimeType);
+        assertEquals("", decision.drmType);
+    }
+
+    @Test
+    public void espn4UsesHevcHlsBeforeStreamInfoResolves() {
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                request("1071554", "https://iptv.example.com/live/1071554", "https://iptv.example.com/proxy/manifest/1071554", PlaybackModeStore.MODE_AUTO, false, ""),
+                false,
+                null
+        );
+
+        assertEquals("https://iptv.example.com/hls/1071554/playlist.m3u8?codec=hevc", decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_M3U8, decision.mimeType);
+        assertEquals("", decision.drmType);
+    }
+
+    @Test
     public void hlsStreamInfoPrefersFallbackUrlWhenAvailable() {
         PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
         streamInfo.type = "hls";

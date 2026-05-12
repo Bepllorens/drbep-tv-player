@@ -15,6 +15,8 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager;
@@ -34,6 +36,7 @@ import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
 import java.net.URLEncoder;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -172,8 +175,10 @@ final class PlayerController {
     private final HttpClient httpClient;
     private final SharedPreferences prefs;
     private final PlaybackRouteResolver playbackRouteResolver;
+    private final CatalogSnapshotStore catalogSnapshotStore;
 
     private DefaultTrackSelector trackSelector;
+    private DefaultHttpDataSource.Factory httpDataSourceFactory;
     private ExoPlayer player;
     private PlaybackRequest currentRequest;
     private StreamInfo currentStreamInfo;
@@ -203,6 +208,7 @@ final class PlayerController {
         this.httpClient = new HttpClient();
         this.prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.playbackRouteResolver = new PlaybackRouteResolver(baseUrl);
+        this.catalogSnapshotStore = new CatalogSnapshotStore(context);
     }
 
     void initialize() {
@@ -210,12 +216,16 @@ final class PlayerController {
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .setForceHighestSupportedBitrate(true));
 
+        httpDataSourceFactory = new DefaultHttpDataSource.Factory()
+                .setDefaultRequestProperties(buildPlaybackRequestHeaders());
+        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
+
         player = new ExoPlayer.Builder(context)
                 .setTrackSelector(trackSelector)
                 .setLoadControl(new DefaultLoadControl.Builder()
                         .setBufferDurationsMs(20_000, 75_000, 4_000, 8_000)
                         .build())
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(context)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)
                         .setDrmSessionManagerProvider(createDrmSessionManagerProvider()))
                 .setSeekBackIncrementMs(TIMESHIFT_SEEK_STEP_MS)
                 .setSeekForwardIncrementMs(TIMESHIFT_SEEK_STEP_MS)
@@ -728,6 +738,7 @@ final class PlayerController {
             host.showError(context.getString(R.string.error_empty_playback_url));
             return;
         }
+        updatePlaybackRequestHeaders();
 
         MediaItem.Builder builder = new MediaItem.Builder().setUri(decision.targetUrl);
         if (isHevcHlsDecision(decision)) {
@@ -917,7 +928,7 @@ final class PlayerController {
 
     private StreamInfo fetchStreamInfo(String channelId) {
         try {
-            HttpClient.Response response = httpClient.get(baseUrl + "/api/stream/" + channelId, 5000, 20000, java.util.Collections.singletonMap("Accept", "application/json"));
+            HttpClient.Response response = httpClient.get(baseUrl + "/api/stream/" + channelId, 5000, 20000, buildPlaybackRequestHeaders());
             if (!response.isSuccessful()) {
                 Log.d(TAG, "fetchStreamInfo non-success channelId=" + channelId + " code=" + response.code);
                 return null;
@@ -1100,6 +1111,29 @@ final class PlayerController {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private void updatePlaybackRequestHeaders() {
+        if (httpDataSourceFactory != null) {
+            httpDataSourceFactory.setDefaultRequestProperties(buildPlaybackRequestHeaders());
+        }
+    }
+
+    private Map<String, String> buildPlaybackRequestHeaders() {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Accept", "*/*");
+        if (catalogSnapshotStore != null) {
+            String token = catalogSnapshotStore.getAccessToken();
+            if (token != null && !token.trim().isEmpty()) {
+                headers.put("Authorization", "Bearer " + token.trim());
+                headers.put("X-DRBEP-Access-Token", token.trim());
+            }
+            String deviceId = catalogSnapshotStore.getDeviceId();
+            if (deviceId != null && !deviceId.trim().isEmpty()) {
+                headers.put("X-DRBEP-Device-Id", deviceId.trim());
+            }
+        }
+        return headers;
     }
 
     private static String describeRequest(PlaybackRequest request) {

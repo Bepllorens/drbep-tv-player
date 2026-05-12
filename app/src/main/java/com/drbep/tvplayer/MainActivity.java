@@ -1539,6 +1539,7 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
                     applyLoadedChannels(result);
+                    refreshStandaloneCatalogInBackgroundIfPossible();
                 });
             } catch (Exception catalogErr) {
                 if (BuildConfig.STANDALONE_MODE) {
@@ -6517,6 +6518,30 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.e(TAG, "offline catalog refresh failed", e);
                 uiHandler.post(() -> showError(getString(R.string.error_load_channels, e.getMessage())));
+            }
+        });
+    }
+
+    private void refreshStandaloneCatalogInBackgroundIfPossible() {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null) {
+            return;
+        }
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        if (!status.hasAccessToken || status.sourceUrl.trim().isEmpty()) {
+            return;
+        }
+        long startMs = System.currentTimeMillis();
+        ioExecutor.execute(() -> {
+            try {
+                CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
+                long durationMs = System.currentTimeMillis() - startMs;
+                uiHandler.post(() -> {
+                    lastCatalogLoadDurationMs = durationMs;
+                    applyLoadedChannels(result);
+                    showStatus(getString(R.string.offline_catalog_status_refreshed));
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "background standalone catalog refresh failed", e);
             }
         });
     }

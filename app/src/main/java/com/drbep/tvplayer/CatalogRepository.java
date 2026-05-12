@@ -112,7 +112,14 @@ final class CatalogRepository {
                     channel.optString("source_url", "")
             )
                     : baseUrl + "/live/" + id;
+            if (standaloneMode) {
+                playbackUrl = absolutizeUrl(playbackUrl);
+            }
             String fallbackUrl = buildFallbackPlayUrl(id);
+            boolean directPlayback = standaloneMode;
+            if (standaloneMode && channel.has("direct_playback")) {
+                directPlayback = channel.optBoolean("direct_playback", directPlayback);
+            }
             String tvgId = channel.optString("tvg_id", "").trim();
             int platformId = (int) channel.optLong("platform_id", 0L);
             String platformName = channel.optString("platform_name", "").trim();
@@ -154,7 +161,7 @@ final class CatalogRepository {
                     firstNonEmpty(channel.optString("drm_scheme", ""), channel.optString("drm_type", "")),
                     firstNonEmpty(channel.optString("drm_license_url", ""), channel.optString("license_url", ""), buildClearKeyDataLicenseUrl(channel.optJSONObject("clearkey"))),
                     "",
-                    standaloneMode
+                    directPlayback
             ));
         }
 
@@ -505,9 +512,6 @@ final class CatalogRepository {
     }
 
     private String buildFallbackPlayUrl(String id) {
-        if (standaloneMode) {
-            return "";
-        }
         if (id == null || id.trim().isEmpty()) {
             return "";
         }

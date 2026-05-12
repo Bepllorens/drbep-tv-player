@@ -214,6 +214,7 @@ final class CatalogSnapshotStore {
         String token = getAccessToken();
         if (token != null && !token.trim().isEmpty()) {
             headers.put("Authorization", "Bearer " + token.trim());
+            headers.put("X-DRBEP-Access-Token", token.trim());
         }
         String deviceId = getDeviceId();
         if (deviceId != null && !deviceId.trim().isEmpty()) {

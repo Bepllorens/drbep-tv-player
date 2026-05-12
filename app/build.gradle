@@ -52,8 +52,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 2
-        versionName "2.0.1-offline-alpha"
+        versionCode 3
+        versionName "2.0.2-offline-alpha"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -56,6 +56,7 @@ import org.json.JSONObject;
 import com.caverock.androidsvg.SVG;
 
 import java.io.InputStream;
+import java.io.File;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -112,6 +113,8 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_PLAYBACK_REPAIR_ENABLED = "playback_repair_enabled";
     private static final String PREF_PLAYBACK_LEARNED_MODES = "playback_learned_modes";
     private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
+    private static final String PREF_LAST_UPDATE_PROMPT_VERSION_CODE = "last_update_prompt_version_code";
+    private static final String PREF_LAST_SEEN_APP_VERSION_CODE = "last_seen_app_version_code";
     private static final int MULTIVIEW_PRESET_COUNT = 3;
     private static final String PREF_TABLET_ORIENTATION_LOCK = "tablet_orientation_lock";
     private static final int FILTER_ALL = 0;
@@ -284,6 +287,7 @@ public class MainActivity extends FragmentActivity {
     private RemoteInputRouter remoteInputRouter;
     private TouchControlsController touchControlsController;
     private HttpClient httpClient;
+    private AppUpdateManager appUpdateManager;
     private AudioManager audioManager;
     private String baseUrl;
     private SharedPreferences prefs;
@@ -321,6 +325,7 @@ public class MainActivity extends FragmentActivity {
     private float tabletBrightnessLevel = 0.5f;
     private float touchGestureLastY = Float.NaN;
     private boolean touchGestureVerticalHandled;
+    private boolean appUpdateCheckRunning;
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
     private Runnable pendingGlobalSearchRunnable;
@@ -559,6 +564,7 @@ public class MainActivity extends FragmentActivity {
         epgRepository = new EpgRepository(baseUrl);
         recordingsRepository = new RecordingsRepository(baseUrl);
     httpClient = new HttpClient();
+        appUpdateManager = new AppUpdateManager(this, catalogSnapshotStore);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
@@ -698,6 +704,8 @@ public class MainActivity extends FragmentActivity {
         setupTouchControls();
         enableImmersiveMode();
         loadChannels();
+        showPostUpdateNotesIfNeeded();
+        checkAppUpdateOnStartup();
         uiHandler.postDelayed(reminderTickRunnable, 30000L);
         uiHandler.postDelayed(vodProgressSaveRunnable, 15_000L);
     }
@@ -6214,6 +6222,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showLocalDataSettingsDialog);
         options.add(getString(R.string.settings_section_offline_catalog));
         actions.add(this::showOfflineCatalogSettingsDialog);
+        options.add(getString(R.string.app_update_action_check));
+        actions.add(this::checkAppUpdateManually);
         options.add(getString(R.string.settings_section_diagnostics));
         actions.add(this::showSettingsDiagnosticsDialog);
         options.add(getString(R.string.settings_section_reset));
@@ -6651,6 +6661,151 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.settings_action_view_summary));
         actions.add(() -> showSettingsInfoDialog(R.string.settings_section_reset, getString(R.string.settings_reset_summary)));
         showTvOptionsDialog(R.string.settings_section_reset, null, options, actions);
+    }
+
+    private void checkAppUpdateOnStartup() {
+        checkAppUpdate(false);
+    }
+
+    private void checkAppUpdateManually() {
+        checkAppUpdate(true);
+    }
+
+    private void checkAppUpdate(boolean manual) {
+        if (appUpdateManager == null || appUpdateCheckRunning) {
+            return;
+        }
+        appUpdateCheckRunning = true;
+        if (manual) {
+            showStatus(getString(R.string.app_update_status_checking));
+        }
+        ioExecutor.execute(() -> {
+            try {
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL);
+                uiHandler.post(() -> {
+                    appUpdateCheckRunning = false;
+                    if (info.isNewerThanCurrent()) {
+                        int lastPrompted = prefs == null ? 0 : prefs.getInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, 0);
+                        if (!manual && !info.required && lastPrompted >= info.versionCode) {
+                            return;
+                        }
+                        if (prefs != null) {
+                            prefs.edit().putInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, info.versionCode).apply();
+                        }
+                        showAppUpdateAvailableDialog(info);
+                    } else if (manual) {
+                        showSettingsInfoDialog(R.string.app_update_action_check, getString(R.string.app_update_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE));
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "app update check failed", e);
+                uiHandler.post(() -> {
+                    appUpdateCheckRunning = false;
+                    if (manual) {
+                        showError(getString(R.string.app_update_error, e.getMessage()));
+                    }
+                });
+            }
+        });
+    }
+
+    private void showAppUpdateAvailableDialog(AppUpdateManager.UpdateInfo info) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.app_update_available_title, safeUpdateVersionName(info)))
+                .setMessage(buildAppUpdateMessage(info))
+                .setPositiveButton(R.string.app_update_action_install, (unused, which) -> downloadAndInstallAppUpdate(info));
+        if (info.required) {
+            builder.setNegativeButton(R.string.dialog_close, null);
+        } else {
+            builder.setNegativeButton(R.string.app_update_action_later, null);
+        }
+        showTvDialog(builder.create());
+    }
+
+    private void downloadAndInstallAppUpdate(AppUpdateManager.UpdateInfo info) {
+        showStatus(getString(R.string.app_update_status_downloading));
+        ioExecutor.execute(() -> {
+            try {
+                File apk = appUpdateManager.downloadApk(info, (done, total) -> {
+                    if (total > 0L) {
+                        int pct = (int) Math.max(0L, Math.min(100L, (done * 100L) / total));
+                        uiHandler.post(() -> showStatus(getString(R.string.app_update_status_downloading_pct, pct)));
+                    }
+                });
+                uiHandler.post(() -> {
+                    showStatus(getString(R.string.app_update_status_installing));
+                    try {
+                        appUpdateManager.installApk(apk);
+                    } catch (Exception e) {
+                        Log.e(TAG, "app update install failed", e);
+                        showError(getString(R.string.app_update_error, e.getMessage()));
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "app update download failed", e);
+                uiHandler.post(() -> showError(getString(R.string.app_update_error, e.getMessage())));
+            }
+        });
+    }
+
+    private void showPostUpdateNotesIfNeeded() {
+        if (prefs == null || appUpdateManager == null) {
+            return;
+        }
+        int lastSeen = prefs.getInt(PREF_LAST_SEEN_APP_VERSION_CODE, 0);
+        if (lastSeen >= BuildConfig.VERSION_CODE) {
+            return;
+        }
+        prefs.edit().putInt(PREF_LAST_SEEN_APP_VERSION_CODE, BuildConfig.VERSION_CODE).apply();
+        ioExecutor.execute(() -> {
+            try {
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL);
+                if (info.versionCode == BuildConfig.VERSION_CODE && !info.changelog.isEmpty()) {
+                    uiHandler.post(() -> showSettingsInfoDialog(R.string.app_update_installed_title, buildAppInstalledMessage(info)));
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "post-update notes unavailable", e);
+            }
+        });
+    }
+
+    private String buildAppUpdateMessage(AppUpdateManager.UpdateInfo info) {
+        return getString(
+                R.string.app_update_available_message,
+                BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE,
+                safeUpdateVersionName(info),
+                info.versionCode,
+                buildChangelogText(info)
+        );
+    }
+
+    private String buildAppInstalledMessage(AppUpdateManager.UpdateInfo info) {
+        return getString(R.string.app_update_installed_message, safeUpdateVersionName(info), buildChangelogText(info));
+    }
+
+    private String buildChangelogText(AppUpdateManager.UpdateInfo info) {
+        if (info == null || info.changelog == null || info.changelog.isEmpty()) {
+            return getString(R.string.diagnostics_value_unknown);
+        }
+        StringBuilder out = new StringBuilder();
+        for (String item : info.changelog) {
+            if (item == null || item.trim().isEmpty()) {
+                continue;
+            }
+            if (out.length() > 0) {
+                out.append('\n');
+            }
+            out.append("- ").append(item.trim());
+        }
+        return out.length() == 0 ? getString(R.string.diagnostics_value_unknown) : out.toString();
+    }
+
+    private String safeUpdateVersionName(AppUpdateManager.UpdateInfo info) {
+        if (info == null || info.versionName == null || info.versionName.trim().isEmpty()) {
+            return String.valueOf(info == null ? 0 : info.versionCode);
+        }
+        return info.versionName.trim();
     }
 
     private void showSettingsInfoDialog(int titleResId, String message) {

@@ -335,6 +335,12 @@ public class MainActivity extends FragmentActivity {
     private boolean touchGestureVerticalHandled;
     private boolean appUpdateCheckRunning;
     private boolean offlineCatalogRefreshRunning;
+    private AppUpdateManager.UpdateInfo lastKnownAppUpdateInfo;
+    private long lastAppUpdateCheckMs;
+    private String lastAppUpdateError = "";
+    private long lastOfflineCatalogRefreshAttemptMs;
+    private long lastOfflineCatalogRefreshSuccessMs;
+    private String lastOfflineCatalogRefreshError = "";
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
     private Runnable pendingGlobalSearchRunnable;
@@ -1563,18 +1569,24 @@ public class MainActivity extends FragmentActivity {
                 if (BuildConfig.STANDALONE_MODE) {
                     Log.w(TAG, "local catalog load failed in standalone mode", catalogErr);
                     try {
+                        lastOfflineCatalogRefreshAttemptMs = System.currentTimeMillis();
                         CatalogLoadResult refreshed = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
                         long durationMs = System.currentTimeMillis() - startMs;
                         uiHandler.post(() -> {
                             lastCatalogLoadDurationMs = durationMs;
+                            lastOfflineCatalogRefreshSuccessMs = System.currentTimeMillis();
+                            lastOfflineCatalogRefreshError = "";
                             showStatus(getString(R.string.catalog_snapshot_refresh_ready));
                             applyLoadedChannels(refreshed);
                         });
                     } catch (Exception e) {
                         Log.e(TAG, "standalone catalog load failed", e);
                         uiHandler.post(() -> {
-                            showError(getString(R.string.error_load_channels, e.getMessage()));
-                            showCatalogRecoveryDialog(e.getMessage());
+                            lastOfflineCatalogRefreshError = e.getMessage();
+                            if (!showOfflineCatalogRecoveryDialogIfNeeded(e)) {
+                                showError(getString(R.string.error_load_channels, e.getMessage()));
+                                showCatalogRecoveryDialog(e.getMessage());
+                            }
                         });
                     }
                     return;
@@ -6230,6 +6242,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showRecordingSettingsDialog);
         options.add(getString(R.string.settings_section_local_data));
         actions.add(this::showLocalDataSettingsDialog);
+        options.add(getString(R.string.settings_section_offline_system));
+        actions.add(this::showOfflineSystemDialog);
         options.add(getString(R.string.settings_section_offline_catalog));
         actions.add(this::showOfflineCatalogSettingsDialog);
         options.add(getString(R.string.app_update_action_check));
@@ -6391,9 +6405,93 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private void showOfflineSystemDialog() {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.settings_offline_system_status));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
+        options.add(getString(R.string.offline_catalog_action_refresh));
+        actions.add(this::refreshOfflineCatalogFromSettings);
+        options.add(getString(R.string.app_update_action_check));
+        actions.add(this::checkAppUpdateManually);
+        options.add(getString(R.string.offline_catalog_action_activate_code));
+        actions.add(this::startOfflineActivationCodeFlow);
+        options.add(getString(R.string.settings_playback_diagnostics));
+        actions.add(this::showPlaybackDiagnosticsDialog);
+        showTvOptionsDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary(), options, actions);
+    }
+
+    private String buildOfflineSystemSummary() {
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
+                ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0L, false, 0, 0, "", "", "", "", false)
+                : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        String catalogHealth = buildOfflineCatalogHealth(status);
+        String updateState = buildAppUpdateStateSummary();
+        String lastCatalogAttempt = lastOfflineCatalogRefreshAttemptMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(lastOfflineCatalogRefreshAttemptMs);
+        String lastCatalogSuccess = lastOfflineCatalogRefreshSuccessMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(lastOfflineCatalogRefreshSuccessMs);
+        String lastCatalogError = lastOfflineCatalogRefreshError == null || lastOfflineCatalogRefreshError.trim().isEmpty()
+                ? getString(R.string.diagnostics_value_no)
+                : classifyOperationalError(lastOfflineCatalogRefreshError) + ": " + lastOfflineCatalogRefreshError;
+        return getString(
+                R.string.settings_offline_system_summary,
+                BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE,
+                BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                catalogHealth,
+                status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
+                lastCatalogAttempt,
+                lastCatalogSuccess,
+                lastCatalogError,
+                updateState,
+                buildRecentDiagnosticsSummary()
+        );
+    }
+
+    private String buildOfflineCatalogHealth(CatalogSnapshotStore.SnapshotStatus status) {
+        if (status == null || !status.available) {
+            return getString(R.string.settings_offline_health_missing);
+        }
+        if (status.expired) {
+            return getString(R.string.settings_offline_health_expired);
+        }
+        if (!status.hasAccessToken) {
+            return getString(R.string.settings_offline_health_no_token);
+        }
+        if (status.expiresAtMs > 0L) {
+            long remainingMs = status.expiresAtMs - System.currentTimeMillis();
+            if (remainingMs <= 24L * 60L * 60L * 1000L) {
+                return getString(R.string.settings_offline_health_expiring, formatDurationShort(remainingMs));
+            }
+        }
+        return getString(R.string.settings_offline_health_ok);
+    }
+
+    private String buildAppUpdateStateSummary() {
+        String checked = lastAppUpdateCheckMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(lastAppUpdateCheckMs);
+        if (lastAppUpdateError != null && !lastAppUpdateError.trim().isEmpty()) {
+            return getString(R.string.settings_update_state_error, checked, classifyOperationalError(lastAppUpdateError), lastAppUpdateError);
+        }
+        if (lastKnownAppUpdateInfo != null && lastKnownAppUpdateInfo.isNewerThanCurrent()) {
+            return getString(R.string.settings_update_state_available, checked, safeUpdateVersionName(lastKnownAppUpdateInfo), lastKnownAppUpdateInfo.versionCode);
+        }
+        if (lastKnownAppUpdateInfo != null) {
+            return getString(R.string.settings_update_state_current, checked, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE);
+        }
+        return getString(R.string.settings_update_state_unknown, checked);
+    }
+
     private void showOfflineCatalogSettingsDialog() {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.settings_offline_system_status));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
         options.add(getString(R.string.offline_catalog_action_activate_code));
         actions.add(this::startOfflineActivationCodeFlow);
         options.add(getString(R.string.offline_catalog_action_refresh));
@@ -6496,16 +6594,23 @@ public class MainActivity extends FragmentActivity {
         return code == null ? "" : code;
     }
 
+    private String formatDateTime(long timestampMs) {
+        if (timestampMs <= 0L) {
+            return getString(R.string.diagnostics_value_unknown);
+        }
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(timestampMs));
+    }
+
     private String buildOfflineCatalogSummary() {
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
                 ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0L, false, 0, 0, "", "", "", "", false)
                 : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         String updatedAt = status.updatedAtMs <= 0L
                 ? getString(R.string.diagnostics_value_unknown)
-                : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(status.updatedAtMs));
+                : formatDateTime(status.updatedAtMs);
         String expiresAt = status.expiresAtMs <= 0L
                 ? getString(R.string.diagnostics_value_unknown)
-                : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(status.expiresAtMs));
+                : formatDateTime(status.expiresAtMs);
         return getString(
                 R.string.offline_catalog_summary,
                 BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
@@ -6526,18 +6631,27 @@ public class MainActivity extends FragmentActivity {
     private void refreshOfflineCatalogFromSettings() {
         showStatus(getString(R.string.offline_catalog_status_refreshing));
         long startMs = System.currentTimeMillis();
+        lastOfflineCatalogRefreshAttemptMs = startMs;
+        lastOfflineCatalogRefreshError = "";
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
                 long durationMs = System.currentTimeMillis() - startMs;
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
+                    lastOfflineCatalogRefreshSuccessMs = System.currentTimeMillis();
+                    lastOfflineCatalogRefreshError = "";
                     applyLoadedChannels(result);
                     showStatus(getString(R.string.offline_catalog_status_refreshed));
                 });
             } catch (Exception e) {
                 Log.e(TAG, "offline catalog refresh failed", e);
-                uiHandler.post(() -> showError(getString(R.string.error_load_channels, e.getMessage())));
+                uiHandler.post(() -> {
+                    lastOfflineCatalogRefreshError = e.getMessage();
+                    if (!showOfflineCatalogRecoveryDialogIfNeeded(e)) {
+                        showError(getString(R.string.error_load_channels, e.getMessage()));
+                    }
+                });
             }
         });
     }
@@ -6552,6 +6666,8 @@ public class MainActivity extends FragmentActivity {
         }
         offlineCatalogRefreshRunning = true;
         long startMs = System.currentTimeMillis();
+        lastOfflineCatalogRefreshAttemptMs = startMs;
+        lastOfflineCatalogRefreshError = "";
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
@@ -6559,14 +6675,39 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> {
                     offlineCatalogRefreshRunning = false;
                     lastCatalogLoadDurationMs = durationMs;
+                    lastOfflineCatalogRefreshSuccessMs = System.currentTimeMillis();
+                    lastOfflineCatalogRefreshError = "";
                     applyLoadedChannels(result);
                     showStatus(getString(R.string.offline_catalog_status_refreshed));
                 });
             } catch (Exception e) {
                 Log.w(TAG, "background standalone catalog refresh failed", e);
-                uiHandler.post(() -> offlineCatalogRefreshRunning = false);
+                uiHandler.post(() -> {
+                    offlineCatalogRefreshRunning = false;
+                    lastOfflineCatalogRefreshError = e.getMessage();
+                });
             }
         });
+    }
+
+    private boolean showOfflineCatalogRecoveryDialogIfNeeded(Throwable error) {
+        if (!BuildConfig.STANDALONE_MODE || !isAuthRelatedError(error)) {
+            return false;
+        }
+        String message = error == null || error.getMessage() == null ? getString(R.string.error_unknown_reason) : error.getMessage();
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.offline_catalog_reactivation_title)
+                .setMessage(getString(R.string.offline_catalog_reactivation_message, classifyOperationalError(message), message))
+                .setPositiveButton(R.string.offline_catalog_action_activate_code, (unused, which) -> startOfflineActivationCodeFlow())
+                .setNeutralButton(R.string.offline_catalog_action_set_token, (unused, which) -> showOfflineCatalogTokenDialog())
+                .setNegativeButton(R.string.dialog_close, null)
+                .create();
+        showTvDialog(dialog);
+        return true;
+    }
+
+    private boolean isAuthRelatedError(Throwable error) {
+        return isAuthRelatedMessage(error == null ? "" : error.getMessage());
     }
 
     private void scheduleOfflineCatalogAutoRefresh() {
@@ -6704,6 +6845,9 @@ public class MainActivity extends FragmentActivity {
                 AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL);
                 uiHandler.post(() -> {
                     appUpdateCheckRunning = false;
+                    lastKnownAppUpdateInfo = info;
+                    lastAppUpdateCheckMs = System.currentTimeMillis();
+                    lastAppUpdateError = "";
                     if (info.isNewerThanCurrent()) {
                         int lastPrompted = prefs == null ? 0 : prefs.getInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, 0);
                         if (!manual && !info.required && lastPrompted >= info.versionCode) {
@@ -6714,13 +6858,15 @@ public class MainActivity extends FragmentActivity {
                         }
                         showAppUpdateAvailableDialog(info);
                     } else if (manual) {
-                        showSettingsInfoDialog(R.string.app_update_action_check, getString(R.string.app_update_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE));
+                        showSettingsInfoDialog(R.string.app_update_action_check, buildAppUpdateStateSummary());
                     }
                 });
             } catch (Exception e) {
                 Log.w(TAG, "app update check failed", e);
                 uiHandler.post(() -> {
                     appUpdateCheckRunning = false;
+                    lastAppUpdateCheckMs = System.currentTimeMillis();
+                    lastAppUpdateError = e.getMessage();
                     if (manual) {
                         showError(getString(R.string.app_update_error, e.getMessage()));
                     }
@@ -9705,14 +9851,22 @@ public class MainActivity extends FragmentActivity {
         appendDiagnosticLine(message, getString(R.string.diagnostics_playback_mode, formatPlaybackModeLabel(diagnostics.playbackMode)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_encrypted, getString(diagnostics.encrypted ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_fallback, getString(diagnostics.usingFallback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        String diagnosticErrorText = "";
         if (diagnostics.lastError != null && !diagnostics.lastError.trim().isEmpty()) {
+            diagnosticErrorText = diagnostics.lastError;
             appendDiagnosticLine(message, getString(R.string.diagnostics_last_error, diagnostics.lastError));
         }
         if (storedError != null) {
+            if (diagnosticErrorText.trim().isEmpty()) {
+                diagnosticErrorText = storedError.message;
+            }
             appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_error, storedError.shortLabel()));
             if (!storedError.routeLabel.isEmpty()) {
                 appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_route, storedError.routeLabel));
             }
+        }
+        if (!diagnosticErrorText.trim().isEmpty()) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_error_type, classifyOperationalError(diagnosticErrorText)));
         }
         appendDiagnosticLine(message, getString(R.string.diagnostics_recommendation, buildPlaybackDiagnosticsRecommendation(diagnostics, storedError)));
         if (currentChannel != null && temporaryPlaybackModesByChannelId.containsKey(currentChannel.id)) {
@@ -10067,6 +10221,15 @@ public class MainActivity extends FragmentActivity {
             route = safeLower(storedError.routeLabel);
             mode = safeLower(storedError.playbackMode);
         }
+        if (isAuthRelatedMessage(error)) {
+            return getString(R.string.diagnostics_recommend_reactivate);
+        }
+        if (isLicenseRelatedMessage(error)) {
+            return getString(R.string.diagnostics_recommend_license);
+        }
+        if (isDecoderRelatedMessage(error)) {
+            return getString(R.string.diagnostics_recommend_decoder);
+        }
         if (route.contains("proxy") || mode.contains(PlaybackModeStore.MODE_PROXY) || error.contains("proxy")) {
             return getString(R.string.diagnostics_recommend_direct);
         }
@@ -10074,6 +10237,62 @@ public class MainActivity extends FragmentActivity {
             return getString(R.string.diagnostics_recommend_proxy);
         }
         return getString(R.string.diagnostics_recommend_auto);
+    }
+
+    private String classifyOperationalError(String message) {
+        String error = safeLower(message);
+        if (isAuthRelatedMessage(error)) {
+            return getString(R.string.diagnostics_error_type_token);
+        }
+        if (isLicenseRelatedMessage(error)) {
+            return getString(R.string.diagnostics_error_type_license);
+        }
+        if (isDecoderRelatedMessage(error)) {
+            return getString(R.string.diagnostics_error_type_decoder);
+        }
+        if (error.contains("manifest") || error.contains("source") || error.contains("m3u8") || error.contains("mpd") || error.contains("404")) {
+            return getString(R.string.diagnostics_error_type_manifest);
+        }
+        if (error.contains("timeout") || error.contains("timed out") || error.contains("network") || error.contains("connect") || error.contains("dns") || error.contains("unreachable")) {
+            return getString(R.string.diagnostics_error_type_network);
+        }
+        if (error.contains("500") || error.contains("502") || error.contains("503") || error.contains("504") || error.contains("server")) {
+            return getString(R.string.diagnostics_error_type_server);
+        }
+        return getString(R.string.diagnostics_error_type_unknown);
+    }
+
+    private boolean isAuthRelatedMessage(String message) {
+        String error = safeLower(message);
+        return error.contains("401")
+                || error.contains("403")
+                || error.contains("unauthorized")
+                || error.contains("forbidden")
+                || error.contains("token")
+                || error.contains("session")
+                || error.contains("sesion")
+                || error.contains("expired")
+                || error.contains("caduc");
+    }
+
+    private boolean isLicenseRelatedMessage(String message) {
+        String error = safeLower(message);
+        return error.contains("drm")
+                || error.contains("widevine")
+                || error.contains("license")
+                || error.contains("licence")
+                || error.contains("licencia")
+                || error.contains("clearkey");
+    }
+
+    private boolean isDecoderRelatedMessage(String message) {
+        String error = safeLower(message);
+        return error.contains("decoder")
+                || error.contains("mediacodec")
+                || error.contains("h265")
+                || error.contains("hevc")
+                || error.contains("avc")
+                || error.contains("codec");
     }
 
     private String buildRecentDiagnosticsSummary() {

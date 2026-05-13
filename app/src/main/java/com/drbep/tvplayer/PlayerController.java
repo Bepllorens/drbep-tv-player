@@ -793,7 +793,7 @@ final class PlayerController {
                     ? request.drmLicenseUrl
                     : baseUrl + "/api/widevine/" + request.channelId;
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                    .setLicenseUri(licenseUrl)
+                    .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
         } else if ("clearkey".equals(decision.drmType)) {
             String licenseUrl = request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
@@ -804,7 +804,7 @@ final class PlayerController {
                     ? streamInfo.licenseUrl
                     : baseUrl + "/api/clearkey/" + request.channelId;
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                    .setLicenseUri(licenseUrl)
+                    .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
         }
 

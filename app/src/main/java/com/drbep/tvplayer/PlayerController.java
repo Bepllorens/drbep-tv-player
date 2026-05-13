@@ -789,9 +789,7 @@ final class PlayerController {
             builder.setMimeType(decision.mimeType);
         }
         if ("widevine".equals(decision.drmType)) {
-            String licenseUrl = request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
-                    ? request.drmLicenseUrl
-                    : baseUrl + "/api/widevine/" + request.channelId;
+            String licenseUrl = resolveWidevineLicenseUrl(request);
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
@@ -833,6 +831,22 @@ final class PlayerController {
                     ? context.getString(R.string.status_channel_compat, request.channelName)
                     : request.channelName);
         }
+    }
+
+    private String resolveWidevineLicenseUrl(PlaybackRequest request) {
+        String backendLicenseUrl = baseUrl + "/api/widevine/" + request.channelId;
+        String requestLicenseUrl = request.drmLicenseUrl == null ? "" : request.drmLicenseUrl.trim();
+        if (requestLicenseUrl.isEmpty()) {
+            return backendLicenseUrl;
+        }
+        String normalizedBase = baseUrl == null ? "" : baseUrl.trim();
+        if (!normalizedBase.isEmpty() && requestLicenseUrl.startsWith(normalizedBase)) {
+            return requestLicenseUrl;
+        }
+        if (request.directPlayback) {
+            return requestLicenseUrl;
+        }
+        return backendLicenseUrl;
     }
 
     private void applyVideoTrackPolicy(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {

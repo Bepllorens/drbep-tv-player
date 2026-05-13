@@ -191,6 +191,7 @@ final class PlayerController {
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
     private boolean forceLiveEdgeOnNextReady;
+    private boolean usingVideoCompatibilityCap;
     private final Runnable forceLiveEdgeRunnable = () -> {
         if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
             player.seekToDefaultPosition();
@@ -247,7 +248,7 @@ final class PlayerController {
                         + " streamInfo=" + describeStreamInfo(currentStreamInfo)
                     + " errorCode=" + PlaybackException.getErrorCodeName(error.errorCode)
                         + " message=" + safeLogValue(error.getMessage()), error);
-                if (tryAutoRecovery(request, decision)) {
+                if (tryAutoRecovery(request, decision, error)) {
                     return;
                 }
 
@@ -303,6 +304,7 @@ final class PlayerController {
 
     void resetFallbackState() {
         usingPlaybackFallback = false;
+        usingVideoCompatibilityCap = false;
         attemptedRecoveryRoutes.clear();
         forceLiveEdgeOnNextReady = false;
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
@@ -365,7 +367,7 @@ final class PlayerController {
         }
     }
 
-    private boolean tryAutoRecovery(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
+    private boolean tryAutoRecovery(PlaybackRequest request, PlaybackRouteResolver.Decision decision, PlaybackException error) {
         if (request == null || decision == null) {
             return false;
         }
@@ -374,6 +376,15 @@ final class PlayerController {
         }
         if (!host.isPlaybackRepairEnabled()) {
             return false;
+        }
+        if (!usingVideoCompatibilityCap && shouldRetryWithVideoCompatibilityCap(request, decision, error)) {
+            usingVideoCompatibilityCap = true;
+            attemptedRecoveryRoutes.add(routeAttemptKey(decision) + "|video720");
+            Log.w(TAG, "retrying playback with 720p video compatibility cap channel=" + describeRequest(request)
+                    + " decision=" + describeDecision(decision));
+            host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(decision.playbackMode)));
+            playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo);
+            return true;
         }
         if (decision.allowCompatibilityFallback && !usingPlaybackFallback && request.hasFallback()) {
             usingPlaybackFallback = true;
@@ -407,6 +418,23 @@ final class PlayerController {
             return true;
         }
         return false;
+    }
+
+    private boolean shouldRetryWithVideoCompatibilityCap(PlaybackRequest request, PlaybackRouteResolver.Decision decision, PlaybackException error) {
+        if (request == null || decision == null || error == null) {
+            return false;
+        }
+        String drmType = safeLower(decision.drmType);
+        if (!"clearkey".equals(drmType)) {
+            return false;
+        }
+        String message = safeLower(error.getMessage());
+        Throwable cause = error.getCause();
+        String causeMessage = cause == null ? "" : safeLower(cause.getMessage());
+        return message.contains("mediacodecvideorenderer")
+                || message.contains("video/avc")
+                || causeMessage.contains("queuesecureinputbuffer")
+                || causeMessage.contains("media codec");
     }
 
     private String formatPlaybackModeLabel(String playbackMode) {
@@ -718,10 +746,14 @@ final class PlayerController {
         }
 
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
+        PlaybackRequest previousRequest = currentRequest;
         currentRequest = request;
         currentStreamInfo = streamInfo;
         currentRecordingUrl = null;
         usingPlaybackFallback = useFallback;
+        if (!isSameChannel(request, previousRequest)) {
+            usingVideoCompatibilityCap = false;
+        }
         lastErrorSummary = null;
         lastHdrBadgeChannelId = null;
         forceLiveEdgeOnNextReady = request != null
@@ -740,6 +772,7 @@ final class PlayerController {
             return;
         }
         updatePlaybackRequestHeaders();
+        applyVideoTrackPolicy(request, decision);
 
         String mediaTargetUrl = appendOfflineAccessToken(decision.targetUrl);
         MediaItem.Builder builder = new MediaItem.Builder().setUri(mediaTargetUrl);
@@ -797,9 +830,45 @@ final class PlayerController {
             }
         } else {
             host.showStatus(useFallback
-                ? context.getString(R.string.status_channel_compat, request.channelName)
-                : request.channelName);
+                    ? context.getString(R.string.status_channel_compat, request.channelName)
+                    : request.channelName);
         }
+    }
+
+    private void applyVideoTrackPolicy(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
+        if (trackSelector == null) {
+            return;
+        }
+        boolean capForCompatibility = usingVideoCompatibilityCap || isKnownClearKeyDecoderSensitiveChannel(request, decision);
+        DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
+                .setForceHighestSupportedBitrate(true);
+        if (capForCompatibility) {
+            builder.setMaxVideoSize(1280, 720);
+            Log.i(TAG, "using 720p video compatibility cap channel=" + describeRequest(request)
+                    + " decision=" + describeDecision(decision));
+        } else {
+            builder.clearVideoSizeConstraints();
+        }
+        trackSelector.setParameters(builder);
+    }
+
+    private boolean isKnownClearKeyDecoderSensitiveChannel(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
+        if (request == null || decision == null || !"clearkey".equals(safeLower(decision.drmType))) {
+            return false;
+        }
+        return "1079794".equals(request.channelId)
+                || "1079795".equals(request.channelId)
+                || "1079796".equals(request.channelId);
+    }
+
+    private boolean isSameChannel(PlaybackRequest left, PlaybackRequest right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        if (left.channelId == null) {
+            return right.channelId == null;
+        }
+        return left.channelId.equals(right.channelId);
     }
 
     private PlaybackRouteResolver.Decision buildPlaybackDecision(PlaybackRequest request, boolean useFallback, StreamInfo streamInfo) {

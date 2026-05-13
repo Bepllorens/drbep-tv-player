@@ -91,6 +91,7 @@ public class MainActivity extends FragmentActivity {
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
     private static final long RECORDINGS_AUTO_REFRESH_MS = 60000L;
+    private static final long OFFLINE_CATALOG_AUTO_REFRESH_MS = 6L * 60L * 60L * 1000L;
     private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
     private static final int SEARCH_LOGO_PREFETCH_LIMIT = 18;
     private static final String PREFS = "drbep_tv_prefs";
@@ -265,6 +266,13 @@ public class MainActivity extends FragmentActivity {
             uiHandler.postDelayed(this, 15_000L);
         }
     };
+    private final Runnable offlineCatalogAutoRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            refreshStandaloneCatalogInBackgroundIfPossible();
+            uiHandler.postDelayed(this, OFFLINE_CATALOG_AUTO_REFRESH_MS);
+        }
+    };
     private final List<ChannelItem> channels = new ArrayList<>();
     private final List<ChannelItem> allChannels = new ArrayList<>();
     private final List<ChannelFilter> filters = new ArrayList<>();
@@ -326,6 +334,7 @@ public class MainActivity extends FragmentActivity {
     private float touchGestureLastY = Float.NaN;
     private boolean touchGestureVerticalHandled;
     private boolean appUpdateCheckRunning;
+    private boolean offlineCatalogRefreshRunning;
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
     private Runnable pendingGlobalSearchRunnable;
@@ -706,6 +715,7 @@ public class MainActivity extends FragmentActivity {
         loadChannels();
         showPostUpdateNotesIfNeeded();
         checkAppUpdateOnStartup();
+        scheduleOfflineCatalogAutoRefresh();
         uiHandler.postDelayed(reminderTickRunnable, 30000L);
         uiHandler.postDelayed(vodProgressSaveRunnable, 15_000L);
     }
@@ -6533,27 +6543,37 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshStandaloneCatalogInBackgroundIfPossible() {
-        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null) {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || offlineCatalogRefreshRunning) {
             return;
         }
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         if (!status.hasAccessToken || status.sourceUrl.trim().isEmpty()) {
             return;
         }
+        offlineCatalogRefreshRunning = true;
         long startMs = System.currentTimeMillis();
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
                 long durationMs = System.currentTimeMillis() - startMs;
                 uiHandler.post(() -> {
+                    offlineCatalogRefreshRunning = false;
                     lastCatalogLoadDurationMs = durationMs;
                     applyLoadedChannels(result);
                     showStatus(getString(R.string.offline_catalog_status_refreshed));
                 });
             } catch (Exception e) {
                 Log.w(TAG, "background standalone catalog refresh failed", e);
+                uiHandler.post(() -> offlineCatalogRefreshRunning = false);
             }
         });
+    }
+
+    private void scheduleOfflineCatalogAutoRefresh() {
+        uiHandler.removeCallbacks(offlineCatalogAutoRefreshRunnable);
+        if (BuildConfig.STANDALONE_MODE) {
+            uiHandler.postDelayed(offlineCatalogAutoRefreshRunnable, OFFLINE_CATALOG_AUTO_REFRESH_MS);
+        }
     }
 
     private void showOfflineCatalogUrlDialog() {

@@ -2,6 +2,7 @@ package com.drbep.tvplayer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Handler;
 import android.util.Base64;
 import android.util.Log;
@@ -740,7 +741,8 @@ final class PlayerController {
         }
         updatePlaybackRequestHeaders();
 
-        MediaItem.Builder builder = new MediaItem.Builder().setUri(decision.targetUrl);
+        String mediaTargetUrl = appendOfflineAccessToken(decision.targetUrl);
+        MediaItem.Builder builder = new MediaItem.Builder().setUri(mediaTargetUrl);
         if (isHevcHlsDecision(decision)) {
             builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
                     .setTargetOffsetMs(18_000)
@@ -1117,6 +1119,26 @@ final class PlayerController {
         if (httpDataSourceFactory != null) {
             httpDataSourceFactory.setDefaultRequestProperties(buildPlaybackRequestHeaders());
         }
+    }
+
+    private String appendOfflineAccessToken(String url) {
+        if (url == null || url.trim().isEmpty() || catalogSnapshotStore == null) {
+            return url;
+        }
+        String trimmed = url.trim();
+        String normalizedBase = baseUrl == null ? "" : baseUrl.trim();
+        if (normalizedBase.isEmpty() || !trimmed.startsWith(normalizedBase)) {
+            return trimmed;
+        }
+        if (trimmed.contains("access_token=")) {
+            return trimmed;
+        }
+        String token = catalogSnapshotStore.getAccessToken();
+        if (token == null || token.trim().isEmpty()) {
+            return trimmed;
+        }
+        String separator = trimmed.contains("?") ? "&" : "?";
+        return trimmed + separator + "access_token=" + Uri.encode(token.trim());
     }
 
     private Map<String, String> buildPlaybackRequestHeaders() {

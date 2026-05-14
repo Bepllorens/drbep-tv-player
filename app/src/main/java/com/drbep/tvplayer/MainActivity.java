@@ -6258,6 +6258,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showLocalDataSettingsDialog);
         options.add(getString(R.string.settings_section_offline_system));
         actions.add(this::showOfflineSystemDialog);
+        options.add(getString(R.string.settings_offline_full_sync));
+        actions.add(this::runManualOfflineFullSync);
         options.add(getString(R.string.settings_section_offline_catalog));
         actions.add(this::showOfflineCatalogSettingsDialog);
         options.add(getString(R.string.app_update_action_check));
@@ -6541,6 +6543,8 @@ public class MainActivity extends FragmentActivity {
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.settings_offline_system_status));
         actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
+        options.add(getString(R.string.settings_offline_full_sync));
+        actions.add(this::runManualOfflineFullSync);
         options.add(getString(R.string.offline_catalog_action_activate_code));
         actions.add(this::startOfflineActivationCodeFlow);
         options.add(getString(R.string.offline_catalog_action_refresh));

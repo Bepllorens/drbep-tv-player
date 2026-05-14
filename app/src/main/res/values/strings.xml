@@ -594,7 +594,7 @@
     <string name="settings_section_offline_system">Sistema offline</string>
     <string name="settings_offline_system_status">Estado del sistema offline</string>
     <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nToken: %5$s\nDispositivo: %6$s\nUltimo intento catalogo: %7$s\nUltimo catalogo OK: %8$s\nUltimo error catalogo: %9$s\nActualizaciones: %10$s\nRecientes/diagnostico: %11$s\nUltimo mantenimiento: %12$s\nError mantenimiento: %13$s\nSiguiente sincronizacion: %14$s</string>
-    <string name="settings_offline_full_sync">Forzar sincronizacion completa</string>
+    <string name="settings_offline_full_sync">Sincronizar ahora catalogo y app</string>
     <string name="settings_offline_full_sync_running">Sincronizando sistema offline...</string>
     <string name="settings_offline_sync_history">Historial de sincronizacion</string>
     <string name="settings_offline_sync_history_empty">Aun no hay sincronizaciones guardadas.</string>

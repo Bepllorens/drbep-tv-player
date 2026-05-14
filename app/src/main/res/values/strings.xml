@@ -593,7 +593,19 @@
     <string name="settings_section_offline_catalog">Catalogo independiente</string>
     <string name="settings_section_offline_system">Sistema offline</string>
     <string name="settings_offline_system_status">Estado del sistema offline</string>
-    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nToken: %5$s\nDispositivo: %6$s\nUltimo intento catalogo: %7$s\nUltimo catalogo OK: %8$s\nUltimo error catalogo: %9$s\nActualizaciones: %10$s\nRecientes/diagnostico: %11$s</string>
+    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nToken: %5$s\nDispositivo: %6$s\nUltimo intento catalogo: %7$s\nUltimo catalogo OK: %8$s\nUltimo error catalogo: %9$s\nActualizaciones: %10$s\nRecientes/diagnostico: %11$s\nUltimo mantenimiento: %12$s\nError mantenimiento: %13$s\nSiguiente sincronizacion: %14$s</string>
+    <string name="settings_offline_full_sync">Forzar sincronizacion completa</string>
+    <string name="settings_offline_full_sync_running">Sincronizando sistema offline...</string>
+    <string name="settings_offline_sync_history">Historial de sincronizacion</string>
+    <string name="settings_offline_sync_history_empty">Aun no hay sincronizaciones guardadas.</string>
+    <string name="settings_offline_sync_history_error">No se pudo leer el historial: %1$s</string>
+    <string name="settings_offline_sync_history_item">%1$s\n%2$s · %3$s · %4$d ms\n%5$s</string>
+    <string name="settings_offline_sync_catalog">Catalogo</string>
+    <string name="settings_offline_sync_app_update">Actualizacion app</string>
+    <string name="settings_offline_sync_ok">OK</string>
+    <string name="settings_offline_sync_failed">Fallo</string>
+    <string name="settings_offline_next_sync_blocked">bloqueada: falta token o URL</string>
+    <string name="settings_offline_next_sync_ready">pendiente ahora</string>
     <string name="settings_offline_health_missing">Sin catalogo local</string>
     <string name="settings_offline_health_expired">Catalogo caducado</string>
     <string name="settings_offline_health_no_token">Sin token activo</string>
@@ -601,6 +613,7 @@
     <string name="settings_offline_health_ok">Correcto</string>
     <string name="settings_update_state_error">Comprobado %1$s · Error %2$s: %3$s</string>
     <string name="settings_update_state_available">Comprobado %1$s · Disponible %2$s (%3$d)</string>
+    <string name="settings_update_state_available_short">Disponible %1$s (%2$d)</string>
     <string name="settings_update_state_current">Comprobado %1$s · Al dia %2$s (%3$d)</string>
     <string name="settings_update_state_unknown">Sin comprobar · Ultimo intento: %1$s</string>
     <string name="app_update_action_check">Buscar actualizacion de la app</string>
@@ -667,6 +680,7 @@
     <string name="offline_catalog_reactivation_message">Tipo: %1$s\n\nDetalle: %2$s\n\nPuedes activar de nuevo con codigo o pegar un token valido.</string>
     <string name="offline_catalog_status_refreshing">Actualizando catalogo local...</string>
     <string name="offline_catalog_status_refreshed">Catalogo local actualizado</string>
+    <string name="offline_catalog_status_already_fresh">Catalogo local al dia</string>
     <string name="offline_catalog_status_url_saved">URL de catalogo guardada</string>
     <string name="offline_catalog_status_token_saved">Token guardado</string>
     <string name="offline_catalog_status_token_cleared">Token borrado</string>

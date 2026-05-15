@@ -1,6 +1,5 @@
 package com.drbep.tvplayer;
 
-import android.app.AlertDialog;
 import android.content.Context;
 
 import java.util.ArrayList;
@@ -43,6 +42,8 @@ final class ChannelActionsCoordinator {
         void cancelScheduledProgram(ChannelItem channelItem, EpgRepository.EpgProgram program);
 
         void createReminder(ChannelItem channelItem, EpgRepository.EpgProgram program);
+
+        void showActionOptions(String title, List<String> options, List<Runnable> actions);
     }
 
     private final Context context;
@@ -91,15 +92,7 @@ final class ChannelActionsCoordinator {
         options.add(context.getString(R.string.menu_view_recordings));
         actions.add(host::openRecordings);
 
-        new AlertDialog.Builder(context)
-                .setTitle(channelItem.name)
-                .setItems(options.toArray(new String[0]), (dialog, which) -> {
-                    if (which >= 0 && which < actions.size()) {
-                        actions.get(which).run();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        host.showActionOptions(channelItem.name, options, actions);
     }
 
     void showProgramActionMenu(ChannelItem channelItem, EpgRepository.EpgProgram program) {
@@ -127,14 +120,6 @@ final class ChannelActionsCoordinator {
         actions.add(() -> host.openPlaybackModeSelector(channelItem));
         options.add(context.getString(R.string.menu_mini_guide));
         actions.add(() -> host.openMiniGuide(channelItem));
-        new AlertDialog.Builder(context)
-                .setTitle(title)
-                .setItems(options.toArray(new String[0]), (dialog, which) -> {
-                    if (which >= 0 && which < actions.size()) {
-                        actions.get(which).run();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        host.showActionOptions(title, options, actions);
     }
 }

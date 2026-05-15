@@ -701,6 +701,11 @@ public class MainActivity extends FragmentActivity {
             public void createReminder(ChannelItem channelItem, EpgRepository.EpgProgram program) {
                 MainActivity.this.createReminder(channelItem, program);
             }
+
+            @Override
+            public void showActionOptions(String title, List<String> options, List<Runnable> actions) {
+                MainActivity.this.showTvOptionsDialog(title, null, options, actions);
+            }
         });
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
         selectedFilterKey = prefs.getString(PREF_LAST_FILTER_KEY, "all");
@@ -7392,9 +7397,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showTvOptionsDialog(int titleResId, String message, List<String> options, List<Runnable> actions) {
+        showTvOptionsDialog(getString(titleResId), message, options, actions);
+    }
+
+    private void showTvOptionsDialog(String title, String message, List<String> options, List<Runnable> actions) {
         prepareModalSurface();
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle(titleResId)
+                .setTitle(title == null || title.trim().isEmpty() ? getString(R.string.tools_menu_title_short) : title)
                 .setItems(options.toArray(new String[0]), (dialog, which) -> {
                     if (which >= 0 && which < actions.size()) {
                         actions.get(which).run();

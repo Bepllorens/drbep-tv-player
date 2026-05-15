@@ -105,6 +105,14 @@ final class ChannelOverlayCoordinator {
         selectedFilterKey = filters.isEmpty() ? "all" : filters.get(foundFilterIndex).key;
 
         rebuildVisibleChannels(lastChannelId, lastChannelId);
+        if (channels.isEmpty() && !allChannels.isEmpty() && (searchQuery == null || searchQuery.isEmpty())) {
+            String fallbackFilterKey = firstAvailableFilterKey(result.defaultFilterKey);
+            if (fallbackFilterKey != null) {
+                selectedFilterKey = fallbackFilterKey;
+                favoritesOnly = false;
+                rebuildVisibleChannels(lastChannelId, lastChannelId);
+            }
+        }
     }
 
     void refreshLocalFilters() {
@@ -286,6 +294,44 @@ final class ChannelOverlayCoordinator {
         if (selectedOverlayIndex < 0 && !channels.isEmpty()) {
             selectedOverlayIndex = 0;
         }
+    }
+
+    private String firstAvailableFilterKey(String preferredFilterKey) {
+        if (filters.isEmpty()) {
+            return null;
+        }
+        String previousFilterKey = selectedFilterKey;
+        boolean previousFavoritesOnly = favoritesOnly;
+        String[] candidates = new String[]{
+                preferredFilterKey == null ? "" : preferredFilterKey,
+                "all",
+                filters.get(0).key
+        };
+        for (String candidate : candidates) {
+            String available = findAvailableFilterKey(candidate);
+            if (available != null) {
+                return available;
+            }
+        }
+        for (ChannelFilter filter : filters) {
+            String available = findAvailableFilterKey(filter == null ? "" : filter.key);
+            if (available != null) {
+                return available;
+            }
+        }
+        selectedFilterKey = previousFilterKey;
+        favoritesOnly = previousFavoritesOnly;
+        return null;
+    }
+
+    private String findAvailableFilterKey(String candidate) {
+        if (candidate == null || candidate.trim().isEmpty() || findFilterIndexByKey(candidate) < 0) {
+            return null;
+        }
+        selectedFilterKey = candidate;
+        favoritesOnly = false;
+        rebuildVisibleChannels("", "");
+        return channels.isEmpty() ? null : candidate;
     }
 
     private boolean channelMatchesCurrentFilter(ChannelItem item) {

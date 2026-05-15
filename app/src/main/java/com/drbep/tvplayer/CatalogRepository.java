@@ -505,10 +505,22 @@ final class CatalogRepository {
                 filtered.add(filter);
             }
         }
-        if (filtered.isEmpty()) {
+        if (filtered.isEmpty() || containsOnlyFavoritesFilter(filtered)) {
             return filters;
         }
         return filtered;
+    }
+
+    private static boolean containsOnlyFavoritesFilter(List<ChannelFilter> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return false;
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && !"favorites".equals(filter.key)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String buildFallbackPlayUrl(String id) {

@@ -59,6 +59,22 @@ public class CatalogRepositoryTest {
         assertTrue(hasFilter(filters, "vod", 3));
     }
 
+    @Test
+    public void missingStartupFilterDoesNotLeaveOnlyEmptyFavorites() {
+        CatalogRepository repository = new CatalogRepository("https://iptv.example.com");
+        StartupFilterConfig startupConfig = new StartupFilterConfig();
+        startupConfig.enabledFilterKeys.add("custom-group:deportes");
+
+        List<ChannelFilter> filters = repository.buildFiltersFromCatalog(
+                Arrays.asList(liveChannel()),
+                0L,
+                startupConfig
+        );
+
+        assertTrue(hasFilter(filters, "favorites", 5));
+        assertTrue(hasFilter(filters, "platform:1", 1));
+    }
+
     private static boolean hasFilter(List<ChannelFilter> filters, String key, int type) {
         for (ChannelFilter filter : filters) {
             if (filter != null && key.equals(filter.key) && filter.type == type) {

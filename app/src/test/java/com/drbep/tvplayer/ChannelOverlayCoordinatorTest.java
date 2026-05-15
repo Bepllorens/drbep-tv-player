@@ -76,6 +76,56 @@ public class ChannelOverlayCoordinatorTest {
         assertEquals("ch-1", visible.get(0).id);
     }
 
+    @Test
+    public void restoredEmptyFavoritesFilterFallsBackToDefaultFilter() {
+        List<ChannelItem> visible = new ArrayList<>();
+        List<ChannelItem> all = new ArrayList<>();
+        List<ChannelFilter> filters = new ArrayList<>();
+
+        ChannelOverlayCoordinator coordinator = new ChannelOverlayCoordinator(
+                visible,
+                all,
+                filters,
+                new HashSet<>(),
+                null,
+                new ChannelCollectionStore(null, "collections"),
+                new ChannelProfileStore(null, "profiles")
+        );
+        coordinator.setSelectedFilterKey("favorites");
+
+        coordinator.applyLoadedChannels(new CatalogLoadResult(sampleChannels(), baseFilters(), "all"), "ch-1");
+
+        assertEquals("all", coordinator.getSelectedFilterKey());
+        assertEquals(2, visible.size());
+        assertEquals("ch-1", visible.get(0).id);
+    }
+
+    @Test
+    public void restoredEmptyFavoritesFilterFallsBackToFirstPlatformWhenAllIsDisabled() {
+        List<ChannelItem> visible = new ArrayList<>();
+        List<ChannelItem> all = new ArrayList<>();
+        List<ChannelFilter> filters = new ArrayList<>();
+        List<ChannelFilter> restrictedFilters = new ArrayList<>();
+        restrictedFilters.add(new ChannelFilter("favorites", "Favoritos", 5, 0, ""));
+        restrictedFilters.add(new ChannelFilter("platform:1", "Plataforma: TV", 1, 1, ""));
+
+        ChannelOverlayCoordinator coordinator = new ChannelOverlayCoordinator(
+                visible,
+                all,
+                filters,
+                new HashSet<>(),
+                null,
+                new ChannelCollectionStore(null, "collections"),
+                new ChannelProfileStore(null, "profiles")
+        );
+        coordinator.setSelectedFilterKey("favorites");
+
+        coordinator.applyLoadedChannels(new CatalogLoadResult(sampleChannels(), restrictedFilters, "favorites"), "ch-1");
+
+        assertEquals("platform:1", coordinator.getSelectedFilterKey());
+        assertEquals(2, visible.size());
+    }
+
     private static boolean hasFilter(List<ChannelFilter> filters, String key) {
         for (ChannelFilter filter : filters) {
             if (filter != null && key.equals(filter.key)) {

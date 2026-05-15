@@ -26,6 +26,8 @@ final class CatalogSnapshotStore {
     private static final String PREF_CHANNEL_COUNT = "channel_count";
     private static final String PREF_VOD_COUNT = "vod_count";
     private static final String SNAPSHOT_FILE = "catalog_snapshot.json";
+    private static final String LAST_GOOD_SNAPSHOT_FILE = "catalog_snapshot.last_good.json";
+    private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
 
     private final Context context;
     private final SharedPreferences prefs;
@@ -43,9 +45,25 @@ final class CatalogSnapshotStore {
         if (status.expired) {
             throw new IllegalStateException("catalogo local caducado");
         }
-        File file = snapshotFile();
+        return readSnapshotObject(snapshotFile(), "catalogo local guardado");
+    }
+
+    JSONObject loadLastKnownGoodSnapshotObject() throws Exception {
+        File lastGood = lastGoodSnapshotFile();
+        if (lastGood.exists() && lastGood.length() > 0L) {
+            return readSnapshotObject(lastGood, "ultimo catalogo bueno");
+        }
+        return readSnapshotObject(snapshotFile(), "catalogo local guardado");
+    }
+
+    boolean hasLastKnownGoodSnapshot() {
+        File file = lastGoodSnapshotFile();
+        return file.exists() && file.length() > 0L;
+    }
+
+    private JSONObject readSnapshotObject(File file, String label) throws Exception {
         if (!file.exists() || file.length() <= 0L) {
-            throw new IllegalStateException("no hay catalogo local guardado");
+            throw new IllegalStateException("no hay " + label);
         }
         byte[] bytes = new byte[(int) file.length()];
         try (FileInputStream inputStream = new FileInputStream(file)) {
@@ -58,7 +76,10 @@ final class CatalogSnapshotStore {
                 offset += read;
             }
         }
-        return new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+        JSONObject payload = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+        validateSnapshotHasContent(payload);
+        validateSnapshotForThisDevice(payload);
+        return payload;
     }
 
     JSONObject refreshFromConfiguredUrl(String fallbackUrl) throws Exception {
@@ -75,6 +96,7 @@ final class CatalogSnapshotStore {
         httpClient.requireSuccess(response, "actualizando catalogo local");
         JSONObject payload = new JSONObject(response.body == null ? "" : response.body);
         validateSnapshotForThisDevice(payload);
+        validateSnapshotHasContent(payload);
         saveSnapshotObject(payload, sourceUrl);
         return payload;
     }
@@ -114,8 +136,20 @@ final class CatalogSnapshotStore {
         if (payload == null) {
             throw new IllegalArgumentException("catalogo local vacio");
         }
-        try (FileOutputStream outputStream = new FileOutputStream(snapshotFile(), false)) {
+        validateSnapshotForThisDevice(payload);
+        validateSnapshotHasContent(payload);
+        File current = snapshotFile();
+        backupCurrentSnapshotIfUseful(current);
+        File tmp = tmpSnapshotFile();
+        try (FileOutputStream outputStream = new FileOutputStream(tmp, false)) {
             outputStream.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        if (!tmp.renameTo(current)) {
+            try (FileOutputStream outputStream = new FileOutputStream(current, false)) {
+                outputStream.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            //noinspection ResultOfMethodCallIgnored
+            tmp.delete();
         }
         prefs.edit()
                 .putString(PREF_SOURCE_URL, sourceUrl == null ? "" : sourceUrl.trim())
@@ -126,6 +160,7 @@ final class CatalogSnapshotStore {
                 .putInt(PREF_CHANNEL_COUNT, countCatalogRows(payload, "channels"))
                 .putInt(PREF_VOD_COUNT, countCatalogRows(payload, "vod") + countCatalogRows(payload, "adult") + countCatalogRows(payload, "runtime_movies"))
                 .apply();
+        backupCurrentSnapshotIfUseful(current);
     }
 
     void clear() {
@@ -133,6 +168,14 @@ final class CatalogSnapshotStore {
             File file = snapshotFile();
             if (file.exists()) {
                 file.delete();
+            }
+            File tmp = tmpSnapshotFile();
+            if (tmp.exists()) {
+                tmp.delete();
+            }
+            File lastGood = lastGoodSnapshotFile();
+            if (lastGood.exists()) {
+                lastGood.delete();
             }
         } catch (Exception ignored) {
         }
@@ -186,12 +229,45 @@ final class CatalogSnapshotStore {
                 getDeviceId(),
                 prefs.getString(PREF_SUBJECT, ""),
                 prefs.getString(PREF_PERMISSIONS, ""),
-                !getAccessToken().trim().isEmpty()
+                !getAccessToken().trim().isEmpty(),
+                hasLastKnownGoodSnapshot()
         );
     }
 
     private File snapshotFile() {
         return new File(context.getFilesDir(), SNAPSHOT_FILE);
+    }
+
+    private File lastGoodSnapshotFile() {
+        return new File(context.getFilesDir(), LAST_GOOD_SNAPSHOT_FILE);
+    }
+
+    private File tmpSnapshotFile() {
+        return new File(context.getFilesDir(), SNAPSHOT_TMP_FILE);
+    }
+
+    private void backupCurrentSnapshotIfUseful(File source) {
+        if (source == null || !source.exists() || source.length() <= 0L) {
+            return;
+        }
+        try {
+            JSONObject current = readSnapshotObject(source, "catalogo actual");
+            validateSnapshotHasContent(current);
+            copyFile(source, lastGoodSnapshotFile());
+        } catch (Exception ignored) {
+            // Keep the previous last-good snapshot if the current file is damaged.
+        }
+    }
+
+    private static void copyFile(File source, File target) throws Exception {
+        try (FileInputStream inputStream = new FileInputStream(source);
+             FileOutputStream outputStream = new FileOutputStream(target, false)) {
+            byte[] buffer = new byte[16 * 1024];
+            int read;
+            while ((read = inputStream.read(buffer)) >= 0) {
+                outputStream.write(buffer, 0, read);
+            }
+        }
     }
 
     private static int countCatalogRows(JSONObject payload, String key) {
@@ -280,6 +356,16 @@ final class CatalogSnapshotStore {
         }
     }
 
+    private static void validateSnapshotHasContent(JSONObject payload) {
+        int live = countCatalogRows(payload, "channels");
+        int vod = countCatalogRows(payload, "vod")
+                + countCatalogRows(payload, "adult")
+                + countCatalogRows(payload, "runtime_movies");
+        if (live <= 0 && vod <= 0) {
+            throw new IllegalStateException("catalogo descargado sin canales ni VOD; se conserva el ultimo catalogo bueno");
+        }
+    }
+
     private static String describePermissions(JSONObject permissions) {
         if (permissions == null || permissions.length() == 0) {
             return "";
@@ -321,8 +407,13 @@ final class CatalogSnapshotStore {
         final String subject;
         final String permissions;
         final boolean hasAccessToken;
+        final boolean hasLastGoodBackup;
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken) {
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, expired, channelCount, vodCount, sourceUrl, deviceId, subject, permissions, hasAccessToken, false);
+        }
+
+        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken, boolean hasLastGoodBackup) {
             this.available = available;
             this.sizeBytes = sizeBytes;
             this.updatedAtMs = updatedAtMs;
@@ -335,6 +426,7 @@ final class CatalogSnapshotStore {
             this.subject = subject == null ? "" : subject;
             this.permissions = permissions == null ? "" : permissions;
             this.hasAccessToken = hasAccessToken;
+            this.hasLastGoodBackup = hasLastGoodBackup;
         }
     }
 }

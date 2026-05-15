@@ -607,6 +607,7 @@
     <string name="settings_offline_next_sync_blocked">bloqueada: falta token o URL</string>
     <string name="settings_offline_next_sync_ready">pendiente ahora</string>
     <string name="settings_offline_health_missing">Sin catalogo local</string>
+    <string name="settings_offline_health_backup_available">Sin catalogo activo, hay copia buena</string>
     <string name="settings_offline_health_expired">Catalogo caducado</string>
     <string name="settings_offline_health_no_token">Sin token activo</string>
     <string name="settings_offline_health_expiring">Catalogo caduca en %1$s</string>
@@ -659,8 +660,9 @@
     <string name="settings_data_clear_recent_channels">Limpiar canales recientes</string>
     <string name="settings_data_clear_favorites">Limpiar favoritos</string>
     <string name="settings_data_reset_lists_profiles">Reset listas y perfiles</string>
-    <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nCaduca: %4$s\nCanales: %5$d  ·  VOD: %6$d\nTamano: %7$s\nURL: %8$s\nDispositivo: %9$s\nToken: %10$s\nUsuario: %11$s\nPermisos: %12$s</string>
+    <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nCaduca: %4$s\nCanales: %5$d  ·  VOD: %6$d\nTamano: %7$s\nURL: %8$s\nDispositivo: %9$s\nToken: %10$s\nUsuario: %11$s\nPermisos: %12$s\nUltimo catalogo bueno: %13$s</string>
     <string name="offline_catalog_action_refresh">Actualizar catalogo local</string>
+    <string name="offline_catalog_action_repair">Reparar catalogo</string>
     <string name="offline_catalog_action_activate_code">Activar con codigo</string>
     <string name="offline_catalog_action_set_url">Configurar URL del catalogo</string>
     <string name="offline_catalog_action_set_token">Configurar token de usuario</string>
@@ -680,6 +682,9 @@
     <string name="offline_catalog_reactivation_message">Tipo: %1$s\n\nDetalle: %2$s\n\nPuedes activar de nuevo con codigo o pegar un token valido.</string>
     <string name="offline_catalog_status_refreshing">Actualizando catalogo local...</string>
     <string name="offline_catalog_status_refreshed">Catalogo local actualizado</string>
+    <string name="offline_catalog_status_repairing">Reparando catalogo local...</string>
+    <string name="offline_catalog_status_repair_not_needed">La reparacion offline solo aplica al modo independiente</string>
+    <string name="offline_catalog_status_using_last_good">Usando ultimo catalogo bueno</string>
     <string name="offline_catalog_status_already_fresh">Catalogo local al dia</string>
     <string name="offline_catalog_status_url_saved">URL de catalogo guardada</string>
     <string name="offline_catalog_status_token_saved">Token guardado</string>

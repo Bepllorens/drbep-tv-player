@@ -65,6 +65,13 @@ final class CatalogRepository {
         return parseCatalogPayload(snapshotStore.loadSnapshotObject(), false);
     }
 
+    CatalogLoadResult fetchLastKnownGoodSnapshotCatalog() throws Exception {
+        if (snapshotStore == null) {
+            throw new IllegalStateException("catalogo local no configurado");
+        }
+        return parseCatalogPayload(snapshotStore.loadLastKnownGoodSnapshotObject(), false);
+    }
+
     private JSONObject fetchRemoteCatalogPayload() throws Exception {
         return httpClient.getJsonObject(
                 baseUrl + "/api/channels/catalog?include_disabled=0",

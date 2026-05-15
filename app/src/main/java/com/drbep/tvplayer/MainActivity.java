@@ -1595,13 +1595,24 @@ public class MainActivity extends FragmentActivity {
                         });
                     } catch (Exception e) {
                         Log.e(TAG, "standalone catalog load failed", e);
-                        uiHandler.post(() -> {
-                            lastOfflineCatalogRefreshError = e.getMessage();
-                            if (!showOfflineCatalogRecoveryDialogIfNeeded(e)) {
-                                showError(getString(R.string.error_load_channels, e.getMessage()));
-                                showCatalogRecoveryDialog(e.getMessage());
-                            }
-                        });
+                        try {
+                            CatalogLoadResult fallback = catalogRepository.fetchLastKnownGoodSnapshotCatalog();
+                            long durationMs = System.currentTimeMillis() - startMs;
+                            uiHandler.post(() -> {
+                                lastCatalogLoadDurationMs = durationMs;
+                                lastOfflineCatalogRefreshError = e.getMessage();
+                                showStatus(getString(R.string.offline_catalog_status_using_last_good));
+                                applyLoadedChannels(fallback);
+                            });
+                        } catch (Exception fallbackErr) {
+                            uiHandler.post(() -> {
+                                lastOfflineCatalogRefreshError = e.getMessage();
+                                if (!showOfflineCatalogRecoveryDialogIfNeeded(e)) {
+                                    showError(getString(R.string.error_load_channels, e.getMessage()));
+                                    showCatalogRecoveryDialog(e.getMessage());
+                                }
+                            });
+                        }
                     }
                     return;
                 }
@@ -6428,6 +6439,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
         options.add(getString(R.string.settings_offline_full_sync));
         actions.add(this::runManualOfflineFullSync);
+        options.add(getString(R.string.offline_catalog_action_repair));
+        actions.add(this::repairOfflineCatalog);
         options.add(getString(R.string.settings_offline_sync_history));
         actions.add(() -> showSettingsInfoDialog(R.string.settings_offline_sync_history, buildOfflineSyncHistorySummary()));
         options.add(getString(R.string.offline_catalog_action_refresh));
@@ -6483,6 +6496,9 @@ public class MainActivity extends FragmentActivity {
 
     private String buildOfflineCatalogHealth(CatalogSnapshotStore.SnapshotStatus status) {
         if (status == null || !status.available) {
+            if (status != null && status.hasLastGoodBackup) {
+                return getString(R.string.settings_offline_health_backup_available);
+            }
             return getString(R.string.settings_offline_health_missing);
         }
         if (status.expired) {
@@ -6545,6 +6561,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
         options.add(getString(R.string.settings_offline_full_sync));
         actions.add(this::runManualOfflineFullSync);
+        options.add(getString(R.string.offline_catalog_action_repair));
+        actions.add(this::repairOfflineCatalog);
         options.add(getString(R.string.offline_catalog_action_activate_code));
         actions.add(this::startOfflineActivationCodeFlow);
         options.add(getString(R.string.offline_catalog_action_refresh));
@@ -6677,7 +6695,8 @@ public class MainActivity extends FragmentActivity {
                 status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
                 status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 status.subject == null || status.subject.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.subject,
-                status.permissions == null || status.permissions.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.permissions
+                status.permissions == null || status.permissions.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.permissions,
+                status.hasLastGoodBackup ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no)
         );
     }
 
@@ -6686,6 +6705,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshOfflineCatalog(boolean manual, boolean force) {
+        refreshOfflineCatalog(manual, force, false);
+    }
+
+    private void refreshOfflineCatalog(boolean manual, boolean force, boolean preferFallbackOnFailure) {
         if (!BuildConfig.STANDALONE_MODE && !manual) {
             return;
         }
@@ -6712,6 +6735,7 @@ public class MainActivity extends FragmentActivity {
         long startMs = System.currentTimeMillis();
         lastOfflineCatalogRefreshAttemptMs = startMs;
         lastOfflineCatalogRefreshError = "";
+        boolean shouldFallbackOnFailure = preferFallbackOnFailure || allChannels.isEmpty();
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
@@ -6732,11 +6756,32 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.e(TAG, "offline catalog refresh failed", e);
                 long durationMs = System.currentTimeMillis() - startMs;
+                CatalogLoadResult fallback = null;
+                String fallbackError = "";
+                if (shouldFallbackOnFailure) {
+                    try {
+                        fallback = catalogRepository.fetchLastKnownGoodSnapshotCatalog();
+                    } catch (Exception fallbackErr) {
+                        fallbackError = fallbackErr.getMessage();
+                    }
+                }
+                CatalogLoadResult finalFallback = fallback;
+                String finalFallbackError = fallbackError;
                 uiHandler.post(() -> {
                     offlineCatalogRefreshRunning = false;
                     lastOfflineCatalogRefreshError = e.getMessage();
                     lastOfflineMaintenanceError = e.getMessage();
                     recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), false, durationMs, e.getMessage());
+                    if (finalFallback != null) {
+                        lastCatalogLoadDurationMs = durationMs;
+                        applyLoadedChannels(finalFallback);
+                        showStatus(getString(R.string.offline_catalog_status_using_last_good));
+                        recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, getString(R.string.offline_catalog_status_using_last_good));
+                        return;
+                    }
+                    if (manual && shouldFallbackOnFailure && finalFallbackError != null && !finalFallbackError.trim().isEmpty()) {
+                        lastOfflineCatalogRefreshError = e.getMessage() + " · " + finalFallbackError;
+                    }
                     if (manual && !showOfflineCatalogRecoveryDialogIfNeeded(e)) {
                         showError(getString(R.string.error_load_channels, e.getMessage()));
                     } else if (!manual) {
@@ -6745,6 +6790,15 @@ public class MainActivity extends FragmentActivity {
                 });
             }
         });
+    }
+
+    private void repairOfflineCatalog() {
+        if (!BuildConfig.STANDALONE_MODE) {
+            showStatus(getString(R.string.offline_catalog_status_repair_not_needed));
+            return;
+        }
+        showStatus(getString(R.string.offline_catalog_status_repairing));
+        refreshOfflineCatalog(true, true, true);
     }
 
     private void refreshStandaloneCatalogInBackgroundIfPossible() {

@@ -595,7 +595,9 @@
     <string name="settings_section_offline_catalog">Catalogo independiente</string>
     <string name="settings_section_offline_system">Sistema offline</string>
     <string name="settings_offline_system_status">Estado del sistema offline</string>
-    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nToken: %5$s\nDispositivo: %6$s\nGrabaciones: %7$s\nUltimo intento catalogo: %8$s\nUltimo catalogo OK: %9$s\nUltimo error catalogo: %10$s\nActualizaciones: %11$s\nRecientes/diagnostico: %12$s\nUltimo mantenimiento: %13$s\nError mantenimiento: %14$s\nSiguiente sincronizacion: %15$s</string>
+    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nEPG: %5$s\nToken: %6$s\nDispositivo: %7$s\nGrabaciones: %8$s\nUltimo intento catalogo: %9$s\nUltimo catalogo OK: %10$s\nUltimo error catalogo: %11$s\nActualizaciones: %12$s\nRecientes/diagnostico: %13$s\nUltimo mantenimiento: %14$s\nError mantenimiento: %15$s\nSiguiente sincronizacion: %16$s</string>
+    <string name="settings_offline_epg_missing">sin guia local</string>
+    <string name="settings_offline_epg_summary">%1$d canales · %2$d programas · hasta %3$s</string>
     <string name="settings_offline_full_sync">Sincronizar ahora catalogo y app</string>
     <string name="settings_offline_full_sync_running">Sincronizando sistema offline...</string>
     <string name="settings_offline_sync_history">Historial de sincronizacion</string>
@@ -665,7 +667,7 @@
     <string name="settings_data_clear_recent_channels">Limpiar canales recientes</string>
     <string name="settings_data_clear_favorites">Limpiar favoritos</string>
     <string name="settings_data_reset_lists_profiles">Reset listas y perfiles</string>
-    <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nCaduca: %4$s\nCanales: %5$d  ·  VOD: %6$d\nTamano: %7$s\nURL: %8$s\nDispositivo: %9$s\nToken: %10$s\nUsuario: %11$s\nPermisos: %12$s\nUltimo catalogo bueno: %13$s</string>
+    <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nCaduca: %4$s\nCanales: %5$d  ·  VOD: %6$d\nEPG: %7$d canales · %8$d programas · hasta %9$s\nTamano: %10$s\nURL: %11$s\nDispositivo: %12$s\nToken: %13$s\nUsuario: %14$s\nPermisos: %15$s\nUltimo catalogo bueno: %16$s</string>
     <string name="offline_catalog_action_refresh">Actualizar catalogo local</string>
     <string name="offline_catalog_action_repair">Reparar catalogo</string>
     <string name="offline_catalog_action_activate_code">Activar con codigo</string>

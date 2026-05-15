@@ -590,7 +590,7 @@ public class MainActivity extends FragmentActivity {
         baseUrl = resolveBaseUrl();
         catalogSnapshotStore = new CatalogSnapshotStore(this);
         catalogRepository = new CatalogRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
-        epgRepository = new EpgRepository(baseUrl);
+        epgRepository = new EpgRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
         recordingsRepository = new RecordingsRepository(baseUrl);
     httpClient = new HttpClient();
         appUpdateManager = new AppUpdateManager(this, catalogSnapshotStore);
@@ -6545,6 +6545,7 @@ public class MainActivity extends FragmentActivity {
                 BuildConfig.VERSION_CODE,
                 BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 catalogHealth,
+                buildOfflineEpgStateSummary(status),
                 status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
                 buildOfflineRecordingsStateSummary(),
@@ -6557,6 +6558,16 @@ public class MainActivity extends FragmentActivity {
                 maintenanceError,
                 buildNextOfflineSyncSummary(status)
         );
+    }
+
+    private String buildOfflineEpgStateSummary(CatalogSnapshotStore.SnapshotStatus status) {
+        if (status == null || status.epgProgramCount <= 0) {
+            return getString(R.string.settings_offline_epg_missing);
+        }
+        String until = status.epgUntilMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(status.epgUntilMs);
+        return getString(R.string.settings_offline_epg_summary, status.epgChannelCount, status.epgProgramCount, until);
     }
 
     private String buildOfflineRecordingsStateSummary() {
@@ -6761,6 +6772,9 @@ public class MainActivity extends FragmentActivity {
                 expiresAt,
                 status.channelCount,
                 status.vodCount,
+                status.epgChannelCount,
+                status.epgProgramCount,
+                status.epgUntilMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.epgUntilMs),
                 humanReadableSize(status.sizeBytes),
                 status.sourceUrl == null || status.sourceUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceUrl,
                 status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,

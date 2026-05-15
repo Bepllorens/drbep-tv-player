@@ -25,6 +25,9 @@ final class CatalogSnapshotStore {
     private static final String PREF_PERMISSIONS = "permissions";
     private static final String PREF_CHANNEL_COUNT = "channel_count";
     private static final String PREF_VOD_COUNT = "vod_count";
+    private static final String PREF_EPG_CHANNEL_COUNT = "epg_channel_count";
+    private static final String PREF_EPG_PROGRAM_COUNT = "epg_program_count";
+    private static final String PREF_EPG_UNTIL_MS = "epg_until_ms";
     private static final String SNAPSHOT_FILE = "catalog_snapshot.json";
     private static final String LAST_GOOD_SNAPSHOT_FILE = "catalog_snapshot.last_good.json";
     private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
@@ -159,6 +162,9 @@ final class CatalogSnapshotStore {
                 .putString(PREF_PERMISSIONS, describePermissions(payload.optJSONObject("permissions")))
                 .putInt(PREF_CHANNEL_COUNT, countCatalogRows(payload, "channels"))
                 .putInt(PREF_VOD_COUNT, countCatalogRows(payload, "vod") + countCatalogRows(payload, "adult") + countCatalogRows(payload, "runtime_movies"))
+                .putInt(PREF_EPG_CHANNEL_COUNT, countOfflineEpgChannels(payload))
+                .putInt(PREF_EPG_PROGRAM_COUNT, countOfflineEpgPrograms(payload))
+                .putLong(PREF_EPG_UNTIL_MS, parseOfflineEpgUntilMs(payload))
                 .apply();
         backupCurrentSnapshotIfUseful(current);
     }
@@ -186,6 +192,9 @@ final class CatalogSnapshotStore {
                 .remove(PREF_PERMISSIONS)
                 .remove(PREF_CHANNEL_COUNT)
                 .remove(PREF_VOD_COUNT)
+                .remove(PREF_EPG_CHANNEL_COUNT)
+                .remove(PREF_EPG_PROGRAM_COUNT)
+                .remove(PREF_EPG_UNTIL_MS)
                 .apply();
     }
 
@@ -225,6 +234,9 @@ final class CatalogSnapshotStore {
                 expired,
                 prefs.getInt(PREF_CHANNEL_COUNT, 0),
                 prefs.getInt(PREF_VOD_COUNT, 0),
+                prefs.getInt(PREF_EPG_CHANNEL_COUNT, 0),
+                prefs.getInt(PREF_EPG_PROGRAM_COUNT, 0),
+                prefs.getLong(PREF_EPG_UNTIL_MS, 0L),
                 getSourceUrl(fallbackUrl),
                 getDeviceId(),
                 prefs.getString(PREF_SUBJECT, ""),
@@ -282,6 +294,43 @@ final class CatalogSnapshotStore {
             return catalog.optJSONArray(key).length();
         }
         return 0;
+    }
+
+    private static int countOfflineEpgChannels(JSONObject payload) {
+        JSONObject epg = payload == null ? null : payload.optJSONObject("epg");
+        if (epg == null) {
+            return 0;
+        }
+        int declared = epg.optInt("channel_count", 0);
+        if (declared > 0) {
+            return declared;
+        }
+        JSONObject programs = epg.optJSONObject("programs");
+        return programs == null ? 0 : programs.length();
+    }
+
+    private static int countOfflineEpgPrograms(JSONObject payload) {
+        JSONObject epg = payload == null ? null : payload.optJSONObject("epg");
+        if (epg == null) {
+            return 0;
+        }
+        int declared = epg.optInt("program_count", 0);
+        if (declared > 0) {
+            return declared;
+        }
+        JSONObject programs = epg.optJSONObject("programs");
+        if (programs == null) {
+            return 0;
+        }
+        int total = 0;
+        java.util.Iterator<String> keys = programs.keys();
+        while (keys.hasNext()) {
+            org.json.JSONArray arr = programs.optJSONArray(keys.next());
+            if (arr != null) {
+                total += arr.length();
+            }
+        }
+        return total;
     }
 
     private Map<String, String> buildSnapshotHeaders() {
@@ -346,6 +395,18 @@ final class CatalogSnapshotStore {
         return Math.max(0L, expiresAt);
     }
 
+    private static long parseOfflineEpgUntilMs(JSONObject payload) {
+        JSONObject epg = payload == null ? null : payload.optJSONObject("epg");
+        if (epg == null) {
+            return 0L;
+        }
+        long until = epg.optLong("until", 0L);
+        if (until > 0L && until < 10_000_000_000L) {
+            return until * 1000L;
+        }
+        return Math.max(0L, until);
+    }
+
     private void validateSnapshotForThisDevice(JSONObject payload) {
         if (payload == null) {
             return;
@@ -402,6 +463,9 @@ final class CatalogSnapshotStore {
         final boolean expired;
         final int channelCount;
         final int vodCount;
+        final int epgChannelCount;
+        final int epgProgramCount;
+        final long epgUntilMs;
         final String sourceUrl;
         final String deviceId;
         final String subject;
@@ -410,10 +474,14 @@ final class CatalogSnapshotStore {
         final boolean hasLastGoodBackup;
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken) {
-            this(available, sizeBytes, updatedAtMs, expiresAtMs, expired, channelCount, vodCount, sourceUrl, deviceId, subject, permissions, hasAccessToken, false);
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, expired, channelCount, vodCount, 0, 0, 0L, sourceUrl, deviceId, subject, permissions, hasAccessToken, false);
         }
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken, boolean hasLastGoodBackup) {
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, expired, channelCount, vodCount, 0, 0, 0L, sourceUrl, deviceId, subject, permissions, hasAccessToken, hasLastGoodBackup);
+        }
+
+        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken, boolean hasLastGoodBackup) {
             this.available = available;
             this.sizeBytes = sizeBytes;
             this.updatedAtMs = updatedAtMs;
@@ -421,6 +489,9 @@ final class CatalogSnapshotStore {
             this.expired = expired;
             this.channelCount = channelCount;
             this.vodCount = vodCount;
+            this.epgChannelCount = epgChannelCount;
+            this.epgProgramCount = epgProgramCount;
+            this.epgUntilMs = epgUntilMs;
             this.sourceUrl = sourceUrl == null ? "" : sourceUrl;
             this.deviceId = deviceId == null ? "" : deviceId;
             this.subject = subject == null ? "" : subject;

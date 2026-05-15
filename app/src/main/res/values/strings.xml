@@ -347,12 +347,6 @@
     <string name="recording_size_unknown">tamano desconocido</string>
     <string name="diagnostics_none">Sin datos de playback todavia</string>
     <string name="diagnostics_channel">Canal: %1$s</string>
-    <string name="diagnostics_channel_id">ID: %1$s</string>
-    <string name="diagnostics_content_type">Tipo: %1$s</string>
-    <string name="diagnostics_group">Grupo: %1$s</string>
-    <string name="diagnostics_has_fallback_url">Ruta alternativa: %1$s</string>
-    <string name="diagnostics_catalog">Catalogo: %1$s</string>
-    <string name="diagnostics_catalog_detail">actualizado %1$s  ·  caduca %2$s  ·  TV %3$d  ·  VOD %4$d</string>
     <string name="diagnostics_state">Estado: %1$s</string>
     <string name="diagnostics_route">Ruta: %1$s</string>
     <string name="diagnostics_target">URL efectiva: %1$s</string>

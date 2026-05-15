@@ -1,5 +1,6 @@
 package com.drbep.tvplayer;
 
+import android.app.AlertDialog;
 import android.content.Context;
 
 import java.util.ArrayList;
@@ -16,8 +17,6 @@ final class ChannelActionsCoordinator {
         void moveFavoriteSelected(int delta);
 
         void openPlaybackModeSelector(ChannelItem channelItem);
-
-        void openPlaybackDiagnostics(ChannelItem channelItem);
 
         void openPersonalListsSelector(ChannelItem channelItem);
 
@@ -42,8 +41,6 @@ final class ChannelActionsCoordinator {
         void cancelScheduledProgram(ChannelItem channelItem, EpgRepository.EpgProgram program);
 
         void createReminder(ChannelItem channelItem, EpgRepository.EpgProgram program);
-
-        void showActionOptions(String title, List<String> options, List<Runnable> actions);
     }
 
     private final Context context;
@@ -77,8 +74,6 @@ final class ChannelActionsCoordinator {
         actions.add(() -> host.openChannelProfile(channelItem));
         options.add(context.getString(R.string.menu_playback_mode));
         actions.add(() -> host.openPlaybackModeSelector(channelItem));
-        options.add(context.getString(R.string.tools_menu_playback_diagnostics));
-        actions.add(() -> host.openPlaybackDiagnostics(channelItem));
         options.add(context.getString(R.string.menu_mini_guide));
         actions.add(() -> host.openMiniGuide(channelItem));
         options.add(context.getString(R.string.menu_record_current_program));
@@ -92,7 +87,15 @@ final class ChannelActionsCoordinator {
         options.add(context.getString(R.string.menu_view_recordings));
         actions.add(host::openRecordings);
 
-        host.showActionOptions(channelItem.name, options, actions);
+        new AlertDialog.Builder(context)
+                .setTitle(channelItem.name)
+                .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    if (which >= 0 && which < actions.size()) {
+                        actions.get(which).run();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
     }
 
     void showProgramActionMenu(ChannelItem channelItem, EpgRepository.EpgProgram program) {
@@ -120,6 +123,14 @@ final class ChannelActionsCoordinator {
         actions.add(() -> host.openPlaybackModeSelector(channelItem));
         options.add(context.getString(R.string.menu_mini_guide));
         actions.add(() -> host.openMiniGuide(channelItem));
-        host.showActionOptions(title, options, actions);
+        new AlertDialog.Builder(context)
+                .setTitle(title)
+                .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    if (which >= 0 && which < actions.size()) {
+                        actions.get(which).run();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
     }
 }

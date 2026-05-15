@@ -47,6 +47,7 @@ import android.widget.TextView;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -634,6 +635,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void openPlaybackModeSelector(ChannelItem channelItem) {
                 MainActivity.this.showPlaybackModeDialog(channelItem);
+            }
+
+            @Override
+            public void openPlaybackDiagnostics(ChannelItem channelItem) {
+                MainActivity.this.showChannelPlaybackDiagnosticsDialog(channelItem);
             }
 
             @Override
@@ -10068,6 +10074,150 @@ public class MainActivity extends FragmentActivity {
                 })
                 .setNegativeButton(R.string.dialog_close, null)
                 .show();
+    }
+
+    private void showChannelPlaybackDiagnosticsDialog(ChannelItem channelItem) {
+        if (channelItem == null) {
+            showStatus(getString(R.string.diagnostics_none));
+            return;
+        }
+        PlayerController.PlaybackRequest request = toPlaybackRequest(channelItem);
+        PlayerController.StreamInfo streamInfo = streamInfoByChannelId.get(channelItem.id);
+        PlaybackRouteResolver.Decision decision = request == null
+                ? null
+                : new PlaybackRouteResolver(baseUrl).buildDecision(request, false, streamInfo);
+        PlaybackDiagnosticsStore.ErrorRecord storedError = playbackDiagnosticsStore == null
+                ? null
+                : playbackDiagnosticsStore.getLastError(channelItem.id);
+        PlayerController.PlaybackDiagnostics currentDiagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+        boolean isCurrentPlayback = currentChannel != null && channelItem.id != null && channelItem.id.equals(currentChannel.id);
+
+        StringBuilder message = new StringBuilder();
+        appendDiagnosticLine(message, getString(R.string.diagnostics_channel, displayName(channelItem)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_channel_id, fallbackUnknown(channelItem.id)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_content_type, channelItem.isVod ? getString(channelItem.isAdultVod ? R.string.channel_badge_vod_adult : R.string.channel_badge_vod) : getString(R.string.channel_badge_live)));
+        appendDiagnosticLine(message, getString(R.string.vod_diagnostics_source, fallbackUnknown(channelItem.platformName)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_group, fallbackUnknown(channelItem.group)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_playback_mode, formatPlaybackModeLabel(resolvePlaybackModeForRequest(channelItem))));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_route, describePlaybackRouteDecision(decision)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_target, decision == null ? fallbackUnknown(channelItem.playUrl) : fallbackUnknown(decision.targetUrl)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_mime, decision == null ? fallbackUnknown(PlaybackRouteResolver.inferMimeType(channelItem.playUrl)) : fallbackUnknown(decision.mimeType)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_drm, fallbackUnknown(decision == null ? channelItem.drmScheme : decision.drmType)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_encrypted, getString(streamInfo != null && streamInfo.encrypted ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_fallback, getString(decision != null && decision.useFallback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_has_fallback_url, getString(channelItem.fallbackPlayUrl != null && !channelItem.fallbackPlayUrl.trim().isEmpty() ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        appendDiagnosticLine(message, buildOfflineCatalogDiagnosticsLine());
+
+        String errorText = "";
+        if (isCurrentPlayback && currentDiagnostics != null) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_state, safeText(currentDiagnostics.playbackState)));
+            if (currentDiagnostics.lastError != null && !currentDiagnostics.lastError.trim().isEmpty()) {
+                errorText = currentDiagnostics.lastError;
+                appendDiagnosticLine(message, getString(R.string.diagnostics_last_error, currentDiagnostics.lastError));
+            }
+        }
+        if (storedError != null) {
+            if (errorText.trim().isEmpty()) {
+                errorText = storedError.message;
+            }
+            appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_error, storedError.shortLabel()));
+            if (!storedError.routeLabel.isEmpty()) {
+                appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_route, storedError.routeLabel));
+            }
+        }
+        if (!errorText.trim().isEmpty()) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_error_type, classifyOperationalError(errorText)));
+        }
+        appendDiagnosticLine(message, getString(R.string.diagnostics_recommendation, buildPlaybackDiagnosticsRecommendation(currentDiagnostics, storedError)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_actions_hint));
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.title_playback_diagnostics)
+                .setMessage(message.toString().trim())
+                .setPositiveButton(isCurrentPlayback ? R.string.diagnostics_action_retry_next_route : R.string.menu_tune_channel, (dialog, which) -> {
+                    if (isCurrentPlayback) {
+                        retryCurrentPlaybackWithNextRoute(channelItem);
+                    } else {
+                        tuneChannelById(channelItem.id);
+                    }
+                })
+                .setNeutralButton(R.string.offline_catalog_action_refresh, (dialog, which) -> refreshCatalogFromDiagnostics())
+                .setNegativeButton(R.string.diagnostics_action_more, (dialog, which) -> {
+                    if (isCurrentPlayback) {
+                        showPlaybackDiagnosticsActionsDialog(channelItem);
+                    } else {
+                        showChannelDiagnosticsActionsDialog(channelItem);
+                    }
+                })
+                .show();
+    }
+
+    private void showChannelDiagnosticsActionsDialog(ChannelItem channelItem) {
+        if (channelItem == null) {
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.menu_tune_channel));
+        actions.add(() -> tuneChannelById(channelItem.id));
+        options.add(getString(R.string.diagnostics_action_temporary_mode));
+        actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
+        options.add(getString(R.string.diagnostics_action_permanent_mode));
+        actions.add(() -> showPlaybackModeDialog(channelItem));
+        options.add(getString(R.string.offline_catalog_action_refresh));
+        actions.add(this::refreshCatalogFromDiagnostics);
+        options.add(getString(R.string.diagnostics_action_history));
+        actions.add(this::showPlaybackDiagnosticsHistoryDialog);
+        options.add(getString(R.string.diagnostics_action_clear_error));
+        actions.add(() -> clearPlaybackDiagnosticsError(channelItem));
+        showTvOptionsDialog(R.string.title_playback_diagnostics, displayName(channelItem), options, actions);
+    }
+
+    private String buildOfflineCatalogDiagnosticsLine() {
+        if (catalogSnapshotStore == null) {
+            return getString(R.string.diagnostics_catalog, getString(R.string.diagnostics_value_unknown));
+        }
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        String updated = status.updatedAtMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.updatedAtMs);
+        String expires = status.expiresAtMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.expiresAtMs);
+        return getString(
+                R.string.diagnostics_catalog,
+                getString(R.string.diagnostics_catalog_detail, updated, expires, status.channelCount, status.vodCount)
+        );
+    }
+
+    private void refreshCatalogFromDiagnostics() {
+        if (BuildConfig.STANDALONE_MODE) {
+            refreshOfflineCatalogFromSettings();
+        } else {
+            loadChannels();
+        }
+    }
+
+    private String describePlaybackRouteDecision(PlaybackRouteResolver.Decision decision) {
+        if (decision == null) {
+            return getString(R.string.diagnostics_state_idle);
+        }
+        if (decision.useFallback) {
+            return getString(R.string.diagnostics_route_compat);
+        }
+        if ("widevine".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
+            return getString(R.string.diagnostics_route_proxy_drm);
+        }
+        if (decision.targetUrl != null && decision.targetUrl.contains("?nodrm=1")) {
+            return getString(R.string.diagnostics_route_proxy_clear);
+        }
+        if (decision.targetUrl != null && decision.targetUrl.contains("/proxy/manifest/")) {
+            return getString(R.string.diagnostics_route_proxy_auto);
+        }
+        if (MimeTypes.APPLICATION_M3U8.equals(decision.mimeType)) {
+            return getString(R.string.diagnostics_route_direct_hls);
+        }
+        if (MimeTypes.APPLICATION_MPD.equals(decision.mimeType)) {
+            return getString(R.string.diagnostics_route_direct_dash);
+        }
+        return getString(R.string.diagnostics_route_direct_generic);
     }
 
     private void showPlaybackDiagnosticsActionsDialog(ChannelItem channelItem) {

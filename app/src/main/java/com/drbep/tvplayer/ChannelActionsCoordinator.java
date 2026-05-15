@@ -18,6 +18,8 @@ final class ChannelActionsCoordinator {
 
         void openPlaybackModeSelector(ChannelItem channelItem);
 
+        void openPlaybackDiagnostics(ChannelItem channelItem);
+
         void openPersonalListsSelector(ChannelItem channelItem);
 
         void openChannelProfile(ChannelItem channelItem);
@@ -74,6 +76,8 @@ final class ChannelActionsCoordinator {
         actions.add(() -> host.openChannelProfile(channelItem));
         options.add(context.getString(R.string.menu_playback_mode));
         actions.add(() -> host.openPlaybackModeSelector(channelItem));
+        options.add(context.getString(R.string.tools_menu_playback_diagnostics));
+        actions.add(() -> host.openPlaybackDiagnostics(channelItem));
         options.add(context.getString(R.string.menu_mini_guide));
         actions.add(() -> host.openMiniGuide(channelItem));
         options.add(context.getString(R.string.menu_record_current_program));

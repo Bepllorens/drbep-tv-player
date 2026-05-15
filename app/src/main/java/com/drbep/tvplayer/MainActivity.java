@@ -723,6 +723,10 @@ public class MainActivity extends FragmentActivity {
             if (quickAdultButton != null) quickAdultButton.setVisibility(View.GONE);
             if (quickGrabButton != null) quickGrabButton.setVisibility(View.GONE);
         }
+        if (isOfflineRecordingsDisabled()) {
+            if (quickGrabButton != null) quickGrabButton.setVisibility(View.GONE);
+            if (touchHomeGrabButton != null) touchHomeGrabButton.setVisibility(View.GONE);
+        }
         tabletOrientationLocked = prefs.getBoolean(PREF_TABLET_ORIENTATION_LOCK, false);
         initializeTabletBrightness();
         applyTabletOrientationMode();
@@ -1992,13 +1996,15 @@ public class MainActivity extends FragmentActivity {
                     rows.add(new TimelineChannelPrograms(channel, programs));
                 }
                 List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
-                try {
-                    RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
-                    if (scheduledResult != null && scheduledResult.items != null) {
-                        scheduledItems.addAll(scheduledResult.items);
+                if (!isOfflineRecordingsDisabled()) {
+                    try {
+                        RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
+                        if (scheduledResult != null && scheduledResult.items != null) {
+                            scheduledItems.addAll(scheduledResult.items);
+                        }
+                    } catch (Exception scheduledErr) {
+                        Log.w(TAG, "timeline scheduled recordings fetch failed", scheduledErr);
                     }
-                } catch (Exception scheduledErr) {
-                    Log.w(TAG, "timeline scheduled recordings fetch failed", scheduledErr);
                 }
                 uiHandler.post(() -> {
                     if (rows.isEmpty()) {
@@ -2065,13 +2071,15 @@ public class MainActivity extends FragmentActivity {
                 if (!sportsEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_sports), sportsEntries));
 
                 List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
-                try {
-                    RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
-                    if (scheduledResult != null && scheduledResult.items != null) {
-                        scheduledItems.addAll(scheduledResult.items);
+                if (!isOfflineRecordingsDisabled()) {
+                    try {
+                        RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
+                        if (scheduledResult != null && scheduledResult.items != null) {
+                            scheduledItems.addAll(scheduledResult.items);
+                        }
+                    } catch (Exception scheduledErr) {
+                        Log.w(TAG, "visual epg scheduled recordings fetch failed", scheduledErr);
                     }
-                } catch (Exception scheduledErr) {
-                    Log.w(TAG, "visual epg scheduled recordings fetch failed", scheduledErr);
                 }
                 uiHandler.post(() -> {
                     if (sections.isEmpty()) {
@@ -3094,7 +3102,11 @@ public class MainActivity extends FragmentActivity {
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.title_touch_program_info))
                 .setView(container)
-                .setPositiveButton(R.string.menu_record, (d, which) -> scheduleProgram(channel, program))
+                .setPositiveButton(isOfflineRecordingsDisabled() ? R.string.dialog_close : R.string.menu_record, (d, which) -> {
+                    if (!isOfflineRecordingsDisabled()) {
+                        scheduleProgram(channel, program);
+                    }
+                })
                 .setNegativeButton(R.string.dialog_close, null)
                 .create();
         dialog.setOnDismissListener(d -> Glide.with(this).clear(posterView));
@@ -3102,6 +3114,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void createScheduleFromEndpoint(ChannelItem ch, boolean next) {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         fetchProgramForChannel(ch, next, false);
     }
 
@@ -3137,6 +3152,9 @@ public class MainActivity extends FragmentActivity {
 
     private void scheduleProgram(ChannelItem ch, EpgRepository.EpgProgram program) {
         if (ch == null || program == null) {
+            return;
+        }
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
             return;
         }
         ioExecutor.execute(() -> {
@@ -3208,6 +3226,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void cancelScheduledProgram(ChannelItem ch, EpgRepository.EpgProgram program) {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         RecordingsRepository.RecordingItem scheduled = findScheduledProgramRecording(ch, program, activeProgramScheduledItems);
         if (scheduled == null) {
             showStatus(getString(R.string.status_failed_cancel_scheduled_recording));
@@ -3248,6 +3269,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openRecordingsBrowser() {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         Log.d(TAG, "openRecordingsBrowser scheduledMode=" + recordingsController.isScheduledMode());
         loadRecordingsPanel(recordingsController.isScheduledMode(), recordingsController.getLastSelectedId());
     }
@@ -3324,6 +3348,9 @@ public class MainActivity extends FragmentActivity {
         if (item == null || item.playable) {
             return;
         }
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         showStatus(getString(R.string.status_canceling_scheduled_recording));
         ioExecutor.execute(() -> {
             try {
@@ -3340,6 +3367,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showScheduledRecordingEditDialog() {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
         if (item == null || item.playable) {
             return;
@@ -3369,6 +3399,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void adjustSelectedScheduledRecording(long startDeltaMs, long endDeltaMs) {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
         if (item == null || item.playable) {
             return;
@@ -3401,6 +3434,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void playRecording(RecordingsRepository.RecordingItem item, String basePath) {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         if (item == null || !item.playable) {
             showStatus(getString(R.string.status_recording_not_playable));
             return;
@@ -5634,8 +5670,10 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showVodLibraryDialog);
         options.add(getString(R.string.tools_section_lists));
         actions.add(this::showListsToolsDialog);
-        options.add(getString(R.string.tools_section_recordings));
-        actions.add(this::showRecordingsToolsDialog);
+        if (!isOfflineRecordingsDisabled()) {
+            options.add(getString(R.string.tools_section_recordings));
+            actions.add(this::showRecordingsToolsDialog);
+        }
         options.add(getString(R.string.tools_section_multiview));
         actions.add(this::showMultiviewToolsDialog);
         options.add(getString(R.string.tools_section_settings));
@@ -6153,7 +6191,23 @@ public class MainActivity extends FragmentActivity {
         showTvOptionsDialog(R.string.tools_section_lists, null, options, actions);
     }
 
+    private boolean isOfflineRecordingsDisabled() {
+        return BuildConfig.STANDALONE_MODE;
+    }
+
+    private boolean showOfflineRecordingsUnavailableIfNeeded() {
+        if (!isOfflineRecordingsDisabled()) {
+            return false;
+        }
+        hideRecordingsPanel();
+        showStatus(getString(R.string.status_recordings_unavailable_offline));
+        return true;
+    }
+
     private void showRecordingsToolsDialog() {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.tools_menu_recordings_panel));
@@ -6389,6 +6443,16 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showRecordingSettingsDialog() {
+        if (isOfflineRecordingsDisabled()) {
+            List<String> options = new ArrayList<>();
+            List<Runnable> actions = new ArrayList<>();
+            options.add(getString(R.string.settings_recordings_clear_progress));
+            actions.add(() -> confirmSettingsAction(R.string.settings_recordings_clear_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress));
+            options.add(getString(R.string.settings_action_view_summary));
+            actions.add(() -> showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_offline_summary, recordingResumePositions.size())));
+            showTvOptionsDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_offline_summary, recordingResumePositions.size()), options, actions);
+            return;
+        }
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(recordingsAutoRefreshEnabled ? R.string.settings_recordings_auto_off : R.string.settings_recordings_auto_on));
@@ -6483,6 +6547,7 @@ public class MainActivity extends FragmentActivity {
                 catalogHealth,
                 status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
+                buildOfflineRecordingsStateSummary(),
                 lastCatalogAttempt,
                 lastCatalogSuccess,
                 lastCatalogError,
@@ -6492,6 +6557,12 @@ public class MainActivity extends FragmentActivity {
                 maintenanceError,
                 buildNextOfflineSyncSummary(status)
         );
+    }
+
+    private String buildOfflineRecordingsStateSummary() {
+        return isOfflineRecordingsDisabled()
+                ? getString(R.string.settings_offline_recordings_disabled)
+                : getString(R.string.settings_offline_recordings_enabled);
     }
 
     private String buildOfflineCatalogHealth(CatalogSnapshotStore.SnapshotStatus status) {
@@ -7474,19 +7545,21 @@ public class MainActivity extends FragmentActivity {
             String recordingBasePath = "";
             int completedCount = 0;
             int scheduledCount = 0;
-            try {
-                RecordingsRepository.RecordingsResult completed = recordingsRepository.fetchCompletedRecordings();
-                recordingBasePath = completed == null ? "" : completed.basePath;
-                completedCount = completed == null || completed.items == null ? 0 : completed.items.size();
-                resumeRecording = findResumeRecording(completed);
-            } catch (Exception e) {
-                Log.w(TAG, "startup completed recordings summary failed", e);
-            }
-            try {
-                RecordingsRepository.RecordingsResult scheduled = recordingsRepository.fetchScheduledRecordings();
-                scheduledCount = scheduled == null || scheduled.items == null ? 0 : scheduled.items.size();
-            } catch (Exception e) {
-                Log.w(TAG, "startup scheduled recordings summary failed", e);
+            if (!isOfflineRecordingsDisabled()) {
+                try {
+                    RecordingsRepository.RecordingsResult completed = recordingsRepository.fetchCompletedRecordings();
+                    recordingBasePath = completed == null ? "" : completed.basePath;
+                    completedCount = completed == null || completed.items == null ? 0 : completed.items.size();
+                    resumeRecording = findResumeRecording(completed);
+                } catch (Exception e) {
+                    Log.w(TAG, "startup completed recordings summary failed", e);
+                }
+                try {
+                    RecordingsRepository.RecordingsResult scheduled = recordingsRepository.fetchScheduledRecordings();
+                    scheduledCount = scheduled == null || scheduled.items == null ? 0 : scheduled.items.size();
+                } catch (Exception e) {
+                    Log.w(TAG, "startup scheduled recordings summary failed", e);
+                }
             }
             StartupHubState state = new StartupHubState(current, lastVod, resumeRecording, recordingBasePath, completedCount, scheduledCount);
             uiHandler.post(() -> showStartupHubDialog(state));
@@ -7553,8 +7626,10 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> applyQuickOverlayTarget("vod"));
         options.add(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
         actions.add(() -> applyQuickOverlayTarget("vod-adult"));
-        options.add(getString(R.string.quick_hub_recordings));
-        actions.add(this::openRecordingsBrowser);
+        if (!isOfflineRecordingsDisabled()) {
+            options.add(getString(R.string.quick_hub_recordings));
+            actions.add(this::openRecordingsBrowser);
+        }
         options.add(getString(R.string.quick_hub_recent));
         actions.add(this::showRecentChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_favorites));
@@ -7581,18 +7656,19 @@ public class MainActivity extends FragmentActivity {
         int recentCount = buildRecentQuickChannels().size();
         int completed = state == null ? 0 : state.completedRecordings;
         int scheduled = state == null ? 0 : state.scheduledRecordings;
-        return getString(
-                R.string.startup_hub_message_v2,
-                BuildConfig.VERSION_NAME,
-                buildCurrentFilterLabel(),
-                channels.size(),
-                vodCount,
-                adultCount,
-                favoriteCount,
-                recentCount,
-                completed,
-                scheduled
-        );
+        if (isOfflineRecordingsDisabled()) {
+            return getString(
+                    R.string.startup_hub_message_offline,
+                    BuildConfig.VERSION_NAME,
+                    buildCurrentFilterLabel(),
+                    channels.size(),
+                    vodCount,
+                    adultCount,
+                    favoriteCount,
+                    recentCount
+            );
+        }
+        return getString(R.string.startup_hub_message_v2, BuildConfig.VERSION_NAME, buildCurrentFilterLabel(), channels.size(), vodCount, adultCount, favoriteCount, recentCount, completed, scheduled);
     }
 
     private void disableStartupHub() {
@@ -7635,7 +7711,7 @@ public class MainActivity extends FragmentActivity {
         });
         options.add(getString(R.string.quick_hub_continue_vod));
         actions.add(this::openLastVod);
-        RecordingsRepository.RecordingItem resumeRecording = findLocalResumeRecording();
+        RecordingsRepository.RecordingItem resumeRecording = isOfflineRecordingsDisabled() ? null : findLocalResumeRecording();
         if (resumeRecording != null) {
             options.add(getString(R.string.quick_hub_continue_recording, buildRecordingTitle(resumeRecording)));
             actions.add(() -> openRecordingsBrowser());
@@ -7652,8 +7728,10 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showFavoriteChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_lists));
         actions.add(this::showPersonalListsManagerDialog);
-        options.add(getString(R.string.quick_hub_recordings));
-        actions.add(this::openRecordingsBrowser);
+        if (!isOfflineRecordingsDisabled()) {
+            options.add(getString(R.string.quick_hub_recordings));
+            actions.add(this::openRecordingsBrowser);
+        }
         options.add(getString(R.string.quick_hub_timeline));
         actions.add(this::openTimelineGuideAroundSelection);
         options.add(getString(R.string.quick_hub_epg_search));
@@ -8619,6 +8697,9 @@ public class MainActivity extends FragmentActivity {
                 GLOBAL_SEARCH_FILTER_RECORDINGS
         };
         for (int filter : filters) {
+            if (filter == GLOBAL_SEARCH_FILTER_RECORDINGS && isOfflineRecordingsDisabled()) {
+                continue;
+            }
             TextView chip = new TextView(this);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             params.rightMargin = dp(8);
@@ -8695,7 +8776,7 @@ public class MainActivity extends FragmentActivity {
                 Log.w(TAG, "global EPG search failed", e);
             }
             try {
-                if (requestedFilter == GLOBAL_SEARCH_FILTER_ALL || requestedFilter == GLOBAL_SEARCH_FILTER_RECORDINGS) {
+                if (!isOfflineRecordingsDisabled() && (requestedFilter == GLOBAL_SEARCH_FILTER_ALL || requestedFilter == GLOBAL_SEARCH_FILTER_RECORDINGS)) {
                     remoteResults.addAll(buildGlobalRecordingResults(query));
                 }
             } catch (Exception e) {
@@ -8956,6 +9037,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<GlobalSearchResult> buildGlobalRecordingResults(String query) throws Exception {
+        if (isOfflineRecordingsDisabled()) {
+            return new ArrayList<>();
+        }
         List<GlobalSearchResult> results = new ArrayList<>();
         List<GlobalSearchResult> matches = new ArrayList<>();
         RecordingsRepository.RecordingsResult completed = recordingsRepository.fetchCompletedRecordings();

@@ -34,6 +34,7 @@
     <string name="startup_hub_title">Inicio DRBEP TV</string>
     <string name="startup_hub_message">Version %1$s activa\nFiltro restaurado: %2$s\n%3$d elementos visibles</string>
     <string name="startup_hub_message_v2">Version %1$s activa\nFiltro: %2$s  ·  TV %3$d  ·  VOD %4$d  ·  Adult %5$d\nFavoritos %6$d  ·  Recientes %7$d  ·  Grabaciones %8$d/%9$d programadas</string>
+    <string name="startup_hub_message_offline">Version %1$s activa\nFiltro: %2$s  ·  TV %3$d  ·  VOD %4$d  ·  Adult %5$d\nFavoritos %6$d  ·  Recientes %7$d\nGrabaciones no disponibles en modo independiente</string>
     <string name="startup_hub_continue_channel">Continuar canal: %1$s</string>
     <string name="startup_hub_continue_vod">Continuar VOD: %1$s</string>
     <string name="startup_hub_continue_vod_progress">Continuar VOD: %1$s (%2$s)</string>
@@ -63,6 +64,7 @@
     <string name="status_recordings_showing_scheduled">No hay completadas, mostrando programadas</string>
     <string name="status_recordings_showing_completed">No hay programadas, mostrando completadas</string>
     <string name="status_no_scheduled_recordings">No hay grabaciones programadas</string>
+    <string name="status_recordings_unavailable_offline">Grabaciones no disponibles en modo independiente</string>
     <string name="status_failed_load_recordings">No se pudieron cargar grabaciones</string>
     <string name="status_failed_load_scheduled_recordings">No se pudieron cargar las programadas</string>
     <string name="status_recording_not_playable">Esta grabacion aun no se puede reproducir</string>
@@ -593,7 +595,7 @@
     <string name="settings_section_offline_catalog">Catalogo independiente</string>
     <string name="settings_section_offline_system">Sistema offline</string>
     <string name="settings_offline_system_status">Estado del sistema offline</string>
-    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nToken: %5$s\nDispositivo: %6$s\nUltimo intento catalogo: %7$s\nUltimo catalogo OK: %8$s\nUltimo error catalogo: %9$s\nActualizaciones: %10$s\nRecientes/diagnostico: %11$s\nUltimo mantenimiento: %12$s\nError mantenimiento: %13$s\nSiguiente sincronizacion: %14$s</string>
+    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nToken: %5$s\nDispositivo: %6$s\nGrabaciones: %7$s\nUltimo intento catalogo: %8$s\nUltimo catalogo OK: %9$s\nUltimo error catalogo: %10$s\nActualizaciones: %11$s\nRecientes/diagnostico: %12$s\nUltimo mantenimiento: %13$s\nError mantenimiento: %14$s\nSiguiente sincronizacion: %15$s</string>
     <string name="settings_offline_full_sync">Sincronizar ahora catalogo y app</string>
     <string name="settings_offline_full_sync_running">Sincronizando sistema offline...</string>
     <string name="settings_offline_sync_history">Historial de sincronizacion</string>
@@ -612,6 +614,8 @@
     <string name="settings_offline_health_no_token">Sin token activo</string>
     <string name="settings_offline_health_expiring">Catalogo caduca en %1$s</string>
     <string name="settings_offline_health_ok">Correcto</string>
+    <string name="settings_offline_recordings_disabled">no disponibles en modo independiente</string>
+    <string name="settings_offline_recordings_enabled">activas con backend</string>
     <string name="settings_update_state_error">Comprobado %1$s · Error %2$s: %3$s</string>
     <string name="settings_update_state_available">Comprobado %1$s · Disponible %2$s (%3$d)</string>
     <string name="settings_update_state_available_short">Disponible %1$s (%2$d)</string>
@@ -651,6 +655,7 @@
     <string name="settings_search_summary">Busquedas recientes guardadas: %1$d\nLa busqueda global ignora mayusculas y acentos.</string>
     <string name="settings_search_clear_recent">Limpiar busquedas recientes</string>
     <string name="settings_recordings_summary">Auto refresco: %1$s\nGrabaciones con progreso: %2$d</string>
+    <string name="settings_recordings_offline_summary">Grabaciones no disponibles en modo independiente.\nProgreso local guardado: %1$d</string>
     <string name="settings_recordings_auto_on">Activar auto refresco</string>
     <string name="settings_recordings_auto_off">Desactivar auto refresco</string>
     <string name="settings_recordings_clear_progress">Limpiar progreso de grabaciones</string>

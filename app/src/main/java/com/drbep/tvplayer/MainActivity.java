@@ -253,6 +253,7 @@ public class MainActivity extends FragmentActivity {
 
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final Runnable recordingsAutoRefreshRunnable = new Runnable() {
         @Override
@@ -288,6 +289,8 @@ public class MainActivity extends FragmentActivity {
     private final List<ChannelItem> allChannels = new ArrayList<>();
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
+    private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
+    private volatile boolean epgLoadInFlight = false;
     private final LruCache<String, Drawable> channelLogoCache = new LruCache<>(96);
     private ChannelAdapter channelAdapter;
     private CatalogRepository catalogRepository;
@@ -1675,9 +1678,7 @@ public class MainActivity extends FragmentActivity {
         lastApplyChannelsDurationMs = System.currentTimeMillis() - startMs;
         showStatus(getString(R.string.status_channels_ready, channels.size(), lastCatalogLoadDurationMs));
         prefetchCurrentChannelLogos();
-        if (!BuildConfig.STANDALONE_MODE) {
-            uiHandler.postDelayed(this::loadEpgNow, 450L);
-        }
+        uiHandler.postDelayed(this::loadEpgNow, BuildConfig.STANDALONE_MODE ? 250L : 450L);
         uiHandler.postDelayed(this::maybeShowStartupHub, 700L);
     }
 
@@ -1828,26 +1829,94 @@ public class MainActivity extends FragmentActivity {
 
 
     private void loadEpgNow() {
+        if (epgLoadInFlight) {
+            Log.d(TAG, "skip loadEpgNow because a load is already in progress");
+            return;
+        }
+        final List<ChannelItem> allChannelsSnapshot = new ArrayList<>(allChannels);
+        final List<ChannelItem> visibleChannelsSnapshot = new ArrayList<>(channels);
+        epgLoadInFlight = true;
         long startMs = System.currentTimeMillis();
-        ioExecutor.execute(() -> {
+        epgExecutor.execute(() -> {
             try {
-                Map<String, String> updates = epgRepository.fetchNowPrograms();
+                Map<String, String> updates;
+                Map<String, EpgRepository.EpgProgramPair> pairs = new HashMap<>();
+                if (BuildConfig.STANDALONE_MODE) {
+                    pairs = epgRepository.fetchProgramPairsForChannels(allChannelsSnapshot);
+                    updates = buildNowProgramUpdatesFromPairs(pairs);
+                } else {
+                    updates = epgRepository.fetchNowPrograms();
+                }
+                Map<String, EpgRepository.EpgProgramPair> finalPairs = pairs;
 
                 uiHandler.post(() -> {
+                    epgLoadInFlight = false;
                     lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                     epgNowByChannelId.clear();
                     epgNowByChannelId.putAll(updates);
-                    for (ChannelItem item : allChannels) {
-                        item.nowProgram = epgNowByChannelId.getOrDefault(item.id, "");
-                    }
+                    epgProgramPairByChannelId.clear();
+                    epgProgramPairByChannelId.putAll(finalPairs);
+                    int filled = applyProgramPairUpdates(allChannels, epgNowByChannelId, epgProgramPairByChannelId);
+                    applyProgramPairUpdates(channels, epgNowByChannelId, epgProgramPairByChannelId);
+                    Log.i(TAG, "EPG now loaded updates=" + updates.size()
+                            + " filledChannels=" + filled
+                            + " totalChannels=" + allChannels.size()
+                            + " snapshotChannels=" + allChannelsSnapshot.size()
+                            + " visibleSnapshotChannels=" + visibleChannelsSnapshot.size()
+                            + " standalone=" + BuildConfig.STANDALONE_MODE
+                            + " durationMs=" + lastEpgNowLoadDurationMs);
                     channelAdapter.notifyDataSetChanged();
                     updateOverlayPanel();
+                    ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+                    if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
+                        showZapBanner(currentChannel);
+                    }
                 });
             } catch (Exception e) {
+                epgLoadInFlight = false;
                 lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                 Log.w(TAG, "load epg now failed", e);
             }
         });
+    }
+
+    private Map<String, String> buildNowProgramUpdatesFromPairs(Map<String, EpgRepository.EpgProgramPair> pairs) {
+        Map<String, String> updates = new HashMap<>();
+        if (pairs == null || pairs.isEmpty()) {
+            return updates;
+        }
+        for (Map.Entry<String, EpgRepository.EpgProgramPair> entry : pairs.entrySet()) {
+            EpgRepository.EpgProgram current = entry.getValue() == null ? null : entry.getValue().current;
+            if (current == null || current.title == null || current.title.trim().isEmpty()) {
+                continue;
+            }
+            String title = current.title.trim();
+            if (current.progress >= 0) {
+                title = title + " (" + current.progress + "%)";
+            }
+            updates.put(entry.getKey(), title);
+        }
+        return updates;
+    }
+
+    private int applyProgramPairUpdates(List<ChannelItem> items, Map<String, String> updates, Map<String, EpgRepository.EpgProgramPair> pairs) {
+        if (items == null || items.isEmpty()) {
+            return 0;
+        }
+        int filled = 0;
+        for (ChannelItem item : items) {
+            if (item == null) {
+                continue;
+            }
+            item.nowProgram = updates == null ? "" : updates.getOrDefault(item.id, "");
+            EpgRepository.EpgProgramPair pair = pairs == null ? null : pairs.get(item.id);
+            EpgRepository.EpgProgram next = pair == null ? null : pair.next;
+            item.nextProgram = next == null || next.title == null ? "" : next.title.trim();
+            if (item.nowProgram != null && !item.nowProgram.trim().isEmpty()) {
+                filled++;
+            }
+        }
+        return filled;
     }
 
     private void showChannelActionMenu() {
@@ -1866,7 +1935,7 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_loading_guide));
         ioExecutor.execute(() -> {
             try {
-                List<EpgRepository.EpgProgram> items = epgRepository.fetchChannelPrograms(ch.id, 8);
+                List<EpgRepository.EpgProgram> items = epgRepository.fetchChannelPrograms(ch, 8);
                 uiHandler.post(() -> {
                     if (items.isEmpty()) {
                         showStatus(getString(R.string.status_no_epg_for_channel));
@@ -1992,7 +2061,7 @@ public class MainActivity extends FragmentActivity {
             try {
                 List<TimelineChannelPrograms> rows = new ArrayList<>();
                 for (ChannelItem channel : channels) {
-                    List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel.id, 12);
+                    List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel, 12);
                     rows.add(new TimelineChannelPrograms(channel, programs));
                 }
                 List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
@@ -2495,7 +2564,7 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_searching_current_program));
         ioExecutor.execute(() -> {
             try {
-                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(channel.id, false);
+                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(channel, false);
                 if (program == null) {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;
@@ -3131,7 +3200,7 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(next ? R.string.status_searching_next_program : R.string.status_searching_current_program));
         ioExecutor.execute(() -> {
             try {
-                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(ch.id, next);
+                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(ch, next);
                 if (program == null) {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;
@@ -5021,6 +5090,24 @@ public class MainActivity extends FragmentActivity {
         return fallback;
     }
 
+    private boolean shouldShowGenericVodQuickTarget(boolean adult) {
+        for (ChannelFilter filter : filters) {
+            if (filter == null || filter.key == null) {
+                continue;
+            }
+            if (adult) {
+                if (filter.type == FILTER_VOD_ADULT && !"vod-adult".equals(filter.key)) {
+                    return false;
+                }
+            } else {
+                if (filter.type == FILTER_VOD && !"vod".equals(filter.key)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private int countItemsForQuickTarget(String targetKey) {
         if ("grab".equals(targetKey)) {
             RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
@@ -5062,8 +5149,22 @@ public class MainActivity extends FragmentActivity {
         boolean vodActive = !favoritesOnly && isVodFilterSelected(false);
         boolean adultActive = !favoritesOnly && isVodFilterSelected(true);
         styleQuickAccessButton(quickTvButton, tvActive, getString(R.string.overlay_quick_tv, countItemsForQuickTarget("tv")));
-        styleQuickAccessButton(quickVodButton, vodActive, getString(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")));
-        styleQuickAccessButton(quickAdultButton, adultActive, getString(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")));
+        if (quickVodButton != null) {
+            if (shouldShowGenericVodQuickTarget(false)) {
+                quickVodButton.setVisibility(View.VISIBLE);
+                styleQuickAccessButton(quickVodButton, vodActive, getString(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")));
+            } else {
+                quickVodButton.setVisibility(View.GONE);
+            }
+        }
+        if (quickAdultButton != null) {
+            if (shouldShowGenericVodQuickTarget(true)) {
+                quickAdultButton.setVisibility(View.VISIBLE);
+                styleQuickAccessButton(quickAdultButton, adultActive, getString(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")));
+            } else {
+                quickAdultButton.setVisibility(View.GONE);
+            }
+        }
         styleQuickAccessButton(quickGrabButton, isRecordingsPanelVisible(), getString(R.string.overlay_quick_grab));
     }
 
@@ -5090,8 +5191,22 @@ public class MainActivity extends FragmentActivity {
             touchHomeSubtitleText.setText(subtitle);
         }
         styleHomeHubPrimaryButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
-        styleHomeHubPrimaryButton(touchHomeVodButton, !favoritesOnly && isVodFilterSelected(false), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
-        styleHomeHubPrimaryButton(touchHomeAdultButton, !favoritesOnly && isVodFilterSelected(true), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+        if (touchHomeVodButton != null) {
+            if (shouldShowGenericVodQuickTarget(false)) {
+                touchHomeVodButton.setVisibility(View.VISIBLE);
+                styleHomeHubPrimaryButton(touchHomeVodButton, !favoritesOnly && isVodFilterSelected(false), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
+            } else {
+                touchHomeVodButton.setVisibility(View.GONE);
+            }
+        }
+        if (touchHomeAdultButton != null) {
+            if (shouldShowGenericVodQuickTarget(true)) {
+                touchHomeAdultButton.setVisibility(View.VISIBLE);
+                styleHomeHubPrimaryButton(touchHomeAdultButton, !favoritesOnly && isVodFilterSelected(true), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+            } else {
+                touchHomeAdultButton.setVisibility(View.GONE);
+            }
+        }
         styleHomeHubPrimaryButton(touchHomeGrabButton, false, getString(R.string.touch_home_button_grab));
         styleHomeHubSecondaryButton(touchHomeRecentButton, false, getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()));
         styleHomeHubSecondaryButton(touchHomeFavoritesButton, favoritesOnly || "favorites".equals(selectedFilterKey), getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
@@ -5625,16 +5740,16 @@ public class MainActivity extends FragmentActivity {
         ChannelItem currentChannel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : findChannelItemById(lastChannelId);
         if (currentChannel == null) {
             overlayCurrentChannelText.setText(getString(R.string.status_ready));
+            overlayCurrentMetaText.setVisibility(View.VISIBLE);
             overlayCurrentMetaText.setText(getString(R.string.overlay_current_program_empty));
         } else {
             overlayCurrentChannelText.setText(displayName(currentChannel));
-            String currentProgram = currentChannel.nowProgram == null || currentChannel.nowProgram.trim().isEmpty()
-                    ? getString(R.string.overlay_current_program_empty)
-                    : getString(R.string.overlay_current_program, currentChannel.nowProgram);
+            String currentProgram = buildOverlayProgramSummary(currentChannel);
             String tag = profileTag(currentChannel);
             if (!tag.isEmpty()) {
                 currentProgram = tag + "  ·  " + currentProgram;
             }
+            overlayCurrentMetaText.setVisibility(View.VISIBLE);
             overlayCurrentMetaText.setText(currentProgram);
         }
 
@@ -5645,6 +5760,7 @@ public class MainActivity extends FragmentActivity {
         overlayPlaybackRouteText.setText(getString(R.string.overlay_playback_route, routeLabel));
 
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        overlayRecentText.setVisibility(View.VISIBLE);
         if (items.isEmpty()) {
             overlayRecentText.setText(getString(R.string.overlay_recent_channels_empty));
             return;
@@ -5655,6 +5771,26 @@ public class MainActivity extends FragmentActivity {
             names.add(items.get(i).channelName);
         }
         overlayRecentText.setText(getString(R.string.overlay_recent_channels, joinLabels(names)));
+    }
+
+    private String buildOverlayProgramSummary(ChannelItem channel) {
+        String currentLine = channel == null || channel.nowProgram == null || channel.nowProgram.trim().isEmpty()
+                ? getString(R.string.overlay_current_program_empty)
+                : getString(R.string.overlay_current_program, channel.nowProgram.trim());
+        String nextLine = channel == null || channel.nextProgram == null || channel.nextProgram.trim().isEmpty()
+                ? getString(R.string.overlay_next_program_empty)
+                : getString(R.string.overlay_next_program, channel.nextProgram.trim());
+        return currentLine + "\n" + nextLine;
+    }
+
+    private String buildZapProgramSummary(ChannelItem channel) {
+        if (channel != null && channel.nowProgram != null && !channel.nowProgram.trim().isEmpty()) {
+            if (channel.nextProgram != null && !channel.nextProgram.trim().isEmpty()) {
+                return channel.nowProgram.trim() + "  ·  " + getString(R.string.overlay_next_program_short, channel.nextProgram.trim());
+            }
+            return channel.nowProgram.trim();
+        }
+        return getString(R.string.zap_banner_empty_meta);
     }
 
     private void showV12ToolsMenu() {
@@ -7636,10 +7772,14 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showGlobalSearchDialog);
         options.add(getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
         actions.add(() -> applyQuickOverlayTarget("tv"));
-        options.add(getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
-        actions.add(() -> applyQuickOverlayTarget("vod"));
-        options.add(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
-        actions.add(() -> applyQuickOverlayTarget("vod-adult"));
+        if (shouldShowGenericVodQuickTarget(false)) {
+            options.add(getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
+            actions.add(() -> applyQuickOverlayTarget("vod"));
+        }
+        if (shouldShowGenericVodQuickTarget(true)) {
+            options.add(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+            actions.add(() -> applyQuickOverlayTarget("vod-adult"));
+        }
         if (!isOfflineRecordingsDisabled()) {
             options.add(getString(R.string.quick_hub_recordings));
             actions.add(this::openRecordingsBrowser);
@@ -9253,7 +9393,7 @@ public class MainActivity extends FragmentActivity {
         int maxChannels = Math.min(80, searchScope.size());
         for (int i = 0; i < maxChannels; i++) {
             ChannelItem channel = searchScope.get(i);
-            List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel.id, 18);
+            List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel, 18);
             for (EpgRepository.EpgProgram program : programs) {
                 if (program == null) {
                     continue;
@@ -10705,9 +10845,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         zapChannelText.setText(channelItem.name);
-        String meta = channelItem.nowProgram == null || channelItem.nowProgram.trim().isEmpty()
-                ? getString(R.string.zap_banner_empty_meta)
-                : channelItem.nowProgram;
+        String meta = buildZapProgramSummary(channelItem);
         zapMetaText.setText(meta);
         zapBanner.setVisibility(View.VISIBLE);
         uiHandler.removeCallbacks(hideZapBannerRunnable);

@@ -14,6 +14,7 @@ final class EpgRepository {
     static final class EpgProgram {
         final String channelId;
         final String channelName;
+        final String tvgId;
         final String title;
         final String icon;
         final String description;
@@ -23,12 +24,13 @@ final class EpgRepository {
         final int progress;
 
         EpgProgram(String channelId, String channelName, String title, String icon, String description, String startTime, String endTime, int progress) {
-            this(channelId, channelName, title, icon, description, startTime, endTime, "", progress);
+            this(channelId, channelName, "", title, icon, description, startTime, endTime, "", progress);
         }
 
-        EpgProgram(String channelId, String channelName, String title, String icon, String description, String startTime, String endTime, String category, int progress) {
+        EpgProgram(String channelId, String channelName, String tvgId, String title, String icon, String description, String startTime, String endTime, String category, int progress) {
             this.channelId = channelId;
             this.channelName = channelName;
+            this.tvgId = tvgId == null ? "" : tvgId;
             this.title = title;
             this.icon = icon;
             this.description = description;
@@ -39,6 +41,16 @@ final class EpgRepository {
         }
     }
 
+    static final class EpgProgramPair {
+        final EpgProgram current;
+        final EpgProgram next;
+
+        EpgProgramPair(EpgProgram current, EpgProgram next) {
+            this.current = current;
+            this.next = next;
+        }
+    }
+
     private final String baseUrl;
     private final HttpClient httpClient;
     private final CatalogSnapshotStore snapshotStore;
@@ -46,8 +58,10 @@ final class EpgRepository {
     private final Map<String, CachedPrograms> programsCache = new HashMap<>();
     private final Map<String, CachedPrograms> categoryCache = new HashMap<>();
     private CachedNowPrograms cachedNowPrograms;
+    private CachedOfflineProgramMap cachedOfflineProgramMap;
     private static final long PROGRAMS_CACHE_MS = 120000L;
     private static final long NOW_CACHE_MS = 45000L;
+    private static final long OFFLINE_PROGRAM_MAP_CACHE_MS = 120000L;
 
     EpgRepository(String baseUrl) {
         this(baseUrl, null, false);
@@ -110,6 +124,58 @@ final class EpgRepository {
         return updates;
     }
 
+    Map<String, String> fetchNowProgramsForChannels(List<ChannelItem> channelItems) throws Exception {
+        if (!standaloneMode) {
+            return fetchNowPrograms();
+        }
+        Map<String, String> updates = new LinkedHashMap<>();
+        for (Map.Entry<String, EpgProgramPair> entry : fetchProgramPairsForChannels(channelItems).entrySet()) {
+            EpgProgram program = entry.getValue() == null ? null : entry.getValue().current;
+            if (program == null || program.title == null || program.title.trim().isEmpty()) {
+                continue;
+            }
+            String title = program.title.trim();
+            if (program.progress >= 0) {
+                title = title + " (" + program.progress + "%)";
+            }
+            updates.put(entry.getKey(), title);
+        }
+        cachedNowPrograms = new CachedNowPrograms(System.currentTimeMillis(), updates);
+        return updates;
+    }
+
+    Map<String, EpgProgramPair> fetchProgramPairsForChannels(List<ChannelItem> channelItems) throws Exception {
+        Map<String, EpgProgramPair> out = new LinkedHashMap<>();
+        if (channelItems == null || channelItems.isEmpty()) {
+            return out;
+        }
+        long now = System.currentTimeMillis();
+        for (ChannelItem channel : channelItems) {
+            if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
+                continue;
+            }
+            List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
+            EpgProgram current = null;
+            EpgProgram next = null;
+            for (EpgProgram row : rows) {
+                long startMs = parseIsoMillis(row.startTime);
+                long endMs = parseIsoMillis(row.endTime);
+                if (current == null && startMs <= now && endMs > now) {
+                    current = programWithProgress(row, now);
+                    continue;
+                }
+                if (startMs > now) {
+                    next = programWithProgress(row, now);
+                    break;
+                }
+            }
+            if (current != null || next != null) {
+                out.put(channel.id.trim(), new EpgProgramPair(current, next));
+            }
+        }
+        return out;
+    }
+
     List<EpgProgram> fetchChannelPrograms(String channelId, int maxItems) throws Exception {
         String cacheKey = String.valueOf(channelId).trim() + "|" + maxItems;
         long now = System.currentTimeMillis();
@@ -149,6 +215,29 @@ final class EpgRepository {
         return programs;
     }
 
+    List<EpgProgram> fetchChannelPrograms(ChannelItem channel, int maxItems) throws Exception {
+        if (channel == null) {
+            return new ArrayList<>();
+        }
+        if (!standaloneMode) {
+            return fetchChannelPrograms(channel.id, maxItems);
+        }
+        long now = System.currentTimeMillis();
+        List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
+        List<EpgProgram> out = new ArrayList<>();
+        int limit = maxItems <= 0 ? rows.size() : maxItems;
+        for (EpgProgram program : rows) {
+            if (parseIsoMillis(program.endTime) <= now) {
+                continue;
+            }
+            out.add(programWithProgress(program, now));
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
     EpgProgram fetchProgramForChannel(String channelId, boolean next) throws Exception {
         if (standaloneMode) {
             long now = System.currentTimeMillis();
@@ -169,6 +258,27 @@ final class EpgRepository {
             return null;
         }
         return fromJson(httpClient.parseObject(httpClient.requireSuccess(response, "cargando programa EPG").body, "cargando programa EPG"));
+    }
+
+    EpgProgram fetchProgramForChannel(ChannelItem channel, boolean next) throws Exception {
+        if (channel == null) {
+            return null;
+        }
+        if (!standaloneMode) {
+            return fetchProgramForChannel(channel.id, next);
+        }
+        long now = System.currentTimeMillis();
+        for (EpgProgram program : resolveOfflinePrograms(channel.id, channel.name, channel.tvgId)) {
+            long startMs = parseIsoMillis(program.startTime);
+            long endMs = parseIsoMillis(program.endTime);
+            if (!next && startMs <= now && endMs > now) {
+                return programWithProgress(program, now);
+            }
+            if (next && startMs > now) {
+                return programWithProgress(program, now);
+            }
+        }
+        return null;
     }
 
     List<EpgProgram> fetchNowProgramsDetailed() throws Exception {
@@ -234,6 +344,7 @@ final class EpgRepository {
         return new EpgProgram(
                 item.optString("channel_id", ""),
                 item.optString("channel_name", ""),
+                item.optString("tvg_id", ""),
                 item.optString("title", "Sin titulo"),
                 item.optString("icon", ""),
                 item.optString("description", ""),
@@ -261,8 +372,7 @@ final class EpgRepository {
     }
 
     private List<EpgProgram> loadOfflineChannelPrograms(String channelId, int maxItems) throws Exception {
-        String key = String.valueOf(channelId).trim();
-        List<EpgProgram> rows = loadOfflineProgramMap().get(key);
+        List<EpgProgram> rows = resolveOfflinePrograms(channelId, "", "");
         if (rows == null || rows.isEmpty()) {
             return new ArrayList<>();
         }
@@ -304,15 +414,32 @@ final class EpgRepository {
     }
 
     private Map<String, List<EpgProgram>> loadOfflineProgramMap() throws Exception {
-        Map<String, List<EpgProgram>> out = new LinkedHashMap<>();
+        CachedOfflineProgramMap cached = loadCachedOfflineProgramMap();
+        return cached == null ? new LinkedHashMap<>() : cached.byChannelId;
+    }
+
+    private CachedOfflineProgramMap loadCachedOfflineProgramMap() throws Exception {
+        Map<String, List<EpgProgram>> empty = new LinkedHashMap<>();
         if (snapshotStore == null) {
-            return out;
+            return new CachedOfflineProgramMap(System.currentTimeMillis(), "", empty, new HashMap<>(), new HashMap<>());
         }
+        String fingerprint = buildOfflineSnapshotFingerprint();
+        long now = System.currentTimeMillis();
+        if (cachedOfflineProgramMap != null
+                && fingerprint.equals(cachedOfflineProgramMap.snapshotFingerprint)
+                && now - cachedOfflineProgramMap.loadedAtMs < OFFLINE_PROGRAM_MAP_CACHE_MS) {
+            return cachedOfflineProgramMap;
+        }
+
+        Map<String, List<EpgProgram>> byChannelId = new LinkedHashMap<>();
+        Map<String, List<EpgProgram>> byTvgId = new HashMap<>();
+        Map<String, List<EpgProgram>> byName = new HashMap<>();
         JSONObject snapshot = snapshotStore.loadSnapshotObject();
-        JSONObject epg = snapshot.optJSONObject("epg");
+        JSONObject epg = extractSnapshotEpg(snapshot);
         JSONObject programs = epg == null ? null : epg.optJSONObject("programs");
         if (programs == null) {
-            return out;
+            cachedOfflineProgramMap = new CachedOfflineProgramMap(now, fingerprint, byChannelId, byTvgId, byName);
+            return cachedOfflineProgramMap;
         }
         java.util.Iterator<String> keys = programs.keys();
         while (keys.hasNext()) {
@@ -325,14 +452,89 @@ final class EpgRepository {
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject item = arr.optJSONObject(i);
                 if (item != null) {
-                    rows.add(fromJson(item));
+                    rows.add(fromJson(item, String.valueOf(channelId).trim()));
                 }
             }
             if (!rows.isEmpty()) {
-                out.put(String.valueOf(channelId).trim(), rows);
+                String normalizedChannelId = String.valueOf(channelId).trim();
+                byChannelId.put(normalizedChannelId, rows);
+                EpgProgram first = rows.get(0);
+                String normalizedTvgId = normalizeLookupKey(first.tvgId);
+                if (!normalizedTvgId.isEmpty() && !byTvgId.containsKey(normalizedTvgId)) {
+                    byTvgId.put(normalizedTvgId, rows);
+                }
+                String normalizedName = normalizeLookupKey(first.channelName);
+                if (!normalizedName.isEmpty() && !byName.containsKey(normalizedName)) {
+                    byName.put(normalizedName, rows);
+                }
             }
         }
-        return out;
+        cachedOfflineProgramMap = new CachedOfflineProgramMap(now, fingerprint, byChannelId, byTvgId, byName);
+        return cachedOfflineProgramMap;
+    }
+
+    private List<EpgProgram> resolveOfflinePrograms(String channelId, String channelName, String tvgId) throws Exception {
+        CachedOfflineProgramMap cached = loadCachedOfflineProgramMap();
+        Map<String, List<EpgProgram>> byId = cached.byChannelId;
+        String key = String.valueOf(channelId).trim();
+        List<EpgProgram> direct = byId.get(key);
+        if (direct != null && !direct.isEmpty()) {
+            return direct;
+        }
+        String normalizedTvgId = normalizeLookupKey(tvgId);
+        if (!normalizedTvgId.isEmpty()) {
+            List<EpgProgram> byTvg = cached.byTvgId.get(normalizedTvgId);
+            if (byTvg != null && !byTvg.isEmpty()) {
+                return byTvg;
+            }
+        }
+        String normalizedName = normalizeLookupKey(channelName);
+        if (!normalizedName.isEmpty()) {
+            List<EpgProgram> byChannelName = cached.byChannelName.get(normalizedName);
+            if (byChannelName != null && !byChannelName.isEmpty()) {
+                return byChannelName;
+            }
+        }
+        return new ArrayList<>();
+    }
+
+    private String buildOfflineSnapshotFingerprint() {
+        if (snapshotStore == null) {
+            return "";
+        }
+        CatalogSnapshotStore.SnapshotStatus status = snapshotStore.getStatus("");
+        return status.updatedAtMs + ":" + status.sizeBytes + ":" + status.expiresAtMs;
+    }
+
+    private static JSONObject extractSnapshotEpg(JSONObject snapshot) {
+        if (snapshot == null) {
+            return null;
+        }
+        JSONObject epg = snapshot.optJSONObject("epg");
+        if (epg != null) {
+            return epg;
+        }
+        JSONObject catalog = snapshot.optJSONObject("catalog");
+        return catalog == null ? null : catalog.optJSONObject("epg");
+    }
+
+    private static EpgProgram fromJson(JSONObject item, String fallbackChannelId) {
+        EpgProgram program = fromJson(item);
+        if (program.channelId != null && !program.channelId.trim().isEmpty()) {
+            return program;
+        }
+        return new EpgProgram(
+                fallbackChannelId == null ? "" : fallbackChannelId.trim(),
+                program.channelName,
+                program.tvgId,
+                program.title,
+                program.icon,
+                program.description,
+                program.startTime,
+                program.endTime,
+                program.category,
+                program.progress
+        );
     }
 
     private static EpgProgram programWithProgress(EpgProgram program, long nowMs) {
@@ -345,7 +547,7 @@ final class EpgRepository {
         if (startMs > 0 && endMs > startMs && startMs <= nowMs && endMs > nowMs) {
             progress = (int) Math.max(0L, Math.min(100L, ((nowMs - startMs) * 100L) / (endMs - startMs)));
         }
-        return new EpgProgram(program.channelId, program.channelName, program.title, program.icon, program.description, program.startTime, program.endTime, program.category, progress);
+        return new EpgProgram(program.channelId, program.channelName, program.tvgId, program.title, program.icon, program.description, program.startTime, program.endTime, program.category, progress);
     }
 
     private static long parseIsoMillis(String value) {
@@ -355,8 +557,24 @@ final class EpgRepository {
         try {
             return java.time.Instant.parse(value.trim()).toEpochMilli();
         } catch (Exception ignored) {
+        }
+        try {
+            return java.time.OffsetDateTime.parse(value.trim()).toInstant().toEpochMilli();
+        } catch (Exception ignored) {
+        }
+        try {
+            return java.time.ZonedDateTime.parse(value.trim()).toInstant().toEpochMilli();
+        } catch (Exception ignored) {
+        }
+        try {
+            return java.time.LocalDateTime.parse(value.trim()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } catch (Exception ignored) {
             return 0L;
         }
+    }
+
+    private static String normalizeLookupKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private static boolean matchesAny(String value, String[] keywords) {
@@ -400,6 +618,22 @@ final class EpgRepository {
         CachedNowPrograms(long loadedAtMs, Map<String, String> items) {
             this.loadedAtMs = loadedAtMs;
             this.items = items == null ? new LinkedHashMap<>() : new LinkedHashMap<>(items);
+        }
+    }
+
+    private static final class CachedOfflineProgramMap {
+        final long loadedAtMs;
+        final String snapshotFingerprint;
+        final Map<String, List<EpgProgram>> byChannelId;
+        final Map<String, List<EpgProgram>> byTvgId;
+        final Map<String, List<EpgProgram>> byChannelName;
+
+        CachedOfflineProgramMap(long loadedAtMs, String snapshotFingerprint, Map<String, List<EpgProgram>> byChannelId, Map<String, List<EpgProgram>> byTvgId, Map<String, List<EpgProgram>> byChannelName) {
+            this.loadedAtMs = loadedAtMs;
+            this.snapshotFingerprint = snapshotFingerprint == null ? "" : snapshotFingerprint;
+            this.byChannelId = byChannelId == null ? new LinkedHashMap<>() : byChannelId;
+            this.byTvgId = byTvgId == null ? new HashMap<>() : byTvgId;
+            this.byChannelName = byChannelName == null ? new HashMap<>() : byChannelName;
         }
     }
 }

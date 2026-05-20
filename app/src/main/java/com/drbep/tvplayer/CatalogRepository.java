@@ -84,6 +84,7 @@ final class CatalogRepository {
 
     private CatalogLoadResult parseCatalogPayload(JSONObject rawPayload, boolean appendRemoteVod) {
         JSONObject payload = normalizeSnapshotPayload(rawPayload);
+        OfflinePermissions offlinePermissions = parseOfflinePermissions(rawPayload);
         JSONArray channelsArray = payload.optJSONArray("channels");
         if (channelsArray == null) {
             channelsArray = new JSONArray();
@@ -154,6 +155,7 @@ final class CatalogRepository {
             parsed.add(new ChannelItem(
                     id,
                     name,
+                    tvgId,
                     logo,
                     sourceGroup,
                     playbackUrl,
@@ -172,7 +174,7 @@ final class CatalogRepository {
             ));
         }
 
-        appendSnapshotVodItems(parsed, payload);
+        appendSnapshotVodItems(parsed, payload, offlinePermissions);
         if (appendRemoteVod) {
             appendTivifyVodItems(parsed);
             appendRuntimeVodItems(parsed);
@@ -180,7 +182,7 @@ final class CatalogRepository {
 
         long activePlatformId = payload.optLong("active_platform_id", 0L);
         StartupFilterConfig startupConfig = parseStartupFilterConfig(payload.optJSONObject("tv_player_startup"));
-        List<ChannelFilter> filters = buildFiltersFromCatalog(parsed, activePlatformId, startupConfig);
+        List<ChannelFilter> filters = buildFiltersFromCatalog(parsed, activePlatformId, startupConfig, offlinePermissions);
         return new CatalogLoadResult(parsed, filters, resolveDefaultFilterKey(filters, startupConfig));
     }
 
@@ -245,6 +247,7 @@ final class CatalogRepository {
             parsed.add(new ChannelItem(
                     id,
                     name,
+                    channel.optString("tvg_id", "").trim(),
                     logo,
                     sourceGroup,
                     playUrl,
@@ -284,13 +287,19 @@ final class CatalogRepository {
         }
     }
 
-    private void appendSnapshotVodItems(List<ChannelItem> parsed, JSONObject payload) {
+    private void appendSnapshotVodItems(List<ChannelItem> parsed, JSONObject payload, OfflinePermissions offlinePermissions) {
         if (payload == null) {
             return;
         }
-        appendVodArray(parsed, firstArray(payload, "vod", "tivify_vod"), false);
-        appendVodArray(parsed, firstArray(payload, "adult", "adult_vod", "tivify_adult"), true);
-        appendRuntimeVodArray(parsed, firstArray(payload, "runtime_movies", "movies", "runtime_vod"), "vod:runtime:movies", "Runtime Peliculas");
+        if (offlinePermissions.allowsTivifyVod()) {
+            appendVodArray(parsed, firstArray(payload, "vod", "tivify_vod"), false);
+        }
+        if (offlinePermissions.allowsTivifyAdultVod()) {
+            appendVodArray(parsed, firstArray(payload, "adult", "adult_vod", "tivify_adult"), true);
+        }
+        if (offlinePermissions.allowsRuntimeVod()) {
+            appendRuntimeVodArray(parsed, firstArray(payload, "runtime_movies", "movies", "runtime_vod"), "vod:runtime:movies", "Runtime Peliculas");
+        }
     }
 
     private static JSONArray firstArray(JSONObject payload, String... keys) {
@@ -345,6 +354,7 @@ final class CatalogRepository {
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, adult),
                     title,
+                    "",
                     logo,
                     group,
                     selectedUrl,
@@ -413,6 +423,7 @@ final class CatalogRepository {
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, false),
                     title,
+                    "",
                     logo,
                     group,
                     selectedUrl,
@@ -435,7 +446,7 @@ final class CatalogRepository {
         }
     }
 
-    List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId, StartupFilterConfig startupConfig) {
+    List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId, StartupFilterConfig startupConfig, OfflinePermissions offlinePermissions) {
         LinkedHashMap<String, ChannelFilter> byKey = new LinkedHashMap<>();
         byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
         byKey.put("favorites", new ChannelFilter("favorites", "Favoritos", FILTER_FAVORITES, 0, ""));
@@ -469,7 +480,7 @@ final class CatalogRepository {
             }
         }
 
-        if (activePlatformId > 0) {
+        if (activePlatformId > 0 && shouldExposePlatformFilter((int) activePlatformId, offlinePermissions)) {
             int activeId = (int) activePlatformId;
             String activeName = platformNames.containsKey(activeId) ? platformNames.get(activeId) : ("ID " + activeId);
             byKey.put("platform:" + activeId, new ChannelFilter("platform:" + activeId, "Plataforma activa: " + activeName, FILTER_PLATFORM, activeId, ""));
@@ -478,6 +489,9 @@ final class CatalogRepository {
         List<Integer> platformIds = new ArrayList<>(platformNames.keySet());
         Collections.sort(platformIds);
         for (int platformId : platformIds) {
+            if (!shouldExposePlatformFilter(platformId, offlinePermissions)) {
+                continue;
+            }
             String key = "platform:" + platformId;
             if (byKey.containsKey(key)) {
                 continue;
@@ -495,10 +509,12 @@ final class CatalogRepository {
             int type = "vod:tivify:adult".equals(key) ? FILTER_VOD_ADULT : FILTER_VOD;
             byKey.put(key, new ChannelFilter(key, entry.getValue(), type, 0, ""));
         }
-        if (hasVod) {
+        boolean hasSpecificVodFilters = !vodFilterLabels.isEmpty();
+        if (hasVod && !hasSpecificVodFilters) {
             byKey.put("vod", new ChannelFilter("vod", "VOD", FILTER_VOD, 0, ""));
         }
-        if (hasAdultVod) {
+        boolean hasSpecificAdultVodFilter = vodFilterLabels.containsKey("vod:tivify:adult");
+        if (hasAdultVod && !hasSpecificAdultVodFilter) {
             byKey.put("vod-adult", new ChannelFilter("vod-adult", "VOD Adulto", FILTER_VOD_ADULT, 0, ""));
         }
 
@@ -516,6 +532,16 @@ final class CatalogRepository {
             return filters;
         }
         return filtered;
+    }
+
+    private boolean shouldExposePlatformFilter(int platformId, OfflinePermissions offlinePermissions) {
+        if (platformId <= 0 || offlinePermissions == null || !standaloneMode) {
+            return platformId > 0;
+        }
+        if (offlinePermissions.allowedPlatformIds.isEmpty()) {
+            return true;
+        }
+        return offlinePermissions.allowedPlatformIds.contains(platformId);
     }
 
     private static boolean containsOnlyFavoritesFilter(List<ChannelFilter> filters) {
@@ -707,6 +733,31 @@ final class CatalogRepository {
         return filters.get(0).key;
     }
 
+    private static OfflinePermissions parseOfflinePermissions(JSONObject rawPayload) {
+        OfflinePermissions permissions = new OfflinePermissions();
+        if (rawPayload == null) {
+            return permissions;
+        }
+        JSONObject payload = rawPayload.optJSONObject("permissions");
+        if (payload == null) {
+            return permissions;
+        }
+        permissions.liveEnabled = payload.optBoolean("live", true);
+        permissions.vodEnabled = payload.optBoolean("vod", true);
+        permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", true);
+        permissions.runtimeEnabled = payload.optBoolean("runtime", true);
+        JSONArray platformIds = payload.optJSONArray("platform_ids");
+        if (platformIds != null) {
+            for (int i = 0; i < platformIds.length(); i++) {
+                int platformId = platformIds.optInt(i, 0);
+                if (platformId > 0) {
+                    permissions.allowedPlatformIds.add(platformId);
+                }
+            }
+        }
+        return permissions;
+    }
+
     private static boolean isLikelyVod(String externalId, String name, String tvgId, String groupTitle, List<String> customGroups) {
         String normalizedName = safeLower(name);
         String normalizedTvgId = safeLower(tvgId);
@@ -780,6 +831,7 @@ final class CatalogRepository {
 final class ChannelItem {
     final String id;
     final String name;
+    final String tvgId;
     final String logoUrl;
     final String group;
     final String playUrl;
@@ -800,14 +852,16 @@ final class ChannelItem {
     final long vodDurationSeconds;
     boolean favorite;
     String nowProgram;
+    String nextProgram;
 
-    ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback) {
-        this(id, name, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, "", "", 0L);
+    ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback) {
+        this(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, "", "", 0L);
     }
 
-    ChannelItem(String id, String name, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback, String vodDescription, String vodYear, long vodDurationSeconds) {
+    ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback, String vodDescription, String vodYear, long vodDurationSeconds) {
         this.id = id;
         this.name = name;
+        this.tvgId = tvgId == null ? "" : tvgId.trim();
         this.logoUrl = logoUrl;
         this.group = group;
         this.playUrl = playUrl;
@@ -827,6 +881,7 @@ final class ChannelItem {
         this.vodYear = vodYear == null ? "" : vodYear.trim();
         this.vodDurationSeconds = Math.max(0L, vodDurationSeconds);
         this.nowProgram = "";
+        this.nextProgram = "";
     }
 }
 
@@ -849,6 +904,36 @@ final class ChannelFilter {
 final class StartupFilterConfig {
     final List<String> enabledFilterKeys = new ArrayList<>();
     String defaultFilterKey = "";
+}
+
+final class OfflinePermissions {
+    boolean liveEnabled = true;
+    boolean vodEnabled = true;
+    boolean tivifyAdultEnabled = true;
+    boolean runtimeEnabled = true;
+    final Set<Integer> allowedPlatformIds = new HashSet<>();
+
+    boolean allowsLiveChannel(int platformId) {
+        if (!liveEnabled) {
+            return false;
+        }
+        if (allowedPlatformIds.isEmpty() || platformId <= 0) {
+            return true;
+        }
+        return allowedPlatformIds.contains(platformId);
+    }
+
+    boolean allowsTivifyVod() {
+        return vodEnabled;
+    }
+
+    boolean allowsTivifyAdultVod() {
+        return vodEnabled && tivifyAdultEnabled;
+    }
+
+    boolean allowsRuntimeVod() {
+        return runtimeEnabled;
+    }
 }
 
 final class CatalogLoadResult {

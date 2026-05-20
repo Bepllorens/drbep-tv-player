@@ -126,14 +126,14 @@
             android:textSize="@dimen/zap_channel_text_size"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/zapMetaText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:maxLines="1"
-            android:textColor="#CFE0F4"
-            android:textSize="@dimen/player_status_text_size" />
+            <TextView
+                android:id="@+id/zapMetaText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="2"
+                android:textColor="#CFE0F4"
+                android:textSize="@dimen/player_status_text_size" />
     </LinearLayout>
 
     <LinearLayout
@@ -260,13 +260,18 @@
                 android:id="@+id/overlayCurrentMetaText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:visibility="gone" />
+                android:maxLines="3"
+                android:textColor="#CFE0F4"
+                android:textSize="@dimen/overlay_meta_text_size" />
 
             <TextView
                 android:id="@+id/overlayRecentText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:visibility="gone" />
+                android:layout_marginTop="4dp"
+                android:maxLines="2"
+                android:textColor="#B8CBDF"
+                android:textSize="@dimen/overlay_meta_text_size" />
         </LinearLayout>
 
         <LinearLayout

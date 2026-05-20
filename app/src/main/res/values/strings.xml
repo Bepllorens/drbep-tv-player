@@ -203,6 +203,9 @@
     <string name="overlay_now_playing">Ahora en reproduccion</string>
     <string name="overlay_current_program">Emision actual: %1$s</string>
     <string name="overlay_current_program_empty">Emision actual: sin datos EPG</string>
+    <string name="overlay_next_program">Siguiente: %1$s</string>
+    <string name="overlay_next_program_empty">Siguiente: sin datos EPG</string>
+    <string name="overlay_next_program_short">Luego %1$s</string>
     <string name="overlay_playback_route">Ruta playback: %1$s</string>
     <string name="overlay_recent_channels">Recientes: %1$s</string>
     <string name="overlay_recent_channels_empty">Recientes: aun sin historial</string>

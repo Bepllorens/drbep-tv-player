@@ -24,6 +24,8 @@ def releaseFirestickLockedUrl = (project.findProperty('releaseFirestickLockedUrl
 def standaloneMode = (project.findProperty('standaloneMode') ?: 'true').toString().toBoolean()
 def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toString()
 def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://iptv.bepllorens.com').toString()
+def offlineSnapshotPublicKey = (project.findProperty('offlineSnapshotPublicKey') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArIoIQfhLQG1NRNGVHHHRYJpJ1+epFzzIhXbP2J80kOLEcW57ruhXydBV1sBNpZrUoC2EAy2ISiN7suLTp8NJSD7EqnExg8vJnyhKcUzUYkBksJpuccWUqSuQhIe43TABw8OM2+OmTT9QgZBgbk9CbgP+zehssXzH1w0OL6RQ/vWMFsmxO9dieqKafdxn4IQLJEVZc7IDIPsk67HwlTfPT+1gmoCEsy7nn3gD8bs++Sz2e4mVwGgjqaqSHU4SJILleQJ17MC/I+DLI/EHLwIJ/5577c+foZS4rDPIRHf9puCcuhiXCTRMX92KsSj6FVhwgklVhFgyxjoKh8y7pUft/QIDAQAB').toString()
+def offlineSnapshotKeyId = (project.findProperty('offlineSnapshotKeyId') ?: 'offline-snapshot-rsa-20260520').toString()
 
 def escapedDebugPlayerUrl = debugPlayerUrl
         .replace('\\', '\\\\')
@@ -41,6 +43,12 @@ def escapedCatalogSnapshotUrl = catalogSnapshotUrl
         .replace('\\', '\\\\')
         .replace('"', '\\"')
 def escapedOfflineBaseUrl = offlineBaseUrl
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
+def escapedOfflineSnapshotPublicKey = offlineSnapshotPublicKey
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
+def escapedOfflineSnapshotKeyId = offlineSnapshotKeyId
         .replace('\\', '\\\\')
         .replace('"', '\\"')
 
@@ -66,6 +74,8 @@ android {
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
+            buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
+            buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
         }
         release {
             buildConfigField "String", "PLAYER_URL", "\"${escapedReleasePlayerUrl}\""
@@ -75,6 +85,8 @@ android {
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
+            buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
+            buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

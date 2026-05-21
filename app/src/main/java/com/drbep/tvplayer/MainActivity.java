@@ -6658,7 +6658,10 @@ public class MainActivity extends FragmentActivity {
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
                 ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0L, false, 0, 0, "", "", "", "", false)
                 : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
-        String catalogHealth = buildOfflineCatalogHealth(status);
+        CatalogSnapshotStore.VerificationReport verification = catalogSnapshotStore == null
+                ? new CatalogSnapshotStore.VerificationReport(false, "error", getString(R.string.settings_offline_verify_missing), status)
+                : catalogSnapshotStore.verifyStoredSnapshot(BuildConfig.CATALOG_SNAPSHOT_URL);
+        String catalogHealth = buildOfflineCatalogHealth(status, verification);
         String updateState = buildAppUpdateStateSummary();
         String lastCatalogAttempt = lastOfflineCatalogRefreshAttemptMs <= 0L
                 ? getString(R.string.diagnostics_value_unknown)
@@ -6681,6 +6684,7 @@ public class MainActivity extends FragmentActivity {
                 BuildConfig.VERSION_CODE,
                 BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 catalogHealth,
+                buildOfflineVerificationSummary(verification),
                 buildOfflineEpgStateSummary(status),
                 status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
@@ -6712,18 +6716,24 @@ public class MainActivity extends FragmentActivity {
                 : getString(R.string.settings_offline_recordings_enabled);
     }
 
-    private String buildOfflineCatalogHealth(CatalogSnapshotStore.SnapshotStatus status) {
+    private String buildOfflineCatalogHealth(CatalogSnapshotStore.SnapshotStatus status, CatalogSnapshotStore.VerificationReport verification) {
         if (status == null || !status.available) {
             if (status != null && status.hasLastGoodBackup) {
                 return getString(R.string.settings_offline_health_backup_available);
             }
             return getString(R.string.settings_offline_health_missing);
         }
+        if (verification != null && !verification.valid) {
+            return getString(R.string.settings_offline_health_invalid);
+        }
         if (status.expired) {
             return getString(R.string.settings_offline_health_expired);
         }
         if (!status.hasAccessToken) {
             return getString(R.string.settings_offline_health_no_token);
+        }
+        if (verification != null && "warning".equalsIgnoreCase(verification.state)) {
+            return getString(R.string.settings_offline_health_warning);
         }
         if (status.expiresAtMs > 0L) {
             long remainingMs = status.expiresAtMs - System.currentTimeMillis();
@@ -6785,6 +6795,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::startOfflineActivationCodeFlow);
         options.add(getString(R.string.offline_catalog_action_refresh));
         actions.add(this::refreshOfflineCatalogFromSettings);
+        options.add(getString(R.string.offline_catalog_action_verify));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogVerificationSummary()));
         options.add(getString(R.string.offline_catalog_action_set_url));
         actions.add(this::showOfflineCatalogUrlDialog);
         options.add(getString(R.string.offline_catalog_action_set_token));
@@ -6894,17 +6906,27 @@ public class MainActivity extends FragmentActivity {
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
                 ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0L, false, 0, 0, "", "", "", "", false)
                 : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        CatalogSnapshotStore.VerificationReport verification = catalogSnapshotStore == null
+                ? new CatalogSnapshotStore.VerificationReport(false, "error", getString(R.string.settings_offline_verify_missing), status)
+                : catalogSnapshotStore.verifyStoredSnapshot(BuildConfig.CATALOG_SNAPSHOT_URL);
         String updatedAt = status.updatedAtMs <= 0L
                 ? getString(R.string.diagnostics_value_unknown)
                 : formatDateTime(status.updatedAtMs);
+        String generatedAt = status.generatedAtMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(status.generatedAtMs);
         String expiresAt = status.expiresAtMs <= 0L
                 ? getString(R.string.diagnostics_value_unknown)
                 : formatDateTime(status.expiresAtMs);
+        String permissionsChangedAt = status.permissionsChangedAtMs <= 0L
+                ? getString(R.string.diagnostics_value_no)
+                : formatDateTime(status.permissionsChangedAtMs);
         return getString(
                 R.string.offline_catalog_summary,
                 BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 status.available ? status.expired ? getString(R.string.offline_catalog_value_expired) : getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 updatedAt,
+                generatedAt,
                 expiresAt,
                 status.channelCount,
                 status.vodCount,
@@ -6912,13 +6934,74 @@ public class MainActivity extends FragmentActivity {
                 status.epgProgramCount,
                 status.epgUntilMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.epgUntilMs),
                 humanReadableSize(status.sizeBytes),
+                status.schema == null || status.schema.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.schema,
                 status.sourceUrl == null || status.sourceUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceUrl,
+                status.sourceBaseUrl == null || status.sourceBaseUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceBaseUrl,
                 status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
                 status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 status.subject == null || status.subject.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.subject,
                 status.permissions == null || status.permissions.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.permissions,
-                status.hasLastGoodBackup ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no)
+                permissionsChangedAt,
+                status.hasLastGoodBackup ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                buildOfflineVerificationSummary(verification),
+                buildShortFingerprint(status.payloadFingerprint)
         );
+    }
+
+    private String buildOfflineCatalogVerificationSummary() {
+        CatalogSnapshotStore.VerificationReport report = catalogSnapshotStore == null
+                ? new CatalogSnapshotStore.VerificationReport(false, "error", getString(R.string.settings_offline_verify_missing), null)
+                : catalogSnapshotStore.verifyStoredSnapshot(BuildConfig.CATALOG_SNAPSHOT_URL);
+        CatalogSnapshotStore.SnapshotStatus status = report == null ? null : report.status;
+        String schema = status == null || status.schema == null || status.schema.trim().isEmpty()
+                ? getString(R.string.diagnostics_value_unknown)
+                : status.schema;
+        String generatedAt = status == null || status.generatedAtMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(status.generatedAtMs);
+        String expiresAt = status == null || status.expiresAtMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(status.expiresAtMs);
+        String detail = report == null || report.message == null || report.message.trim().isEmpty()
+                ? getString(R.string.diagnostics_value_unknown)
+                : report.message.trim();
+        return getString(
+                R.string.offline_catalog_verify_summary,
+                buildOfflineVerificationSummary(report),
+                schema,
+                generatedAt,
+                expiresAt,
+                status == null || status.sourceBaseUrl == null || status.sourceBaseUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceBaseUrl,
+                status == null ? getString(R.string.diagnostics_value_unknown) : buildShortFingerprint(status.payloadFingerprint),
+                detail
+        );
+    }
+
+    private String buildOfflineVerificationSummary(CatalogSnapshotStore.VerificationReport report) {
+        if (report == null) {
+            return getString(R.string.diagnostics_value_unknown);
+        }
+        if ("ok".equalsIgnoreCase(report.state)) {
+            return getString(R.string.settings_offline_verify_ok);
+        }
+        String detail = report.message == null || report.message.trim().isEmpty()
+                ? getString(R.string.diagnostics_value_unknown)
+                : report.message.trim();
+        if ("warning".equalsIgnoreCase(report.state)) {
+            return getString(R.string.settings_offline_verify_warning, detail);
+        }
+        return getString(R.string.settings_offline_verify_error, detail);
+    }
+
+    private String buildShortFingerprint(String fingerprint) {
+        String clean = fingerprint == null ? "" : fingerprint.trim();
+        if (clean.isEmpty()) {
+            return getString(R.string.diagnostics_value_unknown);
+        }
+        if (clean.length() <= 12) {
+            return clean;
+        }
+        return clean.substring(0, 12);
     }
 
     private void refreshOfflineCatalogFromSettings() {
@@ -6937,6 +7020,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        CatalogSnapshotStore.SnapshotStatus statusBeforeRefresh = status;
         if (!status.hasAccessToken || status.sourceUrl.trim().isEmpty()) {
             if (manual) {
                 showOfflineCatalogRecoveryDialogIfNeeded(new IllegalStateException(getString(R.string.settings_offline_next_sync_blocked)));
@@ -6968,10 +7052,14 @@ public class MainActivity extends FragmentActivity {
                     lastOfflineCatalogRefreshError = "";
                     offlineCatalogRetryCount = 0;
                     uiHandler.removeCallbacks(offlineCatalogRetryRunnable);
-                    recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, getString(R.string.offline_catalog_status_refreshed));
+                    CatalogSnapshotStore.SnapshotStatus afterStatus = catalogSnapshotStore == null
+                            ? statusBeforeRefresh
+                            : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+                    String refreshDetail = buildOfflineCatalogRefreshDetail(statusBeforeRefresh, afterStatus);
+                    recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, refreshDetail);
                     applyLoadedChannels(result);
                     if (manual) {
-                        showStatus(getString(R.string.offline_catalog_status_refreshed));
+                        showStatus(refreshDetail);
                     }
                 });
             } catch (Exception e) {
@@ -7011,6 +7099,32 @@ public class MainActivity extends FragmentActivity {
                 });
             }
         });
+    }
+
+    private String buildOfflineCatalogRefreshDetail(CatalogSnapshotStore.SnapshotStatus before, CatalogSnapshotStore.SnapshotStatus after) {
+        if (after == null) {
+            return getString(R.string.offline_catalog_status_refreshed);
+        }
+        boolean sameFingerprint = before != null
+                && before.payloadFingerprint != null
+                && !before.payloadFingerprint.trim().isEmpty()
+                && before.payloadFingerprint.equals(after.payloadFingerprint);
+        if (sameFingerprint) {
+            return getString(R.string.offline_catalog_status_unchanged);
+        }
+        boolean permissionsChanged = before != null
+                && before.permissionsFingerprint != null
+                && !before.permissionsFingerprint.trim().isEmpty()
+                && after.permissionsFingerprint != null
+                && !after.permissionsFingerprint.trim().isEmpty()
+                && !before.permissionsFingerprint.equals(after.permissionsFingerprint);
+        if (permissionsChanged) {
+            return getString(R.string.offline_catalog_status_permissions_changed);
+        }
+        if (before != null && before.expired && !after.expired) {
+            return getString(R.string.offline_catalog_status_reactivated);
+        }
+        return getString(R.string.offline_catalog_status_refreshed);
     }
 
     private void repairOfflineCatalog() {
@@ -7111,9 +7225,6 @@ public class MainActivity extends FragmentActivity {
             return true;
         }
         long now = System.currentTimeMillis();
-        if (lastOfflineCatalogRefreshSuccessMs <= 0L) {
-            return true;
-        }
         if (status.updatedAtMs <= 0L || now - status.updatedAtMs >= OFFLINE_CATALOG_AUTO_REFRESH_MS) {
             return true;
         }

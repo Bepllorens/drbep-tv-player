@@ -69,11 +69,12 @@ El formato actual incluye:
 - Si no hay snapshot local, intenta descargar desde `catalogSnapshotUrl`
 - Backend con endpoint de snapshot filtrado por permisos de usuario
 - Dashboard con generacion de tokens offline revocables
+- Verificacion local del snapshot antes de aplicarlo
+- Firma del snapshot en backend con validacion en la app
 
 ## Pendiente
 
 - Publicacion automatica diaria del snapshot
 - EPG offline opcional
 - Tratamiento de canales que dependan de proxy vivo
-- Firma/verificacion del snapshot antes de aplicarlo
 - Flujo guiado para copiar URL/token al Fire Stick sin introducirlo a mano

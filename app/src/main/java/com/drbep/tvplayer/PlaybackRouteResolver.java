@@ -68,7 +68,7 @@ final class PlaybackRouteResolver {
         if (useFallback) {
             return new Decision(
                     directUrl,
-                    inferMimeType(directUrl),
+                    resolveMimeType(directUrl, streamInfo, directUrl != null && directUrl.contains("/proxy/manifest/")),
                     "",
                     playbackMode,
                     true,
@@ -99,6 +99,17 @@ final class PlaybackRouteResolver {
         }
 
         if (PlaybackModeStore.MODE_PROXY.equals(playbackMode)) {
+            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
+            if ("hls".equals(streamType)) {
+                return new Decision(
+                        request.playUrl,
+                        MimeTypes.APPLICATION_M3U8,
+                        "",
+                        playbackMode,
+                        false,
+                        request.hasFallback()
+                );
+            }
             String proxyUrl = proxyManifestUrl(request.channelId) + (streamInfo != null && streamInfo.encrypted ? "?nodrm=1" : "");
             return new Decision(
                     proxyUrl,

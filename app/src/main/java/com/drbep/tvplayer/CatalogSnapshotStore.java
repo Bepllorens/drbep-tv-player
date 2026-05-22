@@ -2,6 +2,7 @@ package com.drbep.tvplayer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -25,6 +26,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 final class CatalogSnapshotStore {
+    private static final String TAG = "CatalogSnapshotStore";
     private static final String OFFLINE_SCHEMA_V2 = "drbep-offline-catalog-v2";
     private static final String OFFLINE_SIGNATURE_ALG = "RS256";
     private static final String PREFS = "drbep_catalog_snapshot";
@@ -71,15 +73,15 @@ final class CatalogSnapshotStore {
         if (status.expired) {
             throw new IllegalStateException("catalogo local caducado");
         }
-        return readSnapshotObject(snapshotFile(), "catalogo local guardado");
+        return readSnapshotObject(snapshotFile(), "catalogo local guardado", false);
     }
 
     JSONObject loadLastKnownGoodSnapshotObject() throws Exception {
         File lastGood = lastGoodSnapshotFile();
         if (lastGood.exists() && lastGood.length() > 0L) {
-            return readSnapshotObject(lastGood, "ultimo catalogo bueno");
+            return readSnapshotObject(lastGood, "ultimo catalogo bueno", false);
         }
-        return readSnapshotObject(snapshotFile(), "catalogo local guardado");
+        return readSnapshotObject(snapshotFile(), "catalogo local guardado", false);
     }
 
     boolean hasLastKnownGoodSnapshot() {
@@ -88,9 +90,14 @@ final class CatalogSnapshotStore {
     }
 
     private JSONObject readSnapshotObject(File file, String label) throws Exception {
+        return readSnapshotObject(file, label, true);
+    }
+
+    private JSONObject readSnapshotObject(File file, String label, boolean verifySignature) throws Exception {
         if (!file.exists() || file.length() <= 0L) {
             throw new IllegalStateException("no hay " + label);
         }
+        long startMs = System.currentTimeMillis();
         byte[] bytes = new byte[(int) file.length()];
         try (FileInputStream inputStream = new FileInputStream(file)) {
             int offset = 0;
@@ -102,8 +109,20 @@ final class CatalogSnapshotStore {
                 offset += read;
             }
         }
+        long readMs = System.currentTimeMillis() - startMs;
+        long parseStartMs = System.currentTimeMillis();
         JSONObject payload = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-        validateSnapshotPayload(payload);
+        long parseMs = System.currentTimeMillis() - parseStartMs;
+        long validateStartMs = System.currentTimeMillis();
+        validateSnapshotPayload(payload, verifySignature);
+        long validateMs = System.currentTimeMillis() - validateStartMs;
+        Log.i(TAG, "snapshot read label=" + label
+                + " bytes=" + bytes.length
+                + " verifySignature=" + verifySignature
+                + " readMs=" + readMs
+                + " parseMs=" + parseMs
+                + " validateMs=" + validateMs
+                + " totalMs=" + (System.currentTimeMillis() - startMs));
         return payload;
     }
 
@@ -521,8 +540,14 @@ final class CatalogSnapshotStore {
     }
 
     private void validateSnapshotPayload(JSONObject payload) {
+        validateSnapshotPayload(payload, true);
+    }
+
+    private void validateSnapshotPayload(JSONObject payload, boolean verifySignature) {
         validateSnapshotSchema(payload);
-        validateSnapshotSignature(payload);
+        if (verifySignature) {
+            validateSnapshotSignature(payload);
+        }
         validateSnapshotForThisDevice(payload);
         validateSnapshotHasContent(payload);
         validateSnapshotTimestamps(payload);

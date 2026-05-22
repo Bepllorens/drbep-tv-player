@@ -51,6 +51,8 @@ final class PlayerController {
     private static final String TAG = "PlayerController";
     private static final String PREFS = "drbep_tv_prefs";
     private static final String CLEARKEY_DATA_URI_PREFIX = "data:application/json;base64,";
+    private static final int PLAYBACK_CONNECT_TIMEOUT_MS = 20_000;
+    private static final int PLAYBACK_READ_TIMEOUT_MS = 30_000;
     private static final long TIMESHIFT_MAX_BACK_MS = 2L * 60L * 60L * 1000L;
     private static final long TIMESHIFT_SEEK_STEP_MS = 30_000L;
 
@@ -69,6 +71,8 @@ final class PlayerController {
         boolean isPlaybackRepairEnabled();
 
         void recordPlaybackError(PlaybackRequest request, PlaybackDiagnostics diagnostics);
+
+        void onFirstVideoFrameRendered(String channelId);
     }
 
     static final class PlaybackRequest {
@@ -219,6 +223,8 @@ final class PlayerController {
                 .setForceHighestSupportedBitrate(true));
 
         httpDataSourceFactory = new DefaultHttpDataSource.Factory()
+                .setConnectTimeoutMs(PLAYBACK_CONNECT_TIMEOUT_MS)
+                .setReadTimeoutMs(PLAYBACK_READ_TIMEOUT_MS)
                 .setDefaultRequestProperties(buildPlaybackRequestHeaders());
         DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
 
@@ -298,6 +304,12 @@ final class PlayerController {
                     }
                     maybeShowHdrBadge();
                 }
+            }
+
+            @Override
+            public void onRenderedFirstFrame() {
+                PlaybackRequest request = currentRequest;
+                host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
             }
         });
     }
@@ -385,6 +397,9 @@ final class PlayerController {
             host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(decision.playbackMode)));
             playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo);
             return true;
+        }
+        if (BuildConfig.STANDALONE_MODE) {
+            return false;
         }
         if (decision.allowCompatibilityFallback && !usingPlaybackFallback && request.hasFallback()) {
             usingPlaybackFallback = true;
@@ -569,7 +584,10 @@ final class PlayerController {
                 return;
             }
 
-            boolean requiresReplay = "widevine".equals(safeLower(info.drmType)) || info.encrypted;
+            String resolvedDrmType = safeLower(info.drmType);
+            boolean requiresReplay = "widevine".equals(resolvedDrmType)
+                    || "clearkey".equals(resolvedDrmType)
+                    || info.encrypted;
             StreamInfo resolved = info;
             uiHandler.post(() -> {
                 if (!host.isChannelCurrent(channelId)) {
@@ -588,6 +606,38 @@ final class PlayerController {
                         + " resolvedDecision=" + describeDecision(resolvedDecision));
                 playChannelInternal(request, autoPlay, false, resolved, resumePositionMs);
                 if ("widevine".equals(safeLower(resolved.drmType))) {
+                    host.showStatus(context.getString(R.string.status_channel_widevine, request.channelName));
+                }
+            });
+        });
+    }
+
+    void playChannelAfterResolvingStreamInfo(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache, long resumePositionMs) {
+        if (request == null || request.directPlayback || request.channelId == null || request.channelId.trim().isEmpty()) {
+            playChannel(request, autoPlay, null, resumePositionMs);
+            return;
+        }
+        final String channelId = request.channelId.trim();
+        ioExecutor.execute(() -> {
+            StreamInfo info = streamInfoCache == null ? null : streamInfoCache.get(channelId);
+            boolean fromCache = info != null;
+            if (info == null) {
+                info = fetchStreamInfo(channelId);
+                if (info != null && streamInfoCache != null) {
+                    streamInfoCache.put(channelId, info);
+                }
+            }
+            StreamInfo resolved = info;
+            Log.d(TAG, "playChannelAfterResolvingStreamInfo channelId=" + channelId
+                    + " fromCache=" + fromCache
+                    + " streamInfo=" + describeStreamInfo(resolved));
+            uiHandler.post(() -> {
+                if (!host.isChannelCurrent(channelId)) {
+                    Log.d(TAG, "playChannelAfterResolvingStreamInfo ignored because channel changed: channelId=" + channelId);
+                    return;
+                }
+                playChannelInternal(request, autoPlay, false, resolved, resumePositionMs);
+                if (resolved != null && "widevine".equals(safeLower(resolved.drmType))) {
                     host.showStatus(context.getString(R.string.status_channel_widevine, request.channelName));
                 }
             });
@@ -1222,6 +1272,15 @@ final class PlayerController {
         }
         String separator = trimmed.contains("?") ? "&" : "?";
         return trimmed + separator + "access_token=" + Uri.encode(token.trim());
+    }
+
+    private boolean isBackendLivePlaybackUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return false;
+        }
+        String trimmed = url.trim();
+        String normalizedBase = baseUrl == null ? "" : baseUrl.trim();
+        return !normalizedBase.isEmpty() && trimmed.startsWith(normalizedBase + "/live/");
     }
 
     private Map<String, String> buildPlaybackRequestHeaders() {

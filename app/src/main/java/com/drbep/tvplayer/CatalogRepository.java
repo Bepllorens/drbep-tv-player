@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 import android.util.Base64;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.UUID;
 
 final class CatalogRepository {
+    private static final String TAG = "CatalogRepository";
     private static final int FILTER_ALL = 0;
     private static final int FILTER_PLATFORM = 1;
     private static final int FILTER_CUSTOM_GROUP = 2;
@@ -83,6 +85,7 @@ final class CatalogRepository {
     }
 
     private CatalogLoadResult parseCatalogPayload(JSONObject rawPayload, boolean appendRemoteVod) {
+        long startMs = System.currentTimeMillis();
         JSONObject payload = normalizeSnapshotPayload(rawPayload);
         OfflinePermissions offlinePermissions = parseOfflinePermissions(rawPayload);
         JSONArray channelsArray = payload.optJSONArray("channels");
@@ -180,9 +183,16 @@ final class CatalogRepository {
             appendRuntimeVodItems(parsed);
         }
 
+        long parsedItemsMs = System.currentTimeMillis() - startMs;
         long activePlatformId = payload.optLong("active_platform_id", 0L);
         StartupFilterConfig startupConfig = parseStartupFilterConfig(payload.optJSONObject("tv_player_startup"));
         List<ChannelFilter> filters = buildFiltersFromCatalog(parsed, activePlatformId, startupConfig, offlinePermissions);
+        Log.i(TAG, "catalog parsed channels=" + channelsArray.length()
+                + " totalItems=" + parsed.size()
+                + " filters=" + filters.size()
+                + " appendRemoteVod=" + appendRemoteVod
+                + " itemParseMs=" + parsedItemsMs
+                + " totalMs=" + (System.currentTimeMillis() - startMs));
         return new CatalogLoadResult(parsed, filters, resolveDefaultFilterKey(filters, startupConfig));
     }
 

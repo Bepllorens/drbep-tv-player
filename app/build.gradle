@@ -60,8 +60,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 24
-        versionName "2.0.23-offline-epg-hotfix"
+        versionCode 26
+        versionName "2.0.25-offline-blue-icon"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

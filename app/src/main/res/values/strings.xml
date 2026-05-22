@@ -31,6 +31,7 @@
     <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
     <string name="status_channels_ready">%1$d canales listos en %2$d ms</string>
+    <string name="status_channels_ready_filtered">%1$d de %2$d canales visibles en %3$d ms</string>
     <string name="startup_hub_title">Inicio DRBEP TV</string>
     <string name="startup_hub_message">Version %1$s activa\nFiltro restaurado: %2$s\n%3$d elementos visibles</string>
     <string name="startup_hub_message_v2">Version %1$s activa\nFiltro: %2$s  ·  TV %3$d  ·  VOD %4$d  ·  Adult %5$d\nFavoritos %6$d  ·  Recientes %7$d  ·  Grabaciones %8$d/%9$d programadas</string>

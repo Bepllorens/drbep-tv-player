@@ -95,6 +95,8 @@ public class MainActivity extends FragmentActivity {
     private static final long OFFLINE_CATALOG_EXPIRY_REFRESH_MS = 12L * 60L * 60L * 1000L;
     private static final long OFFLINE_CATALOG_RETRY_BASE_MS = 15L * 60L * 1000L;
     private static final long OFFLINE_CATALOG_RETRY_MAX_MS = 60L * 60L * 1000L;
+    private static final long OFFLINE_STARTUP_MAINTENANCE_GRACE_MS = 5L * 60L * 1000L;
+    private static final long OFFLINE_APP_UPDATE_STARTUP_DELAY_MS = 2L * 60L * 1000L;
     private static final int OFFLINE_SYNC_HISTORY_LIMIT = 8;
     private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
     private static final int SEARCH_LOGO_PREFETCH_LIMIT = 18;
@@ -357,6 +359,10 @@ public class MainActivity extends FragmentActivity {
     private String lastOfflineCatalogRefreshError = "";
     private long lastOfflineMaintenanceMs;
     private String lastOfflineMaintenanceError = "";
+    private long activityCreatedAtMs;
+    private String epgFullLoadScheduledForChannelId = "";
+    private boolean epgFullCatalogLoaded;
+    private boolean epgFullCatalogLoadRequested;
     private int offlineCatalogRetryCount;
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
@@ -472,6 +478,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        activityCreatedAtMs = System.currentTimeMillis();
         setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.playerView);
@@ -741,7 +748,7 @@ public class MainActivity extends FragmentActivity {
         enableImmersiveMode();
         loadChannels();
         showPostUpdateNotesIfNeeded();
-        checkAppUpdateOnStartup();
+        scheduleAppUpdateCheckOnStartup();
         scheduleOfflineCatalogAutoRefresh();
         uiHandler.postDelayed(reminderTickRunnable, 30000L);
         uiHandler.postDelayed(vodProgressSaveRunnable, 15_000L);
@@ -804,6 +811,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
                 MainActivity.this.recordPlaybackError(request, diagnostics);
+            }
+
+            @Override
+            public void onFirstVideoFrameRendered(String channelId) {
+                MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
             }
         });
         playerController.initialize();
@@ -1655,6 +1667,9 @@ public class MainActivity extends FragmentActivity {
     private void applyLoadedChannels(CatalogLoadResult result) {
         long startMs = System.currentTimeMillis();
         syncOverlayCoordinator();
+        epgFullCatalogLoaded = false;
+        epgFullCatalogLoadRequested = false;
+        epgFullLoadScheduledForChannelId = "";
         channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
         syncOverlayStateFromCoordinator();
         persistNavigationState();
@@ -1676,9 +1691,15 @@ public class MainActivity extends FragmentActivity {
         }
         tuneToIndex(startIndex, true);
         lastApplyChannelsDurationMs = System.currentTimeMillis() - startMs;
-        showStatus(getString(R.string.status_channels_ready, channels.size(), lastCatalogLoadDurationMs));
+        int visibleCount = channels.size();
+        int totalCount = allChannels.size();
+        showStatus(visibleCount == totalCount
+                ? getString(R.string.status_channels_ready, visibleCount, lastCatalogLoadDurationMs)
+                : getString(R.string.status_channels_ready_filtered, visibleCount, totalCount, lastCatalogLoadDurationMs));
         prefetchCurrentChannelLogos();
-        uiHandler.postDelayed(this::loadEpgNow, BuildConfig.STANDALONE_MODE ? 250L : 450L);
+        if (!BuildConfig.STANDALONE_MODE) {
+            uiHandler.postDelayed(() -> loadEpgNow(false), 450L);
+        }
         uiHandler.postDelayed(this::maybeShowStartupHub, 700L);
     }
 
@@ -1752,8 +1773,17 @@ public class MainActivity extends FragmentActivity {
         updateTimeshiftBar();
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
         PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
-        playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo, resumePositionMs);
-        if (playbackRequest != null && !playbackRequest.directPlayback) {
+        boolean resolveBeforePlayback = BuildConfig.STANDALONE_MODE
+                && playbackRequest != null
+                && !playbackRequest.directPlayback
+                && !ch.isVod;
+        if (resolveBeforePlayback) {
+            showStatus(getString(R.string.status_buffering));
+            playerController.playChannelAfterResolvingStreamInfo(playbackRequest, autoPlay, streamInfoByChannelId, resumePositionMs);
+        } else {
+            playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo, resumePositionMs);
+        }
+        if (!resolveBeforePlayback && playbackRequest != null && !playbackRequest.directPlayback) {
             playerController.resolveStreamInfoAndReplayIfNeeded(playbackRequest, autoPlay, streamInfoByChannelId, resumePositionMs);
         }
         scheduleLearnCurrentPlaybackRoute(ch.id, playbackRequest == null ? PlaybackModeStore.MODE_AUTO : playbackRequest.playbackMode);
@@ -1827,14 +1857,32 @@ public class MainActivity extends FragmentActivity {
         return true;
     }
 
+    private void scheduleFullEpgLoadAfterFirstFrame(String channelId) {
+        if (!BuildConfig.STANDALONE_MODE) {
+            return;
+        }
+        if (epgFullCatalogLoaded || epgFullCatalogLoadRequested) {
+            return;
+        }
+        String cleanChannelId = channelId == null ? "" : channelId.trim();
+        if (cleanChannelId.isEmpty() || cleanChannelId.equals(epgFullLoadScheduledForChannelId)) {
+            return;
+        }
+        epgFullLoadScheduledForChannelId = cleanChannelId;
+        epgFullCatalogLoadRequested = true;
+        uiHandler.postDelayed(() -> loadEpgNow(true), 1500L);
+    }
 
-    private void loadEpgNow() {
+    private void loadEpgNow(boolean fullCatalog) {
         if (epgLoadInFlight) {
             Log.d(TAG, "skip loadEpgNow because a load is already in progress");
             return;
         }
         final List<ChannelItem> allChannelsSnapshot = new ArrayList<>(allChannels);
         final List<ChannelItem> visibleChannelsSnapshot = new ArrayList<>(channels);
+        final List<ChannelItem> epgChannelsSnapshot = BuildConfig.STANDALONE_MODE
+                ? (fullCatalog ? allChannelsSnapshot : visibleChannelsSnapshot)
+                : allChannelsSnapshot;
         epgLoadInFlight = true;
         long startMs = System.currentTimeMillis();
         epgExecutor.execute(() -> {
@@ -1842,7 +1890,7 @@ public class MainActivity extends FragmentActivity {
                 Map<String, String> updates;
                 Map<String, EpgRepository.EpgProgramPair> pairs = new HashMap<>();
                 if (BuildConfig.STANDALONE_MODE) {
-                    pairs = epgRepository.fetchProgramPairsForChannels(allChannelsSnapshot);
+                    pairs = epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot);
                     updates = buildNowProgramUpdatesFromPairs(pairs);
                 } else {
                     updates = epgRepository.fetchNowPrograms();
@@ -1852,6 +1900,10 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> {
                     epgLoadInFlight = false;
                     lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
+                    if (fullCatalog) {
+                        epgFullCatalogLoaded = true;
+                    }
+                    epgFullCatalogLoadRequested = false;
                     epgNowByChannelId.clear();
                     epgNowByChannelId.putAll(updates);
                     epgProgramPairByChannelId.clear();
@@ -1861,8 +1913,9 @@ public class MainActivity extends FragmentActivity {
                     Log.i(TAG, "EPG now loaded updates=" + updates.size()
                             + " filledChannels=" + filled
                             + " totalChannels=" + allChannels.size()
-                            + " snapshotChannels=" + allChannelsSnapshot.size()
+                            + " snapshotChannels=" + epgChannelsSnapshot.size()
                             + " visibleSnapshotChannels=" + visibleChannelsSnapshot.size()
+                            + " fullCatalog=" + fullCatalog
                             + " standalone=" + BuildConfig.STANDALONE_MODE
                             + " durationMs=" + lastEpgNowLoadDurationMs);
                     channelAdapter.notifyDataSetChanged();
@@ -1874,6 +1927,7 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 epgLoadInFlight = false;
+                epgFullCatalogLoadRequested = false;
                 lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                 Log.w(TAG, "load epg now failed", e);
             }
@@ -4723,6 +4777,9 @@ public class MainActivity extends FragmentActivity {
         if (!PlaybackModeStore.MODE_AUTO.equals(permanentMode)) {
             return permanentMode;
         }
+        if (BuildConfig.STANDALONE_MODE) {
+            return PlaybackModeStore.MODE_AUTO;
+        }
         if (!playbackRepairEnabled) {
             return PlaybackModeStore.MODE_AUTO;
         }
@@ -5404,6 +5461,10 @@ public class MainActivity extends FragmentActivity {
                 @Override
                 public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
                     MainActivity.this.recordPlaybackError(request, diagnostics);
+                }
+
+                @Override
+                public void onFirstVideoFrameRendered(String channelId) {
                 }
             });
             controller.initialize();
@@ -7137,7 +7198,28 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshStandaloneCatalogInBackgroundIfPossible() {
+        if (BuildConfig.STANDALONE_MODE && !allChannels.isEmpty() && isWithinStartupMaintenanceGrace()) {
+            CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
+                    ? null
+                    : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+            if (shouldRefreshOfflineCatalog(status)) {
+                uiHandler.removeCallbacks(offlineCatalogAutoRefreshRunnable);
+                uiHandler.postDelayed(offlineCatalogAutoRefreshRunnable, startupMaintenanceGraceRemainingMs());
+            }
+            return;
+        }
         refreshOfflineCatalog(false, false);
+    }
+
+    private boolean isWithinStartupMaintenanceGrace() {
+        return startupMaintenanceGraceRemainingMs() > 0L;
+    }
+
+    private long startupMaintenanceGraceRemainingMs() {
+        if (activityCreatedAtMs <= 0L) {
+            return 0L;
+        }
+        return Math.max(0L, activityCreatedAtMs + OFFLINE_STARTUP_MAINTENANCE_GRACE_MS - System.currentTimeMillis());
     }
 
     private boolean showOfflineCatalogRecoveryDialogIfNeeded(Throwable error) {
@@ -7259,7 +7341,9 @@ public class MainActivity extends FragmentActivity {
     private void scheduleOfflineCatalogAutoRefresh() {
         uiHandler.removeCallbacks(offlineCatalogAutoRefreshRunnable);
         if (BuildConfig.STANDALONE_MODE) {
-            uiHandler.postDelayed(offlineCatalogAutoRefreshRunnable, OFFLINE_CATALOG_AUTO_REFRESH_MS);
+            long delayMs = OFFLINE_CATALOG_AUTO_REFRESH_MS;
+            delayMs = Math.max(delayMs, startupMaintenanceGraceRemainingMs());
+            uiHandler.postDelayed(offlineCatalogAutoRefreshRunnable, delayMs);
         }
     }
 
@@ -7372,6 +7456,14 @@ public class MainActivity extends FragmentActivity {
 
     private void checkAppUpdateOnStartup() {
         checkAppUpdate(false);
+    }
+
+    private void scheduleAppUpdateCheckOnStartup() {
+        if (BuildConfig.STANDALONE_MODE) {
+            uiHandler.postDelayed(this::checkAppUpdateOnStartup, OFFLINE_APP_UPDATE_STARTUP_DELAY_MS);
+        } else {
+            checkAppUpdateOnStartup();
+        }
     }
 
     private void checkAppUpdateManually() {
@@ -11273,7 +11365,7 @@ public class MainActivity extends FragmentActivity {
 
     private void loadLearnedPlaybackModes() {
         learnedPlaybackModesByChannelId.clear();
-        if (prefs == null) {
+        if (prefs == null || BuildConfig.STANDALONE_MODE) {
             return;
         }
         String raw = prefs.getString(PREF_PLAYBACK_LEARNED_MODES, "");
@@ -11296,7 +11388,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void saveLearnedPlaybackModes() {
-        if (prefs == null) {
+        if (prefs == null || BuildConfig.STANDALONE_MODE) {
             return;
         }
         try {

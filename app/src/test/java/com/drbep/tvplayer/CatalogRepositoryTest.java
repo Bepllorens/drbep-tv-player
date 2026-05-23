@@ -28,7 +28,8 @@ public class CatalogRepositoryTest {
                         vodItem("Runtime Movie", false, "Runtime Peliculas", "vod:runtime:movies")
                 ),
                 1L,
-                startupConfig
+                startupConfig,
+                null
         );
 
         assertTrue(hasFilter(filters, "favorites", 5));
@@ -41,7 +42,7 @@ public class CatalogRepositoryTest {
     }
 
     @Test
-    public void noStartupFilterKeepsGenericAndSpecificVodFilters() {
+    public void noStartupFilterKeepsOnlySpecificVodFiltersWhenAvailable() {
         CatalogRepository repository = new CatalogRepository("https://iptv.example.com");
 
         List<ChannelFilter> filters = repository.buildFiltersFromCatalog(
@@ -51,12 +52,13 @@ public class CatalogRepositoryTest {
                         vodItem("Runtime Movie", false, "Runtime Peliculas", "vod:runtime:movies")
                 ),
                 0L,
-                new StartupFilterConfig()
+                new StartupFilterConfig(),
+                null
         );
 
         assertTrue(hasFilter(filters, "vod:tivify:general", 3));
         assertTrue(hasFilter(filters, "vod:runtime:movies", 3));
-        assertTrue(hasFilter(filters, "vod", 3));
+        assertFalse(hasFilter(filters, "vod", 3));
     }
 
     @Test
@@ -68,7 +70,8 @@ public class CatalogRepositoryTest {
         List<ChannelFilter> filters = repository.buildFiltersFromCatalog(
                 Arrays.asList(liveChannel()),
                 0L,
-                startupConfig
+                startupConfig,
+                null
         );
 
         assertTrue(hasFilter(filters, "favorites", 5));
@@ -88,6 +91,7 @@ public class CatalogRepositoryTest {
         return new ChannelItem(
                 "1",
                 "Live",
+                "",
                 "",
                 "General",
                 "https://iptv.example.com/live/1",
@@ -110,6 +114,7 @@ public class CatalogRepositoryTest {
         return new ChannelItem(
                 "vod-" + title.replace(" ", "-").toLowerCase(),
                 title,
+                "",
                 "",
                 "VOD",
                 "https://vod.example.com/" + title.replace(" ", "-").toLowerCase() + ".m3u8",

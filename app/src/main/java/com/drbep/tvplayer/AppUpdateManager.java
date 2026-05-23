@@ -39,7 +39,7 @@ final class AppUpdateManager {
     }
 
     UpdateInfo fetchLatest(String baseUrl) throws Exception {
-        JSONObject payload = httpClient.getJsonObject(joinUrl(baseUrl, LATEST_PATH), 5000, 12000, jsonHeaders(), "buscando actualizacion");
+        JSONObject payload = httpClient.getJsonObject(joinUrl(baseUrl, LATEST_PATH + "?channel=" + Uri.encode(BuildConfig.UPDATE_CHANNEL)), 5000, 12000, jsonHeaders(), "buscando actualizacion");
         List<String> changelog = new ArrayList<>();
         JSONArray array = payload.optJSONArray("changelog");
         if (array != null) {

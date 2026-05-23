@@ -24,6 +24,7 @@ def releaseFirestickLockedUrl = (project.findProperty('releaseFirestickLockedUrl
 def standaloneMode = (project.findProperty('standaloneMode') ?: 'true').toString().toBoolean()
 def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toString()
 def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://iptv.bepllorens.com').toString()
+def updateChannel = (project.findProperty('updateChannel') ?: 'stable').toString()
 def offlineSnapshotPublicKey = (project.findProperty('offlineSnapshotPublicKey') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArIoIQfhLQG1NRNGVHHHRYJpJ1+epFzzIhXbP2J80kOLEcW57ruhXydBV1sBNpZrUoC2EAy2ISiN7suLTp8NJSD7EqnExg8vJnyhKcUzUYkBksJpuccWUqSuQhIe43TABw8OM2+OmTT9QgZBgbk9CbgP+zehssXzH1w0OL6RQ/vWMFsmxO9dieqKafdxn4IQLJEVZc7IDIPsk67HwlTfPT+1gmoCEsy7nn3gD8bs++Sz2e4mVwGgjqaqSHU4SJILleQJ17MC/I+DLI/EHLwIJ/5577c+foZS4rDPIRHf9puCcuhiXCTRMX92KsSj6FVhwgklVhFgyxjoKh8y7pUft/QIDAQAB').toString()
 def offlineSnapshotKeyId = (project.findProperty('offlineSnapshotKeyId') ?: 'offline-snapshot-rsa-20260520').toString()
 
@@ -45,6 +46,9 @@ def escapedCatalogSnapshotUrl = catalogSnapshotUrl
 def escapedOfflineBaseUrl = offlineBaseUrl
         .replace('\\', '\\\\')
         .replace('"', '\\"')
+def escapedUpdateChannel = updateChannel
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
 def escapedOfflineSnapshotPublicKey = offlineSnapshotPublicKey
         .replace('\\', '\\\\')
         .replace('"', '\\"')
@@ -60,9 +64,24 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 26
-        versionName "2.0.25-offline-blue-icon"
+        versionCode 27
+        versionName "2.0.26-release-beta"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            def releaseStoreFile = project.findProperty('DRBEP_RELEASE_STORE_FILE') ?: System.getenv('DRBEP_RELEASE_STORE_FILE')
+            def releaseStorePassword = project.findProperty('DRBEP_RELEASE_STORE_PASSWORD') ?: System.getenv('DRBEP_RELEASE_STORE_PASSWORD')
+            def releaseKeyAlias = project.findProperty('DRBEP_RELEASE_KEY_ALIAS') ?: System.getenv('DRBEP_RELEASE_KEY_ALIAS')
+            def releaseKeyPassword = project.findProperty('DRBEP_RELEASE_KEY_PASSWORD') ?: System.getenv('DRBEP_RELEASE_KEY_PASSWORD')
+            if (releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -74,10 +93,13 @@ android {
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
+            buildConfigField "String", "UPDATE_CHANNEL", "\"${escapedUpdateChannel}\""
+            buildConfigField "boolean", "LOG_VERBOSE", "true"
             buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
             buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
         }
         release {
+            signingConfig signingConfigs.release
             buildConfigField "String", "PLAYER_URL", "\"${escapedReleasePlayerUrl}\""
             buildConfigField "boolean", "ALLOW_INSECURE_SSL", releaseAllowInsecureSsl.toString()
             buildConfigField "boolean", "FORCE_FIRESTICK_URL", releaseForceFirestickUrl.toString()
@@ -85,6 +107,8 @@ android {
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
+            buildConfigField "String", "UPDATE_CHANNEL", "\"${escapedUpdateChannel}\""
+            buildConfigField "boolean", "LOG_VERBOSE", "false"
             buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
             buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
             minifyEnabled true

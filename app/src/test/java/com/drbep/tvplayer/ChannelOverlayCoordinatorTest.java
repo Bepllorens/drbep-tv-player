@@ -154,6 +154,7 @@ public class ChannelOverlayCoordinatorTest {
                 id,
                 name,
                 "",
+                "",
                 "General",
                 "http://example.test/" + id,
                 "",

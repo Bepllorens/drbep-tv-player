@@ -824,7 +824,6 @@ public class MainActivity extends FragmentActivity {
     private void setupChannelList() {
         channelAdapter = new ChannelAdapter();
         channelList.setLayoutManager(new LinearLayoutManager(this));
-        channelList.setHasFixedSize(true);
         channelList.setItemViewCacheSize(24);
         channelList.setAdapter(channelAdapter);
     }
@@ -6199,7 +6198,6 @@ public class MainActivity extends FragmentActivity {
             shelfRows.add(recyclerView);
         }
         recyclerView.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false));
-        recyclerView.setHasFixedSize(true);
         recyclerView.setItemViewCacheSize(8);
         recyclerView.setFocusable(true);
         recyclerView.setFocusableInTouchMode(true);

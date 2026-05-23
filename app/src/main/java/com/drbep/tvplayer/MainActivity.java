@@ -7081,6 +7081,7 @@ public class MainActivity extends FragmentActivity {
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         CatalogSnapshotStore.SnapshotStatus statusBeforeRefresh = status;
         if (!status.hasAccessToken || status.sourceUrl.trim().isEmpty()) {
+            reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), false, 0L, getString(R.string.settings_offline_next_sync_blocked));
             if (manual) {
                 showOfflineCatalogRecoveryDialogIfNeeded(new IllegalStateException(getString(R.string.settings_offline_next_sync_blocked)));
             }
@@ -7116,6 +7117,7 @@ public class MainActivity extends FragmentActivity {
                             : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
                     String refreshDetail = buildOfflineCatalogRefreshDetail(statusBeforeRefresh, afterStatus);
                     recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, refreshDetail);
+                    reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), true, durationMs, refreshDetail);
                     applyLoadedChannels(result);
                     if (manual) {
                         showStatus(refreshDetail);
@@ -7140,11 +7142,13 @@ public class MainActivity extends FragmentActivity {
                     lastOfflineCatalogRefreshError = e.getMessage();
                     lastOfflineMaintenanceError = e.getMessage();
                     recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), false, durationMs, e.getMessage());
+                    reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), false, durationMs, e.getMessage());
                     if (finalFallback != null) {
                         lastCatalogLoadDurationMs = durationMs;
                         applyLoadedChannels(finalFallback);
                         showStatus(getString(R.string.offline_catalog_status_using_last_good));
                         recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, getString(R.string.offline_catalog_status_using_last_good));
+                        reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), true, durationMs, getString(R.string.offline_catalog_status_using_last_good));
                         return;
                     }
                     if (manual && shouldFallbackOnFailure && finalFallbackError != null && !finalFallbackError.trim().isEmpty()) {
@@ -7156,6 +7160,20 @@ public class MainActivity extends FragmentActivity {
                         scheduleOfflineCatalogRetryIfUseful(e);
                     }
                 });
+            }
+        });
+    }
+
+    private void reportOfflineDeviceStatus(String event, boolean success, long durationMs, String detail) {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || ioExecutor == null) {
+            return;
+        }
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        ioExecutor.execute(() -> {
+            try {
+                catalogSnapshotStore.reportDeviceStatus(BuildConfig.OFFLINE_BASE_URL, status, event, success, durationMs, detail);
+            } catch (Exception e) {
+                Log.d(TAG, "offline device status report failed", e);
             }
         });
     }
@@ -7494,6 +7512,14 @@ public class MainActivity extends FragmentActivity {
                                     ? getString(R.string.settings_update_state_available_short, safeUpdateVersionName(info), info.versionCode)
                                     : getString(R.string.app_update_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
                     );
+                    reportOfflineDeviceStatus(
+                            getString(R.string.settings_offline_sync_app_update),
+                            true,
+                            durationMs,
+                            info.isNewerThanCurrent()
+                                    ? getString(R.string.settings_update_state_available_short, safeUpdateVersionName(info), info.versionCode)
+                                    : getString(R.string.app_update_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+                    );
                     if (info.isNewerThanCurrent()) {
                         int lastPrompted = prefs == null ? 0 : prefs.getInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, 0);
                         if (!manual && !info.required && lastPrompted >= info.versionCode) {
@@ -7516,6 +7542,7 @@ public class MainActivity extends FragmentActivity {
                     lastAppUpdateError = e.getMessage();
                     lastOfflineMaintenanceError = e.getMessage();
                     recordOfflineSyncEvent(getString(R.string.settings_offline_sync_app_update), false, durationMs, e.getMessage());
+                    reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_app_update), false, durationMs, e.getMessage());
                     if (manual) {
                         showError(getString(R.string.app_update_error, e.getMessage()));
                     }

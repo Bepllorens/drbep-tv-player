@@ -162,6 +162,40 @@ final class CatalogSnapshotStore {
         return new JSONObject(response.body == null ? "" : response.body);
     }
 
+    void reportDeviceStatus(String baseUrl, SnapshotStatus status, String event, boolean success, long durationMs, String detail) throws Exception {
+        String endpoint = joinUrl(baseUrl, "/api/offline/device/status");
+        JSONObject payload = new JSONObject()
+                .put("device_id", getDeviceId())
+                .put("event", event == null ? "" : event.trim())
+                .put("success", success)
+                .put("duration_ms", Math.max(0L, durationMs))
+                .put("detail", detail == null ? "" : detail.trim())
+                .put("package_name", context.getPackageName())
+                .put("version_name", BuildConfig.VERSION_NAME)
+                .put("version_code", BuildConfig.VERSION_CODE);
+        if (status != null) {
+            payload.put("catalog_available", status.available)
+                    .put("catalog_expired", status.expired)
+                    .put("channels", status.channelCount)
+                    .put("vod", status.vodCount)
+                    .put("epg_channels", status.epgChannelCount)
+                    .put("epg_programs", status.epgProgramCount)
+                    .put("updated_at_ms", status.updatedAtMs)
+                    .put("generated_at_ms", status.generatedAtMs)
+                    .put("expires_at_ms", status.expiresAtMs)
+                    .put("schema", status.schema)
+                    .put("subject", status.subject)
+                    .put("permissions", status.permissions)
+                    .put("payload_fingerprint", status.payloadFingerprint)
+                    .put("permissions_fingerprint", status.permissionsFingerprint)
+                    .put("verification_state", status.verificationState)
+                    .put("verification_message", status.verificationMessage)
+                    .put("source_base_url", status.sourceBaseUrl);
+        }
+        HttpClient.Response response = httpClient.postJson(endpoint, payload, 5000, 10000, buildSnapshotHeaders());
+        httpClient.requireSuccess(response, "enviando estado offline");
+    }
+
     void applyActivationPayload(JSONObject payload, String baseUrl) throws Exception {
         if (payload == null) {
             throw new IllegalArgumentException("activacion vacia");

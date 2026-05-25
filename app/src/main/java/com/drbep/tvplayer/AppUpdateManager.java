@@ -79,7 +79,13 @@ final class AppUpdateManager {
         String updateChannel = channel == null || channel.trim().isEmpty() ? BuildConfig.UPDATE_CHANNEL : channel.trim();
         for (String candidate : updateBaseUrlCandidates(baseUrl)) {
             try {
-                JSONObject payload = httpClient.getJsonObject(joinUrl(candidate, LATEST_PATH + "?channel=" + Uri.encode(updateChannel)), 10000, 30000, jsonHeaders(), "buscando actualizacion");
+                String path = LATEST_PATH
+                        + "?channel=" + Uri.encode(updateChannel)
+                        + "&current_version_code=" + BuildConfig.VERSION_CODE;
+                if (catalogSnapshotStore != null) {
+                    path += "&device_id=" + Uri.encode(catalogSnapshotStore.getDeviceId());
+                }
+                JSONObject payload = httpClient.getJsonObject(joinUrl(candidate, path), 10000, 30000, jsonHeaders(), "buscando actualizacion");
                 payload.put(PAYLOAD_SOURCE_BASE_URL, candidate);
                 return payload;
             } catch (Exception e) {

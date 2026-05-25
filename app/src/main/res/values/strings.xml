@@ -639,6 +639,7 @@
     <string name="app_update_diagnostic_unfinished">La actualizacion no pudo completarse.</string>
     <string name="app_update_diagnostic_installer_unfinished">El instalador se abrio, pero la app sigue en la version anterior.</string>
     <string name="app_update_action_check">Buscar actualizacion de la app</string>
+    <string name="app_update_action_rescue">Restaurar version anterior</string>
     <string name="app_update_action_diagnostics">Ver diagnostico de actualizacion</string>
     <string name="app_update_action_install">Actualizar ahora</string>
     <string name="app_update_action_later">Mas tarde</string>
@@ -648,6 +649,8 @@
     <string name="app_update_installed_message">Actualizado a %1$s.\n\nMejoras:\n%2$s</string>
     <string name="app_update_none">Ya tienes la ultima version: %1$s (%2$d).</string>
     <string name="app_update_status_checking">Buscando actualizacion...</string>
+    <string name="app_update_rescue_checking">Buscando version de rescate...</string>
+    <string name="app_update_rescue_none">No hay version de rescate disponible para %1$s (%2$d).</string>
     <string name="app_update_status_downloading">Descargando actualizacion...</string>
     <string name="app_update_status_downloading_pct">Descargando actualizacion: %1$d%%</string>
     <string name="app_update_status_installing">Abriendo instalador...</string>

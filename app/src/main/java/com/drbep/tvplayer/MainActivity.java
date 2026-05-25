@@ -6559,6 +6559,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showOfflineCatalogSettingsDialog);
         options.add(getString(R.string.app_update_action_check));
         actions.add(this::checkAppUpdateManually);
+        options.add(getString(R.string.app_update_action_rescue));
+        actions.add(this::checkRescueAppUpdateManually);
         options.add(getString(R.string.settings_section_diagnostics));
         actions.add(this::showSettingsDiagnosticsDialog);
         options.add(getString(R.string.settings_section_reset));
@@ -6741,6 +6743,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.app_update_action_check));
         actions.add(this::checkAppUpdateManually);
+        options.add(getString(R.string.app_update_action_rescue));
+        actions.add(this::checkRescueAppUpdateManually);
         options.add(getString(R.string.app_update_action_diagnostics));
         actions.add(this::showAppUpdateDiagnosticsDialog);
         options.add(getString(R.string.offline_catalog_action_activate_code));
@@ -7413,6 +7417,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.offline_recovery_action_status));
         actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
+        options.add(getString(R.string.app_update_action_rescue));
+        actions.add(this::checkRescueAppUpdateManually);
         options.add(getString(R.string.offline_catalog_action_set_url));
         actions.add(this::showOfflineCatalogUrlDialog);
         options.add(getString(R.string.offline_catalog_action_set_token));
@@ -7684,6 +7690,10 @@ public class MainActivity extends FragmentActivity {
         checkAppUpdate(true);
     }
 
+    private void checkRescueAppUpdateManually() {
+        checkRescueAppUpdate(true);
+    }
+
     private void showAppUpdateDiagnosticsDialog() {
         showSettingsInfoDialog(R.string.app_update_action_diagnostics, buildAppUpdateStateSummary());
     }
@@ -7752,6 +7762,45 @@ public class MainActivity extends FragmentActivity {
                     if (manual) {
                         showError(getString(R.string.app_update_error, e.getMessage()));
                     }
+                });
+            }
+        });
+    }
+
+    private void checkRescueAppUpdate(boolean manual) {
+        if (appUpdateManager == null || appUpdateCheckRunning) {
+            return;
+        }
+        appUpdateCheckRunning = true;
+        showStatus(getString(R.string.app_update_rescue_checking));
+        long startMs = System.currentTimeMillis();
+        ioExecutor.execute(() -> {
+            try {
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, "rescue");
+                long durationMs = System.currentTimeMillis() - startMs;
+                uiHandler.post(() -> {
+                    appUpdateCheckRunning = false;
+                    lastKnownAppUpdateInfo = info;
+                    lastAppUpdateCheckMs = System.currentTimeMillis();
+                    lastAppUpdateError = "";
+                    recordAppUpdateDiagnostic("rescue-check", true, info, null, durationMs, info.isNewerThanCurrent()
+                            ? getString(R.string.settings_update_state_available_short, safeUpdateVersionName(info), info.versionCode)
+                            : getString(R.string.app_update_rescue_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE));
+                    if (info.isNewerThanCurrent()) {
+                        showAppUpdateAvailableDialog(info);
+                    } else {
+                        showSettingsInfoDialog(R.string.app_update_action_rescue, getString(R.string.app_update_rescue_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE));
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "rescue app update check failed", e);
+                long durationMs = System.currentTimeMillis() - startMs;
+                uiHandler.post(() -> {
+                    appUpdateCheckRunning = false;
+                    lastAppUpdateCheckMs = System.currentTimeMillis();
+                    lastAppUpdateError = e.getMessage();
+                    recordAppUpdateDiagnostic("rescue-check", false, null, null, durationMs, e.getMessage());
+                    showError(getString(R.string.app_update_error, e.getMessage()));
                 });
             }
         });

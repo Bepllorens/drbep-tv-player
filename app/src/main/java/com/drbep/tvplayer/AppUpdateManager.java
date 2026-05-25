@@ -47,7 +47,11 @@ final class AppUpdateManager {
     }
 
     UpdateInfo fetchLatest(String baseUrl) throws Exception {
-        JSONObject payload = fetchLatestPayload(baseUrl);
+        return fetchLatest(baseUrl, BuildConfig.UPDATE_CHANNEL);
+    }
+
+    UpdateInfo fetchLatest(String baseUrl, String channel) throws Exception {
+        JSONObject payload = fetchLatestPayload(baseUrl, channel);
         String sourceBaseUrl = payload.optString(PAYLOAD_SOURCE_BASE_URL, baseUrl).trim();
         List<String> changelog = new ArrayList<>();
         JSONArray array = payload.optJSONArray("changelog");
@@ -70,11 +74,12 @@ final class AppUpdateManager {
         );
     }
 
-    private JSONObject fetchLatestPayload(String baseUrl) throws Exception {
+    private JSONObject fetchLatestPayload(String baseUrl, String channel) throws Exception {
         Exception firstError = null;
+        String updateChannel = channel == null || channel.trim().isEmpty() ? BuildConfig.UPDATE_CHANNEL : channel.trim();
         for (String candidate : updateBaseUrlCandidates(baseUrl)) {
             try {
-                JSONObject payload = httpClient.getJsonObject(joinUrl(candidate, LATEST_PATH + "?channel=" + Uri.encode(BuildConfig.UPDATE_CHANNEL)), 10000, 30000, jsonHeaders(), "buscando actualizacion");
+                JSONObject payload = httpClient.getJsonObject(joinUrl(candidate, LATEST_PATH + "?channel=" + Uri.encode(updateChannel)), 10000, 30000, jsonHeaders(), "buscando actualizacion");
                 payload.put(PAYLOAD_SOURCE_BASE_URL, candidate);
                 return payload;
             } catch (Exception e) {

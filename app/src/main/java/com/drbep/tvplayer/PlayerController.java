@@ -72,6 +72,8 @@ final class PlayerController {
 
         void recordPlaybackError(PlaybackRequest request, PlaybackDiagnostics diagnostics);
 
+        void onPlaybackReady(PlaybackRequest request);
+
         void onFirstVideoFrameRendered(String channelId);
     }
 
@@ -303,6 +305,7 @@ final class PlayerController {
                                 : context.getString(R.string.status_ready));
                     }
                     maybeShowHdrBadge();
+                    host.onPlaybackReady(currentRequest);
                 }
             }
 

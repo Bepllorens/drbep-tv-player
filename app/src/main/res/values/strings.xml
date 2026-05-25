@@ -651,6 +651,15 @@
     <string name="app_update_status_checking">Buscando actualizacion...</string>
     <string name="app_update_rescue_checking">Buscando version de rescate...</string>
     <string name="app_update_rescue_none">No hay version de rescate disponible para %1$s (%2$d).</string>
+    <string name="app_update_health_event">Salud actualizacion</string>
+    <string name="app_update_health_pending">Validando version %1$s (%2$d) tras actualizar.</string>
+    <string name="app_update_health_catalog_ok">Catalogo OK: %1$d canales · %2$d programas EPG. Pendiente validar reproduccion.</string>
+    <string name="app_update_health_catalog_failed">Catalogo sin canales tras %1$s.</string>
+    <string name="app_update_health_playback_ok">Reproduccion OK en %1$s. Version marcada como buena.</string>
+    <string name="app_update_health_playback_failed">Fallo reproduciendo %1$s: %2$s</string>
+    <string name="app_update_health_marked_good">Version marcada como buena</string>
+    <string name="app_update_health_failed_title">Actualizacion con problemas</string>
+    <string name="app_update_health_failed_message">Version activa: %1$s (%2$d)\n\nDetalle: %3$s\n\nPuedes reintentar, restaurar la version anterior o enviar diagnostico.</string>
     <string name="app_update_status_downloading">Descargando actualizacion...</string>
     <string name="app_update_status_downloading_pct">Descargando actualizacion: %1$d%%</string>
     <string name="app_update_status_installing">Abriendo instalador...</string>

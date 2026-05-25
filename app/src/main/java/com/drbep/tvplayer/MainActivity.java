@@ -126,6 +126,16 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
     private static final String PREF_LAST_UPDATE_PROMPT_VERSION_CODE = "last_update_prompt_version_code";
     private static final String PREF_LAST_SEEN_APP_VERSION_CODE = "last_seen_app_version_code";
+    private static final String PREF_PENDING_UPDATE_HEALTH_VERSION_CODE = "pending_update_health_version_code";
+    private static final String PREF_LAST_GOOD_APP_VERSION_CODE = "last_good_app_version_code";
+    private static final String PREF_LAST_GOOD_APP_VERSION_NAME = "last_good_app_version_name";
+    private static final String PREF_UPDATE_HEALTH_STATE = "update_health_state";
+    private static final String PREF_LAST_UPDATE_HEALTH_AT_MS = "last_update_health_at_ms";
+    private static final String PREF_LAST_UPDATE_HEALTH_ERROR = "last_update_health_error";
+    private static final String UPDATE_HEALTH_PENDING = "pending";
+    private static final String UPDATE_HEALTH_CATALOG_OK = "catalog_ok";
+    private static final String UPDATE_HEALTH_GOOD = "good";
+    private static final String UPDATE_HEALTH_FAILED = "failed";
     private static final int MULTIVIEW_PRESET_COUNT = 3;
     private static final String PREF_TABLET_ORIENTATION_LOCK = "tablet_orientation_lock";
     private static final int FILTER_ALL = 0;
@@ -846,8 +856,14 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public void onPlaybackReady(PlayerController.PlaybackRequest request) {
+                MainActivity.this.markPostUpdatePlaybackHealthy(request == null ? "" : request.channelId);
+            }
+
+            @Override
             public void onFirstVideoFrameRendered(String channelId) {
                 MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
+                MainActivity.this.markPostUpdatePlaybackHealthy(channelId);
             }
         });
         playerController.initialize();
@@ -1627,6 +1643,7 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
                     applyLoadedChannels(result);
+                    runPostUpdateStartupHealthCheck("catalog-load", result);
                     refreshStandaloneCatalogInBackgroundIfPossible();
                 });
             } catch (Exception catalogErr) {
@@ -1642,6 +1659,7 @@ public class MainActivity extends FragmentActivity {
                             lastOfflineCatalogRefreshError = "";
                             showStatus(getString(R.string.catalog_snapshot_refresh_ready));
                             applyLoadedChannels(refreshed);
+                            runPostUpdateStartupHealthCheck("catalog-refresh", refreshed);
                         });
                     } catch (Exception e) {
                         Log.e(TAG, "standalone catalog load failed", e);
@@ -1653,6 +1671,7 @@ public class MainActivity extends FragmentActivity {
                                 lastOfflineCatalogRefreshError = e.getMessage();
                                 showStatus(getString(R.string.offline_catalog_status_using_last_good));
                                 applyLoadedChannels(fallback);
+                                runPostUpdateStartupHealthCheck("last-good-catalog", fallback);
                             });
                         } catch (Exception fallbackErr) {
                             uiHandler.post(() -> {
@@ -1673,6 +1692,7 @@ public class MainActivity extends FragmentActivity {
                     uiHandler.post(() -> {
                         lastCatalogLoadDurationMs = durationMs;
                         applyLoadedChannels(fallback);
+                        runPostUpdateStartupHealthCheck("api-fallback", fallback);
                     });
                 } catch (Exception e) {
                     Log.e(TAG, "load channels failed", e);
@@ -5498,6 +5518,10 @@ public class MainActivity extends FragmentActivity {
                 }
 
                 @Override
+                public void onPlaybackReady(PlayerController.PlaybackRequest request) {
+                }
+
+                @Override
                 public void onFirstVideoFrameRendered(String channelId) {
                 }
             });
@@ -7171,6 +7195,7 @@ public class MainActivity extends FragmentActivity {
                     recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, refreshDetail);
                     reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), true, durationMs, refreshDetail);
                     applyLoadedChannels(result);
+                    runPostUpdateStartupHealthCheck("catalog-refresh", result);
                     if (manual) {
                         showStatus(refreshDetail);
                     }
@@ -7198,6 +7223,7 @@ public class MainActivity extends FragmentActivity {
                     if (finalFallback != null) {
                         lastCatalogLoadDurationMs = durationMs;
                         applyLoadedChannels(finalFallback);
+                        runPostUpdateStartupHealthCheck("last-good-catalog", finalFallback);
                         showStatus(getString(R.string.offline_catalog_status_using_last_good));
                         recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, getString(R.string.offline_catalog_status_using_last_good));
                         reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), true, durationMs, getString(R.string.offline_catalog_status_using_last_good));
@@ -7308,7 +7334,13 @@ public class MainActivity extends FragmentActivity {
                     .put("last_catalog_success_ms", lastOfflineCatalogRefreshSuccessMs)
                     .put("last_catalog_error", lastOfflineCatalogRefreshError == null ? "" : lastOfflineCatalogRefreshError)
                     .put("last_maintenance_ms", lastOfflineMaintenanceMs)
-                    .put("last_maintenance_error", lastOfflineMaintenanceError == null ? "" : lastOfflineMaintenanceError);
+                    .put("last_maintenance_error", lastOfflineMaintenanceError == null ? "" : lastOfflineMaintenanceError)
+                    .put("update_health_state", prefs == null ? "" : prefs.getString(PREF_UPDATE_HEALTH_STATE, ""))
+                    .put("pending_update_version_code", prefs == null ? 0 : prefs.getInt(PREF_PENDING_UPDATE_HEALTH_VERSION_CODE, 0))
+                    .put("last_good_version_code", prefs == null ? 0 : prefs.getInt(PREF_LAST_GOOD_APP_VERSION_CODE, 0))
+                    .put("last_good_version_name", prefs == null ? "" : prefs.getString(PREF_LAST_GOOD_APP_VERSION_NAME, ""))
+                    .put("last_update_health_at_ms", prefs == null ? 0L : prefs.getLong(PREF_LAST_UPDATE_HEALTH_AT_MS, 0L))
+                    .put("last_update_health_error", prefs == null ? "" : prefs.getString(PREF_LAST_UPDATE_HEALTH_ERROR, ""));
             if (prefs != null) {
                 String updateDiagnostic = prefs.getString(PREF_APP_UPDATE_DIAGNOSTIC, "");
                 if (updateDiagnostic != null && !updateDiagnostic.trim().isEmpty()) {
@@ -7950,6 +7982,7 @@ public class MainActivity extends FragmentActivity {
         if (lastSeen >= BuildConfig.VERSION_CODE) {
             return;
         }
+        markPostUpdateHealthPending(lastSeen);
         prefs.edit().putInt(PREF_LAST_SEEN_APP_VERSION_CODE, BuildConfig.VERSION_CODE).apply();
         ioExecutor.execute(() -> {
             try {
@@ -7961,6 +7994,107 @@ public class MainActivity extends FragmentActivity {
                 Log.d(TAG, "post-update notes unavailable", e);
             }
         });
+    }
+
+    private void markPostUpdateHealthPending(int previousVersionCode) {
+        if (!BuildConfig.STANDALONE_MODE || prefs == null || previousVersionCode <= 0 || previousVersionCode >= BuildConfig.VERSION_CODE) {
+            return;
+        }
+        prefs.edit()
+                .putInt(PREF_PENDING_UPDATE_HEALTH_VERSION_CODE, BuildConfig.VERSION_CODE)
+                .putString(PREF_UPDATE_HEALTH_STATE, UPDATE_HEALTH_PENDING)
+                .putLong(PREF_LAST_UPDATE_HEALTH_AT_MS, System.currentTimeMillis())
+                .putString(PREF_LAST_UPDATE_HEALTH_ERROR, "")
+                .apply();
+        reportOfflineDeviceStatus(getString(R.string.app_update_health_event), true, 0L, getString(R.string.app_update_health_pending, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE));
+    }
+
+    private boolean isPostUpdateHealthActive() {
+        if (!BuildConfig.STANDALONE_MODE || prefs == null) {
+            return false;
+        }
+        int pendingVersion = prefs.getInt(PREF_PENDING_UPDATE_HEALTH_VERSION_CODE, 0);
+        if (pendingVersion != BuildConfig.VERSION_CODE) {
+            return false;
+        }
+        String state = prefs.getString(PREF_UPDATE_HEALTH_STATE, "");
+        return UPDATE_HEALTH_PENDING.equals(state) || UPDATE_HEALTH_CATALOG_OK.equals(state) || UPDATE_HEALTH_FAILED.equals(state);
+    }
+
+    private void runPostUpdateStartupHealthCheck(String stage, CatalogLoadResult result) {
+        if (!isPostUpdateHealthActive()) {
+            return;
+        }
+        int channelCount = result == null || result.channels == null ? 0 : result.channels.size();
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
+                ? null
+                : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        int epgPrograms = status == null ? 0 : status.epgProgramCount;
+        if (channelCount <= 0) {
+            String detail = getString(R.string.app_update_health_catalog_failed, stage == null ? "catalog" : stage);
+            markPostUpdateHealthFailed(detail, true);
+            return;
+        }
+        String detail = getString(R.string.app_update_health_catalog_ok, channelCount, epgPrograms);
+        prefs.edit()
+                .putString(PREF_UPDATE_HEALTH_STATE, UPDATE_HEALTH_CATALOG_OK)
+                .putLong(PREF_LAST_UPDATE_HEALTH_AT_MS, System.currentTimeMillis())
+                .putString(PREF_LAST_UPDATE_HEALTH_ERROR, "")
+                .apply();
+        reportOfflineDeviceStatus(getString(R.string.app_update_health_event), true, lastCatalogLoadDurationMs, detail);
+    }
+
+    private void markPostUpdatePlaybackHealthy(String channelId) {
+        if (!isPostUpdateHealthActive() || prefs == null) {
+            return;
+        }
+        String detail = getString(R.string.app_update_health_playback_ok, fallbackUnknown(channelId));
+        prefs.edit()
+                .putInt(PREF_PENDING_UPDATE_HEALTH_VERSION_CODE, 0)
+                .putInt(PREF_LAST_GOOD_APP_VERSION_CODE, BuildConfig.VERSION_CODE)
+                .putString(PREF_LAST_GOOD_APP_VERSION_NAME, BuildConfig.VERSION_NAME)
+                .putString(PREF_UPDATE_HEALTH_STATE, UPDATE_HEALTH_GOOD)
+                .putLong(PREF_LAST_UPDATE_HEALTH_AT_MS, System.currentTimeMillis())
+                .putString(PREF_LAST_UPDATE_HEALTH_ERROR, "")
+                .apply();
+        reportOfflineDeviceStatus(getString(R.string.app_update_health_event), true, 0L, detail);
+        showStatus(getString(R.string.app_update_health_marked_good));
+    }
+
+    private void markPostUpdateHealthFailed(String detail, boolean showActions) {
+        if (!isPostUpdateHealthActive() || prefs == null) {
+            return;
+        }
+        String cleanDetail = detail == null || detail.trim().isEmpty() ? getString(R.string.error_unknown_reason) : detail.trim();
+        prefs.edit()
+                .putString(PREF_UPDATE_HEALTH_STATE, UPDATE_HEALTH_FAILED)
+                .putLong(PREF_LAST_UPDATE_HEALTH_AT_MS, System.currentTimeMillis())
+                .putString(PREF_LAST_UPDATE_HEALTH_ERROR, cleanDetail)
+                .apply();
+        lastOfflineMaintenanceError = cleanDetail;
+        reportOfflineDeviceStatus(getString(R.string.app_update_health_event), false, 0L, cleanDetail);
+        if (showActions) {
+            uiHandler.postDelayed(() -> showPostUpdateRecoveryDialog(cleanDetail), 600L);
+        }
+    }
+
+    private void showPostUpdateRecoveryDialog(String reason) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.diagnostics_action_retry));
+        actions.add(this::retryCurrentPlayback);
+        options.add(getString(R.string.app_update_action_rescue));
+        actions.add(this::checkRescueAppUpdateManually);
+        options.add(getString(R.string.app_update_action_diagnostics));
+        actions.add(this::showAppUpdateDiagnosticsDialog);
+        options.add(getString(R.string.offline_recovery_action_status));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
+        showTvOptionsDialog(
+                R.string.app_update_health_failed_title,
+                getString(R.string.app_update_health_failed_message, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, reason == null ? getString(R.string.error_unknown_reason) : reason),
+                options,
+                actions
+        );
     }
 
     private void detectUnfinishedAppUpdateIfNeeded() {
@@ -11124,6 +11258,12 @@ public class MainActivity extends FragmentActivity {
                 diagnostics.routeLabel,
                 diagnostics.playbackMode
         );
+        if (BuildConfig.STANDALONE_MODE && !request.directPlayback) {
+            String detail = diagnostics.lastError == null || diagnostics.lastError.trim().isEmpty()
+                    ? getString(R.string.error_unknown_reason)
+                    : diagnostics.lastError.trim();
+            markPostUpdateHealthFailed(getString(R.string.app_update_health_playback_failed, request.channelName, detail), true);
+        }
         ChannelItem item = findChannelItemById(request.channelId);
         if (item != null && item.isVod) {
             rememberCurrentVodPosition();

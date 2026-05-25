@@ -163,6 +163,10 @@ final class CatalogSnapshotStore {
     }
 
     void reportDeviceStatus(String baseUrl, SnapshotStatus status, String event, boolean success, long durationMs, String detail) throws Exception {
+        reportDeviceStatus(baseUrl, status, event, success, durationMs, detail, null);
+    }
+
+    void reportDeviceStatus(String baseUrl, SnapshotStatus status, String event, boolean success, long durationMs, String detail, JSONObject extra) throws Exception {
         String endpoint = joinUrl(baseUrl, "/api/offline/device/status");
         JSONObject payload = new JSONObject()
                 .put("device_id", getDeviceId())
@@ -173,6 +177,13 @@ final class CatalogSnapshotStore {
                 .put("package_name", context.getPackageName())
                 .put("version_name", BuildConfig.VERSION_NAME)
                 .put("version_code", BuildConfig.VERSION_CODE);
+        if (extra != null) {
+            Iterator<String> keys = extra.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                payload.put(key, extra.opt(key));
+            }
+        }
         if (status != null) {
             payload.put("catalog_available", status.available)
                     .put("catalog_expired", status.expired)
@@ -194,6 +205,18 @@ final class CatalogSnapshotStore {
         }
         HttpClient.Response response = httpClient.postJson(endpoint, payload, 5000, 10000, buildSnapshotHeaders());
         httpClient.requireSuccess(response, "enviando estado offline");
+    }
+
+    void reportPlaybackHeartbeat(String baseUrl, JSONObject payload) throws Exception {
+        if (payload == null) {
+            throw new IllegalArgumentException("heartbeat vacio");
+        }
+        String endpoint = joinUrl(baseUrl, "/api/playback/heartbeat");
+        payload.put("device_id", getDeviceId())
+                .put("version_name", BuildConfig.VERSION_NAME)
+                .put("version_code", BuildConfig.VERSION_CODE);
+        HttpClient.Response response = httpClient.postJson(endpoint, payload, 5000, 10000, buildSnapshotHeaders());
+        httpClient.requireSuccess(response, "enviando heartbeat de reproduccion");
     }
 
     void applyActivationPayload(JSONObject payload, String baseUrl) throws Exception {

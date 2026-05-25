@@ -1,3 +1,27 @@
+## 2.0.32-offline-playback-presence
+- Offline: la app reporta al servidor que canal o VOD esta reproduciendo cada usuario con heartbeat periodico.
+- Servidor: anadidos endpoints admin para ver reproducciones activas e historial reciente.
+- Telegram: anadidos `/estado`, `/viendo` y `/historial usuario`.
+
+## 2.0.31-offline-movistar-logos
+- Offline: normalizados los logos de Movistar a HTTPS antes de cargarlos para evitar fallos de Glide con las URLs HTTP antiguas guardadas en snapshots locales.
+- Servidor: actualizadas las URLs base de logos Movistar a HTTPS para que los nuevos catalogos ya salgan corregidos.
+
+## 2.0.30-offline-fresh-catalog
+- Offline: el catalogo se considera obsoleto a los 30 minutos para evitar IDs caducados tras refrescos de plataformas como Movistar.
+- Offline: al volver a la app se refresca el catalogo en segundo plano si esta viejo, sin esperar al temporizador de seis horas anterior.
+
+## 2.0.29-offline-update-fallback
+- Offline: el chequeo de actualizacion reintenta por LAN contra `192.168.93.223:8080` si el dominio publico se queda colgado.
+- Offline: aumentado el timeout del endpoint de version para evitar falsos negativos en Fire OS.
+- Offline: al volver a la app tambien se comprueba actualizacion de forma espaciada, no solo al crear la actividad desde cero.
+
+## 2.0.28-offline-recovery
+- Offline: anadido preflight antes de instalar actualizaciones para detectar paquete incorrecto, version no superior o firma incompatible antes de abrir el instalador.
+- Offline: guardado diagnostico persistente del ultimo intento de actualizacion con etapa, version objetivo, APK e instalacion actual.
+- Offline: recuperacion guiada cuando falta catalogo, URL o token, con acciones directas para activar por codigo, refrescar catalogo, ver estado o configurar credenciales.
+- Offline: el reporte de estado al dashboard incluye mas senales de mantenimiento, catalogo y diagnostico de actualizacion.
+
 ## 1.4.24
 - Fire Stick: herramientas y pantalla principal usan la misma version de `BuildConfig`, evitando titulos desfasados.
 - Fire Stick: el script de instalacion desactiva paquetes antiguos conocidos para no abrir builds duplicadas desde el launcher.

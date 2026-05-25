@@ -633,7 +633,13 @@
     <string name="settings_update_state_available_short">Disponible %1$s (%2$d)</string>
     <string name="settings_update_state_current">Comprobado %1$s · Al dia %2$s (%3$d)</string>
     <string name="settings_update_state_unknown">Sin comprobar · Ultimo intento: %1$s</string>
+    <string name="app_update_diagnostic_summary">Ultimo diagnostico: %1$s · %2$s · %3$s · %4$d ms\n%5$s</string>
+    <string name="app_update_diagnostic_versions">Versiones: actual %1$s (%2$d) · objetivo %3$s (%4$d)</string>
+    <string name="app_update_diagnostic_apk">APK: %1$s (%2$d) · instalado %3$s (%4$d)</string>
+    <string name="app_update_diagnostic_unfinished">La actualizacion no pudo completarse.</string>
+    <string name="app_update_diagnostic_installer_unfinished">El instalador se abrio, pero la app sigue en la version anterior.</string>
     <string name="app_update_action_check">Buscar actualizacion de la app</string>
+    <string name="app_update_action_diagnostics">Ver diagnostico de actualizacion</string>
     <string name="app_update_action_install">Actualizar ahora</string>
     <string name="app_update_action_later">Mas tarde</string>
     <string name="app_update_available_title">Nueva version %1$s</string>
@@ -698,6 +704,11 @@
     <string name="offline_catalog_activation_error">Error activando: %1$s</string>
     <string name="offline_catalog_reactivation_title">Catalogo requiere reactivacion</string>
     <string name="offline_catalog_reactivation_message">Tipo: %1$s\n\nDetalle: %2$s\n\nPuedes activar de nuevo con codigo o pegar un token valido.</string>
+    <string name="offline_recovery_title">Recuperacion offline</string>
+    <string name="offline_recovery_message">Tipo: %1$s\n\nDetalle: %2$s\n\nElige una accion para recuperar la app independiente.</string>
+    <string name="offline_recovery_action_activate">Activar de nuevo con codigo</string>
+    <string name="offline_recovery_action_refresh">Actualizar catalogo ahora</string>
+    <string name="offline_recovery_action_status">Ver estado offline</string>
     <string name="offline_catalog_status_refreshing">Actualizando catalogo local...</string>
     <string name="offline_catalog_status_refreshed">Catalogo local actualizado</string>
     <string name="offline_catalog_status_repairing">Reparando catalogo local...</string>

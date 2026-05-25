@@ -3,6 +3,9 @@ package com.drbep.tvplayer;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -19,14 +22,19 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 final class AppUpdateManager {
     private static final String LATEST_PATH = "/api/offline/app/latest";
     private static final String APK_MIME = "application/vnd.android.package-archive";
+    private static final String PUBLIC_FALLBACK_BASE_URL = "https://iptv.bepllorens.com";
+    private static final String LAN_FALLBACK_BASE_URL = "http://192.168.93.223:8080";
+    private static final String PAYLOAD_SOURCE_BASE_URL = "_source_base_url";
 
     private final Context context;
     private final HttpClient httpClient;
@@ -39,7 +47,8 @@ final class AppUpdateManager {
     }
 
     UpdateInfo fetchLatest(String baseUrl) throws Exception {
-        JSONObject payload = httpClient.getJsonObject(joinUrl(baseUrl, LATEST_PATH + "?channel=" + Uri.encode(BuildConfig.UPDATE_CHANNEL)), 5000, 12000, jsonHeaders(), "buscando actualizacion");
+        JSONObject payload = fetchLatestPayload(baseUrl);
+        String sourceBaseUrl = payload.optString(PAYLOAD_SOURCE_BASE_URL, baseUrl).trim();
         List<String> changelog = new ArrayList<>();
         JSONArray array = payload.optJSONArray("changelog");
         if (array != null) {
@@ -54,11 +63,48 @@ final class AppUpdateManager {
                 payload.optBoolean("update_enabled", false),
                 payload.optInt("version_code", 0),
                 payload.optString("version_name", "").trim(),
-                resolveUrl(baseUrl, payload.optString("apk_url", "").trim()),
+                resolveUrl(sourceBaseUrl.isEmpty() ? baseUrl : sourceBaseUrl, payload.optString("apk_url", "").trim()),
                 payload.optString("sha256", "").trim().toLowerCase(Locale.ROOT),
                 payload.optBoolean("required", false),
                 changelog
         );
+    }
+
+    private JSONObject fetchLatestPayload(String baseUrl) throws Exception {
+        Exception firstError = null;
+        for (String candidate : updateBaseUrlCandidates(baseUrl)) {
+            try {
+                JSONObject payload = httpClient.getJsonObject(joinUrl(candidate, LATEST_PATH + "?channel=" + Uri.encode(BuildConfig.UPDATE_CHANNEL)), 10000, 30000, jsonHeaders(), "buscando actualizacion");
+                payload.put(PAYLOAD_SOURCE_BASE_URL, candidate);
+                return payload;
+            } catch (Exception e) {
+                if (firstError == null) {
+                    firstError = e;
+                }
+            }
+        }
+        throw firstError == null ? new IllegalStateException("no hay URL de actualizacion") : firstError;
+    }
+
+    private static List<String> updateBaseUrlCandidates(String baseUrl) {
+        List<String> candidates = new ArrayList<>();
+        addCandidate(candidates, baseUrl);
+        addCandidate(candidates, PUBLIC_FALLBACK_BASE_URL);
+        addCandidate(candidates, LAN_FALLBACK_BASE_URL);
+        return candidates;
+    }
+
+    private static void addCandidate(List<String> candidates, String value) {
+        String clean = value == null ? "" : value.trim();
+        if (clean.isEmpty()) {
+            return;
+        }
+        for (String existing : candidates) {
+            if (existing.equalsIgnoreCase(clean)) {
+                return;
+            }
+        }
+        candidates.add(clean);
     }
 
     File downloadApk(UpdateInfo info, Progress progress) throws Exception {
@@ -119,6 +165,10 @@ final class AppUpdateManager {
         if (apkFile == null || !apkFile.exists()) {
             throw new IllegalStateException("APK descargado no encontrado");
         }
+        InstallPreflight preflight = checkInstallPreflight(apkFile);
+        if (!preflight.ok) {
+            throw new IllegalStateException(preflight.message);
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.getPackageManager().canRequestPackageInstalls()) {
             Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
                     .setData(Uri.parse("package:" + context.getPackageName()))
@@ -140,6 +190,57 @@ final class AppUpdateManager {
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             context.startActivity(fallback);
         }
+    }
+
+    InstallPreflight checkInstallPreflight(File apkFile) {
+        if (apkFile == null || !apkFile.exists()) {
+            return new InstallPreflight(false, "APK descargado no encontrado", "", 0, "", 0);
+        }
+        try {
+            PackageManager packageManager = context.getPackageManager();
+            PackageInfo archiveInfo = packageManager.getPackageArchiveInfo(apkFile.getAbsolutePath(), PackageManager.GET_SIGNATURES);
+            if (archiveInfo == null) {
+                return new InstallPreflight(false, "Android no puede leer el APK descargado", "", 0, "", 0);
+            }
+            PackageInfo installedInfo = packageManager.getPackageInfo(context.getPackageName(), PackageManager.GET_SIGNATURES);
+            String archivePackage = archiveInfo.packageName == null ? "" : archiveInfo.packageName;
+            String installedPackage = installedInfo.packageName == null ? context.getPackageName() : installedInfo.packageName;
+            int archiveVersion = archiveInfo.versionCode;
+            int installedVersion = installedInfo.versionCode;
+            if (!installedPackage.equals(archivePackage)) {
+                return new InstallPreflight(false, "APK de otro paquete: " + archivePackage, archivePackage, archiveVersion, installedPackage, installedVersion);
+            }
+            if (archiveVersion <= installedVersion) {
+                return new InstallPreflight(false, "APK no es mas nuevo: " + archiveVersion + " <= " + installedVersion, archivePackage, archiveVersion, installedPackage, installedVersion);
+            }
+            Set<String> installedHashes = signatureHashes(installedInfo);
+            Set<String> archiveHashes = signatureHashes(archiveInfo);
+            if (installedHashes.isEmpty() || archiveHashes.isEmpty()) {
+                return new InstallPreflight(false, "No se pudo validar la firma del APK", archivePackage, archiveVersion, installedPackage, installedVersion);
+            }
+            if (!installedHashes.equals(archiveHashes)) {
+                return new InstallPreflight(false, "Firma offline no valida: esta instalacion no puede actualizarse encima. Requiere reinstalacion limpia.", archivePackage, archiveVersion, installedPackage, installedVersion);
+            }
+            return new InstallPreflight(true, "preflight OK", archivePackage, archiveVersion, installedPackage, installedVersion);
+        } catch (Exception e) {
+            return new InstallPreflight(false, e.getMessage() == null ? "preflight de instalacion fallido" : e.getMessage(), "", 0, context.getPackageName(), 0);
+        }
+    }
+
+    private static Set<String> signatureHashes(PackageInfo info) throws Exception {
+        Set<String> hashes = new HashSet<>();
+        if (info == null || info.signatures == null) {
+            return hashes;
+        }
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        for (Signature signature : info.signatures) {
+            if (signature == null) {
+                continue;
+            }
+            digest.reset();
+            hashes.add(toHex(digest.digest(signature.toByteArray())));
+        }
+        return hashes;
     }
 
     private Map<String, String> playbackHeaders() {
@@ -197,6 +298,24 @@ final class AppUpdateManager {
 
     interface Progress {
         void onProgress(long bytesRead, long totalBytes);
+    }
+
+    static final class InstallPreflight {
+        final boolean ok;
+        final String message;
+        final String apkPackageName;
+        final int apkVersionCode;
+        final String installedPackageName;
+        final int installedVersionCode;
+
+        InstallPreflight(boolean ok, String message, String apkPackageName, int apkVersionCode, String installedPackageName, int installedVersionCode) {
+            this.ok = ok;
+            this.message = message == null ? "" : message;
+            this.apkPackageName = apkPackageName == null ? "" : apkPackageName;
+            this.apkVersionCode = apkVersionCode;
+            this.installedPackageName = installedPackageName == null ? "" : installedPackageName;
+            this.installedVersionCode = installedVersionCode;
+        }
     }
 
     static final class UpdateInfo {

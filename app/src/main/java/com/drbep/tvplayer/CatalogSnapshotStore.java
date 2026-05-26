@@ -162,11 +162,11 @@ final class CatalogSnapshotStore {
         return new JSONObject(response.body == null ? "" : response.body);
     }
 
-    void reportDeviceStatus(String baseUrl, SnapshotStatus status, String event, boolean success, long durationMs, String detail) throws Exception {
-        reportDeviceStatus(baseUrl, status, event, success, durationMs, detail, null);
+    JSONObject reportDeviceStatus(String baseUrl, SnapshotStatus status, String event, boolean success, long durationMs, String detail) throws Exception {
+        return reportDeviceStatus(baseUrl, status, event, success, durationMs, detail, null);
     }
 
-    void reportDeviceStatus(String baseUrl, SnapshotStatus status, String event, boolean success, long durationMs, String detail, JSONObject extra) throws Exception {
+    JSONObject reportDeviceStatus(String baseUrl, SnapshotStatus status, String event, boolean success, long durationMs, String detail, JSONObject extra) throws Exception {
         String endpoint = joinUrl(baseUrl, "/api/offline/device/status");
         JSONObject payload = new JSONObject()
                 .put("device_id", getDeviceId())
@@ -205,6 +205,7 @@ final class CatalogSnapshotStore {
         }
         HttpClient.Response response = httpClient.postJson(endpoint, payload, 5000, 10000, buildSnapshotHeaders());
         httpClient.requireSuccess(response, "enviando estado offline");
+        return new JSONObject(response.body == null ? "{}" : response.body);
     }
 
     void reportPlaybackHeartbeat(String baseUrl, JSONObject payload) throws Exception {

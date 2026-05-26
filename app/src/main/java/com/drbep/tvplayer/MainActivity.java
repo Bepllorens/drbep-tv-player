@@ -71,6 +71,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -7250,11 +7251,92 @@ public class MainActivity extends FragmentActivity {
         JSONObject extra = buildOfflineDeviceStatusExtra();
         ioExecutor.execute(() -> {
             try {
-                catalogSnapshotStore.reportDeviceStatus(BuildConfig.OFFLINE_BASE_URL, status, event, success, durationMs, detail, extra);
+                JSONObject response = catalogSnapshotStore.reportDeviceStatus(BuildConfig.OFFLINE_BASE_URL, status, event, success, durationMs, detail, extra);
+                if (response != null && response.optBoolean("diagnostic_requested", false)) {
+                    sendRemoteDiagnosticReport(status);
+                }
             } catch (Exception e) {
                 Log.d(TAG, "offline device status report failed", e);
             }
         });
+    }
+
+    private void sendRemoteDiagnosticReport(CatalogSnapshotStore.SnapshotStatus status) {
+        try {
+            JSONObject extra = buildOfflineDeviceStatusExtra();
+            extra.put("remote_diagnostic", buildRemoteDiagnosticPayload(status));
+            catalogSnapshotStore.reportDeviceStatus(
+                    BuildConfig.OFFLINE_BASE_URL,
+                    status,
+                    "Diagnostico remoto",
+                    true,
+                    0L,
+                    "Diagnostico remoto enviado",
+                    extra
+            );
+        } catch (Exception e) {
+            Log.d(TAG, "remote diagnostic report failed", e);
+        }
+    }
+
+    private JSONObject buildRemoteDiagnosticPayload(CatalogSnapshotStore.SnapshotStatus status) {
+        JSONObject payload = new JSONObject();
+        try {
+            Runtime runtime = Runtime.getRuntime();
+            long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+            ChannelItem current = getCurrentPlaybackChannelItem();
+            PlayerController.PlaybackDiagnostics playbackDiagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+            payload.put("report_id", UUID.randomUUID().toString())
+                    .put("created_at_ms", System.currentTimeMillis())
+                    .put("package_name", getPackageName())
+                    .put("version_name", BuildConfig.VERSION_NAME)
+                    .put("version_code", BuildConfig.VERSION_CODE)
+                    .put("update_channel", BuildConfig.UPDATE_CHANNEL)
+                    .put("uptime_ms", activityCreatedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - activityCreatedAtMs))
+                    .put("channels_visible", channels.size())
+                    .put("channels_total", allChannels.size())
+                    .put("selected_filter", selectedFilterKey == null ? "" : selectedFilterKey)
+                    .put("last_catalog_load_ms", lastCatalogLoadDurationMs)
+                    .put("last_apply_channels_ms", lastApplyChannelsDurationMs)
+                    .put("last_epg_now_load_ms", lastEpgNowLoadDurationMs)
+                    .put("last_app_update_check_ms", lastAppUpdateCheckMs)
+                    .put("last_app_update_error", lastAppUpdateError == null ? "" : lastAppUpdateError)
+                    .put("last_catalog_error", lastOfflineCatalogRefreshError == null ? "" : lastOfflineCatalogRefreshError)
+                    .put("last_maintenance_error", lastOfflineMaintenanceError == null ? "" : lastOfflineMaintenanceError)
+                    .put("memory_used_bytes", usedMemory)
+                    .put("memory_max_bytes", runtime.maxMemory())
+                    .put("free_space_bytes", getFilesDir() == null ? 0L : getFilesDir().getFreeSpace());
+            if (current != null) {
+                payload.put("current_channel_id", current.id == null ? "" : current.id)
+                        .put("current_channel", displayName(current))
+                        .put("current_platform", current.platformName == null ? "" : current.platformName)
+                        .put("current_group", current.group == null ? "" : current.group);
+            }
+            if (playbackDiagnostics != null) {
+                payload.put("playback_state", playbackDiagnostics.playbackState)
+                        .put("playback_route", playbackDiagnostics.routeLabel)
+                        .put("playback_mode", playbackDiagnostics.playbackMode)
+                        .put("playback_mime", playbackDiagnostics.mimeType)
+                        .put("playback_drm", playbackDiagnostics.drmType)
+                        .put("playback_error", playbackDiagnostics.lastError == null ? "" : playbackDiagnostics.lastError);
+            }
+            if (status != null) {
+                payload.put("catalog_available", status.available)
+                        .put("catalog_expired", status.expired)
+                        .put("catalog_channels", status.channelCount)
+                        .put("catalog_vod", status.vodCount)
+                        .put("catalog_epg_channels", status.epgChannelCount)
+                        .put("catalog_epg_programs", status.epgProgramCount)
+                        .put("catalog_subject", status.subject)
+                        .put("catalog_verification_state", status.verificationState)
+                        .put("catalog_verification_message", status.verificationMessage)
+                        .put("catalog_payload_fingerprint", status.payloadFingerprint)
+                        .put("catalog_permissions_fingerprint", status.permissionsFingerprint);
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "remote diagnostic payload failed", e);
+        }
+        return payload;
     }
 
     private void startPlaybackHeartbeat(ChannelItem channel) {

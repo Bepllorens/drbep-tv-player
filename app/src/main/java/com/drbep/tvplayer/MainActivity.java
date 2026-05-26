@@ -7255,8 +7255,29 @@ public class MainActivity extends FragmentActivity {
                 if (response != null && response.optBoolean("diagnostic_requested", false)) {
                     sendRemoteDiagnosticReport(status);
                 }
+                handleOfflineRemoteCommands(response);
             } catch (Exception e) {
                 Log.d(TAG, "offline device status report failed", e);
+            }
+        });
+    }
+
+    private void handleOfflineRemoteCommands(JSONObject response) {
+        if (response == null || uiHandler == null) {
+            return;
+        }
+        boolean forceCatalogRefresh = response.optBoolean("force_catalog_refresh_requested", false);
+        boolean appUpdateCheck = response.optBoolean("app_update_check_requested", false);
+        if (!forceCatalogRefresh && !appUpdateCheck) {
+            return;
+        }
+        uiHandler.post(() -> {
+            if (forceCatalogRefresh) {
+                showStatus(getString(R.string.offline_catalog_status_refreshing));
+                refreshOfflineCatalog(false, true, true);
+            }
+            if (appUpdateCheck) {
+                checkAppUpdate(false);
             }
         });
     }

@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 43
-        versionName "2.0.38-offline-telegram-actions"
+        versionCode 53
+        versionName "2.0.48-offline-ism-live-fix"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -134,6 +134,7 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.10.0'
     implementation 'androidx.media3:media3-exoplayer-dash:1.10.0'
     implementation 'androidx.media3:media3-exoplayer-hls:1.10.0'
+    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.10.0'
     implementation 'androidx.media3:media3-ui:1.10.0'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     implementation 'com.caverock:androidsvg:1.4'

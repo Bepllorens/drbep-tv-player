@@ -97,6 +97,26 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void clearkeySmoothStreamInfoUsesNativeSmoothRoute() {
+        PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
+        streamInfo.drmType = "clearkey";
+        streamInfo.type = "smooth";
+        streamInfo.encrypted = true;
+        streamInfo.sourceUrl = "https://origin.example.com/index.isml/Manifest";
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                request("1600001", "https://iptv.example.com/live/1600001", "https://iptv.example.com/proxy/manifest/1600001", PlaybackModeStore.MODE_AUTO, false, ""),
+                false,
+                streamInfo
+        );
+
+        assertEquals("https://origin.example.com/index.isml/Manifest", decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_SS, decision.mimeType);
+        assertEquals("clearkey", decision.drmType);
+        assertTrue(decision.allowCompatibilityFallback);
+    }
+
+    @Test
     public void espn4ClearKeyUsesServerSideLiveRoute() {
         PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
         streamInfo.drmType = "clearkey";
@@ -184,6 +204,11 @@ public class PlaybackRouteResolverTest {
         assertEquals("https://iptv.example.com/api/vod/runtime/stream/1008", decision.targetUrl);
         assertEquals(MimeTypes.APPLICATION_M3U8, decision.mimeType);
         assertEquals("", decision.drmType);
+    }
+
+    @Test
+    public void inferMimeTypeDetectsSmoothStreamingManifest() {
+        assertEquals(MimeTypes.APPLICATION_SS, PlaybackRouteResolver.inferMimeType("https://origin.example.com/index.isml/Manifest"));
     }
 
     @Test

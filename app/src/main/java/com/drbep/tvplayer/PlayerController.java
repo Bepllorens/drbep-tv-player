@@ -2,27 +2,37 @@ package com.drbep.tvplayer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.MediaDrmException;
+import android.media.MediaDrm;
+import android.media.DeniedByServerException;
 import android.net.Uri;
 import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
+import androidx.media3.common.Format;
 import androidx.media3.common.ColorInfo;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
+import androidx.media3.decoder.CryptoConfig;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.exoplayer.analytics.PlayerId;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager;
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider;
 import androidx.media3.exoplayer.drm.DrmSessionManager;
+import androidx.media3.exoplayer.drm.FrameworkCryptoConfig;
+import androidx.media3.exoplayer.drm.DrmSessionEventListener;
+import androidx.media3.exoplayer.drm.DrmSession;
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider;
 import androidx.media3.exoplayer.drm.ExoMediaDrm;
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm;
@@ -37,6 +47,7 @@ import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
 import java.net.URLEncoder;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
@@ -112,6 +123,7 @@ final class PlayerController {
         String clearKeyKidHex;
         String clearKeyKeyHex;
         String patchedClearKeyManifestDataUri;
+        String patchedSmoothClearKeyManifestDataUri;
         String sourceUrl;
         String type;
         boolean encrypted;
@@ -183,6 +195,7 @@ final class PlayerController {
     private final SharedPreferences prefs;
     private final PlaybackRouteResolver playbackRouteResolver;
     private final CatalogSnapshotStore catalogSnapshotStore;
+    private final LocalSmoothManifestServer localSmoothManifestServer;
 
     private DefaultTrackSelector trackSelector;
     private DefaultHttpDataSource.Factory httpDataSourceFactory;
@@ -217,6 +230,7 @@ final class PlayerController {
         this.prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.playbackRouteResolver = new PlaybackRouteResolver(baseUrl);
         this.catalogSnapshotStore = new CatalogSnapshotStore(context);
+        this.localSmoothManifestServer = new LocalSmoothManifestServer();
     }
 
     void initialize() {
@@ -270,7 +284,7 @@ final class PlayerController {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 lastPlaybackState = playbackStateToString(playbackState);
-                Log.d(TAG, "playbackState=" + playbackStateToString(playbackState)
+                Log.w(TAG, "playbackState=" + playbackStateToString(playbackState)
                         + " channel=" + describeRequest(currentRequest)
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " playWhenReady=" + (player != null && player.getPlayWhenReady()));
@@ -312,6 +326,8 @@ final class PlayerController {
             @Override
             public void onRenderedFirstFrame() {
                 PlaybackRequest request = currentRequest;
+                Log.w(TAG, "firstFrame channel=" + describeRequest(request)
+                        + " decision=" + describeDecision(currentPlaybackDecision));
                 host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
             }
         });
@@ -337,6 +353,10 @@ final class PlayerController {
             if (C.CLEARKEY_UUID.equals(drmConfiguration.scheme) && licenseUri.startsWith(CLEARKEY_DATA_URI_PREFIX)) {
                 byte[] clearKeyResponse = decodeClearKeyDataUri(licenseUri);
                 if (clearKeyResponse != null && clearKeyResponse.length > 0) {
+                    String mimeType = mediaItem.localConfiguration.mimeType == null ? "" : mediaItem.localConfiguration.mimeType;
+                    if (MimeTypes.APPLICATION_SS.equals(mimeType)) {
+                        return new LocalClearKeyDrmSessionManager(clearKeyResponse);
+                    }
                     DefaultDrmSessionManager drmSessionManager = new DefaultDrmSessionManager.Builder()
                             .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
                             .setMultiSession(drmConfiguration.multiSession)
@@ -379,6 +399,126 @@ final class PlayerController {
         @Override
         public Response executeKeyRequest(UUID uuid, ExoMediaDrm.KeyRequest request) throws MediaDrmCallbackException {
             return new Response(keyResponse);
+        }
+    }
+
+
+    private static final class LocalClearKeyDrmSessionManager implements DrmSessionManager {
+        private final LocalClearKeyDrmSession session;
+
+        LocalClearKeyDrmSessionManager(byte[] keyResponse) {
+            this.session = new LocalClearKeyDrmSession(keyResponse);
+        }
+
+        @Override
+        public void setPlayer(Looper looper, PlayerId playerId) {
+        }
+
+        @Override
+        public DrmSession acquireSession(DrmSessionEventListener.EventDispatcher eventDispatcher, Format format) {
+            session.acquire(eventDispatcher);
+            return session;
+        }
+
+        @Override
+        public int getCryptoType(Format format) {
+            return C.CRYPTO_TYPE_FRAMEWORK;
+        }
+    }
+
+    private static final class LocalClearKeyDrmSession implements DrmSession {
+        private final byte[] keyResponse;
+        private MediaDrm mediaDrm;
+        private byte[] sessionId;
+        private DrmSessionException error;
+        private int acquireCount;
+
+        LocalClearKeyDrmSession(byte[] keyResponse) {
+            this.keyResponse = keyResponse;
+        }
+
+        @Override
+        public int getState() {
+            if (error != null) {
+                return STATE_ERROR;
+            }
+            return sessionId == null ? STATE_OPENING : STATE_OPENED_WITH_KEYS;
+        }
+
+        @Nullable
+        @Override
+        public DrmSessionException getError() {
+            return error;
+        }
+
+        @Override
+        public UUID getSchemeUuid() {
+            return C.CLEARKEY_UUID;
+        }
+
+        @Nullable
+        @Override
+        public CryptoConfig getCryptoConfig() {
+            return sessionId == null ? null : new FrameworkCryptoConfig(C.CLEARKEY_UUID, sessionId);
+        }
+
+        @Override
+        public Map<String, String> queryKeyStatus() {
+            if (mediaDrm == null || sessionId == null) {
+                return Collections.emptyMap();
+            }
+            return mediaDrm.queryKeyStatus(sessionId);
+        }
+
+        @Nullable
+        @Override
+        public byte[] getOfflineLicenseKeySetId() {
+            return null;
+        }
+
+        @Override
+        public boolean requiresSecureDecoder(String mimeType) {
+            return false;
+        }
+
+        @Override
+        public synchronized void acquire(DrmSessionEventListener.EventDispatcher eventDispatcher) {
+            acquireCount++;
+            if (sessionId != null || error != null) {
+                return;
+            }
+            try {
+                mediaDrm = new MediaDrm(C.CLEARKEY_UUID);
+                sessionId = mediaDrm.openSession();
+                mediaDrm.provideKeyResponse(sessionId, keyResponse);
+                Log.w(TAG, "local clearkey drm session opened for Smooth");
+            } catch (MediaDrmException | RuntimeException e) {
+                error = new DrmSessionException(e, PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR);
+                if (eventDispatcher != null) {
+                    eventDispatcher.drmSessionManagerError(error);
+                }
+                Log.w(TAG, "local clearkey drm session failed for Smooth", e);
+            }
+        }
+
+        @Override
+        public synchronized void release(DrmSessionEventListener.EventDispatcher eventDispatcher) {
+            acquireCount = Math.max(0, acquireCount - 1);
+            if (acquireCount > 0) {
+                return;
+            }
+            if (mediaDrm != null) {
+                if (sessionId != null) {
+                    try {
+                        mediaDrm.closeSession(sessionId);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+                mediaDrm.release();
+            }
+            mediaDrm = null;
+            sessionId = null;
+            error = null;
         }
     }
 
@@ -574,11 +714,15 @@ final class PlayerController {
             StreamInfo info = streamInfoCache.get(channelId);
             boolean fromCache = info != null;
             if (info == null) {
-                info = fetchStreamInfo(channelId);
+                info = buildLocalStreamInfoFromRequest(request);
+                if (info == null) {
+                    info = fetchStreamInfo(channelId);
+                }
                 if (info != null) {
                     streamInfoCache.put(channelId, info);
                 }
             }
+            info = ensurePatchedSmoothClearKeyManifest(channelId, info);
             Log.d(TAG, "resolveStreamInfo channelId=" + channelId
                     + " fromCache=" + fromCache
                     + " streamInfo=" + describeStreamInfo(info));
@@ -625,11 +769,15 @@ final class PlayerController {
             StreamInfo info = streamInfoCache == null ? null : streamInfoCache.get(channelId);
             boolean fromCache = info != null;
             if (info == null) {
-                info = fetchStreamInfo(channelId);
+                info = buildLocalStreamInfoFromRequest(request);
+                if (info == null) {
+                    info = fetchStreamInfo(channelId);
+                }
                 if (info != null && streamInfoCache != null) {
                     streamInfoCache.put(channelId, info);
                 }
             }
+            info = ensurePatchedSmoothClearKeyManifest(channelId, info);
             StreamInfo resolved = info;
             Log.d(TAG, "playChannelAfterResolvingStreamInfo channelId=" + channelId
                     + " fromCache=" + fromCache
@@ -801,6 +949,10 @@ final class PlayerController {
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         PlaybackRequest previousRequest = currentRequest;
         currentRequest = request;
+        if (streamInfo != null && "smooth".equals(safeLower(streamInfo.type))) {
+            streamInfo.patchedSmoothClearKeyManifestDataUri = "";
+            streamInfo = ensurePatchedSmoothClearKeyManifest(request.channelId, streamInfo);
+        }
         currentStreamInfo = streamInfo;
         currentRecordingUrl = null;
         usingPlaybackFallback = useFallback;
@@ -859,7 +1011,7 @@ final class PlayerController {
                     .build());
         }
 
-        Log.i(TAG, "preparePlayback channel=" + describeRequest(request)
+        Log.w(TAG, "preparePlayback channel=" + describeRequest(request)
             + " decision=" + describeDecision(decision)
             + " streamInfo=" + describeStreamInfo(streamInfo)
             + " resumeMs=" + resumePositionMs);
@@ -1064,6 +1216,37 @@ final class PlayerController {
         }
     }
 
+    private StreamInfo buildLocalStreamInfoFromRequest(PlaybackRequest request) {
+        if (request == null || isBlank(request.playUrl)) {
+            return null;
+        }
+        String drmType = safeLower(request.drmScheme);
+        if (!"clearkey".equals(drmType) && !"widevine".equals(drmType)) {
+            return null;
+        }
+        String playUrlLower = request.playUrl.toLowerCase(Locale.ROOT);
+        StreamInfo info = new StreamInfo();
+        info.drmType = drmType;
+        info.licenseUrl = request.drmLicenseUrl;
+        info.sourceUrl = request.playUrl.trim();
+        info.clearKeyLicenseDataUri = request.drmLicenseUrl != null && request.drmLicenseUrl.startsWith(CLEARKEY_DATA_URI_PREFIX)
+                ? request.drmLicenseUrl
+                : "";
+        info.encrypted = true;
+        if (playUrlLower.contains(".isml/manifest") || playUrlLower.contains(".ism/manifest")) {
+            info.type = "smooth";
+        } else if (playUrlLower.contains(".mpd")) {
+            info.type = "dash";
+        } else if (playUrlLower.contains(".m3u8")) {
+            info.type = "hls";
+        }
+        if (isBlank(info.type)) {
+            return null;
+        }
+        Log.d(TAG, "built local stream info channel=" + describeRequest(request) + " streamInfo=" + describeStreamInfo(info));
+        return info;
+    }
+
     private StreamInfo fetchStreamInfo(String channelId) {
         try {
             HttpClient.Response response = httpClient.get(baseUrl + "/api/stream/" + channelId, 5000, 20000, buildPlaybackRequestHeaders());
@@ -1083,6 +1266,7 @@ final class PlayerController {
             info.clearKeyLicenseDataUri = buildClearKeyLicenseDataUri(clearKeyObject);
             populateFirstClearKey(info, clearKeyObject);
             info.patchedClearKeyManifestDataUri = buildPatchedClearKeyProxyManifestDataUri(channelId, info);
+            info.patchedSmoothClearKeyManifestDataUri = buildPatchedSmoothClearKeyManifestDataUri(channelId, info);
             Log.d(TAG, "fetchStreamInfo success channelId=" + channelId + " streamInfo=" + describeStreamInfo(info));
             return info;
         } catch (Exception e) {
@@ -1131,6 +1315,33 @@ final class PlayerController {
             return "data:application/dash+xml;base64," + encoded;
         } catch (Exception e) {
             Log.w(TAG, "failed to build patched clearkey proxy manifest channelId=" + channelId, e);
+            return "";
+        }
+    }
+
+
+    private StreamInfo ensurePatchedSmoothClearKeyManifest(String channelId, StreamInfo info) {
+        if (info == null || !isBlank(info.patchedSmoothClearKeyManifestDataUri)) {
+            return info;
+        }
+        info.patchedSmoothClearKeyManifestDataUri = buildPatchedSmoothClearKeyManifestDataUri(channelId, info);
+        return info;
+    }
+
+    private String buildPatchedSmoothClearKeyManifestDataUri(String channelId, StreamInfo info) {
+        if (info == null
+                || !"clearkey".equals(safeLower(info.drmType))
+                || !"smooth".equals(safeLower(info.type))
+                || isBlank(info.sourceUrl)
+                || isBlank(info.clearKeyLicenseDataUri)) {
+            return "";
+        }
+        try {
+            String localUrl = localSmoothManifestServer.register(channelId, info.sourceUrl);
+            Log.w(TAG, "registered live smooth manifest channelId=" + channelId + " url=" + localUrl);
+            return localUrl;
+        } catch (Exception e) {
+            Log.w(TAG, "failed to register local smooth manifest channelId=" + channelId, e);
             return "";
         }
     }
@@ -1333,6 +1544,7 @@ final class PlayerController {
                 + ",license=" + shortenUrl(streamInfo.licenseUrl)
                 + ",source=" + shortenUrl(streamInfo.sourceUrl)
                 + ",clearKeyData=" + (!isBlank(streamInfo.clearKeyLicenseDataUri))
+                + ",patchedSmooth=" + (!isBlank(streamInfo.patchedSmoothClearKeyManifestDataUri))
                 + "}";
     }
 
@@ -1361,6 +1573,9 @@ final class PlayerController {
         }
         if (MimeTypes.APPLICATION_MPD.equals(decision.mimeType)) {
             return context.getString(R.string.diagnostics_route_direct_dash);
+        }
+        if (MimeTypes.APPLICATION_SS.equals(decision.mimeType)) {
+            return "Directo Smooth";
         }
         return context.getString(R.string.diagnostics_route_direct_generic);
     }

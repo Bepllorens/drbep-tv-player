@@ -51,6 +51,7 @@ final class PlaybackRouteResolver {
         String directUrl = useFallback && request.hasFallback() ? request.fallbackPlayUrl : request.playUrl;
         String playUrlLower = request.playUrl == null ? "" : request.playUrl.toLowerCase(Locale.ROOT);
         boolean looksDash = playUrlLower.contains(".mpd");
+        boolean looksSmooth = looksLikeSmooth(playUrlLower);
         String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
         String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
 
@@ -88,6 +89,23 @@ final class PlaybackRouteResolver {
         }
 
         if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
+            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
+            if ("smooth".equals(streamType) || looksSmooth) {
+                String targetUrl = streamInfo != null && streamInfo.sourceUrl != null && !streamInfo.sourceUrl.trim().isEmpty()
+                        ? streamInfo.sourceUrl
+                        : request.playUrl;
+                if (streamInfo != null && streamInfo.patchedSmoothClearKeyManifestDataUri != null && !streamInfo.patchedSmoothClearKeyManifestDataUri.trim().isEmpty()) {
+                    targetUrl = streamInfo.patchedSmoothClearKeyManifestDataUri;
+                }
+                return new Decision(
+                        targetUrl,
+                        MimeTypes.APPLICATION_SS,
+                        drmType,
+                        playbackMode,
+                        false,
+                        request.hasFallback()
+                );
+            }
             return new Decision(
                     proxyManifestUrl(request.channelId),
                     MimeTypes.APPLICATION_MPD,
@@ -104,6 +122,16 @@ final class PlaybackRouteResolver {
                 return new Decision(
                         request.playUrl,
                         MimeTypes.APPLICATION_M3U8,
+                        "",
+                        playbackMode,
+                        false,
+                    request.hasFallback()
+                );
+            }
+            if ("smooth".equals(streamType)) {
+                return new Decision(
+                        request.playUrl,
+                        MimeTypes.APPLICATION_SS,
                         "",
                         playbackMode,
                         false,
@@ -146,6 +174,16 @@ final class PlaybackRouteResolver {
 
         if (streamInfo != null) {
             String streamType = safeLower(streamInfo.type);
+            if ("smooth".equals(streamType) || looksSmooth) {
+                return new Decision(
+                        request.playUrl,
+                        MimeTypes.APPLICATION_SS,
+                        "",
+                        playbackMode,
+                        false,
+                        request.hasFallback()
+                );
+            }
             if ("dash".equals(streamType) || looksDash) {
                 return new Decision(
                         proxyManifestUrl(request.channelId) + "?nodrm=1",
@@ -187,6 +225,17 @@ final class PlaybackRouteResolver {
             );
         }
 
+        if (looksSmooth) {
+            return new Decision(
+                    request.playUrl,
+                    MimeTypes.APPLICATION_SS,
+                    "",
+                    playbackMode,
+                    false,
+                    request.hasFallback()
+            );
+        }
+
         return new Decision(
                 request.playUrl,
                 resolveMimeType(request.playUrl, null, false),
@@ -205,6 +254,8 @@ final class PlaybackRouteResolver {
                 mimeType = MimeTypes.APPLICATION_MPD;
             } else if ("hls".equals(streamType)) {
                 mimeType = MimeTypes.APPLICATION_M3U8;
+            } else if ("smooth".equals(streamType)) {
+                mimeType = MimeTypes.APPLICATION_SS;
             }
         }
         if ((mimeType == null || mimeType.trim().isEmpty()) && defaultDashForProxy) {
@@ -235,6 +286,9 @@ final class PlaybackRouteResolver {
         if (lower.contains(".m3u8")) {
             return MimeTypes.APPLICATION_M3U8;
         }
+        if (looksLikeSmooth(lower)) {
+            return MimeTypes.APPLICATION_SS;
+        }
         if (lower.contains("/api/vod/runtime/stream/")) {
             return MimeTypes.APPLICATION_M3U8;
         }
@@ -252,5 +306,10 @@ final class PlaybackRouteResolver {
 
     private static String safeLower(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean looksLikeSmooth(String lowerUrl) {
+        String value = lowerUrl == null ? "" : lowerUrl;
+        return value.contains(".isml/manifest") || value.contains(".ism/manifest");
     }
 }

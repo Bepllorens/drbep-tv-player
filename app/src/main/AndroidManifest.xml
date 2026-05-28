@@ -25,6 +25,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@drawable/drbep_launcher_icon"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.DrbepTvPlayer">
 
         <activity

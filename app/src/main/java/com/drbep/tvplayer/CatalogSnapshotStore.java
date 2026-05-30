@@ -98,26 +98,27 @@ final class CatalogSnapshotStore {
             throw new IllegalStateException("no hay " + label);
         }
         long startMs = System.currentTimeMillis();
-        byte[] bytes = new byte[(int) file.length()];
-        try (FileInputStream inputStream = new FileInputStream(file)) {
-            int offset = 0;
-            while (offset < bytes.length) {
-                int read = inputStream.read(bytes, offset, bytes.length - offset);
-                if (read < 0) {
-                    break;
-                }
-                offset += read;
+        // Read directly into a StringBuilder via BufferedReader to avoid allocating
+        // both a byte[] and a String simultaneously (saves ~27 MB peak on a 27 MB catalog).
+        StringBuilder sb = new StringBuilder((int) file.length());
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8), 65536)) {
+            char[] buf = new char[8192];
+            int n;
+            while ((n = reader.read(buf)) != -1) {
+                sb.append(buf, 0, n);
             }
         }
         long readMs = System.currentTimeMillis() - startMs;
         long parseStartMs = System.currentTimeMillis();
-        JSONObject payload = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+        JSONObject payload = new JSONObject(sb.toString());
+        sb = null; // allow GC before validation
         long parseMs = System.currentTimeMillis() - parseStartMs;
         long validateStartMs = System.currentTimeMillis();
         validateSnapshotPayload(payload, verifySignature);
         long validateMs = System.currentTimeMillis() - validateStartMs;
         Log.i(TAG, "snapshot read label=" + label
-                + " bytes=" + bytes.length
+                + " bytes=" + file.length()
                 + " verifySignature=" + verifySignature
                 + " readMs=" + readMs
                 + " parseMs=" + parseMs
@@ -205,7 +206,11 @@ final class CatalogSnapshotStore {
         }
         HttpClient.Response response = httpClient.postJson(endpoint, payload, 5000, 10000, buildSnapshotHeaders());
         httpClient.requireSuccess(response, "enviando estado offline");
-        return new JSONObject(response.body == null ? "{}" : response.body);
+        try {
+            return response.body != null && !response.body.trim().isEmpty() ? new JSONObject(response.body) : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     void reportPlaybackHeartbeat(String baseUrl, JSONObject payload) throws Exception {
@@ -437,16 +442,19 @@ final class CatalogSnapshotStore {
         return new File(context.getFilesDir(), SNAPSHOT_TMP_FILE);
     }
 
+    // Minimum file size considered a valid catalog (1 MB). A real catalog with
+    // channels is always much larger; this avoids parsing the full 27 MB JSON
+    // just to check it has content, which would OOM while ExoPlayer is active.
+    private static final long MIN_VALID_SNAPSHOT_BYTES = 1024 * 1024L;
+
     private void backupCurrentSnapshotIfUseful(File source) {
-        if (source == null || !source.exists() || source.length() <= 0L) {
+        if (source == null || !source.exists() || source.length() < MIN_VALID_SNAPSHOT_BYTES) {
             return;
         }
         try {
-            JSONObject current = readSnapshotObject(source, "catalogo actual");
-            validateSnapshotHasContent(current);
             copyFile(source, lastGoodSnapshotFile());
         } catch (Exception ignored) {
-            // Keep the previous last-good snapshot if the current file is damaged.
+            // Keep the previous last-good snapshot if the copy fails.
         }
     }
 

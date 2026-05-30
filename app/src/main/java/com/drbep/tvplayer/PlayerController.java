@@ -247,7 +247,7 @@ final class PlayerController {
         player = new ExoPlayer.Builder(context)
                 .setTrackSelector(trackSelector)
                 .setLoadControl(new DefaultLoadControl.Builder()
-                        .setBufferDurationsMs(20_000, 75_000, 4_000, 8_000)
+                .setBufferDurationsMs(20_000, 75_000, 4_000, 20_000)
                         .build())
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)
                         .setDrmSessionManagerProvider(createDrmSessionManagerProvider()))
@@ -989,6 +989,16 @@ final class PlayerController {
                     .setMinPlaybackSpeed(0.97f)
                     .setMaxPlaybackSpeed(1.02f)
                     .build());
+        } else if (isProxyDashDecision(decision)) {
+            // DASH live streams (e.g. France 2/3 HEVC ClearKey): use a 30-second
+            // live offset so ExoPlayer requests segments that are well past the live
+            // edge and already stable on the CDN, avoiding repeated rebuffering at
+            // 14-15 Mbps that occurs when playing too close to the live edge.
+            builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(30_000)
+                    .setMinOffsetMs(15_000)
+                    .setMaxOffsetMs(60_000)
+                    .build());
         }
         if (decision.mimeType != null && !decision.mimeType.trim().isEmpty()) {
             builder.setMimeType(decision.mimeType);
@@ -1099,6 +1109,13 @@ final class PlayerController {
                 && decision.targetUrl != null
                 && decision.targetUrl.contains("/hls/1071554/")
                 && decision.targetUrl.contains("codec=hevc");
+    }
+
+    private boolean isProxyDashDecision(PlaybackRouteResolver.Decision decision) {
+        return decision != null
+                && decision.targetUrl != null
+                && decision.targetUrl.contains("/proxy/manifest/")
+                && MimeTypes.APPLICATION_MPD.equals(decision.mimeType);
     }
 
     private void maybeShowHdrBadge() {

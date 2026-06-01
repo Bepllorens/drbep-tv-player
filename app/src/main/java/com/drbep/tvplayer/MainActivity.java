@@ -380,6 +380,7 @@ public class MainActivity extends FragmentActivity {
     private long lastOfflineCatalogRefreshAttemptMs;
     private long lastOfflineCatalogRefreshSuccessMs;
     private String lastOfflineCatalogRefreshError = "";
+    private long lastOfflinePlaybackRecoveryRefreshMs;
     private long lastOfflineMaintenanceMs;
     private String lastOfflineMaintenanceError = "";
     private long activityCreatedAtMs;
@@ -11366,6 +11367,7 @@ public class MainActivity extends FragmentActivity {
                     ? getString(R.string.error_unknown_reason)
                     : diagnostics.lastError.trim();
             markPostUpdateHealthFailed(getString(R.string.app_update_health_playback_failed, request.channelName, detail), true);
+            maybeRefreshOfflineCatalogAfterPlaybackError(detail);
         }
         ChannelItem item = findChannelItemById(request.channelId);
         if (item != null && item.isVod) {
@@ -11380,6 +11382,39 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         maybeRepairPlaybackAfterError(request);
+    }
+
+    private void maybeRefreshOfflineCatalogAfterPlaybackError(String detail) {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || catalogRepository == null || offlineCatalogRefreshRunning) {
+            return;
+        }
+        String normalized = safeLower(detail);
+        boolean looksCatalogRelated = normalized.contains("response code: 401")
+                || normalized.contains("response code: 403")
+                || normalized.contains("response code: 404")
+                || normalized.contains("http 401")
+                || normalized.contains("http 403")
+                || normalized.contains("http 404")
+                || normalized.contains("invalidresponsecode")
+                || normalized.contains("source error")
+                || normalized.contains("token")
+                || normalized.contains("unauthorized")
+                || normalized.contains("forbidden")
+                || normalized.contains("not found");
+        if (!looksCatalogRelated) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastOfflinePlaybackRecoveryRefreshMs < 10L * 60L * 1000L) {
+            return;
+        }
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        if (!status.hasAccessToken || status.sourceUrl == null || status.sourceUrl.trim().isEmpty()) {
+            return;
+        }
+        lastOfflinePlaybackRecoveryRefreshMs = now;
+        showStatus(getString(R.string.offline_catalog_status_refreshing));
+        refreshOfflineCatalog(false, true, true);
     }
 
     private void showVodPlaybackRecoveryPanel(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {

@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 59
-        versionName "2.0.54-add-smoothstreaming"
+        versionCode 60
+        versionName "2.0.55-offline-playback-repair"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -1,3 +1,7 @@
+## 2.0.55-offline-playback-repair
+- Offline: si un canal falla por ruta/token/catalogo, la app fuerza una actualizacion de catalogo con fallback al ultimo catalogo bueno.
+- Offline: la auto-reparacion de playback tambien prueba ruta directa en modo independiente cuando falla una ruta DRM/proxy.
+
 ## 2.0.32-offline-playback-presence
 - Offline: la app reporta al servidor que canal o VOD esta reproduciendo cada usuario con heartbeat periodico.
 - Servidor: anadidos endpoints admin para ver reproducciones activas e historial reciente.

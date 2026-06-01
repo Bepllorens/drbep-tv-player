@@ -88,6 +88,17 @@ final class PlaybackRouteResolver {
             );
         }
 
+        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
+            return new Decision(
+                    request.playUrl,
+                    resolveMimeType(request.playUrl, streamInfo, false),
+                    drmType,
+                    playbackMode,
+                    false,
+                    request.hasFallback()
+            );
+        }
+
         if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
             String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
             if ("smooth".equals(streamType) || looksSmooth) {
@@ -158,17 +169,6 @@ final class PlaybackRouteResolver {
                     playbackMode,
                     false,
                     false
-            );
-        }
-
-        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
-            return new Decision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
-                    "",
-                    playbackMode,
-                    false,
-                    request.hasFallback()
             );
         }
 

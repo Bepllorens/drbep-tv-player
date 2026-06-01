@@ -541,9 +541,6 @@ final class PlayerController {
             playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo);
             return true;
         }
-        if (BuildConfig.STANDALONE_MODE) {
-            return false;
-        }
         if (decision.allowCompatibilityFallback && !usingPlaybackFallback && request.hasFallback()) {
             usingPlaybackFallback = true;
             attemptedRecoveryRoutes.add(routeAttemptKey(decision));
@@ -557,7 +554,11 @@ final class PlayerController {
             return false;
         }
         attemptedRecoveryRoutes.add(routeAttemptKey(decision));
-        PlaybackRequest[] alternatives = new PlaybackRequest[]{
+        PlaybackRequest[] alternatives = BuildConfig.STANDALONE_MODE
+                ? new PlaybackRequest[]{
+                cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT)
+        }
+                : new PlaybackRequest[]{
                 cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT),
                 cloneRequestWithMode(request, PlaybackModeStore.MODE_PROXY)
         };

@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 61
-        versionName "2.0.56-offline-clean-install"
+        versionCode 62
+        versionName "2.0.57-offline-update-channel"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -645,6 +645,14 @@
     <string name="app_update_diagnostic_unfinished">La actualizacion no pudo completarse.</string>
     <string name="app_update_diagnostic_installer_unfinished">El instalador se abrio, pero la app sigue en la version anterior.</string>
     <string name="app_update_action_check">Buscar actualizacion de la app</string>
+    <string name="app_update_channel_action">Canal de actualizaciones: %1$s</string>
+    <string name="app_update_channel_title">Canal de actualizaciones</string>
+    <string name="app_update_channel_message">Canal actual: %1$s\n\nStable recibe versiones normales. Beta sirve para probar antes de publicar. Rescue busca una version de rescate si una actualizacion deja la app mal.</string>
+    <string name="app_update_channel_stable">Stable</string>
+    <string name="app_update_channel_beta">Beta</string>
+    <string name="app_update_channel_rescue">Rescue</string>
+    <string name="app_update_channel_saved">Canal guardado: %1$s</string>
+    <string name="app_update_channel_current">Canal actualizaciones: %1$s</string>
     <string name="app_update_action_rescue">Restaurar version anterior</string>
     <string name="app_update_action_diagnostics">Ver diagnostico de actualizacion</string>
     <string name="app_update_action_install">Actualizar ahora</string>

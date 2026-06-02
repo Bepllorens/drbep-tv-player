@@ -1,3 +1,8 @@
+## 2.0.57-offline-update-channel
+- Offline: anadido selector de canal de actualizaciones stable/beta/rescue desde Herramientas y Sistema offline.
+- Offline: las comprobaciones de actualizacion, diagnosticos y reportes al dashboard usan el canal elegido en el dispositivo.
+- Offline: el resumen de Sistema offline muestra el canal activo para saber si el Fire Stick esta en estable, beta o rescate.
+
 ## 2.0.56-offline-clean-install
 - Offline: tras una instalacion limpia aparece un flujo claro para activar con codigo como accion principal.
 - Offline: al aprobar la activacion se descarga el catalogo automaticamente y se muestra resumen de usuario, permisos, canales, VOD y EPG.

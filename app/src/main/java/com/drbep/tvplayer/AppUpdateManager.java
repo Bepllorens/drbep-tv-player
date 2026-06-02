@@ -67,6 +67,7 @@ final class AppUpdateManager {
                 payload.optBoolean("update_enabled", false),
                 payload.optInt("version_code", 0),
                 payload.optString("version_name", "").trim(),
+                payload.optString("channel", channel == null ? "" : channel).trim(),
                 resolveUrl(sourceBaseUrl.isEmpty() ? baseUrl : sourceBaseUrl, payload.optString("apk_url", "").trim()),
                 payload.optString("sha256", "").trim().toLowerCase(Locale.ROOT),
                 payload.optBoolean("required", false),
@@ -333,15 +334,17 @@ final class AppUpdateManager {
         final boolean updateEnabled;
         final int versionCode;
         final String versionName;
+        final String channel;
         final String apkUrl;
         final String sha256;
         final boolean required;
         final List<String> changelog;
 
-        UpdateInfo(boolean updateEnabled, int versionCode, String versionName, String apkUrl, String sha256, boolean required, List<String> changelog) {
+        UpdateInfo(boolean updateEnabled, int versionCode, String versionName, String channel, String apkUrl, String sha256, boolean required, List<String> changelog) {
             this.updateEnabled = updateEnabled;
             this.versionCode = versionCode;
             this.versionName = versionName == null ? "" : versionName;
+            this.channel = channel == null ? "" : channel;
             this.apkUrl = apkUrl == null ? "" : apkUrl;
             this.sha256 = sha256 == null ? "" : sha256;
             this.required = required;

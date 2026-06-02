@@ -126,6 +126,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_APP_UPDATE_DIAGNOSTIC = "app_update_diagnostic";
     private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
     private static final String PREF_LAST_UPDATE_PROMPT_VERSION_CODE = "last_update_prompt_version_code";
+    private static final String PREF_UPDATE_CHANNEL = "update_channel";
     private static final String PREF_LAST_SEEN_APP_VERSION_CODE = "last_seen_app_version_code";
     private static final String PREF_PENDING_UPDATE_HEALTH_VERSION_CODE = "pending_update_health_version_code";
     private static final String PREF_LAST_GOOD_APP_VERSION_CODE = "last_good_app_version_code";
@@ -6501,6 +6502,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showSettingsDiagnosticsDialog);
         options.add(getString(R.string.tools_menu_install_status));
         actions.add(this::showInstallStatusDialog);
+        options.add(getString(R.string.app_update_channel_action, currentUpdateChannelLabel()));
+        actions.add(this::showUpdateChannelDialog);
         showTvOptionsDialog(R.string.tools_section_settings, null, options, actions);
     }
 
@@ -6590,6 +6593,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showOfflineCatalogSettingsDialog);
         options.add(getString(R.string.app_update_action_check));
         actions.add(this::checkAppUpdateManually);
+        options.add(getString(R.string.app_update_channel_action, currentUpdateChannelLabel()));
+        actions.add(this::showUpdateChannelDialog);
         options.add(getString(R.string.app_update_action_rescue));
         actions.add(this::checkRescueAppUpdateManually);
         options.add(getString(R.string.settings_section_diagnostics));
@@ -6774,6 +6779,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.app_update_action_check));
         actions.add(this::checkAppUpdateManually);
+        options.add(getString(R.string.app_update_channel_action, currentUpdateChannelLabel()));
+        actions.add(this::showUpdateChannelDialog);
         options.add(getString(R.string.app_update_action_rescue));
         actions.add(this::checkRescueAppUpdateManually);
         options.add(getString(R.string.app_update_action_diagnostics));
@@ -6809,6 +6816,7 @@ public class MainActivity extends FragmentActivity {
         String maintenanceError = lastOfflineMaintenanceError == null || lastOfflineMaintenanceError.trim().isEmpty()
                 ? getString(R.string.diagnostics_value_no)
                 : classifyOperationalError(lastOfflineMaintenanceError) + ": " + lastOfflineMaintenanceError;
+        String updateSummary = getString(R.string.app_update_channel_current, currentUpdateChannelLabel()) + "\n" + updateState;
         return getString(
                 R.string.settings_offline_system_summary,
                 BuildConfig.VERSION_NAME,
@@ -6823,7 +6831,7 @@ public class MainActivity extends FragmentActivity {
                 lastCatalogAttempt,
                 lastCatalogSuccess,
                 lastCatalogError,
-                updateState,
+                updateSummary,
                 buildRecentDiagnosticsSummary(),
                 lastMaintenance,
                 maintenanceError,
@@ -7320,7 +7328,7 @@ public class MainActivity extends FragmentActivity {
                     .put("package_name", getPackageName())
                     .put("version_name", BuildConfig.VERSION_NAME)
                     .put("version_code", BuildConfig.VERSION_CODE)
-                    .put("update_channel", BuildConfig.UPDATE_CHANNEL)
+                    .put("update_channel", currentUpdateChannel())
                     .put("uptime_ms", activityCreatedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - activityCreatedAtMs))
                     .put("channels_visible", channels.size())
                     .put("channels_total", allChannels.size())
@@ -7438,7 +7446,7 @@ public class MainActivity extends FragmentActivity {
         JSONObject extra = new JSONObject();
         try {
             extra.put("standalone_mode", BuildConfig.STANDALONE_MODE)
-                    .put("update_channel", BuildConfig.UPDATE_CHANNEL)
+                    .put("update_channel", currentUpdateChannel())
                     .put("last_app_update_check_ms", lastAppUpdateCheckMs)
                     .put("last_app_update_error", lastAppUpdateError == null ? "" : lastAppUpdateError)
                     .put("last_catalog_attempt_ms", lastOfflineCatalogRefreshAttemptMs)
@@ -7924,6 +7932,76 @@ public class MainActivity extends FragmentActivity {
         uiHandler.postDelayed(() -> refreshOfflineCatalog(false, false, true), 8_000L);
     }
 
+    private String currentUpdateChannel() {
+        String value = prefs == null ? BuildConfig.UPDATE_CHANNEL : prefs.getString(PREF_UPDATE_CHANNEL, BuildConfig.UPDATE_CHANNEL);
+        return normalizeUpdateChannel(value);
+    }
+
+    private String normalizeUpdateChannel(String value) {
+        String clean = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if ("beta".equals(clean)) {
+            return "beta";
+        }
+        if ("rescue".equals(clean)) {
+            return "rescue";
+        }
+        return "stable";
+    }
+
+    private int updateChannelLabelRes(String channel) {
+        String clean = normalizeUpdateChannel(channel);
+        if ("beta".equals(clean)) {
+            return R.string.app_update_channel_beta;
+        }
+        if ("rescue".equals(clean)) {
+            return R.string.app_update_channel_rescue;
+        }
+        return R.string.app_update_channel_stable;
+    }
+
+    private String currentUpdateChannelLabel() {
+        return getString(updateChannelLabelRes(currentUpdateChannel()));
+    }
+
+    private void showUpdateChannelDialog() {
+        String[] channels = new String[]{"stable", "beta", "rescue"};
+        String[] labels = new String[]{
+                getString(R.string.app_update_channel_stable),
+                getString(R.string.app_update_channel_beta),
+                getString(R.string.app_update_channel_rescue)
+        };
+        String current = currentUpdateChannel();
+        int checked = 0;
+        for (int i = 0; i < channels.length; i++) {
+            if (channels[i].equals(current)) {
+                checked = i;
+                break;
+            }
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.app_update_channel_title)
+                .setMessage(getString(R.string.app_update_channel_message, currentUpdateChannelLabel()))
+                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                    String selectedChannel = channels[Math.max(0, Math.min(which, channels.length - 1))];
+                    String selectedLabel = getString(updateChannelLabelRes(selectedChannel));
+                    if (prefs != null) {
+                        prefs.edit()
+                                .putString(PREF_UPDATE_CHANNEL, selectedChannel)
+                                .putInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, 0)
+                                .apply();
+                    }
+                    String detail = getString(R.string.app_update_channel_saved, selectedLabel);
+                    showStatus(detail);
+                    recordOfflineSyncEvent(getString(R.string.settings_offline_sync_app_update), true, 0L, detail);
+                    reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_app_update), true, 0L, detail);
+                    d.dismiss();
+                    checkAppUpdate(true);
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .create();
+        showTvDialog(dialog);
+    }
+
     private void checkAppUpdateManually() {
         checkAppUpdate(true);
     }
@@ -7940,6 +8018,7 @@ public class MainActivity extends FragmentActivity {
         if (appUpdateManager == null || appUpdateCheckRunning) {
             return;
         }
+        String updateChannel = currentUpdateChannel();
         appUpdateCheckRunning = true;
         if (manual) {
             showStatus(getString(R.string.app_update_status_checking));
@@ -7947,7 +8026,7 @@ public class MainActivity extends FragmentActivity {
         long startMs = System.currentTimeMillis();
         ioExecutor.execute(() -> {
             try {
-                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL);
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, updateChannel);
                 long durationMs = System.currentTimeMillis() - startMs;
                 uiHandler.post(() -> {
                     appUpdateCheckRunning = false;
@@ -8116,10 +8195,12 @@ public class MainActivity extends FragmentActivity {
                     .put("detail", detail == null ? "" : detail)
                     .put("current_version_name", BuildConfig.VERSION_NAME)
                     .put("current_version_code", BuildConfig.VERSION_CODE)
+                    .put("update_channel", currentUpdateChannel())
                     .put("package_name", getPackageName());
             if (info != null) {
                 payload.put("target_version_name", safeUpdateVersionName(info))
                         .put("target_version_code", info.versionCode)
+                        .put("target_update_channel", info.channel == null ? "" : info.channel)
                         .put("required", info.required);
             }
             if (preflight != null) {
@@ -8192,7 +8273,7 @@ public class MainActivity extends FragmentActivity {
         prefs.edit().putInt(PREF_LAST_SEEN_APP_VERSION_CODE, BuildConfig.VERSION_CODE).apply();
         ioExecutor.execute(() -> {
             try {
-                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL);
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, currentUpdateChannel());
                 if (info.versionCode == BuildConfig.VERSION_CODE && !info.changelog.isEmpty()) {
                     uiHandler.post(() -> showSettingsInfoDialog(R.string.app_update_installed_title, buildAppInstalledMessage(info)));
                 }

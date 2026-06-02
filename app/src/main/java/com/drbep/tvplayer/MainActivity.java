@@ -374,6 +374,8 @@ public class MainActivity extends FragmentActivity {
     private boolean touchGestureVerticalHandled;
     private boolean appUpdateCheckRunning;
     private boolean offlineCatalogRefreshRunning;
+    private boolean offlineFirstRunDialogShowing;
+    private boolean showOfflineActivationSummaryAfterRefresh;
     private AppUpdateManager.UpdateInfo lastKnownAppUpdateInfo;
     private long lastAppUpdateCheckMs;
     private String lastAppUpdateError = "";
@@ -1638,6 +1640,9 @@ public class MainActivity extends FragmentActivity {
     private void loadChannels() {
         showStatus(getString(R.string.status_loading_channels));
         long startMs = System.currentTimeMillis();
+        if (maybeShowOfflineFirstRunOnboarding(null)) {
+            return;
+        }
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
@@ -7012,6 +7017,7 @@ public class MainActivity extends FragmentActivity {
                             dialog.dismiss();
                         }
                         showStatus(getString(R.string.offline_catalog_activation_approved));
+                        showOfflineActivationSummaryAfterRefresh = true;
                         refreshOfflineCatalogFromSettings();
                     });
                     return;
@@ -7201,6 +7207,7 @@ public class MainActivity extends FragmentActivity {
                     if (manual) {
                         showStatus(refreshDetail);
                     }
+                    maybeShowOfflineActivationReadySummary(afterStatus);
                 });
             } catch (Exception e) {
                 Log.e(TAG, "offline catalog refresh failed", e);
@@ -7483,6 +7490,39 @@ public class MainActivity extends FragmentActivity {
         return getString(R.string.offline_catalog_status_refreshed);
     }
 
+    private void maybeShowOfflineActivationReadySummary(CatalogSnapshotStore.SnapshotStatus status) {
+        if (!showOfflineActivationSummaryAfterRefresh) {
+            return;
+        }
+        showOfflineActivationSummaryAfterRefresh = false;
+        if (status == null && catalogSnapshotStore != null) {
+            status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        }
+        if (status == null) {
+            return;
+        }
+        String updatedAt = status.updatedAtMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.updatedAtMs);
+        String expiresAt = status.expiresAtMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.expiresAtMs);
+        String message = getString(
+                R.string.offline_activation_ready_message,
+                status.subject == null || status.subject.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.subject,
+                status.permissions == null || status.permissions.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.permissions,
+                status.channelCount,
+                status.vodCount,
+                status.epgChannelCount,
+                status.epgProgramCount,
+                updatedAt,
+                expiresAt
+        );
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.offline_activation_ready_title)
+                .setMessage(message)
+                .setPositiveButton(R.string.dialog_close, null)
+                .setNeutralButton(R.string.settings_offline_system_status, (d, which) -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()))
+                .create();
+        showTvDialog(dialog);
+    }
+
     private void repairOfflineCatalog() {
         if (!BuildConfig.STANDALONE_MODE) {
             showStatus(getString(R.string.offline_catalog_status_repair_not_needed));
@@ -7521,9 +7561,71 @@ public class MainActivity extends FragmentActivity {
         if (!BuildConfig.STANDALONE_MODE || !isOfflineRecoveryError(error)) {
             return false;
         }
+        if (maybeShowOfflineFirstRunOnboarding(error)) {
+            return true;
+        }
         String message = error == null || error.getMessage() == null ? getString(R.string.error_unknown_reason) : error.getMessage();
         showOfflineRecoveryActionsDialog(message);
         return true;
+    }
+
+    private boolean maybeShowOfflineFirstRunOnboarding(Throwable error) {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null) {
+            return false;
+        }
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        boolean missingToken = !status.hasAccessToken;
+        boolean missingUrl = status.sourceUrl == null || status.sourceUrl.trim().isEmpty();
+        boolean missingCatalog = !status.available && !status.hasLastGoodBackup;
+        if (!missingToken && !missingUrl && !missingCatalog) {
+            return false;
+        }
+        if (offlineFirstRunDialogShowing) {
+            return true;
+        }
+        String reason = error == null || error.getMessage() == null || error.getMessage().trim().isEmpty()
+                ? buildOfflineFirstRunReason(status)
+                : error.getMessage().trim();
+        showOfflineFirstRunDialog(status, reason);
+        return true;
+    }
+
+    private String buildOfflineFirstRunReason(CatalogSnapshotStore.SnapshotStatus status) {
+        if (status == null || !status.hasAccessToken) {
+            return getString(R.string.offline_first_run_reason_no_token);
+        }
+        if (status.sourceUrl == null || status.sourceUrl.trim().isEmpty()) {
+            return getString(R.string.offline_first_run_reason_no_url);
+        }
+        if (!status.available) {
+            return getString(R.string.offline_first_run_reason_no_catalog);
+        }
+        return getString(R.string.diagnostics_value_unknown);
+    }
+
+    private void showOfflineFirstRunDialog(CatalogSnapshotStore.SnapshotStatus status, String reason) {
+        offlineFirstRunDialogShowing = true;
+        String message = getString(
+                R.string.offline_first_run_message,
+                BuildConfig.VERSION_NAME,
+                status == null || status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
+                reason == null || reason.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : reason.trim()
+        );
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.offline_first_run_title)
+                .setMessage(message)
+                .setPositiveButton(R.string.offline_first_run_action_activate, (d, which) -> {
+                    offlineFirstRunDialogShowing = false;
+                    startOfflineActivationCodeFlow();
+                })
+                .setNeutralButton(R.string.offline_recovery_action_status, (d, which) -> {
+                    offlineFirstRunDialogShowing = false;
+                    showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary());
+                })
+                .setNegativeButton(R.string.dialog_close, (d, which) -> offlineFirstRunDialogShowing = false)
+                .create();
+        dialog.setOnCancelListener(d -> offlineFirstRunDialogShowing = false);
+        showTvDialog(dialog);
     }
 
     private boolean isAuthRelatedError(Throwable error) {

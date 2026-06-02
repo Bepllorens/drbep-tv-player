@@ -614,6 +614,12 @@
     <string name="settings_offline_sync_failed">Fallo</string>
     <string name="settings_offline_next_sync_blocked">bloqueada: falta token o URL</string>
     <string name="settings_offline_next_sync_ready">pendiente ahora</string>
+    <string name="offline_first_run_title">Configurar app offline</string>
+    <string name="offline_first_run_message">Version %1$s instalada.\n\nDispositivo: %2$s\nEstado: %3$s\n\nPara usar esta app independiente, activala con codigo. Al aprobarse, descargara el catalogo automaticamente.</string>
+    <string name="offline_first_run_action_activate">Activar con codigo</string>
+    <string name="offline_first_run_reason_no_token">sin token de usuario</string>
+    <string name="offline_first_run_reason_no_url">sin URL de catalogo</string>
+    <string name="offline_first_run_reason_no_catalog">sin catalogo local</string>
     <string name="settings_offline_health_missing">Sin catalogo local</string>
     <string name="settings_offline_health_backup_available">Sin catalogo activo, hay copia buena</string>
     <string name="settings_offline_health_expired">Catalogo caducado</string>
@@ -712,6 +718,8 @@
     <string name="offline_catalog_activation_message">Introduce este codigo en el dashboard:\n\n%1$s\n\nUsuario seleccionado > Activaciones offline > Autorizar para este usuario.</string>
     <string name="offline_catalog_activation_waiting">Esperando autorizacion...</string>
     <string name="offline_catalog_activation_approved">Activacion aprobada</string>
+    <string name="offline_activation_ready_title">App offline lista</string>
+    <string name="offline_activation_ready_message">Usuario: %1$s\nPermisos: %2$s\n\nCanales: %3$d\nVOD: %4$d\nEPG: %5$d canales · %6$d programas\n\nCatalogo actualizado: %7$s\nCaduca: %8$s</string>
     <string name="offline_catalog_activation_expired">El codigo ha caducado. Genera uno nuevo.</string>
     <string name="offline_catalog_activation_error">Error activando: %1$s</string>
     <string name="offline_catalog_reactivation_title">Catalogo requiere reactivacion</string>

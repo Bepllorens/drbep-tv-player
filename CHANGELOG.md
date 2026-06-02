@@ -1,3 +1,7 @@
+## 2.0.56-offline-clean-install
+- Offline: tras una instalacion limpia aparece un flujo claro para activar con codigo como accion principal.
+- Offline: al aprobar la activacion se descarga el catalogo automaticamente y se muestra resumen de usuario, permisos, canales, VOD y EPG.
+
 ## 2.0.55-offline-playback-repair
 - Offline: si un canal falla por ruta/token/catalogo, la app fuerza una actualizacion de catalogo con fallback al ultimo catalogo bueno.
 - Offline: la auto-reparacion de playback tambien prueba ruta directa en modo independiente cuando falla una ruta DRM/proxy.

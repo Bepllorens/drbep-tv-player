@@ -54,6 +54,7 @@ final class PlaybackRouteResolver {
         boolean looksSmooth = looksLikeSmooth(playUrlLower);
         String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
         String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
+        String playbackProfile = safeLower(request.playbackProfile);
 
         if (request.directPlayback) {
             return new Decision(
@@ -77,11 +78,46 @@ final class PlaybackRouteResolver {
             );
         }
 
-        if ("1071554".equals(request.channelId)) {
+        if ("server_live".equals(playbackProfile)) {
+            return new Decision(
+                    liveStreamUrl(request.channelId),
+                    MimeTypes.VIDEO_MP2T,
+                    "",
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
+
+        if ("hevc_hls".equals(playbackProfile) || "1071554".equals(request.channelId)) {
             return new Decision(
                     hevcHlsUrl(request.channelId),
                     MimeTypes.APPLICATION_M3U8,
                     "",
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
+
+        if ("direct".equals(playbackProfile)) {
+            boolean backendLive = isBackendLiveUrl(request.playUrl);
+            return new Decision(
+                    request.playUrl,
+                    resolveMimeType(request.playUrl, streamInfo, false),
+                    backendLive ? "" : drmType,
+                    playbackMode,
+                    false,
+                    request.hasFallback()
+            );
+        }
+
+        if ("proxy_manifest".equals(playbackProfile)) {
+            String proxyUrl = proxyManifestUrl(request.channelId);
+            return new Decision(
+                    proxyUrl,
+                    resolveMimeType(proxyUrl, streamInfo, true),
+                    drmType,
                     playbackMode,
                     false,
                     false
@@ -101,16 +137,6 @@ final class PlaybackRouteResolver {
         }
 
         if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
-            if ("server_live".equals(safeLower(request.playbackProfile))) {
-                return new Decision(
-                        liveStreamUrl(request.channelId),
-                        MimeTypes.VIDEO_MP2T,
-                        "",
-                        playbackMode,
-                        false,
-                        false
-                );
-            }
             String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
             if ("smooth".equals(streamType) || looksSmooth) {
                 String targetUrl = streamInfo != null && streamInfo.sourceUrl != null && !streamInfo.sourceUrl.trim().isEmpty()

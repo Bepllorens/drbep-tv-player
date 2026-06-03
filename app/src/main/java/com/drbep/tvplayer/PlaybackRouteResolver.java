@@ -89,10 +89,11 @@ final class PlaybackRouteResolver {
         }
 
         if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
+            boolean backendLive = isBackendLiveUrl(request.playUrl);
             return new Decision(
                     request.playUrl,
                     resolveMimeType(request.playUrl, streamInfo, false),
-                    drmType,
+                    backendLive ? "" : drmType,
                     playbackMode,
                     false,
                     request.hasFallback()
@@ -100,6 +101,16 @@ final class PlaybackRouteResolver {
         }
 
         if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
+            if ("server_live".equals(safeLower(request.playbackProfile))) {
+                return new Decision(
+                        liveStreamUrl(request.channelId),
+                        MimeTypes.VIDEO_MP2T,
+                        "",
+                        playbackMode,
+                        false,
+                        false
+                );
+            }
             String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
             if ("smooth".equals(streamType) || looksSmooth) {
                 String targetUrl = streamInfo != null && streamInfo.sourceUrl != null && !streamInfo.sourceUrl.trim().isEmpty()
@@ -248,6 +259,9 @@ final class PlaybackRouteResolver {
 
     String resolveMimeType(String targetUrl, PlayerController.StreamInfo streamInfo, boolean defaultDashForProxy) {
         String mimeType = inferMimeType(targetUrl);
+        if ((mimeType == null || mimeType.trim().isEmpty()) && isBackendLiveUrl(targetUrl)) {
+            return MimeTypes.VIDEO_MP2T;
+        }
         if ((mimeType == null || mimeType.trim().isEmpty()) && streamInfo != null && streamInfo.type != null) {
             String streamType = safeLower(streamInfo.type);
             if ("dash".equals(streamType)) {
@@ -264,6 +278,18 @@ final class PlaybackRouteResolver {
                     : MimeTypes.APPLICATION_MPD;
         }
         return mimeType;
+    }
+
+    private boolean isBackendLiveUrl(String targetUrl) {
+        if (targetUrl == null) {
+            return false;
+        }
+        String normalizedBase = baseUrl == null ? "" : baseUrl.trim();
+        String trimmed = targetUrl.trim();
+        if (!normalizedBase.isEmpty() && trimmed.startsWith(normalizedBase + "/live/")) {
+            return true;
+        }
+        return trimmed.contains("/live/") && trimmed.contains("client=firestick");
     }
 
     private String proxyManifestUrl(String channelId) {

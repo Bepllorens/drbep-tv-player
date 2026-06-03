@@ -98,8 +98,13 @@ final class PlayerController {
         final String drmScheme;
         final String drmLicenseUrl;
         final boolean directPlayback;
+        final String playbackProfile;
 
         PlaybackRequest(String channelId, String channelName, String platformName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback) {
+            this(channelId, channelName, platformName, playUrl, fallbackPlayUrl, playbackMode, drmScheme, drmLicenseUrl, directPlayback, "");
+        }
+
+        PlaybackRequest(String channelId, String channelName, String platformName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback, String playbackProfile) {
             this.channelId = channelId;
             this.channelName = channelName;
             this.platformName = platformName == null ? "" : platformName.trim();
@@ -109,6 +114,7 @@ final class PlayerController {
             this.drmScheme = drmScheme == null ? "" : drmScheme.trim();
             this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
             this.directPlayback = directPlayback;
+            this.playbackProfile = playbackProfile == null ? "" : playbackProfile.trim().toLowerCase(Locale.ROOT);
         }
 
         boolean hasFallback() {
@@ -616,7 +622,8 @@ final class PlayerController {
                 playbackMode,
                 request.drmScheme,
                 request.drmLicenseUrl,
-                request.directPlayback
+                request.directPlayback,
+                request.playbackProfile
         );
     }
 

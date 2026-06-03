@@ -134,6 +134,7 @@ final class CatalogRepository {
             String tvgId = channel.optString("tvg_id", "").trim();
             int platformId = (int) channel.optLong("platform_id", 0L);
             String platformName = channel.optString("platform_name", "").trim();
+            String playbackProfile = channel.optString("playback_profile", "").trim();
             int sortOrder = channel.has("sort_order") && !channel.isNull("sort_order")
                     ? channel.optInt("sort_order", Integer.MAX_VALUE)
                     : Integer.MAX_VALUE;
@@ -173,7 +174,8 @@ final class CatalogRepository {
                     firstNonEmpty(channel.optString("drm_scheme", ""), channel.optString("drm_type", "")),
                     firstNonEmpty(channel.optString("drm_license_url", ""), channel.optString("license_url", ""), buildClearKeyDataLicenseUrl(channel.optJSONObject("clearkey"))),
                     "",
-                    directPlayback
+                    directPlayback,
+                    playbackProfile
             ));
         }
 
@@ -857,6 +859,7 @@ final class ChannelItem {
     final String drmLicenseUrl;
     final String vodFilterKey;
     final boolean directPlayback;
+    final String playbackProfile;
     final String vodDescription;
     final String vodYear;
     final long vodDurationSeconds;
@@ -865,10 +868,18 @@ final class ChannelItem {
     String nextProgram;
 
     ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback) {
-        this(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, "", "", 0L);
+        this(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, "", "", 0L, "");
     }
 
     ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback, String vodDescription, String vodYear, long vodDurationSeconds) {
+        this(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, vodDescription, vodYear, vodDurationSeconds, "");
+    }
+
+    ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback, String playbackProfile) {
+        this(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, "", "", 0L, playbackProfile);
+    }
+
+    ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback, String vodDescription, String vodYear, long vodDurationSeconds, String playbackProfile) {
         this.id = id;
         this.name = name;
         this.tvgId = tvgId == null ? "" : tvgId.trim();
@@ -887,6 +898,7 @@ final class ChannelItem {
         this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
         this.vodFilterKey = vodFilterKey == null ? "" : vodFilterKey.trim().toLowerCase(Locale.ROOT);
         this.directPlayback = directPlayback;
+        this.playbackProfile = playbackProfile == null ? "" : playbackProfile.trim().toLowerCase(Locale.ROOT);
         this.vodDescription = vodDescription == null ? "" : vodDescription.trim();
         this.vodYear = vodYear == null ? "" : vodYear.trim();
         this.vodDurationSeconds = Math.max(0L, vodDurationSeconds);

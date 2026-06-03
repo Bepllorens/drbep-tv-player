@@ -4824,7 +4824,8 @@ public class MainActivity extends FragmentActivity {
                 resolvePlaybackModeForRequest(channelItem),
                 channelItem.drmScheme,
                 channelItem.drmLicenseUrl,
-                channelItem.directPlayback
+                channelItem.directPlayback,
+                channelItem.playbackProfile
         );
     }
 

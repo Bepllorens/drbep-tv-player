@@ -11491,8 +11491,7 @@ public class MainActivity extends FragmentActivity {
                 }
             });
         }
-        ChannelItem current = getCurrentPlaybackChannelItem();
-        showTvOptionsDialog(R.string.audio_track_title, current == null ? "" : displayName(current), options, actions);
+        showTvOptionsDialog(R.string.audio_track_title, null, options, actions);
     }
 
     private void testPlaybackModeNow(ChannelItem channelItem, String playbackMode) {

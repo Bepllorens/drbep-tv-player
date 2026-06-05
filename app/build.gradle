@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 71
-        versionName "2.0.66-audio-shortcut"
+        versionCode 72
+        versionName "2.0.67-audio-order-ui"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -127,21 +127,31 @@ install -d -m 0755 "$HOST_RELEASE_DIR"
 install -m 0644 "$APK" "$HOST_DEST"
 
 REQUEST_JSON="$(mktemp)"
-python3 - "$REQUEST_JSON" <<PY
+DRBEP_PUBLISH_CHANNEL="$CHANNEL" \
+DRBEP_PUBLISH_UPDATE_ENABLED="$UPDATE_ENABLED" \
+DRBEP_PUBLISH_REQUIRED="$REQUIRED" \
+DRBEP_PUBLISH_VERSION_CODE="$VERSION_CODE" \
+DRBEP_PUBLISH_VERSION_NAME="$VERSION_NAME" \
+DRBEP_PUBLISH_APK_URL="$APK_URL" \
+DRBEP_PUBLISH_API_DEST="$API_DEST" \
+DRBEP_PUBLISH_SHA256="$SHA256" \
+DRBEP_PUBLISH_CHANGELOG="$CHANGELOG_TEXT" \
+python3 - "$REQUEST_JSON" <<'PY'
 import json
+import os
 import sys
 
 path = sys.argv[1]
 payload = {
-    "channel": "$CHANNEL",
-    "update_enabled": "$UPDATE_ENABLED" not in ("0", "false", "False"),
-    "required": "$REQUIRED" not in ("0", "false", "False"),
-    "version_code": int("$VERSION_CODE"),
-    "version_name": "$VERSION_NAME",
-    "apk_url": "$APK_URL",
-    "apk_path": "$API_DEST",
-    "sha256": "$SHA256",
-    "changelog_text": "$CHANGELOG_TEXT",
+    "channel": os.environ["DRBEP_PUBLISH_CHANNEL"],
+    "update_enabled": os.environ["DRBEP_PUBLISH_UPDATE_ENABLED"] not in ("0", "false", "False"),
+    "required": os.environ["DRBEP_PUBLISH_REQUIRED"] not in ("0", "false", "False"),
+    "version_code": int(os.environ["DRBEP_PUBLISH_VERSION_CODE"]),
+    "version_name": os.environ["DRBEP_PUBLISH_VERSION_NAME"],
+    "apk_url": os.environ["DRBEP_PUBLISH_APK_URL"],
+    "apk_path": os.environ["DRBEP_PUBLISH_API_DEST"],
+    "sha256": os.environ["DRBEP_PUBLISH_SHA256"],
+    "changelog_text": os.environ["DRBEP_PUBLISH_CHANGELOG"],
 }
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(payload, fh)

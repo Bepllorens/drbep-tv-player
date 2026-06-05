@@ -11429,6 +11429,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_DIRECT));
         options.add(getString(R.string.diagnostics_action_test_proxy));
         actions.add(() -> testPlaybackModeNow(channelItem, PlaybackModeStore.MODE_PROXY));
+        options.add(getString(R.string.audio_track_action));
+        actions.add(this::showAudioTrackDialog);
         options.add(getString(R.string.diagnostics_action_temporary_mode));
         actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
         options.add(getString(R.string.diagnostics_action_permanent_mode));
@@ -11442,6 +11444,51 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.diagnostics_action_clear_error));
         actions.add(() -> clearPlaybackDiagnosticsError(channelItem));
         showTvOptionsDialog(R.string.title_playback_diagnostics, displayName(channelItem), options, actions);
+    }
+
+    private void showAudioTrackDialog() {
+        if (playerController == null) {
+            showStatus(getString(R.string.audio_track_unavailable));
+            return;
+        }
+        List<PlayerController.AudioTrackOption> tracks = playerController.getAudioTrackOptions();
+        if (tracks.isEmpty()) {
+            showStatus(getString(R.string.audio_track_unavailable));
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.audio_track_auto));
+        actions.add(() -> {
+            if (playerController != null) {
+                playerController.clearAudioTrackOverride();
+                showStatus(getString(R.string.audio_track_auto_selected));
+            }
+        });
+        for (PlayerController.AudioTrackOption track : tracks) {
+            String label = track.label == null || track.label.trim().isEmpty()
+                    ? getString(R.string.audio_track_fallback, options.size())
+                    : track.label.trim();
+            if (!track.supported) {
+                label = getString(R.string.audio_track_unsupported, label);
+            } else if (track.selected) {
+                label = getString(R.string.audio_track_selected, label);
+            }
+            options.add(label);
+            actions.add(() -> {
+                if (playerController == null) {
+                    showStatus(getString(R.string.audio_track_unavailable));
+                    return;
+                }
+                if (playerController.selectAudioTrack(track)) {
+                    showStatus(getString(R.string.audio_track_changed, track.label));
+                } else {
+                    showStatus(getString(R.string.audio_track_unavailable));
+                }
+            });
+        }
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        showTvOptionsDialog(R.string.audio_track_title, current == null ? "" : displayName(current), options, actions);
     }
 
     private void testPlaybackModeNow(ChannelItem channelItem, String playbackMode) {

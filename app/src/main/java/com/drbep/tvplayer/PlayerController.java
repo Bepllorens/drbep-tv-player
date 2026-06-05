@@ -21,6 +21,8 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
+import androidx.media3.common.TrackSelectionOverride;
+import androidx.media3.common.Tracks;
 import androidx.media3.decoder.CryptoConfig;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
@@ -47,9 +49,11 @@ import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
 import java.net.URLEncoder;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -133,6 +137,24 @@ final class PlayerController {
         String sourceUrl;
         String type;
         boolean encrypted;
+    }
+
+    static final class AudioTrackOption {
+        final int groupIndex;
+        final int trackIndex;
+        final String label;
+        final String language;
+        final boolean selected;
+        final boolean supported;
+
+        AudioTrackOption(int groupIndex, int trackIndex, String label, String language, boolean selected, boolean supported) {
+            this.groupIndex = groupIndex;
+            this.trackIndex = trackIndex;
+            this.label = label;
+            this.language = language;
+            this.selected = selected;
+            this.supported = supported;
+        }
     }
 
     static final class PlaybackDiagnostics {
@@ -1087,6 +1109,90 @@ final class PlayerController {
             builder.clearVideoSizeConstraints();
         }
         trackSelector.setParameters(builder);
+    }
+
+    List<AudioTrackOption> getAudioTrackOptions() {
+        List<AudioTrackOption> options = new ArrayList<>();
+        if (player == null) {
+            return options;
+        }
+        Tracks tracks = player.getCurrentTracks();
+        if (tracks == null) {
+            return options;
+        }
+        List<Tracks.Group> groups = tracks.getGroups();
+        int audioNumber = 1;
+        for (int groupIndex = 0; groupIndex < groups.size(); groupIndex++) {
+            Tracks.Group group = groups.get(groupIndex);
+            if (group == null || group.getType() != C.TRACK_TYPE_AUDIO) {
+                continue;
+            }
+            for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
+                Format format = group.getTrackFormat(trackIndex);
+                boolean supported = group.isTrackSupported(trackIndex);
+                String label = audioTrackLabel(format, audioNumber);
+                options.add(new AudioTrackOption(
+                        groupIndex,
+                        trackIndex,
+                        label,
+                        format == null ? "" : safeString(format.language),
+                        group.isTrackSelected(trackIndex),
+                        supported
+                ));
+                audioNumber++;
+            }
+        }
+        return options;
+    }
+
+    boolean selectAudioTrack(AudioTrackOption option) {
+        if (option == null || player == null || trackSelector == null) {
+            return false;
+        }
+        Tracks tracks = player.getCurrentTracks();
+        if (tracks == null || option.groupIndex < 0 || option.groupIndex >= tracks.getGroups().size()) {
+            return false;
+        }
+        Tracks.Group group = tracks.getGroups().get(option.groupIndex);
+        if (group == null || group.getType() != C.TRACK_TYPE_AUDIO || option.trackIndex < 0 || option.trackIndex >= group.length) {
+            return false;
+        }
+        if (!group.isTrackSupported(option.trackIndex)) {
+            return false;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(new TrackSelectionOverride(group.getMediaTrackGroup(), option.trackIndex)));
+        return true;
+    }
+
+    void clearAudioTrackOverride() {
+        if (trackSelector == null) {
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false));
+    }
+
+    private String audioTrackLabel(Format format, int fallbackNumber) {
+        String label = format == null ? "" : safeString(format.label);
+        String language = format == null ? "" : safeString(format.language);
+        if (!label.isEmpty() && !language.isEmpty()) {
+            return label + " (" + language.toUpperCase(Locale.ROOT) + ")";
+        }
+        if (!label.isEmpty()) {
+            return label;
+        }
+        if (!language.isEmpty()) {
+            return language.toUpperCase(Locale.ROOT);
+        }
+        return context.getString(R.string.audio_track_fallback, fallbackNumber);
+    }
+
+    private static String safeString(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private boolean isKnownClearKeyDecoderSensitiveChannel(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {

@@ -784,6 +784,15 @@
     <string name="status_playback_repair_disabled">Auto-reparacion desactivada</string>
     <string name="status_playback_learned_saved">Ruta preferida guardada: %1$s</string>
     <string name="status_playback_learned_cleared">Ruta aprendida limpiada</string>
+    <string name="audio_track_action">Audio</string>
+    <string name="audio_track_title">Pistas de audio</string>
+    <string name="audio_track_auto">Automatico</string>
+    <string name="audio_track_auto_selected">Audio automatico</string>
+    <string name="audio_track_changed">Audio: %1$s</string>
+    <string name="audio_track_unavailable">No hay pistas de audio disponibles todavia</string>
+    <string name="audio_track_selected">✓ %1$s</string>
+    <string name="audio_track_unsupported">%1$s (no soportada)</string>
+    <string name="audio_track_fallback">Pista %1$d</string>
     <string name="settings_status_searches_cleared">Busquedas recientes limpiadas</string>
     <string name="settings_status_vod_progress_cleared">Progreso VOD limpiado</string>
     <string name="settings_status_recording_progress_cleared">Progreso de grabaciones limpiado</string>

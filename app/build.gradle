@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 68
-        versionName "2.0.63-update-signature-fix"
+        versionCode 69
+        versionName "2.0.64-audio-channel-order"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -339,6 +339,7 @@ public class MainActivity extends FragmentActivity {
     private SharedPreferences prefs;
     private String playbackHeartbeatSessionId;
     private ChannelItem playbackHeartbeatChannel;
+    private long playbackHeartbeatStartedAtMs;
 
     private int currentIndex = -1;
     private int selectedOverlayIndex = 0;
@@ -863,6 +864,7 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void onPlaybackReady(PlayerController.PlaybackRequest request) {
                 MainActivity.this.markPostUpdatePlaybackHealthy(request == null ? "" : request.channelId);
+                MainActivity.this.sendPlaybackHeartbeat("ready");
             }
 
             @Override
@@ -7387,6 +7389,7 @@ public class MainActivity extends FragmentActivity {
                 + safeHeartbeatText(channel.id)
                 + "-"
                 + System.currentTimeMillis();
+        playbackHeartbeatStartedAtMs = System.currentTimeMillis();
         uiHandler.removeCallbacks(playbackHeartbeatRunnable);
         sendPlaybackHeartbeat("start");
         uiHandler.postDelayed(playbackHeartbeatRunnable, PLAYBACK_HEARTBEAT_INTERVAL_MS);
@@ -7400,6 +7403,7 @@ public class MainActivity extends FragmentActivity {
         sendPlaybackHeartbeat(state == null || state.trim().isEmpty() ? "stop" : state.trim());
         playbackHeartbeatChannel = null;
         playbackHeartbeatSessionId = null;
+        playbackHeartbeatStartedAtMs = 0L;
         uiHandler.removeCallbacks(playbackHeartbeatRunnable);
     }
 
@@ -7413,16 +7417,32 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         long positionMs = playerController == null ? 0L : playerController.getCurrentPlaybackPosition();
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        long startupMs = playbackHeartbeatStartedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - playbackHeartbeatStartedAtMs);
+        String normalizedState = state == null ? "heartbeat" : state.trim();
         JSONObject payload = new JSONObject();
         try {
             payload.put("session_id", sessionId)
-                    .put("state", state == null ? "heartbeat" : state)
+                    .put("state", normalizedState)
                     .put("content_type", channel.isVod ? "vod" : "live")
                     .put("channel_id", channel.id == null ? "" : channel.id)
                     .put("channel_name", displayName(channel))
                     .put("platform", channel.platformName == null ? "" : channel.platformName)
                     .put("group", channel.group == null ? "" : channel.group)
-                    .put("position_ms", Math.max(0L, positionMs));
+                    .put("position_ms", Math.max(0L, positionMs))
+                    .put("direct_playback", channel.directPlayback)
+                    .put("playback_profile", channel.playbackProfile == null ? "" : channel.playbackProfile)
+                    .put("startup_ms", "ready".equalsIgnoreCase(normalizedState) ? startupMs : 0L);
+            if (diagnostics != null) {
+                payload.put("playback_mode", diagnostics.playbackMode == null ? "" : diagnostics.playbackMode)
+                        .put("route_label", diagnostics.routeLabel == null ? "" : diagnostics.routeLabel)
+                        .put("mime_type", diagnostics.mimeType == null ? "" : diagnostics.mimeType)
+                        .put("drm_type", diagnostics.drmType == null ? "" : diagnostics.drmType);
+                if ("error".equalsIgnoreCase(normalizedState)) {
+                    payload.put("error_message", diagnostics.lastError == null ? "" : diagnostics.lastError)
+                            .put("error_category", diagnostics.playbackState == null ? "" : diagnostics.playbackState);
+                }
+            }
         } catch (Exception e) {
             Log.d(TAG, "playback heartbeat payload failed", e);
             return;
@@ -11546,6 +11566,7 @@ public class MainActivity extends FragmentActivity {
                 diagnostics.routeLabel,
                 diagnostics.playbackMode
         );
+        sendPlaybackHeartbeat("error");
         if (BuildConfig.STANDALONE_MODE && !request.directPlayback) {
             String detail = diagnostics.lastError == null || diagnostics.lastError.trim().isEmpty()
                     ? getString(R.string.error_unknown_reason)

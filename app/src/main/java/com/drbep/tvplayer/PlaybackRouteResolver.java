@@ -100,7 +100,7 @@ final class PlaybackRouteResolver {
             );
         }
 
-        if ("direct".equals(playbackProfile)) {
+        if ("direct".equals(playbackProfile) || PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
             boolean backendLive = isBackendLiveUrl(request.playUrl);
             return new Decision(
                     request.playUrl,
@@ -124,19 +124,17 @@ final class PlaybackRouteResolver {
             );
         }
 
-        if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
-            boolean backendLive = isBackendLiveUrl(request.playUrl);
-            return new Decision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
-                    backendLive ? "" : drmType,
-                    playbackMode,
-                    false,
-                    request.hasFallback()
-            );
-        }
-
         if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
+            if ("server_live".equals(safeLower(request.playbackProfile))) {
+                return new Decision(
+                        liveStreamUrl(request.channelId),
+                        MimeTypes.VIDEO_MP2T,
+                        "",
+                        playbackMode,
+                        false,
+                        false
+                );
+            }
             String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
             if ("smooth".equals(streamType) || looksSmooth) {
                 String targetUrl = streamInfo != null && streamInfo.sourceUrl != null && !streamInfo.sourceUrl.trim().isEmpty()

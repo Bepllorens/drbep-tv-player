@@ -5956,6 +5956,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::retryCurrentPlayback);
         options.add(getString(R.string.tools_menu_playback_mode_temporary));
         actions.add(this::openCurrentTemporaryPlaybackMode);
+        options.add(getString(R.string.audio_track_action));
+        actions.add(this::showAudioTrackDialog);
         options.add(getString(R.string.tools_menu_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
         showTvOptionsDialog(R.string.tools_section_playback, null, options, actions);
@@ -6523,6 +6525,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> retryCurrentPlaybackWithNextRoute(channelItem));
         options.add(getString(R.string.diagnostics_action_temporary_mode));
         actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
+        options.add(getString(R.string.audio_track_action));
+        actions.add(this::showAudioTrackDialog);
         options.add(getString(favorite ? R.string.menu_remove_favorite : R.string.menu_add_favorite));
         actions.add(() -> toggleFavoriteForChannel(channelItem));
         options.add(getString(R.string.menu_personal_lists));

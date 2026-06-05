@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHANNEL="${DRBEP_UPDATE_CHANNEL:-stable}"
 BASE_URL="${DRBEP_API_BASE_URL:-http://127.0.0.1:8080}"
 PUBLIC_BASE_URL="${DRBEP_PUBLIC_BASE_URL:-https://iptv.bepllorens.com}"
-RELEASE_DIR="${DRBEP_OFFLINE_RELEASE_DIR:-/data/offline-app-releases}"
+API_RELEASE_DIR="${DRBEP_OFFLINE_API_RELEASE_DIR:-/data/offline-app-releases}"
+HOST_RELEASE_DIR="${DRBEP_OFFLINE_HOST_RELEASE_DIR:-}"
 EXPECTED_CERT_SHA256="${DRBEP_RELEASE_EXPECTED_CERT_SHA256:-0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b}"
 CHANGELOG_TEXT="${DRBEP_UPDATE_CHANGELOG:-Build release publicado desde el servidor.}"
 REQUIRED="${DRBEP_UPDATE_REQUIRED:-0}"
@@ -91,7 +92,20 @@ if [[ "$CERT_SHA256" != "$EXPECTED_NORMALIZED" ]]; then
 fi
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
-DEST="$RELEASE_DIR/drbep-tv-player-offline-${CHANNEL}-v${VERSION_CODE}-${STAMP}.apk"
+DEST_NAME="drbep-tv-player-offline-${CHANNEL}-v${VERSION_CODE}-${STAMP}.apk"
+API_DEST="$API_RELEASE_DIR/$DEST_NAME"
+if [[ -z "$HOST_RELEASE_DIR" ]]; then
+  if command -v docker >/dev/null 2>&1; then
+    DATA_VOLUME="$(docker inspect drbep --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"
+    if [[ -n "$DATA_VOLUME" && -d "$DATA_VOLUME" ]]; then
+      HOST_RELEASE_DIR="$DATA_VOLUME/offline-app-releases"
+    fi
+  fi
+fi
+if [[ -z "$HOST_RELEASE_DIR" ]]; then
+  HOST_RELEASE_DIR="$API_RELEASE_DIR"
+fi
+HOST_DEST="$HOST_RELEASE_DIR/$DEST_NAME"
 APK_URL="${PUBLIC_BASE_URL%/}/api/offline/app/apk"
 if [[ "$CHANNEL" != "stable" ]]; then
   APK_URL="${APK_URL}?channel=${CHANNEL}"
@@ -100,7 +114,8 @@ fi
 echo "Version: $VERSION_CODE $VERSION_NAME"
 echo "SHA-256: $SHA256"
 echo "Certificate: $CERT_SHA256"
-echo "Destination: $DEST"
+echo "Destination: $API_DEST"
+echo "Host copy: $HOST_DEST"
 echo "Channel: $CHANNEL"
 
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -108,8 +123,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-install -d -m 0755 "$RELEASE_DIR"
-install -m 0644 "$APK" "$DEST"
+install -d -m 0755 "$HOST_RELEASE_DIR"
+install -m 0644 "$APK" "$HOST_DEST"
 
 REQUEST_JSON="$(mktemp)"
 python3 - "$REQUEST_JSON" <<PY
@@ -124,7 +139,7 @@ payload = {
     "version_code": int("$VERSION_CODE"),
     "version_name": "$VERSION_NAME",
     "apk_url": "$APK_URL",
-    "apk_path": "$DEST",
+    "apk_path": "$API_DEST",
     "sha256": "$SHA256",
     "changelog_text": "$CHANGELOG_TEXT",
 }

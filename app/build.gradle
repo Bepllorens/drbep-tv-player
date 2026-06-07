@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 73
-        versionName "2.0.68-offline-catalog-guard"
+        versionCode 74
+        versionName "2.0.69-offline-smart-route"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

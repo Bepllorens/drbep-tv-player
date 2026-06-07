@@ -26,6 +26,9 @@
     <string name="dialog_close">Cerrar</string>
     <string name="status_retry_compat">Reintentando modo compat...</string>
     <string name="status_playback_repair_trying">Auto-reparacion: probando %1$s</string>
+    <string name="status_playback_repair_reason_video_cap">Limite de video 720p tras error de codec</string>
+    <string name="status_playback_repair_reason_fallback">Ruta de compatibilidad tras error</string>
+    <string name="status_playback_repair_reason_route">Ruta alternativa %1$s tras error</string>
     <string name="status_buffering">Cargando stream...</string>
     <string name="error_vod_playback_details">Error reproduciendo VOD\n\n%1$s\n\nContenido: %2$s\n\nPulsa MENU para abrir herramientas o espera el panel de recuperacion.</string>
     <string name="status_ready">Listo para reproducir</string>
@@ -784,6 +787,9 @@
     <string name="status_playback_repair_enabled">Auto-reparacion activada</string>
     <string name="status_playback_repair_disabled">Auto-reparacion desactivada</string>
     <string name="status_playback_learned_saved">Ruta preferida guardada: %1$s</string>
+    <string name="status_playback_auto_route_saved">Auto-reparacion guardada: %1$s</string>
+    <string name="status_playback_auto_route_event">Auto-reparacion playback</string>
+    <string name="status_playback_auto_route_detail">%1$s · %2$s · ruta %3$s · %4$s</string>
     <string name="status_playback_learned_cleared">Ruta aprendida limpiada</string>
     <string name="audio_track_action">Audio</string>
     <string name="audio_track_title">Pistas de audio</string>

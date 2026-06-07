@@ -90,6 +90,9 @@ final class PlayerController {
         void onPlaybackReady(PlaybackRequest request);
 
         void onFirstVideoFrameRendered(String channelId);
+
+        default void onPlaybackAutoRecoveryReady(PlaybackRequest request, PlaybackDiagnostics diagnostics, String reason) {
+        }
     }
 
     static final class PlaybackRequest {
@@ -239,6 +242,8 @@ final class PlayerController {
     private String lastHdrBadgeChannelId;
     private boolean forceLiveEdgeOnNextReady;
     private boolean usingVideoCompatibilityCap;
+    private boolean pendingAutoRecoveryReadyReport;
+    private String pendingAutoRecoveryReason;
     private final Runnable forceLiveEdgeRunnable = () -> {
         if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
             player.seekToDefaultPosition();
@@ -348,6 +353,11 @@ final class PlayerController {
                     }
                     maybeShowHdrBadge();
                     host.onPlaybackReady(currentRequest);
+                    if (pendingAutoRecoveryReadyReport && currentRequest != null) {
+                        host.onPlaybackAutoRecoveryReady(currentRequest, getPlaybackDiagnostics(), pendingAutoRecoveryReason);
+                        pendingAutoRecoveryReadyReport = false;
+                        pendingAutoRecoveryReason = "";
+                    }
                 }
             }
 
@@ -365,6 +375,8 @@ final class PlayerController {
         usingPlaybackFallback = false;
         usingVideoCompatibilityCap = false;
         attemptedRecoveryRoutes.clear();
+        pendingAutoRecoveryReadyReport = false;
+        pendingAutoRecoveryReason = "";
         forceLiveEdgeOnNextReady = false;
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         Log.d(TAG, "compatibility fallback state reset");
@@ -566,6 +578,7 @@ final class PlayerController {
             Log.w(TAG, "retrying playback with 720p video compatibility cap channel=" + describeRequest(request)
                     + " decision=" + describeDecision(decision));
             host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(decision.playbackMode)));
+            markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_video_cap));
             playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo);
             return true;
         }
@@ -574,6 +587,7 @@ final class PlayerController {
             attemptedRecoveryRoutes.add(routeAttemptKey(decision));
             Log.w(TAG, "retrying compatibility fallback for channel=" + describeRequest(request));
             host.showStatus(context.getString(R.string.status_retry_compat));
+            markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_fallback));
             playChannelInternal(request, true, true, currentStreamInfo);
             return true;
         }
@@ -601,10 +615,16 @@ final class PlayerController {
                     + " via mode=" + alternative.playbackMode
                     + " decision=" + describeDecision(alternativeDecision));
             host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(alternative.playbackMode)));
+            markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_route, formatPlaybackModeLabel(alternative.playbackMode)));
             playChannelInternal(alternative, true, false, currentStreamInfo);
             return true;
         }
         return false;
+    }
+
+    private void markPendingAutoRecovery(String reason) {
+        pendingAutoRecoveryReadyReport = true;
+        pendingAutoRecoveryReason = reason == null ? "" : reason.trim();
     }
 
     private boolean shouldRetryWithVideoCompatibilityCap(PlaybackRequest request, PlaybackRouteResolver.Decision decision, PlaybackException error) {
@@ -978,6 +998,10 @@ final class PlayerController {
 
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         PlaybackRequest previousRequest = currentRequest;
+        if (!isSameChannel(request, previousRequest)) {
+            pendingAutoRecoveryReadyReport = false;
+            pendingAutoRecoveryReason = "";
+        }
         currentRequest = request;
         if (streamInfo != null && "smooth".equals(safeLower(streamInfo.type))) {
             streamInfo.patchedSmoothClearKeyManifestDataUri = "";

@@ -872,6 +872,11 @@ public class MainActivity extends FragmentActivity {
                 MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
                 MainActivity.this.markPostUpdatePlaybackHealthy(channelId);
             }
+
+            @Override
+            public void onPlaybackAutoRecoveryReady(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics, String reason) {
+                MainActivity.this.handlePlaybackAutoRecoveryReady(request, diagnostics, reason);
+            }
         });
         playerController.initialize();
     }
@@ -4841,9 +4846,6 @@ public class MainActivity extends FragmentActivity {
         String permanentMode = playbackModeStore == null ? PlaybackModeStore.MODE_AUTO : playbackModeStore.getMode(channelItem.id);
         if (!PlaybackModeStore.MODE_AUTO.equals(permanentMode)) {
             return permanentMode;
-        }
-        if (BuildConfig.STANDALONE_MODE) {
-            return PlaybackModeStore.MODE_AUTO;
         }
         if (!playbackRepairEnabled) {
             return PlaybackModeStore.MODE_AUTO;
@@ -11799,6 +11801,35 @@ public class MainActivity extends FragmentActivity {
         }, 700L);
     }
 
+    private void handlePlaybackAutoRecoveryReady(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics, String reason) {
+        if (!playbackRepairEnabled || request == null || request.channelId == null || request.channelId.trim().isEmpty() || request.directPlayback) {
+            return;
+        }
+        String mode = diagnostics == null ? sanitizePlaybackMode(request.playbackMode) : inferPlaybackModeFromDiagnostics(diagnostics);
+        if (PlaybackModeStore.MODE_AUTO.equals(mode)) {
+            mode = sanitizePlaybackMode(request.playbackMode);
+        }
+        if (PlaybackModeStore.MODE_AUTO.equals(mode)) {
+            return;
+        }
+        playbackRepairAttemptsByChannelId.remove(request.channelId);
+        String previous = sanitizePlaybackMode(learnedPlaybackModesByChannelId.get(request.channelId));
+        boolean changed = !mode.equals(previous);
+        setLearnedPlaybackMode(request.channelId, mode, false);
+        if (changed) {
+            String label = formatPlaybackModeLabel(mode);
+            showStatus(getString(R.string.status_playback_auto_route_saved, label));
+            String detail = getString(
+                    R.string.status_playback_auto_route_detail,
+                    request.channelName == null ? "" : request.channelName,
+                    request.platformName == null ? "" : request.platformName,
+                    label,
+                    reason == null || reason.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : reason.trim()
+            );
+            reportOfflineDeviceStatus(getString(R.string.status_playback_auto_route_event), true, 0L, detail);
+        }
+    }
+
     private void scheduleLearnCurrentPlaybackRoute(String channelId, String playbackMode) {
         String mode = sanitizePlaybackMode(playbackMode);
         if (!playbackRepairEnabled || PlaybackModeStore.MODE_AUTO.equals(mode) || channelId == null || channelId.trim().isEmpty()) {
@@ -12338,7 +12369,7 @@ public class MainActivity extends FragmentActivity {
 
     private void loadLearnedPlaybackModes() {
         learnedPlaybackModesByChannelId.clear();
-        if (prefs == null || BuildConfig.STANDALONE_MODE) {
+        if (prefs == null) {
             return;
         }
         String raw = prefs.getString(PREF_PLAYBACK_LEARNED_MODES, "");
@@ -12361,7 +12392,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void saveLearnedPlaybackModes() {
-        if (prefs == null || BuildConfig.STANDALONE_MODE) {
+        if (prefs == null) {
             return;
         }
         try {

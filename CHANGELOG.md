@@ -1,3 +1,8 @@
+## 2.0.69-offline-smart-route
+- Offline: la auto-reparacion aprende rutas alternativas cuando el reproductor llega a READY tras un fallo, tambien en modo independiente.
+- Offline: las rutas recuperadas se reportan al servidor con canal, plataforma, ruta elegida y motivo de recuperacion.
+- Playback: se evita reaprender rutas en auto hasta que una alternativa real haya arrancado correctamente.
+
 ## 2.0.68-offline-catalog-guard
 - Offline: el catalogo descargado se rechaza si pierde demasiados canales sin cambio de permisos, conservando el ultimo catalogo bueno.
 - Offline: Sistema offline y reportes remotos muestran el ultimo bloqueo de catalogo con conteos y motivo.

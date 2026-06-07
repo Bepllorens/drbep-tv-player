@@ -50,6 +50,12 @@ final class CatalogSnapshotStore {
     private static final String PREF_PAYLOAD_FINGERPRINT = "payload_fingerprint";
     private static final String PREF_VERIFICATION_STATE = "verification_state";
     private static final String PREF_VERIFICATION_MESSAGE = "verification_message";
+    private static final String PREF_LAST_REJECTED_AT_MS = "last_rejected_at_ms";
+    private static final String PREF_LAST_REJECTED_REASON = "last_rejected_reason";
+    private static final String PREF_LAST_REJECTED_PREVIOUS_CHANNELS = "last_rejected_previous_channels";
+    private static final String PREF_LAST_REJECTED_CANDIDATE_CHANNELS = "last_rejected_candidate_channels";
+    private static final String PREF_LAST_REJECTED_PREVIOUS_TOTAL = "last_rejected_previous_total";
+    private static final String PREF_LAST_REJECTED_CANDIDATE_TOTAL = "last_rejected_candidate_total";
     private static final String SNAPSHOT_FILE = "catalog_snapshot.json";
     private static final String LAST_GOOD_SNAPSHOT_FILE = "catalog_snapshot.last_good.json";
     private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
@@ -244,6 +250,7 @@ final class CatalogSnapshotStore {
         }
         validateSnapshotPayload(payload);
         File current = snapshotFile();
+        validateSnapshotDoesNotRegress(payload, current);
         backupCurrentSnapshotIfUseful(current);
         File tmp = tmpSnapshotFile();
         String schema = normalizeSchema(payload.optString("schema", ""));
@@ -287,6 +294,12 @@ final class CatalogSnapshotStore {
                 .putString(PREF_PAYLOAD_FINGERPRINT, payloadFingerprint)
                 .putString(PREF_VERIFICATION_STATE, VERIFICATION_OK)
                 .putString(PREF_VERIFICATION_MESSAGE, "")
+                .remove(PREF_LAST_REJECTED_AT_MS)
+                .remove(PREF_LAST_REJECTED_REASON)
+                .remove(PREF_LAST_REJECTED_PREVIOUS_CHANNELS)
+                .remove(PREF_LAST_REJECTED_CANDIDATE_CHANNELS)
+                .remove(PREF_LAST_REJECTED_PREVIOUS_TOTAL)
+                .remove(PREF_LAST_REJECTED_CANDIDATE_TOTAL)
                 .apply();
         backupCurrentSnapshotIfUseful(current);
     }
@@ -325,6 +338,12 @@ final class CatalogSnapshotStore {
                 .remove(PREF_PAYLOAD_FINGERPRINT)
                 .remove(PREF_VERIFICATION_STATE)
                 .remove(PREF_VERIFICATION_MESSAGE)
+                .remove(PREF_LAST_REJECTED_AT_MS)
+                .remove(PREF_LAST_REJECTED_REASON)
+                .remove(PREF_LAST_REJECTED_PREVIOUS_CHANNELS)
+                .remove(PREF_LAST_REJECTED_CANDIDATE_CHANNELS)
+                .remove(PREF_LAST_REJECTED_PREVIOUS_TOTAL)
+                .remove(PREF_LAST_REJECTED_CANDIDATE_TOTAL)
                 .apply();
     }
 
@@ -380,7 +399,13 @@ final class CatalogSnapshotStore {
                 prefs.getString(PREF_VERIFICATION_STATE, ""),
                 prefs.getString(PREF_VERIFICATION_MESSAGE, ""),
                 !getAccessToken().trim().isEmpty(),
-                hasLastKnownGoodSnapshot()
+                hasLastKnownGoodSnapshot(),
+                prefs.getLong(PREF_LAST_REJECTED_AT_MS, 0L),
+                prefs.getString(PREF_LAST_REJECTED_REASON, ""),
+                prefs.getInt(PREF_LAST_REJECTED_PREVIOUS_CHANNELS, 0),
+                prefs.getInt(PREF_LAST_REJECTED_CANDIDATE_CHANNELS, 0),
+                prefs.getInt(PREF_LAST_REJECTED_PREVIOUS_TOTAL, 0),
+                prefs.getInt(PREF_LAST_REJECTED_CANDIDATE_TOTAL, 0)
         );
     }
 
@@ -456,6 +481,60 @@ final class CatalogSnapshotStore {
         } catch (Exception ignored) {
             // Keep the previous last-good snapshot if the copy fails.
         }
+    }
+
+    private void validateSnapshotDoesNotRegress(JSONObject payload, File current) throws Exception {
+        if (payload == null || current == null || !current.exists() || current.length() <= 0L) {
+            return;
+        }
+        int previousLive = prefs.getInt(PREF_CHANNEL_COUNT, 0);
+        int previousVod = prefs.getInt(PREF_VOD_COUNT, 0);
+        int previousTotal = previousLive + previousVod;
+        if (previousLive <= 0 && previousTotal <= 0) {
+            return;
+        }
+
+        int candidateLive = countCatalogRows(payload, "channels");
+        int candidateVod = countCatalogRows(payload, "vod")
+                + countCatalogRows(payload, "adult")
+                + countCatalogRows(payload, "runtime_movies");
+        int candidateTotal = candidateLive + candidateVod;
+        String previousPermissionsFingerprint = prefs.getString(PREF_PERMISSIONS_FINGERPRINT, "");
+        String candidatePermissionsFingerprint = buildPermissionsFingerprint(payload.optJSONObject("permissions"));
+        boolean permissionsChanged = !previousPermissionsFingerprint.trim().isEmpty()
+                && !candidatePermissionsFingerprint.trim().isEmpty()
+                && !previousPermissionsFingerprint.trim().equals(candidatePermissionsFingerprint.trim());
+        if (permissionsChanged) {
+            return;
+        }
+
+        boolean liveDrop = isSuspiciousCatalogDrop(previousLive, candidateLive, 20, 10);
+        boolean totalDrop = isSuspiciousCatalogDrop(previousTotal, candidateTotal, 30, 15);
+        if (!liveDrop && !totalDrop) {
+            return;
+        }
+        String reason = "catalogo candidato reducido: canales "
+                + candidateLive + "/" + previousLive
+                + " · total " + candidateTotal + "/" + previousTotal
+                + " · sin cambio de permisos";
+        prefs.edit()
+                .putLong(PREF_LAST_REJECTED_AT_MS, System.currentTimeMillis())
+                .putString(PREF_LAST_REJECTED_REASON, reason)
+                .putInt(PREF_LAST_REJECTED_PREVIOUS_CHANNELS, previousLive)
+                .putInt(PREF_LAST_REJECTED_CANDIDATE_CHANNELS, candidateLive)
+                .putInt(PREF_LAST_REJECTED_PREVIOUS_TOTAL, previousTotal)
+                .putInt(PREF_LAST_REJECTED_CANDIDATE_TOTAL, candidateTotal)
+                .putString(PREF_VERIFICATION_STATE, VERIFICATION_WARNING)
+                .putString(PREF_VERIFICATION_MESSAGE, reason)
+                .apply();
+        throw new IllegalStateException(reason + "; se conserva el ultimo catalogo bueno");
+    }
+
+    static boolean isSuspiciousCatalogDrop(int previousCount, int candidateCount, int minimumPreviousCount, int minimumCandidateCount) {
+        if (previousCount < minimumPreviousCount) {
+            return false;
+        }
+        return candidateCount < Math.max(minimumCandidateCount, Math.round(previousCount * 0.65f));
     }
 
     private static void copyFile(File source, File target) throws Exception {
@@ -878,6 +957,12 @@ final class CatalogSnapshotStore {
         final String verificationMessage;
         final boolean hasAccessToken;
         final boolean hasLastGoodBackup;
+        final long lastRejectedAtMs;
+        final String lastRejectedReason;
+        final int lastRejectedPreviousChannels;
+        final int lastRejectedCandidateChannels;
+        final int lastRejectedPreviousTotal;
+        final int lastRejectedCandidateTotal;
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken) {
             this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", 0L, "", "", hasAccessToken, false);
@@ -888,6 +973,10 @@ final class CatalogSnapshotStore {
         }
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup) {
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, generatedAtMs, expired, channelCount, vodCount, epgChannelCount, epgProgramCount, epgUntilMs, schema, sourceUrl, sourceBaseUrl, deviceId, subject, permissions, payloadFingerprint, permissionsFingerprint, permissionsChangedAtMs, verificationState, verificationMessage, hasAccessToken, hasLastGoodBackup, 0L, "", 0, 0, 0, 0);
+        }
+
+        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup, long lastRejectedAtMs, String lastRejectedReason, int lastRejectedPreviousChannels, int lastRejectedCandidateChannels, int lastRejectedPreviousTotal, int lastRejectedCandidateTotal) {
             this.available = available;
             this.sizeBytes = sizeBytes;
             this.updatedAtMs = updatedAtMs;
@@ -912,6 +1001,12 @@ final class CatalogSnapshotStore {
             this.verificationMessage = verificationMessage == null ? "" : verificationMessage;
             this.hasAccessToken = hasAccessToken;
             this.hasLastGoodBackup = hasLastGoodBackup;
+            this.lastRejectedAtMs = lastRejectedAtMs;
+            this.lastRejectedReason = lastRejectedReason == null ? "" : lastRejectedReason;
+            this.lastRejectedPreviousChannels = lastRejectedPreviousChannels;
+            this.lastRejectedCandidateChannels = lastRejectedCandidateChannels;
+            this.lastRejectedPreviousTotal = lastRejectedPreviousTotal;
+            this.lastRejectedCandidateTotal = lastRejectedCandidateTotal;
         }
     }
 

@@ -599,7 +599,8 @@
     <string name="settings_section_offline_catalog">Catalogo independiente</string>
     <string name="settings_section_offline_system">Sistema offline</string>
     <string name="settings_offline_system_status">Estado del sistema offline</string>
-    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nVerificacion: %5$s\nEPG: %6$s\nToken: %7$s\nDispositivo: %8$s\nGrabaciones: %9$s\nUltimo intento catalogo: %10$s\nUltimo catalogo OK: %11$s\nUltimo error catalogo: %12$s\nActualizaciones: %13$s\nRecientes/diagnostico: %14$s\nUltimo mantenimiento: %15$s\nError mantenimiento: %16$s\nSiguiente sincronizacion: %17$s</string>
+    <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nVerificacion: %5$s\nEPG: %6$s\nToken: %7$s\nDispositivo: %8$s\nGrabaciones: %9$s\nUltimo intento catalogo: %10$s\nUltimo catalogo OK: %11$s\nUltimo error catalogo: %12$s\nActualizaciones: %13$s\nRecientes/diagnostico: %14$s\nUltimo mantenimiento: %15$s\nError mantenimiento: %16$s\nSiguiente sincronizacion: %17$s\nProteccion catalogo: %18$s</string>
+    <string name="settings_offline_catalog_guard_rejected">%1$s\ncanales %2$d/%3$d · total %4$d/%5$d\n%6$s</string>
     <string name="settings_offline_epg_missing">sin guia local</string>
     <string name="settings_offline_epg_summary">%1$d canales · %2$d programas · hasta %3$s</string>
     <string name="settings_offline_full_sync">Sincronizar ahora catalogo y app</string>

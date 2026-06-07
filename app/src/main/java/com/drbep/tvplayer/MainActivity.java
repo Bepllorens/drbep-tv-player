@@ -6842,7 +6842,26 @@ public class MainActivity extends FragmentActivity {
                 buildRecentDiagnosticsSummary(),
                 lastMaintenance,
                 maintenanceError,
-                buildNextOfflineSyncSummary(status)
+                buildNextOfflineSyncSummary(status),
+                buildOfflineCatalogGuardSummary(status)
+        );
+    }
+
+    private String buildOfflineCatalogGuardSummary(CatalogSnapshotStore.SnapshotStatus status) {
+        if (status == null || status.lastRejectedAtMs <= 0L) {
+            return getString(R.string.diagnostics_value_no);
+        }
+        String reason = status.lastRejectedReason == null || status.lastRejectedReason.trim().isEmpty()
+                ? getString(R.string.diagnostics_value_unknown)
+                : status.lastRejectedReason.trim();
+        return getString(
+                R.string.settings_offline_catalog_guard_rejected,
+                formatDateTime(status.lastRejectedAtMs),
+                status.lastRejectedCandidateChannels,
+                status.lastRejectedPreviousChannels,
+                status.lastRejectedCandidateTotal,
+                status.lastRejectedPreviousTotal,
+                reason
         );
     }
 
@@ -7375,7 +7394,13 @@ public class MainActivity extends FragmentActivity {
                         .put("catalog_verification_state", status.verificationState)
                         .put("catalog_verification_message", status.verificationMessage)
                         .put("catalog_payload_fingerprint", status.payloadFingerprint)
-                        .put("catalog_permissions_fingerprint", status.permissionsFingerprint);
+                        .put("catalog_permissions_fingerprint", status.permissionsFingerprint)
+                        .put("catalog_last_rejected_at_ms", status.lastRejectedAtMs)
+                        .put("catalog_last_rejected_reason", status.lastRejectedReason)
+                        .put("catalog_last_rejected_previous_channels", status.lastRejectedPreviousChannels)
+                        .put("catalog_last_rejected_candidate_channels", status.lastRejectedCandidateChannels)
+                        .put("catalog_last_rejected_previous_total", status.lastRejectedPreviousTotal)
+                        .put("catalog_last_rejected_candidate_total", status.lastRejectedCandidateTotal);
             }
         } catch (Exception e) {
             Log.d(TAG, "remote diagnostic payload failed", e);
@@ -7485,6 +7510,15 @@ public class MainActivity extends FragmentActivity {
                     .put("last_good_version_name", prefs == null ? "" : prefs.getString(PREF_LAST_GOOD_APP_VERSION_NAME, ""))
                     .put("last_update_health_at_ms", prefs == null ? 0L : prefs.getLong(PREF_LAST_UPDATE_HEALTH_AT_MS, 0L))
                     .put("last_update_health_error", prefs == null ? "" : prefs.getString(PREF_LAST_UPDATE_HEALTH_ERROR, ""));
+            if (catalogSnapshotStore != null) {
+                CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+                extra.put("catalog_last_rejected_at_ms", status.lastRejectedAtMs)
+                        .put("catalog_last_rejected_reason", status.lastRejectedReason)
+                        .put("catalog_last_rejected_previous_channels", status.lastRejectedPreviousChannels)
+                        .put("catalog_last_rejected_candidate_channels", status.lastRejectedCandidateChannels)
+                        .put("catalog_last_rejected_previous_total", status.lastRejectedPreviousTotal)
+                        .put("catalog_last_rejected_candidate_total", status.lastRejectedCandidateTotal);
+            }
             if (prefs != null) {
                 String updateDiagnostic = prefs.getString(PREF_APP_UPDATE_DIAGNOSTIC, "");
                 if (updateDiagnostic != null && !updateDiagnostic.trim().isEmpty()) {

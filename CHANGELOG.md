@@ -1,3 +1,7 @@
+## 2.0.68-offline-catalog-guard
+- Offline: el catalogo descargado se rechaza si pierde demasiados canales sin cambio de permisos, conservando el ultimo catalogo bueno.
+- Offline: Sistema offline y reportes remotos muestran el ultimo bloqueo de catalogo con conteos y motivo.
+
 ## 2.0.57-offline-update-channel
 - Offline: anadido selector de canal de actualizaciones stable/beta/rescue desde Herramientas y Sistema offline.
 - Offline: las comprobaciones de actualizacion, diagnosticos y reportes al dashboard usan el canal elegido en el dispositivo.

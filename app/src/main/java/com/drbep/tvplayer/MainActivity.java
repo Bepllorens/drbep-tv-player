@@ -11827,6 +11827,7 @@ public class MainActivity extends FragmentActivity {
                     reason == null || reason.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : reason.trim()
             );
             reportOfflineDeviceStatus(getString(R.string.status_playback_auto_route_event), true, 0L, detail);
+            sendPlaybackHeartbeat("recovered");
         }
     }
 

@@ -1,3 +1,8 @@
+## 2.0.70-offline-observability
+- Offline: cuando una ruta alternativa queda aprendida, la app envia un heartbeat `recovered` para alimentar el resumen por canal.
+- Servidor: observabilidad offline muestra canales con fallos, recuperaciones, rutas usadas y tiempos de imagen.
+- Telegram: nuevo comando `/playback [plataforma]` para consultar canales offline problematicos o recuperados.
+
 ## 2.0.69-offline-smart-route
 - Offline: la auto-reparacion aprende rutas alternativas cuando el reproductor llega a READY tras un fallo, tambien en modo independiente.
 - Offline: las rutas recuperadas se reportan al servidor con canal, plataforma, ruta elegida y motivo de recuperacion.

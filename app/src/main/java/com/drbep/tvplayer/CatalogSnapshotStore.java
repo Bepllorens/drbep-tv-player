@@ -347,6 +347,14 @@ final class CatalogSnapshotStore {
                 .apply();
     }
 
+    void wipeLocalData() {
+        clear();
+        prefs.edit()
+                .remove(PREF_SOURCE_URL)
+                .remove(PREF_ACCESS_TOKEN)
+                .apply();
+    }
+
     String getSourceUrl(String fallbackUrl) {
         String configured = prefs.getString(PREF_SOURCE_URL, "");
         if (configured != null && !configured.trim().isEmpty()) {

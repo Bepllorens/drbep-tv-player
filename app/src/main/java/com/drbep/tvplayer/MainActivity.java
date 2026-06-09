@@ -7312,10 +7312,15 @@ public class MainActivity extends FragmentActivity {
         }
         boolean forceCatalogRefresh = response.optBoolean("force_catalog_refresh_requested", false);
         boolean appUpdateCheck = response.optBoolean("app_update_check_requested", false);
-        if (!forceCatalogRefresh && !appUpdateCheck) {
+        boolean wipeRequested = response.optBoolean("wipe_requested", false);
+        if (!forceCatalogRefresh && !appUpdateCheck && !wipeRequested) {
             return;
         }
         uiHandler.post(() -> {
+            if (wipeRequested) {
+                performOfflineRemoteWipe();
+                return;
+            }
             if (forceCatalogRefresh) {
                 showStatus(getString(R.string.offline_catalog_status_refreshing));
                 refreshOfflineCatalog(false, true, true);
@@ -7894,6 +7899,36 @@ public class MainActivity extends FragmentActivity {
             catalogSnapshotStore.clear();
         }
         showStatus(getString(R.string.offline_catalog_status_cleared));
+    }
+
+    private void performOfflineRemoteWipe() {
+        stopPlaybackHeartbeat("revoked");
+        if (playerController != null) {
+            playerController.release();
+            setupPlayer();
+        }
+        if (catalogSnapshotStore != null) {
+            catalogSnapshotStore.wipeLocalData();
+        }
+        lastChannelId = "";
+        currentIndex = -1;
+        selectedOverlayIndex = 0;
+        selectedFilterKey = "all";
+        favoritesOnly = false;
+        epgFullCatalogLoaded = false;
+        epgFullCatalogLoadRequested = false;
+        epgFullLoadScheduledForChannelId = "";
+        channelOverlayCoordinator.applyLoadedChannels(new CatalogLoadResult(new ArrayList<>(), new ArrayList<>(), "all"), "");
+        syncOverlayStateFromCoordinator();
+        persistNavigationState();
+        if (channelAdapter != null) {
+            channelAdapter.notifyDataSetChanged();
+        }
+        updateFilterText();
+        updateOverlaySearchState();
+        clearRuntimeCaches();
+        hideOverlay();
+        showError(getString(R.string.offline_catalog_status_wiped));
     }
 
     private void showSettingsDiagnosticsDialog() {

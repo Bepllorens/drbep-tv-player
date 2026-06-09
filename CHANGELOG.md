@@ -1,3 +1,8 @@
+## 2.0.71-offline-wipe
+- Offline: la app obedece ordenes remotas de borrado local, detiene reproduccion y elimina catalogo, URL y token del dispositivo.
+- Servidor: deshabilitar o borrar un usuario revoca sesiones y deja pedido de borrado local para sus dispositivos offline.
+- Dashboard: nuevos controles de borrado local remoto por usuario, dispositivo y lote filtrado.
+
 ## 2.0.70-offline-observability
 - Offline: cuando una ruta alternativa queda aprendida, la app envia un heartbeat `recovered` para alimentar el resumen por canal.
 - Servidor: observabilidad offline muestra canales con fallos, recuperaciones, rutas usadas y tiempos de imagen.

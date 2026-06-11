@@ -1,3 +1,7 @@
+## 2.0.72-offline-catalog-hotfix
+- Offline: reduce el pico de memoria al guardar catalogos descargados, evitando cierres durante sincronizaciones remotas grandes.
+- Offline: mejora la aplicacion de catalogos recortados por permisos de usuario conservando el ultimo catalogo bueno si falla la descarga.
+
 ## 2.0.71-offline-wipe
 - Offline: la app obedece ordenes remotas de borrado local, detiene reproduccion y elimina catalogo, URL y token del dispositivo.
 - Servidor: deshabilitar o borrar un usuario revoca sesiones y deja pedido de borrado local para sus dispositivos offline.

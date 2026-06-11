@@ -145,9 +145,10 @@ final class CatalogSnapshotStore {
                 buildSnapshotHeaders()
         );
         httpClient.requireSuccess(response, "actualizando catalogo local");
-        JSONObject payload = new JSONObject(response.body == null ? "" : response.body);
+        String rawBody = response.body == null ? "" : response.body;
+        JSONObject payload = new JSONObject(rawBody);
         validateSnapshotPayload(payload);
-        saveSnapshotObject(payload, sourceUrl);
+        saveSnapshotObject(payload, sourceUrl, rawBody);
         return payload;
     }
 
@@ -245,6 +246,10 @@ final class CatalogSnapshotStore {
     }
 
     void saveSnapshotObject(JSONObject payload, String sourceUrl) throws Exception {
+        saveSnapshotObject(payload, sourceUrl, "");
+    }
+
+    void saveSnapshotObject(JSONObject payload, String sourceUrl, String rawJson) throws Exception {
         if (payload == null) {
             throw new IllegalArgumentException("catalogo local vacio");
         }
@@ -265,12 +270,13 @@ final class CatalogSnapshotStore {
         } else if (previousPermissionsFingerprint.trim().isEmpty() && !permissionsFingerprint.isEmpty()) {
             permissionsChangedAtMs = 0L;
         }
+        String jsonToWrite = rawJson == null || rawJson.trim().isEmpty() ? payload.toString() : rawJson;
         try (FileOutputStream outputStream = new FileOutputStream(tmp, false)) {
-            outputStream.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            outputStream.write(jsonToWrite.getBytes(StandardCharsets.UTF_8));
         }
         if (!tmp.renameTo(current)) {
             try (FileOutputStream outputStream = new FileOutputStream(current, false)) {
-                outputStream.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+                outputStream.write(jsonToWrite.getBytes(StandardCharsets.UTF_8));
             }
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();

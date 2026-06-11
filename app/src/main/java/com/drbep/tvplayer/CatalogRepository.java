@@ -460,7 +460,9 @@ final class CatalogRepository {
 
     List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId, StartupFilterConfig startupConfig, OfflinePermissions offlinePermissions) {
         LinkedHashMap<String, ChannelFilter> byKey = new LinkedHashMap<>();
-        byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
+        if (!standaloneMode) {
+            byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
+        }
         byKey.put("favorites", new ChannelFilter("favorites", "Favoritos", FILTER_FAVORITES, 0, ""));
 
         Map<Integer, String> platformNames = new LinkedHashMap<>();

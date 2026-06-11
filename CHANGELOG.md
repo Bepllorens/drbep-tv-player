@@ -1,3 +1,7 @@
+## 2.0.73-offline-filter-permissions
+- Offline: oculta el filtro virtual "Todos" para que la navegacion use solo plataformas, grupos y VOD autorizados.
+- Offline: el catalogo respeta grupos permitidos como filtro adicional cuando el usuario tiene grupos asignados.
+
 ## 2.0.72-offline-catalog-hotfix
 - Offline: reduce el pico de memoria al guardar catalogos descargados, evitando cierres durante sincronizaciones remotas grandes.
 - Offline: mejora la aplicacion de catalogos recortados por permisos de usuario conservando el ultimo catalogo bueno si falla la descarga.

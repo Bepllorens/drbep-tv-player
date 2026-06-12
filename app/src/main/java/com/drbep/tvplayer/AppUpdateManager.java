@@ -32,7 +32,7 @@ import java.util.Set;
 final class AppUpdateManager {
     private static final String LATEST_PATH = "/api/offline/app/latest";
     private static final String APK_MIME = "application/vnd.android.package-archive";
-    private static final String PUBLIC_FALLBACK_BASE_URL = "https://iptv.bepllorens.com";
+    private static final String PUBLIC_FALLBACK_BASE_URL = "https://fire.tvbep.com";
     private static final String LAN_FALLBACK_BASE_URL = "http://192.168.93.223:8080";
     private static final String PAYLOAD_SOURCE_BASE_URL = "_source_base_url";
 

@@ -62,6 +62,7 @@ final class CatalogSnapshotStore {
     private static final String VERIFICATION_OK = "ok";
     private static final String VERIFICATION_WARNING = "warning";
     private static final String VERIFICATION_ERROR = "error";
+    private static final String LEGACY_PUBLIC_BASE_URL = "https://iptv.bepllorens.com";
 
     private final Context context;
     private final SharedPreferences prefs;
@@ -72,6 +73,7 @@ final class CatalogSnapshotStore {
         this.prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.httpClient = new HttpClient();
         ensureDeviceId();
+        migrateLegacyPublicBaseUrl();
     }
 
     JSONObject loadSnapshotObject() throws Exception {
@@ -371,6 +373,51 @@ final class CatalogSnapshotStore {
 
     void setSourceUrl(String sourceUrl) {
         prefs.edit().putString(PREF_SOURCE_URL, sourceUrl == null ? "" : sourceUrl.trim()).apply();
+    }
+
+    private void migrateLegacyPublicBaseUrl() {
+        String targetBaseUrl = normalizeBaseUrl(BuildConfig.OFFLINE_BASE_URL);
+        if (targetBaseUrl.isEmpty()) {
+            return;
+        }
+        String sourceUrl = prefs.getString(PREF_SOURCE_URL, "");
+        String sourceBaseUrl = prefs.getString(PREF_SOURCE_BASE_URL, "");
+        String migratedSourceUrl = migrateLegacyPublicUrl(sourceUrl, targetBaseUrl);
+        String migratedSourceBaseUrl = migrateLegacyPublicUrl(sourceBaseUrl, targetBaseUrl);
+        if (!safeString(sourceUrl).equals(migratedSourceUrl) || !safeString(sourceBaseUrl).equals(migratedSourceBaseUrl)) {
+            prefs.edit()
+                    .putString(PREF_SOURCE_URL, migratedSourceUrl)
+                    .putString(PREF_SOURCE_BASE_URL, migratedSourceBaseUrl)
+                    .apply();
+            Log.i(TAG, "offline public base URL migrated to " + targetBaseUrl);
+        }
+    }
+
+    private static String migrateLegacyPublicUrl(String value, String targetBaseUrl) {
+        String clean = safeString(value);
+        String legacy = normalizeBaseUrl(LEGACY_PUBLIC_BASE_URL);
+        if (clean.isEmpty() || legacy.isEmpty() || targetBaseUrl.isEmpty()) {
+            return clean;
+        }
+        if (clean.equalsIgnoreCase(legacy)) {
+            return targetBaseUrl;
+        }
+        if (clean.toLowerCase(Locale.ROOT).startsWith((legacy + "/").toLowerCase(Locale.ROOT))) {
+            return targetBaseUrl + clean.substring(legacy.length());
+        }
+        return clean;
+    }
+
+    private static String normalizeBaseUrl(String value) {
+        String clean = safeString(value);
+        while (clean.endsWith("/")) {
+            clean = clean.substring(0, clean.length() - 1);
+        }
+        return clean;
+    }
+
+    private static String safeString(String value) {
+        return value == null ? "" : value.trim();
     }
 
     String getAccessToken() {

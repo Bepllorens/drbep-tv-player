@@ -23,7 +23,7 @@ def releaseForceFirestickUrl = (project.findProperty('releaseForceFirestickUrl')
 def releaseFirestickLockedUrl = (project.findProperty('releaseFirestickLockedUrl') ?: '').toString()
 def standaloneMode = (project.findProperty('standaloneMode') ?: 'true').toString().toBoolean()
 def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toString()
-def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://iptv.bepllorens.com').toString()
+def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://fire.tvbep.com').toString()
 def updateChannel = (project.findProperty('updateChannel') ?: 'stable').toString()
 def offlineSnapshotPublicKey = (project.findProperty('offlineSnapshotPublicKey') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArIoIQfhLQG1NRNGVHHHRYJpJ1+epFzzIhXbP2J80kOLEcW57ruhXydBV1sBNpZrUoC2EAy2ISiN7suLTp8NJSD7EqnExg8vJnyhKcUzUYkBksJpuccWUqSuQhIe43TABw8OM2+OmTT9QgZBgbk9CbgP+zehssXzH1w0OL6RQ/vWMFsmxO9dieqKafdxn4IQLJEVZc7IDIPsk67HwlTfPT+1gmoCEsy7nn3gD8bs++Sz2e4mVwGgjqaqSHU4SJILleQJ17MC/I+DLI/EHLwIJ/5577c+foZS4rDPIRHf9puCcuhiXCTRMX92KsSj6FVhwgklVhFgyxjoKh8y7pUft/QIDAQAB').toString()
 def offlineSnapshotKeyId = (project.findProperty('offlineSnapshotKeyId') ?: 'offline-snapshot-rsa-20260520').toString()
@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 78
-        versionName "2.0.73-offline-filter-permissions"
+        versionCode 79
+        versionName "2.0.74-offline-fire-tunnel"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

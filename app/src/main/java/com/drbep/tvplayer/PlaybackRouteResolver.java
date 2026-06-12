@@ -209,6 +209,16 @@ final class PlaybackRouteResolver {
 
         if (streamInfo != null) {
             String streamType = safeLower(streamInfo.type);
+            if (isBackendLiveUrl(request.playUrl)) {
+                return new Decision(
+                        request.playUrl,
+                        MimeTypes.VIDEO_MP2T,
+                        "",
+                        playbackMode,
+                        false,
+                        request.hasFallback()
+                );
+            }
             if ("smooth".equals(streamType) || looksSmooth) {
                 return new Decision(
                         request.playUrl,

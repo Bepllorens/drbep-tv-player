@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 79
-        versionName "2.0.74-offline-fire-tunnel"
+        versionCode 80
+        versionName "2.0.75-offline-playback-fire-base"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

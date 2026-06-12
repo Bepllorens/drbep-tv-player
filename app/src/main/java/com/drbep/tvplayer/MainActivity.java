@@ -803,10 +803,30 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String resolveBaseUrl() {
+        if (BuildConfig.STANDALONE_MODE && BuildConfig.OFFLINE_BASE_URL != null && !BuildConfig.OFFLINE_BASE_URL.trim().isEmpty()) {
+            return normalizeBaseUrl(BuildConfig.OFFLINE_BASE_URL);
+        }
         String raw = BuildConfig.PLAYER_URL;
         if (BuildConfig.FORCE_FIRESTICK_URL && BuildConfig.FIRESTICK_LOCKED_URL != null && !BuildConfig.FIRESTICK_LOCKED_URL.trim().isEmpty()) {
             raw = BuildConfig.FIRESTICK_LOCKED_URL;
         }
+        if (raw == null || raw.trim().isEmpty()) {
+            return "http://127.0.0.1:8080";
+        }
+        Uri uri = Uri.parse(raw.trim());
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        int port = uri.getPort();
+        if (scheme == null || host == null) {
+            return "http://127.0.0.1:8080";
+        }
+        if (port > 0) {
+            return scheme + "://" + host + ":" + port;
+        }
+        return scheme + "://" + host;
+    }
+
+    private static String normalizeBaseUrl(String raw) {
         if (raw == null || raw.trim().isEmpty()) {
             return "http://127.0.0.1:8080";
         }

@@ -1063,7 +1063,9 @@ final class PlayerController {
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
         } else if ("clearkey".equals(decision.drmType)) {
-            String licenseUrl = request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
+            String licenseUrl = shouldUseRuntimeClearKeyLicense(request, decision)
+                    ? baseUrl + "/api/clearkey/" + request.channelId
+                    : request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
                     ? request.drmLicenseUrl
                     : streamInfo != null && streamInfo.clearKeyLicenseDataUri != null && !streamInfo.clearKeyLicenseDataUri.trim().isEmpty()
                     ? streamInfo.clearKeyLicenseDataUri
@@ -1226,6 +1228,13 @@ final class PlayerController {
         return "1079794".equals(request.channelId)
                 || "1079795".equals(request.channelId)
                 || "1079796".equals(request.channelId);
+    }
+
+    private boolean shouldUseRuntimeClearKeyLicense(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
+        if (request == null || decision == null || !"clearkey".equals(safeLower(decision.drmType))) {
+            return false;
+        }
+        return !request.directPlayback && "proxy_manifest".equals(safeLower(request.playbackProfile));
     }
 
     private boolean isSameChannel(PlaybackRequest left, PlaybackRequest right) {

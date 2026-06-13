@@ -141,6 +141,7 @@ final class CatalogRepository {
             if (sortOrder == Integer.MAX_VALUE) {
                 sortOrder = channel.optInt("dial", i + 1);
             }
+            int displayOrder = standaloneMode ? i + 1 : sortOrder;
             List<String> customGroups = new ArrayList<>();
             JSONArray groupsArray = channel.optJSONArray("custom_groups");
             if (groupsArray != null) {
@@ -165,7 +166,7 @@ final class CatalogRepository {
                     playbackUrl,
                     fallbackUrl,
                     i,
-                    sortOrder,
+                    displayOrder,
                     isVod,
                     isAdultVod,
                     platformId,

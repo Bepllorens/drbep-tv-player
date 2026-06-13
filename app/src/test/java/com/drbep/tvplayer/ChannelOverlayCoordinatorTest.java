@@ -126,6 +126,31 @@ public class ChannelOverlayCoordinatorTest {
         assertEquals(2, visible.size());
     }
 
+    @Test
+    public void visibleChannelsRespectCatalogOrderAcrossPlatforms() {
+        List<ChannelItem> visible = new ArrayList<>();
+        List<ChannelItem> all = new ArrayList<>();
+        List<ChannelFilter> filters = new ArrayList<>();
+
+        ChannelOverlayCoordinator coordinator = new ChannelOverlayCoordinator(
+                visible,
+                all,
+                filters,
+                new HashSet<>(),
+                null,
+                new ChannelCollectionStore(null, "collections"),
+                new ChannelProfileStore(null, "profiles")
+        );
+
+        List<ChannelItem> channels = new ArrayList<>();
+        channels.add(channel("ch-1", "Primero", 2, 2, 9, "Zulu"));
+        channels.add(channel("ch-2", "Segundo", 1, 1, 1, "Alpha"));
+        coordinator.applyLoadedChannels(new CatalogLoadResult(channels, baseFilters(), "all"), "ch-1");
+
+        assertEquals("ch-2", visible.get(0).id);
+        assertEquals("ch-1", visible.get(1).id);
+    }
+
     private static boolean hasFilter(List<ChannelFilter> filters, String key) {
         for (ChannelFilter filter : filters) {
             if (filter != null && key.equals(filter.key)) {
@@ -150,6 +175,10 @@ public class ChannelOverlayCoordinatorTest {
     }
 
     private static ChannelItem channel(String id, String name) {
+        return channel(id, name, 1, 1, 1, "TV");
+    }
+
+    private static ChannelItem channel(String id, String name, int originalOrder, int dashboardOrder, int platformId, String platformName) {
         return new ChannelItem(
                 id,
                 name,
@@ -158,12 +187,12 @@ public class ChannelOverlayCoordinatorTest {
                 "General",
                 "http://example.test/" + id,
                 "",
-                1,
-                1,
+                originalOrder,
+                dashboardOrder,
                 false,
                 false,
-                1,
-                "TV",
+                platformId,
+                platformName,
                 new ArrayList<>(),
                 "",
                 "",

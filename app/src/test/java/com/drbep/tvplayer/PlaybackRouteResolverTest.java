@@ -44,6 +44,21 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void proxyManifestProfileIgnoresLearnedDirectMode() {
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                requestWithProfile("77", "https://blocked.example.com/live/channel.mpd", "", PlaybackModeStore.MODE_DIRECT, "proxy_manifest"),
+                false,
+                null
+        );
+
+        assertEquals("https://iptv.example.com/proxy/manifest/77", decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_MPD, decision.mimeType);
+        assertEquals(PlaybackModeStore.MODE_DIRECT, decision.playbackMode);
+        assertFalse(decision.useFallback);
+        assertFalse(decision.allowCompatibilityFallback);
+    }
+
+    @Test
     public void encryptedStreamInfoUsesClearProxyRoute() {
         PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
         streamInfo.encrypted = true;
@@ -227,6 +242,21 @@ public class PlaybackRouteResolverTest {
                 drmScheme,
                 "",
                 directPlayback
+        );
+    }
+
+    private static PlayerController.PlaybackRequest requestWithProfile(String channelId, String playUrl, String fallbackUrl, String playbackMode, String playbackProfile) {
+        return new PlayerController.PlaybackRequest(
+                channelId,
+                "Channel " + channelId,
+                "Test Platform",
+                playUrl,
+                fallbackUrl,
+                playbackMode,
+                "",
+                "",
+                false,
+                playbackProfile
         );
     }
 }

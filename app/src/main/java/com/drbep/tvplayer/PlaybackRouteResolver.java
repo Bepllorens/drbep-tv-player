@@ -100,18 +100,6 @@ final class PlaybackRouteResolver {
             );
         }
 
-        if ("direct".equals(playbackProfile) || PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
-            boolean backendLive = isBackendLiveUrl(request.playUrl);
-            return new Decision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
-                    backendLive ? "" : drmType,
-                    playbackMode,
-                    false,
-                    request.hasFallback()
-            );
-        }
-
         if ("proxy_manifest".equals(playbackProfile)) {
             String proxyUrl = proxyManifestUrl(request.channelId);
             return new Decision(
@@ -121,6 +109,18 @@ final class PlaybackRouteResolver {
                     playbackMode,
                     false,
                     false
+            );
+        }
+
+        if ("direct".equals(playbackProfile) || PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
+            boolean backendLive = isBackendLiveUrl(request.playUrl);
+            return new Decision(
+                    request.playUrl,
+                    resolveMimeType(request.playUrl, streamInfo, false),
+                    backendLive ? "" : drmType,
+                    playbackMode,
+                    false,
+                    request.hasFallback()
             );
         }
 

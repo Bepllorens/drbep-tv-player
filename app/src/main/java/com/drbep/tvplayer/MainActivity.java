@@ -4860,6 +4860,15 @@ public class MainActivity extends FragmentActivity {
         if (channelItem == null || channelItem.id == null) {
             return PlaybackModeStore.MODE_AUTO;
         }
+        if (isProxyManifestProfile(channelItem)) {
+            if (PlaybackModeStore.MODE_DIRECT.equals(sanitizePlaybackMode(temporaryPlaybackModesByChannelId.get(channelItem.id)))) {
+                temporaryPlaybackModesByChannelId.remove(channelItem.id);
+            }
+            if (PlaybackModeStore.MODE_DIRECT.equals(sanitizePlaybackMode(learnedPlaybackModesByChannelId.get(channelItem.id)))) {
+                learnedPlaybackModesByChannelId.remove(channelItem.id);
+                saveLearnedPlaybackModes();
+            }
+        }
         if (temporaryPlaybackModesByChannelId.containsKey(channelItem.id)) {
             return sanitizePlaybackMode(temporaryPlaybackModesByChannelId.get(channelItem.id));
         }
@@ -4871,6 +4880,10 @@ public class MainActivity extends FragmentActivity {
             return PlaybackModeStore.MODE_AUTO;
         }
         return sanitizePlaybackMode(learnedPlaybackModesByChannelId.get(channelItem.id));
+    }
+
+    private boolean isProxyManifestProfile(ChannelItem channelItem) {
+        return channelItem != null && "proxy_manifest".equals(safeLower(channelItem.playbackProfile));
     }
 
     private ChannelItem getCurrentPlaybackChannelItem() {
@@ -11683,6 +11696,9 @@ public class MainActivity extends FragmentActivity {
         if (PlaybackModeStore.MODE_AUTO.equals(mode)) {
             mode = nextPlaybackMode(mode);
         }
+        if (isProxyManifestProfile(channelItem) && PlaybackModeStore.MODE_DIRECT.equals(mode)) {
+            mode = PlaybackModeStore.MODE_PROXY;
+        }
         setLearnedPlaybackMode(channelItem.id, mode, true);
     }
 
@@ -11918,6 +11934,10 @@ public class MainActivity extends FragmentActivity {
         String mode = sanitizePlaybackMode(playbackMode);
         if (channelId == null || channelId.trim().isEmpty() || PlaybackModeStore.MODE_AUTO.equals(mode)) {
             return;
+        }
+        ChannelItem channelItem = findChannelItemById(channelId);
+        if (isProxyManifestProfile(channelItem) && PlaybackModeStore.MODE_DIRECT.equals(mode)) {
+            mode = PlaybackModeStore.MODE_PROXY;
         }
         learnedPlaybackModesByChannelId.put(channelId, mode);
         saveLearnedPlaybackModes();

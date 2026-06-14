@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 83
-        versionName "2.0.78-offline-runtime-clearkey"
+        versionCode 85
+        versionName "2.0.80-offline-snapshot-memory"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

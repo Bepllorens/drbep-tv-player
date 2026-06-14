@@ -10,6 +10,7 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.net.URI;
 import java.security.MessageDigest;
 import java.security.KeyFactory;
@@ -274,11 +275,11 @@ final class CatalogSnapshotStore {
         }
         String jsonToWrite = rawJson == null || rawJson.trim().isEmpty() ? payload.toString() : rawJson;
         try (FileOutputStream outputStream = new FileOutputStream(tmp, false)) {
-            outputStream.write(jsonToWrite.getBytes(StandardCharsets.UTF_8));
+            writeUtf8String(outputStream, jsonToWrite);
         }
         if (!tmp.renameTo(current)) {
             try (FileOutputStream outputStream = new FileOutputStream(current, false)) {
-                outputStream.write(jsonToWrite.getBytes(StandardCharsets.UTF_8));
+                writeUtf8String(outputStream, jsonToWrite);
             }
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
@@ -606,6 +607,12 @@ final class CatalogSnapshotStore {
             while ((read = inputStream.read(buffer)) >= 0) {
                 outputStream.write(buffer, 0, read);
             }
+        }
+    }
+
+    private static void writeUtf8String(FileOutputStream outputStream, String value) throws Exception {
+        try (OutputStreamWriter writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
+            writer.write(value == null ? "" : value);
         }
     }
 
@@ -966,7 +973,27 @@ final class CatalogSnapshotStore {
     }
 
     private static String buildPayloadFingerprint(JSONObject payload) throws Exception {
-        return sha256Hex(payload == null ? "" : payload.toString());
+        if (payload == null) {
+            return "";
+        }
+        JSONObject signature = payload.optJSONObject("signature");
+        if (signature != null) {
+            String signatureFingerprint = signature.optString("key_id", "").trim()
+                    + ":"
+                    + signature.optString("value", "").trim();
+            if (!signatureFingerprint.trim().equals(":")) {
+                return sha256Hex(signatureFingerprint);
+            }
+        }
+        JSONObject catalog = payload.optJSONObject("catalog");
+        JSONObject epg = payload.optJSONObject("epg");
+        String lightweightFingerprint = normalizeSchema(payload.optString("schema", ""))
+                + "|" + payload.optLong("generated_at", 0L)
+                + "|" + payload.optLong("expires_at", 0L)
+                + "|" + countCatalogRows(catalog, "channels")
+                + "|" + countCatalogRows(catalog, "vod")
+                + "|" + countCatalogRows(epg, "programs");
+        return sha256Hex(lightweightFingerprint);
     }
 
     private static String buildPermissionsFingerprint(JSONObject permissions) throws Exception {

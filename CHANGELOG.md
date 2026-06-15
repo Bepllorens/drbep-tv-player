@@ -1,3 +1,7 @@
+## 2.0.83-beta-update-channel
+- Offline beta: la app adopta el canal efectivo devuelto por el servidor cuando el dashboard asigna beta a un dispositivo.
+- Offline beta: el instalador de actualizaciones usa ACTION_INSTALL_PACKAGE como ruta principal en Fire OS.
+
 ## 2.0.82-beta-group-order
 - Offline beta: los filtros de grupo usan el orden especifico guardado en el dashboard para ese grupo.
 - Servidor: el snapshot offline incluye orden por grupo (`group_order`) para evitar mezclarlo con ordenes de plataforma.

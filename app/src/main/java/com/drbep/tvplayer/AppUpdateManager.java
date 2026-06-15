@@ -189,15 +189,17 @@ final class AppUpdateManager {
             return;
         }
         Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", apkFile);
-        Intent intent = new Intent(Intent.ACTION_VIEW)
+        Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE)
                 .setDataAndType(uri, APK_MIME)
+                .putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                .putExtra(Intent.EXTRA_RETURN_RESULT, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
             context.startActivity(intent);
         } catch (ActivityNotFoundException e) {
-            Intent fallback = new Intent(Intent.ACTION_INSTALL_PACKAGE)
-                    .setData(uri)
+            Intent fallback = new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, APK_MIME)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             context.startActivity(fallback);

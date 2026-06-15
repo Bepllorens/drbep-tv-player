@@ -8092,6 +8092,16 @@ public class MainActivity extends FragmentActivity {
         return getString(updateChannelLabelRes(currentUpdateChannel()));
     }
 
+    private void adoptEffectiveUpdateChannel(AppUpdateManager.UpdateInfo info) {
+        if (info == null || prefs == null) {
+            return;
+        }
+        String effective = normalizeUpdateChannel(info.channel);
+        if (!effective.equals(currentUpdateChannel())) {
+            prefs.edit().putString(PREF_UPDATE_CHANNEL, effective).apply();
+        }
+    }
+
     private void showUpdateChannelDialog() {
         String[] channels = new String[]{"stable", "beta", "rescue"};
         String[] labels = new String[]{
@@ -8159,6 +8169,7 @@ public class MainActivity extends FragmentActivity {
                 long durationMs = System.currentTimeMillis() - startMs;
                 uiHandler.post(() -> {
                     appUpdateCheckRunning = false;
+                    adoptEffectiveUpdateChannel(info);
                     lastKnownAppUpdateInfo = info;
                     lastAppUpdateCheckMs = System.currentTimeMillis();
                     lastAppUpdateError = "";

@@ -157,7 +157,7 @@ final class CatalogRepository {
             boolean isVod = false;
             boolean isAdultVod = false;
 
-            parsed.add(new ChannelItem(
+            ChannelItem item = new ChannelItem(
                     id,
                     name,
                     tvgId,
@@ -177,7 +177,19 @@ final class CatalogRepository {
                     "",
                     directPlayback,
                     playbackProfile
-            ));
+            );
+            JSONObject groupOrder = channel.optJSONObject("group_order");
+            if (groupOrder != null) {
+                java.util.Iterator<String> keys = groupOrder.keys();
+                while (keys.hasNext()) {
+                    String groupName = keys.next();
+                    int order = groupOrder.optInt(groupName, 0);
+                    if (groupName != null && !groupName.trim().isEmpty() && order > 0) {
+                        item.groupOrder.put(groupName.trim().toLowerCase(Locale.ROOT), order);
+                    }
+                }
+            }
+            parsed.add(item);
         }
 
         appendSnapshotVodItems(parsed, payload, offlinePermissions);
@@ -858,6 +870,7 @@ final class ChannelItem {
     final int platformId;
     final String platformName;
     final List<String> customGroups;
+    final Map<String, Integer> groupOrder;
     final String drmScheme;
     final String drmLicenseUrl;
     final String vodFilterKey;
@@ -897,6 +910,7 @@ final class ChannelItem {
         this.platformId = platformId;
         this.platformName = platformName;
         this.customGroups = customGroups;
+        this.groupOrder = new LinkedHashMap<>();
         this.drmScheme = drmScheme == null ? "" : drmScheme.trim();
         this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
         this.vodFilterKey = vodFilterKey == null ? "" : vodFilterKey.trim().toLowerCase(Locale.ROOT);

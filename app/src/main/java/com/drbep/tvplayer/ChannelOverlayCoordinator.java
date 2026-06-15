@@ -262,6 +262,24 @@ final class ChannelOverlayCoordinator {
                     return 1;
                 }
             }
+            ChannelFilter selectedFilter = getSelectedFilter();
+            if (selectedFilter != null && selectedFilter.type == FILTER_CUSTOM_GROUP) {
+                String groupKey = selectedFilter.groupName == null ? "" : selectedFilter.groupName.trim().toLowerCase(java.util.Locale.ROOT);
+                int groupOrderA = a.groupOrder.containsKey(groupKey) ? a.groupOrder.get(groupKey) : 0;
+                int groupOrderB = b.groupOrder.containsKey(groupKey) ? b.groupOrder.get(groupKey) : 0;
+                if (groupOrderA > 0 || groupOrderB > 0) {
+                    if (groupOrderA == 0) {
+                        return 1;
+                    }
+                    if (groupOrderB == 0) {
+                        return -1;
+                    }
+                    int byGroupOrder = Integer.compare(groupOrderA, groupOrderB);
+                    if (byGroupOrder != 0) {
+                        return byGroupOrder;
+                    }
+                }
+            }
             int byDashboardOrder = Integer.compare(a.dashboardOrder, b.dashboardOrder);
             if (byDashboardOrder != 0) {
                 return byDashboardOrder;

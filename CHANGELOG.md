@@ -1,3 +1,7 @@
+## 2.0.82-beta-group-order
+- Offline beta: los filtros de grupo usan el orden especifico guardado en el dashboard para ese grupo.
+- Servidor: el snapshot offline incluye orden por grupo (`group_order`) para evitar mezclarlo con ordenes de plataforma.
+
 ## 2.0.73-offline-filter-permissions
 - Offline: oculta el filtro virtual "Todos" para que la navegacion use solo plataformas, grupos y VOD autorizados.
 - Offline: el catalogo respeta grupos permitidos como filtro adicional cuando el usuario tiene grupos asignados.

@@ -1,3 +1,7 @@
+## 2.0.85-beta-overlay-quality
+- Offline beta: el overlay inferior muestra la calidad real del canal junto al nombre, ruta y EPG.
+- Offline beta: el aviso superior deja de repetir el nombre del canal cuando ya aparece en el panel inferior.
+
 ## 2.0.84-beta-playback-quality
 - Offline beta: la app mide la calidad real del stream reproducido (resolucion, codec, fps, bitrate y audio) usando Media3.
 - Offline beta: los heartbeats de reproduccion envian la calidad real al servidor para verla en Actividad offline.

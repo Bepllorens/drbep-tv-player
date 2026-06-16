@@ -211,6 +211,8 @@
     <string name="overlay_next_program_empty">Siguiente: sin datos EPG</string>
     <string name="overlay_next_program_short">Luego %1$s</string>
     <string name="overlay_playback_route">Ruta playback: %1$s</string>
+    <string name="overlay_playback_quality">Calidad: %1$s</string>
+    <string name="overlay_playback_quality_detecting">Calidad: detectando...</string>
     <string name="overlay_recent_channels">Recientes: %1$s</string>
     <string name="overlay_recent_channels_empty">Recientes: aun sin historial</string>
     <string name="overlay_tools_hint">Toca ☆ para favoritos</string>

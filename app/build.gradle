@@ -64,8 +64,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 89
-        versionName "2.0.84-beta-playback-quality"
+        versionCode 90
+        versionName "2.0.85-beta-overlay-quality"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

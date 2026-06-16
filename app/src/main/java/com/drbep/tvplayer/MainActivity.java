@@ -205,6 +205,7 @@ public class MainActivity extends FragmentActivity {
     private TextView overlayCurrentChannelText;
     private TextView overlayCurrentMetaText;
     private TextView overlayPlaybackRouteText;
+    private TextView overlayPlaybackQualityText;
     private TextView overlayEmptyText;
     private TextView overlayRecentText;
     private TextView zapChannelText;
@@ -558,6 +559,7 @@ public class MainActivity extends FragmentActivity {
         overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
         overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
         overlayPlaybackRouteText = findViewById(R.id.overlayPlaybackRouteText);
+        overlayPlaybackQualityText = findViewById(R.id.overlayPlaybackQualityText);
         overlayEmptyText = findViewById(R.id.overlayEmptyText);
         overlayRecentText = findViewById(R.id.overlayRecentText);
         zapBanner = findViewById(R.id.zapBanner);
@@ -891,6 +893,11 @@ public class MainActivity extends FragmentActivity {
             public void onFirstVideoFrameRendered(String channelId) {
                 MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
                 MainActivity.this.markPostUpdatePlaybackHealthy(channelId);
+            }
+
+            @Override
+            public void onPlaybackQualityChanged(PlayerController.PlaybackDiagnostics diagnostics) {
+                MainActivity.this.updateOverlayPanel();
             }
 
             @Override
@@ -4512,11 +4519,31 @@ public class MainActivity extends FragmentActivity {
         if (statusText == null || text == null || text.trim().isEmpty()) {
             return;
         }
+        if (isRedundantPlaybackStatus(text)) {
+            statusText.setVisibility(View.GONE);
+            updateOverlayPanel();
+            uiHandler.removeCallbacks(hideStatusRunnable);
+            return;
+        }
         statusText.setText(text);
         statusText.setVisibility(View.VISIBLE);
         updateOverlayPanel();
         uiHandler.removeCallbacks(hideStatusRunnable);
         uiHandler.postDelayed(hideStatusRunnable, STATUS_HIDE_MS);
+    }
+
+    private boolean isRedundantPlaybackStatus(String text) {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current == null || current.isVod || text == null) {
+            return false;
+        }
+        String value = text.trim();
+        String channelName = displayName(current).trim();
+        if (value.equals(channelName)) {
+            return true;
+        }
+        return value.equals(getString(R.string.status_channel_widevine, channelName))
+                || value.equals(getString(R.string.status_channel_compat, channelName));
     }
 
     private void showError(String reason) {
@@ -5899,7 +5926,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateOverlayPanel() {
-        if (overlayCurrentChannelText == null || overlayCurrentMetaText == null || overlayPlaybackRouteText == null || overlayRecentText == null) {
+        if (overlayCurrentChannelText == null || overlayCurrentMetaText == null || overlayPlaybackRouteText == null || overlayPlaybackQualityText == null || overlayRecentText == null) {
             return;
         }
         ChannelItem currentChannel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : findChannelItemById(lastChannelId);
@@ -5923,6 +5950,17 @@ public class MainActivity extends FragmentActivity {
                 ? getString(R.string.diagnostics_state_idle)
                 : diagnostics.routeLabel;
         overlayPlaybackRouteText.setText(getString(R.string.overlay_playback_route, routeLabel));
+        String qualityLabel = formatPlaybackQualityCompact(diagnostics);
+        if (!qualityLabel.trim().isEmpty()) {
+            overlayPlaybackQualityText.setVisibility(View.VISIBLE);
+            overlayPlaybackQualityText.setText(getString(R.string.overlay_playback_quality, qualityLabel));
+        } else if (currentChannel != null && diagnostics != null && diagnostics.playbackState != null && !"IDLE".equalsIgnoreCase(diagnostics.playbackState)) {
+            overlayPlaybackQualityText.setVisibility(View.VISIBLE);
+            overlayPlaybackQualityText.setText(R.string.overlay_playback_quality_detecting);
+        } else {
+            overlayPlaybackQualityText.setVisibility(View.GONE);
+            overlayPlaybackQualityText.setText("");
+        }
 
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
         overlayRecentText.setVisibility(View.VISIBLE);
@@ -12118,6 +12156,48 @@ public class MainActivity extends FragmentActivity {
             parts.add("Audio " + diagnostics.audioCodec.trim());
         }
         return parts.isEmpty() ? getString(R.string.diagnostics_value_unknown) : joinLabels(parts);
+    }
+
+    private String formatPlaybackQualityCompact(PlayerController.PlaybackDiagnostics diagnostics) {
+        if (diagnostics == null || !diagnostics.hasVideoQuality()) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (diagnostics.videoHeight > 0) {
+            if (diagnostics.videoWidth >= 3840 || diagnostics.videoHeight >= 2160) {
+                parts.add("4K");
+            } else {
+                parts.add(diagnostics.videoHeight + "p");
+            }
+        } else if (diagnostics.videoWidth > 0) {
+            parts.add(diagnostics.videoWidth + "px");
+        }
+        String codec = compactCodecLabel(diagnostics.videoCodec);
+        if (!codec.isEmpty()) {
+            parts.add(codec);
+        }
+        if (diagnostics.videoFrameRate > 0f) {
+            parts.add(String.format(Locale.getDefault(), "%.0f fps", diagnostics.videoFrameRate));
+        }
+        if (diagnostics.videoBitrate > 0) {
+            parts.add(String.format(Locale.getDefault(), "%.1f Mbps", diagnostics.videoBitrate / 1_000_000f));
+        }
+        return joinLabels(parts);
+    }
+
+    private String compactCodecLabel(String codec) {
+        String value = codec == null ? "" : codec.trim();
+        String lower = value.toLowerCase(Locale.ROOT);
+        if (lower.isEmpty()) {
+            return "";
+        }
+        if (lower.contains("avc") || lower.contains("h264") || lower.contains("avc1")) {
+            return "H.264";
+        }
+        if (lower.contains("hevc") || lower.contains("h265") || lower.contains("hvc1") || lower.contains("hev1")) {
+            return "H.265";
+        }
+        return value;
     }
 
     private String formatPlaybackModeLabel(String playbackMode) {

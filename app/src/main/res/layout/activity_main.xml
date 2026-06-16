@@ -257,6 +257,18 @@
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/overlayPlaybackQualityText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#9BD0FF"
+                android:textSize="@dimen/overlay_meta_text_size"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/overlayCurrentMetaText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

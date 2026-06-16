@@ -92,6 +92,9 @@ final class PlayerController {
 
         void onFirstVideoFrameRendered(String channelId);
 
+        default void onPlaybackQualityChanged(PlaybackDiagnostics diagnostics) {
+        }
+
         default void onPlaybackAutoRecoveryReady(PlaybackRequest request, PlaybackDiagnostics diagnostics, String reason) {
         }
     }
@@ -265,6 +268,7 @@ final class PlayerController {
     private int lastVideoBitrate;
     private float lastVideoFrameRate;
     private String lastAudioCodec;
+    private String lastPlaybackQualityKey;
     private boolean pendingAutoRecoveryReadyReport;
     private String pendingAutoRecoveryReason;
     private final Runnable forceLiveEdgeRunnable = () -> {
@@ -418,6 +422,7 @@ final class PlayerController {
         lastVideoBitrate = 0;
         lastVideoFrameRate = 0f;
         lastAudioCodec = "";
+        lastPlaybackQualityKey = "";
     }
 
     private void updateSelectedPlaybackFormats() {
@@ -452,10 +457,27 @@ final class PlayerController {
                 Format audioFormat = group.getTrackFormat(i);
                 if (audioFormat != null) {
                     lastAudioCodec = firstNonEmpty(audioFormat.codecs, formatMimeLabel(audioFormat.sampleMimeType), lastAudioCodec);
+                    notifyPlaybackQualityChangedIfNeeded();
                     return;
                 }
             }
         }
+        notifyPlaybackQualityChangedIfNeeded();
+    }
+
+    private void notifyPlaybackQualityChangedIfNeeded() {
+        PlaybackDiagnostics diagnostics = getPlaybackDiagnostics();
+        String key = diagnostics.videoWidth + "x"
+                + diagnostics.videoHeight + "|"
+                + safeLower(diagnostics.videoCodec) + "|"
+                + diagnostics.videoBitrate + "|"
+                + Math.round(diagnostics.videoFrameRate) + "|"
+                + safeLower(diagnostics.audioCodec);
+        if (key.equals(lastPlaybackQualityKey)) {
+            return;
+        }
+        lastPlaybackQualityKey = key;
+        host.onPlaybackQualityChanged(diagnostics);
     }
 
     private static String firstNonEmpty(String... values) {

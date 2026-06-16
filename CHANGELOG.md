@@ -1,3 +1,7 @@
+## 2.0.86-beta-zap-quality
+- Offline beta: el cartel inferior de zapping muestra la calidad real del canal y se refresca cuando Media3 detecta el formato.
+- Offline beta: el cartel de zapping permanece visible unos segundos mas para dar tiempo a ver la calidad detectada.
+
 ## 2.0.85-beta-overlay-quality
 - Offline beta: el overlay inferior muestra la calidad real del canal junto al nombre, ruta y EPG.
 - Offline beta: el aviso superior deja de repetir el nombre del canal cuando ya aparece en el panel inferior.

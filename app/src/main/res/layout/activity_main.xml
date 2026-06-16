@@ -134,6 +134,18 @@
                 android:maxLines="2"
                 android:textColor="#CFE0F4"
                 android:textSize="@dimen/player_status_text_size" />
+
+        <TextView
+            android:id="@+id/zapQualityText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#9BD0FF"
+            android:textSize="@dimen/player_status_text_size"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
     <LinearLayout

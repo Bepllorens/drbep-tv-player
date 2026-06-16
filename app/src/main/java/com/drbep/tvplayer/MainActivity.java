@@ -210,6 +210,7 @@ public class MainActivity extends FragmentActivity {
     private TextView overlayRecentText;
     private TextView zapChannelText;
     private TextView zapMetaText;
+    private TextView zapQualityText;
     private TextView quickSearchQueryText;
     private TextView quickSearchResultText;
     private TextView recordingsSectionText;
@@ -565,6 +566,7 @@ public class MainActivity extends FragmentActivity {
         zapBanner = findViewById(R.id.zapBanner);
         zapChannelText = findViewById(R.id.zapChannelText);
         zapMetaText = findViewById(R.id.zapMetaText);
+        zapQualityText = findViewById(R.id.zapQualityText);
         quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
         quickSearchQueryText = findViewById(R.id.quickSearchQueryText);
         quickSearchResultText = findViewById(R.id.quickSearchResultText);
@@ -898,6 +900,10 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void onPlaybackQualityChanged(PlayerController.PlaybackDiagnostics diagnostics) {
                 MainActivity.this.updateOverlayPanel();
+                ChannelItem currentChannel = MainActivity.this.getCurrentPlaybackChannelItem();
+                if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
+                    MainActivity.this.updateZapBannerContent(currentChannel);
+                }
             }
 
             @Override
@@ -12257,12 +12263,33 @@ public class MainActivity extends FragmentActivity {
         if (zapBanner == null || zapChannelText == null || zapMetaText == null || channelItem == null) {
             return;
         }
-        zapChannelText.setText(channelItem.name);
-        String meta = buildZapProgramSummary(channelItem);
-        zapMetaText.setText(meta);
+        updateZapBannerContent(channelItem);
         zapBanner.setVisibility(View.VISIBLE);
         uiHandler.removeCallbacks(hideZapBannerRunnable);
-        uiHandler.postDelayed(hideZapBannerRunnable, 2200L);
+        uiHandler.postDelayed(hideZapBannerRunnable, 3600L);
+    }
+
+    private void updateZapBannerContent(ChannelItem channelItem) {
+        if (zapChannelText == null || zapMetaText == null || channelItem == null) {
+            return;
+        }
+        zapChannelText.setText(displayName(channelItem));
+        zapMetaText.setText(buildZapProgramSummary(channelItem));
+        if (zapQualityText == null) {
+            return;
+        }
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        String qualityLabel = formatPlaybackQualityCompact(diagnostics);
+        if (!qualityLabel.trim().isEmpty()) {
+            zapQualityText.setVisibility(View.VISIBLE);
+            zapQualityText.setText(getString(R.string.overlay_playback_quality, qualityLabel));
+        } else if (diagnostics != null && diagnostics.playbackState != null && !"IDLE".equalsIgnoreCase(diagnostics.playbackState)) {
+            zapQualityText.setVisibility(View.VISIBLE);
+            zapQualityText.setText(R.string.overlay_playback_quality_detecting);
+        } else {
+            zapQualityText.setVisibility(View.GONE);
+            zapQualityText.setText("");
+        }
     }
 
     private String buildGuideMeta(EpgRepository.EpgProgram program) {

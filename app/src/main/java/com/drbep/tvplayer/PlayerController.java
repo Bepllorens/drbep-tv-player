@@ -23,6 +23,7 @@ import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.VideoSize;
 import androidx.media3.decoder.CryptoConfig;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
@@ -171,8 +172,14 @@ final class PlayerController {
         final boolean encrypted;
         final boolean usingFallback;
         final String lastError;
+        final int videoWidth;
+        final int videoHeight;
+        final String videoCodec;
+        final int videoBitrate;
+        final float videoFrameRate;
+        final String audioCodec;
 
-        PlaybackDiagnostics(String channelName, String playbackState, String routeLabel, String targetUrl, String mimeType, String drmType, String playbackMode, boolean encrypted, boolean usingFallback, String lastError) {
+        PlaybackDiagnostics(String channelName, String playbackState, String routeLabel, String targetUrl, String mimeType, String drmType, String playbackMode, boolean encrypted, boolean usingFallback, String lastError, int videoWidth, int videoHeight, String videoCodec, int videoBitrate, float videoFrameRate, String audioCodec) {
             this.channelName = channelName;
             this.playbackState = playbackState;
             this.routeLabel = routeLabel;
@@ -183,6 +190,16 @@ final class PlayerController {
             this.encrypted = encrypted;
             this.usingFallback = usingFallback;
             this.lastError = lastError;
+            this.videoWidth = videoWidth;
+            this.videoHeight = videoHeight;
+            this.videoCodec = videoCodec;
+            this.videoBitrate = videoBitrate;
+            this.videoFrameRate = videoFrameRate;
+            this.audioCodec = audioCodec;
+        }
+
+        boolean hasVideoQuality() {
+            return videoWidth > 0 || videoHeight > 0 || (videoCodec != null && !videoCodec.trim().isEmpty());
         }
     }
 
@@ -242,6 +259,12 @@ final class PlayerController {
     private String lastHdrBadgeChannelId;
     private boolean forceLiveEdgeOnNextReady;
     private boolean usingVideoCompatibilityCap;
+    private int lastVideoWidth;
+    private int lastVideoHeight;
+    private String lastVideoCodec;
+    private int lastVideoBitrate;
+    private float lastVideoFrameRate;
+    private String lastAudioCodec;
     private boolean pendingAutoRecoveryReadyReport;
     private String pendingAutoRecoveryReason;
     private final Runnable forceLiveEdgeRunnable = () -> {
@@ -335,6 +358,7 @@ final class PlayerController {
                         host.showStatus(context.getString(R.string.status_buffering));
                     }
                 } else if (playbackState == Player.STATE_READY) {
+                    updateSelectedPlaybackFormats();
                     if (forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
                         player.seekToDefaultPosition();
                         player.play();
@@ -368,12 +392,111 @@ final class PlayerController {
                         + " decision=" + describeDecision(currentPlaybackDecision));
                 host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
             }
+
+            @Override
+            public void onVideoSizeChanged(@NonNull VideoSize videoSize) {
+                if (videoSize.width > 0) {
+                    lastVideoWidth = videoSize.width;
+                }
+                if (videoSize.height > 0) {
+                    lastVideoHeight = videoSize.height;
+                }
+                updateSelectedPlaybackFormats();
+            }
+
+            @Override
+            public void onTracksChanged(@NonNull Tracks tracks) {
+                updateSelectedPlaybackFormats();
+            }
         });
+    }
+
+    private void clearPlaybackQuality() {
+        lastVideoWidth = 0;
+        lastVideoHeight = 0;
+        lastVideoCodec = "";
+        lastVideoBitrate = 0;
+        lastVideoFrameRate = 0f;
+        lastAudioCodec = "";
+    }
+
+    private void updateSelectedPlaybackFormats() {
+        if (player == null) {
+            return;
+        }
+        Format videoFormat = player.getVideoFormat();
+        if (videoFormat != null) {
+            if (videoFormat.width > 0) {
+                lastVideoWidth = videoFormat.width;
+            }
+            if (videoFormat.height > 0) {
+                lastVideoHeight = videoFormat.height;
+            }
+            if (videoFormat.bitrate > 0) {
+                lastVideoBitrate = videoFormat.bitrate;
+            }
+            if (videoFormat.frameRate > 0f) {
+                lastVideoFrameRate = videoFormat.frameRate;
+            }
+            lastVideoCodec = firstNonEmpty(videoFormat.codecs, formatMimeLabel(videoFormat.sampleMimeType), lastVideoCodec);
+        }
+        Tracks tracks = player.getCurrentTracks();
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group == null || group.getType() != C.TRACK_TYPE_AUDIO || !group.isSelected()) {
+                continue;
+            }
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSelected(i)) {
+                    continue;
+                }
+                Format audioFormat = group.getTrackFormat(i);
+                if (audioFormat != null) {
+                    lastAudioCodec = firstNonEmpty(audioFormat.codecs, formatMimeLabel(audioFormat.sampleMimeType), lastAudioCodec);
+                    return;
+                }
+            }
+        }
+    }
+
+    private static String firstNonEmpty(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private static String formatMimeLabel(String mimeType) {
+        String value = mimeType == null ? "" : mimeType.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
+            return "";
+        }
+        if (value.contains("avc")) {
+            return "H.264";
+        }
+        if (value.contains("hevc") || value.contains("h265")) {
+            return "H.265";
+        }
+        if (value.contains("mp4a") || value.contains("aac")) {
+            return "AAC";
+        }
+        if (value.contains("ac-3")) {
+            return "AC-3";
+        }
+        if (value.contains("ec-3")) {
+            return "E-AC-3";
+        }
+        return mimeType.trim();
     }
 
     void resetFallbackState() {
         usingPlaybackFallback = false;
         usingVideoCompatibilityCap = false;
+        clearPlaybackQuality();
         attemptedRecoveryRoutes.clear();
         pendingAutoRecoveryReadyReport = false;
         pendingAutoRecoveryReason = "";
@@ -695,10 +818,16 @@ final class PlayerController {
                 targetUrl,
                 mimeType,
                 drmType,
-            playbackMode,
+                playbackMode,
                 encrypted,
                 usingPlaybackFallback,
-                safeLogValue(lastErrorSummary)
+                safeLogValue(lastErrorSummary),
+                lastVideoWidth,
+                lastVideoHeight,
+                safeLogValue(lastVideoCodec),
+                lastVideoBitrate,
+                lastVideoFrameRate,
+                safeLogValue(lastAudioCodec)
         );
     }
 
@@ -865,6 +994,7 @@ final class PlayerController {
         currentStreamInfo = null;
         currentRecordingUrl = recordingUrl;
         usingPlaybackFallback = false;
+        clearPlaybackQuality();
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         player.setMediaItem(builder.build());
         if (resumePositionMs > 0L) {
@@ -1012,6 +1142,7 @@ final class PlayerController {
         usingPlaybackFallback = useFallback;
         if (!isSameChannel(request, previousRequest)) {
             usingVideoCompatibilityCap = false;
+            clearPlaybackQuality();
         }
         lastErrorSummary = null;
         lastHdrBadgeChannelId = null;

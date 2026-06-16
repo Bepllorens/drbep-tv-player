@@ -1,3 +1,8 @@
+## 2.0.84-beta-playback-quality
+- Offline beta: la app mide la calidad real del stream reproducido (resolucion, codec, fps, bitrate y audio) usando Media3.
+- Offline beta: los heartbeats de reproduccion envian la calidad real al servidor para verla en Actividad offline.
+- Offline beta: el dialogo de diagnostico de reproduccion muestra la calidad detectada del canal actual.
+
 ## 2.0.83-beta-update-channel
 - Offline beta: la app adopta el canal efectivo devuelto por el servidor cuando el dashboard asigna beta a un dispositivo.
 - Offline beta: el instalador de actualizaciones usa ACTION_INSTALL_PACKAGE como ruta principal en Fire OS.

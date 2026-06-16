@@ -360,6 +360,7 @@
     <string name="diagnostics_route">Ruta: %1$s</string>
     <string name="diagnostics_target">URL efectiva: %1$s</string>
     <string name="diagnostics_mime">Mime: %1$s</string>
+    <string name="diagnostics_video_quality">Calidad: %1$s</string>
     <string name="diagnostics_drm">DRM: %1$s</string>
     <string name="diagnostics_encrypted">Encrypted: %1$s</string>
     <string name="diagnostics_fallback">Compat fallback: %1$s</string>

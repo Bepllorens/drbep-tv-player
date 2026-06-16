@@ -7421,6 +7421,12 @@ public class MainActivity extends FragmentActivity {
                         .put("playback_mode", playbackDiagnostics.playbackMode)
                         .put("playback_mime", playbackDiagnostics.mimeType)
                         .put("playback_drm", playbackDiagnostics.drmType)
+                        .put("playback_video_width", playbackDiagnostics.videoWidth)
+                        .put("playback_video_height", playbackDiagnostics.videoHeight)
+                        .put("playback_video_codec", playbackDiagnostics.videoCodec == null ? "" : playbackDiagnostics.videoCodec)
+                        .put("playback_video_bitrate", playbackDiagnostics.videoBitrate)
+                        .put("playback_video_frame_rate", playbackDiagnostics.videoFrameRate)
+                        .put("playback_audio_codec", playbackDiagnostics.audioCodec == null ? "" : playbackDiagnostics.audioCodec)
                         .put("playback_error", playbackDiagnostics.lastError == null ? "" : playbackDiagnostics.lastError);
             }
             if (status != null) {
@@ -7506,7 +7512,13 @@ public class MainActivity extends FragmentActivity {
                 payload.put("playback_mode", diagnostics.playbackMode == null ? "" : diagnostics.playbackMode)
                         .put("route_label", diagnostics.routeLabel == null ? "" : diagnostics.routeLabel)
                         .put("mime_type", diagnostics.mimeType == null ? "" : diagnostics.mimeType)
-                        .put("drm_type", diagnostics.drmType == null ? "" : diagnostics.drmType);
+                        .put("drm_type", diagnostics.drmType == null ? "" : diagnostics.drmType)
+                        .put("video_width", diagnostics.videoWidth)
+                        .put("video_height", diagnostics.videoHeight)
+                        .put("video_codec", diagnostics.videoCodec == null ? "" : diagnostics.videoCodec)
+                        .put("video_bitrate", diagnostics.videoBitrate)
+                        .put("video_frame_rate", diagnostics.videoFrameRate)
+                        .put("audio_codec", diagnostics.audioCodec == null ? "" : diagnostics.audioCodec);
                 if ("error".equalsIgnoreCase(normalizedState)) {
                     payload.put("error_message", diagnostics.lastError == null ? "" : diagnostics.lastError)
                             .put("error_category", diagnostics.playbackState == null ? "" : diagnostics.playbackState);
@@ -11482,6 +11494,9 @@ public class MainActivity extends FragmentActivity {
         appendDiagnosticLine(message, getString(R.string.diagnostics_route, safeText(diagnostics.routeLabel)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_target, safeText(diagnostics.targetUrl)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_mime, fallbackUnknown(diagnostics.mimeType)));
+        if (diagnostics.hasVideoQuality()) {
+            appendDiagnosticLine(message, getString(R.string.diagnostics_video_quality, formatPlaybackQuality(diagnostics)));
+        }
         appendDiagnosticLine(message, getString(R.string.diagnostics_drm, fallbackUnknown(diagnostics.drmType)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_playback_mode, formatPlaybackModeLabel(diagnostics.playbackMode)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_encrypted, getString(diagnostics.encrypted ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
@@ -12079,6 +12094,30 @@ public class MainActivity extends FragmentActivity {
 
     private String fallbackUnknown(String value) {
         return value == null || value.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : value;
+    }
+
+    private String formatPlaybackQuality(PlayerController.PlaybackDiagnostics diagnostics) {
+        if (diagnostics == null || !diagnostics.hasVideoQuality()) {
+            return getString(R.string.diagnostics_value_unknown);
+        }
+        List<String> parts = new ArrayList<>();
+        if (diagnostics.videoWidth > 0 && diagnostics.videoHeight > 0) {
+            parts.add(diagnostics.videoWidth + "x" + diagnostics.videoHeight);
+        }
+        if (diagnostics.videoCodec != null && !diagnostics.videoCodec.trim().isEmpty()) {
+            parts.add(diagnostics.videoCodec.trim());
+        }
+        if (diagnostics.videoFrameRate > 0f) {
+            parts.add(String.format(Locale.getDefault(), "%.0f fps", diagnostics.videoFrameRate));
+        }
+        if (diagnostics.videoBitrate > 0) {
+            float mbps = diagnostics.videoBitrate / 1_000_000f;
+            parts.add(String.format(Locale.getDefault(), "%.1f Mbps", mbps));
+        }
+        if (diagnostics.audioCodec != null && !diagnostics.audioCodec.trim().isEmpty()) {
+            parts.add("Audio " + diagnostics.audioCodec.trim());
+        }
+        return parts.isEmpty() ? getString(R.string.diagnostics_value_unknown) : joinLabels(parts);
     }
 
     private String formatPlaybackModeLabel(String playbackMode) {

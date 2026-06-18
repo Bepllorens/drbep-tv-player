@@ -61,7 +61,10 @@
     <string name="status_no_program_in_epg">Sin programa en EPG</string>
     <string name="status_failed_get_program">No se pudo obtener programa</string>
     <string name="status_recording_scheduled">Grabacion programada</string>
+    <string name="status_scheduling_recording">Programando grabacion...</string>
     <string name="status_failed_schedule_recording">No se pudo programar grabacion</string>
+    <string name="status_recording_schedule_permission_denied">Tu usuario no tiene permiso para programar grabaciones</string>
+    <string name="status_recording_delete_permission_denied">Tu usuario no tiene permiso para cancelar grabaciones</string>
     <string name="status_failed_create_reminder">No se pudo crear recordatorio</string>
     <string name="status_reminder_created">Recordatorio creado</string>
     <string name="status_no_recordings">No hay grabaciones</string>

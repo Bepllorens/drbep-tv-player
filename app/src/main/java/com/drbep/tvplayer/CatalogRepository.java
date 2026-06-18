@@ -208,7 +208,7 @@ final class CatalogRepository {
                 + " appendRemoteVod=" + appendRemoteVod
                 + " itemParseMs=" + parsedItemsMs
                 + " totalMs=" + (System.currentTimeMillis() - startMs));
-        return new CatalogLoadResult(parsed, filters, resolveDefaultFilterKey(filters, startupConfig));
+        return new CatalogLoadResult(parsed, filters, resolveDefaultFilterKey(filters, startupConfig), offlinePermissions);
     }
 
     private JSONObject normalizeSnapshotPayload(JSONObject rawPayload) {
@@ -293,7 +293,7 @@ final class CatalogRepository {
 
         List<ChannelFilter> filters = new ArrayList<>();
         filters.add(new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
-        return new CatalogLoadResult(parsed, filters, "all");
+        return new CatalogLoadResult(parsed, filters, "all", new OfflinePermissions());
     }
 
     private void appendTivifyVodItems(List<ChannelItem> parsed) {
@@ -773,6 +773,9 @@ final class CatalogRepository {
         permissions.vodEnabled = payload.optBoolean("vod", true);
         permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", true);
         permissions.runtimeEnabled = payload.optBoolean("runtime", true);
+        permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
+        permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
+        permissions.canDeleteRecordings = payload.optBoolean("recordings_delete", false);
         JSONArray platformIds = payload.optJSONArray("platform_ids");
         if (platformIds != null) {
             for (int i = 0; i < platformIds.length(); i++) {
@@ -950,6 +953,9 @@ final class OfflinePermissions {
     boolean vodEnabled = true;
     boolean tivifyAdultEnabled = true;
     boolean runtimeEnabled = true;
+    boolean canViewRecordings = true;
+    boolean canScheduleRecordings = true;
+    boolean canDeleteRecordings = false;
     final Set<Integer> allowedPlatformIds = new HashSet<>();
 
     boolean allowsLiveChannel(int platformId) {
@@ -979,10 +985,16 @@ final class CatalogLoadResult {
     final List<ChannelItem> channels;
     final List<ChannelFilter> filters;
     final String defaultFilterKey;
+    final OfflinePermissions offlinePermissions;
 
     CatalogLoadResult(List<ChannelItem> channels, List<ChannelFilter> filters, String defaultFilterKey) {
+        this(channels, filters, defaultFilterKey, new OfflinePermissions());
+    }
+
+    CatalogLoadResult(List<ChannelItem> channels, List<ChannelFilter> filters, String defaultFilterKey, OfflinePermissions offlinePermissions) {
         this.channels = channels;
         this.filters = filters;
         this.defaultFilterKey = defaultFilterKey;
+        this.offlinePermissions = offlinePermissions == null ? new OfflinePermissions() : offlinePermissions;
     }
 }

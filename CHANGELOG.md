@@ -1,3 +1,26 @@
+## 2.0.91-beta-device-traffic-thumbnails
+- Offline beta: los heartbeats de reproduccion envian programa actual, miniatura EPG/logo y si el stream esta consumiendo trafico del servidor.
+- Servidor: Actividad offline estima consumo por sesion con el bitrate real detectado y separa el trafico que pasa por DRBEP.
+- Dashboard: "Viendo ahora" muestra miniatura del programa o logo del canal junto con programa actual y consumo estimado.
+
+## 2.0.90-beta-recordings-playback-auth
+- Offline beta: la reproduccion de grabaciones anade el token de activacion para poder abrir remux desde el dominio publico.
+- Servidor: el host publico offline permite las rutas de grabaciones necesarias sin exponer el resto de aplicaciones.
+- Offline beta: si el usuario no tiene permiso para programar grabaciones, la app muestra un aviso claro.
+
+## 2.0.89-beta-timeline-recording-shortcut
+- Offline beta: la guia Timeline permite programar/cancelar una grabacion directamente con la tecla menu sobre un programa.
+- Offline beta: las acciones de programa registran trazas claras para diagnosticar si el menu ejecuta grabar, cancelar o solo se abre.
+
+## 2.0.88-beta-epg-recording-actions
+- Offline beta: la programacion de grabaciones desde EPG visual/timeline ya no queda bloqueada por el modo independiente si hay servidor configurado.
+- Offline beta: las llamadas de grabaciones usan el token de activacion offline para que el backend pueda autorizar la operacion.
+- Offline beta: al programar desde la guia se muestra estado de progreso y se marca el programa como programado en las guias abiertas.
+
+## 2.0.87-beta-epg-guide-stability
+- Offline beta: la guia Timeline renderiza una ventana limitada de canales alrededor del canal actual para evitar cierres por ANR en Fire TV.
+- Offline beta: la EPG visual limita las tarjetas iniciales por seccion y prioriza el canal seleccionado para abrir mas rapido en dispositivos Fire Stick.
+
 ## 2.0.86-beta-zap-quality
 - Offline beta: el cartel inferior de zapping muestra la calidad real del canal y se refresca cuando Media3 detecta el formato.
 - Offline beta: el cartel de zapping permanece visible unos segundos mas para dar tiempo a ver la calidad detectada.

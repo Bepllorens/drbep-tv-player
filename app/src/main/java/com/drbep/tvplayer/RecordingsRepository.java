@@ -6,7 +6,9 @@ import org.json.JSONObject;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 final class RecordingsRepository {
     static final class RecordingItem {
@@ -53,9 +55,15 @@ final class RecordingsRepository {
 
     private final String baseUrl;
     private final HttpClient httpClient;
+    private final CatalogSnapshotStore snapshotStore;
 
     RecordingsRepository(String baseUrl) {
+        this(baseUrl, null);
+    }
+
+    RecordingsRepository(String baseUrl, CatalogSnapshotStore snapshotStore) {
         this.baseUrl = baseUrl;
+        this.snapshotStore = snapshotStore;
         this.httpClient = new HttpClient();
     }
 
@@ -64,7 +72,7 @@ final class RecordingsRepository {
                 baseUrl + "/api/recordings/files",
                 10000,
                 20000,
-                java.util.Collections.singletonMap("Accept", "application/json"),
+                jsonHeaders(false),
                 "cargando grabaciones"
         );
         String basePath = body.optString("path", "");
@@ -102,7 +110,7 @@ final class RecordingsRepository {
                 baseUrl + "/api/recordings/scheduled",
                 10000,
                 20000,
-                java.util.Collections.singletonMap("Accept", "application/json"),
+                jsonHeaders(false),
                 "cargando grabaciones programadas"
         );
         JSONArray records = body.optJSONArray("records");
@@ -143,7 +151,7 @@ final class RecordingsRepository {
                 baseUrl + "/api/recordings/scheduled?id=" + URLEncoder.encode(recordingId.trim(), "UTF-8"),
                 10000,
                 15000,
-                Collections.singletonMap("Accept", "application/json")
+                jsonHeaders(false)
         );
         httpClient.requireSuccess(response, "cancelando grabacion programada");
     }
@@ -161,7 +169,7 @@ final class RecordingsRepository {
                 payload,
                 10000,
                 15000,
-                Collections.singletonMap("Content-Type", "application/json")
+                jsonHeaders(true)
         );
         httpClient.requireSuccess(response, "actualizando grabacion programada");
     }
@@ -180,7 +188,12 @@ final class RecordingsRepository {
         if (relativePath == null || relativePath.trim().isEmpty()) {
             relativePath = item.name;
         }
-        return baseUrl + "/recordings/remux/" + encodePath(relativePath);
+        String url = baseUrl + "/recordings/remux/" + encodePath(relativePath);
+        String token = snapshotStore == null ? "" : snapshotStore.getAccessToken();
+        if (token != null && !token.trim().isEmpty()) {
+            url += "?access_token=" + encodeQuery(token.trim());
+        }
+        return url;
     }
 
     private static String encodePath(String raw) {
@@ -203,5 +216,27 @@ final class RecordingsRepository {
             }
         }
         return out.toString();
+    }
+
+    private static String encodeQuery(String raw) {
+        try {
+            return URLEncoder.encode(raw == null ? "" : raw, "UTF-8");
+        } catch (Exception ignored) {
+            return raw == null ? "" : raw;
+        }
+    }
+
+    private Map<String, String> jsonHeaders(boolean contentType) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Accept", "application/json");
+        if (contentType) {
+            headers.put("Content-Type", "application/json");
+        }
+        String token = snapshotStore == null ? "" : snapshotStore.getAccessToken();
+        if (token != null && !token.trim().isEmpty()) {
+            headers.put("Authorization", "Bearer " + token.trim());
+            headers.put("X-DRBEP-Access-Token", token.trim());
+        }
+        return headers;
     }
 }

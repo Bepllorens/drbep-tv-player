@@ -148,6 +148,8 @@ public class MainActivity extends FragmentActivity {
     private static final int FILTER_FAVORITES = 5;
     private static final long TIMELINE_WINDOW_MS = 12L * 60L * 60L * 1000L;
     private static final long TIMELINE_SHIFT_MS = 2L * 60L * 60L * 1000L;
+    private static final int TIMELINE_MAX_RENDERED_CHANNELS = 48;
+    private static final int VISUAL_EPG_MAX_ITEMS_PER_SECTION = 40;
     private static final String RECORDINGS_DAY_ALL = "all";
     private static final String RECORDINGS_DAY_TODAY = "today";
     private static final String RECORDINGS_DAY_TOMORROW = "tomorrow";
@@ -360,6 +362,7 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private RecordingsAdapter recordingsAdapter;
     private final RecordingsController recordingsController = new RecordingsController();
+    private OfflinePermissions currentOfflinePermissions = new OfflinePermissions();
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
     private boolean touchDeviceMode;
@@ -635,7 +638,7 @@ public class MainActivity extends FragmentActivity {
         catalogSnapshotStore = new CatalogSnapshotStore(this);
         catalogRepository = new CatalogRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
         epgRepository = new EpgRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
-        recordingsRepository = new RecordingsRepository(baseUrl);
+        recordingsRepository = new RecordingsRepository(baseUrl, catalogSnapshotStore);
     httpClient = new HttpClient();
         appUpdateManager = new AppUpdateManager(this, catalogSnapshotStore);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -1765,6 +1768,7 @@ public class MainActivity extends FragmentActivity {
 
     private void applyLoadedChannels(CatalogLoadResult result) {
         long startMs = System.currentTimeMillis();
+        currentOfflinePermissions = result == null || result.offlinePermissions == null ? new OfflinePermissions() : result.offlinePermissions;
         syncOverlayCoordinator();
         epgFullCatalogLoaded = false;
         epgFullCatalogLoadRequested = false;
@@ -2214,11 +2218,19 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_loading_guide));
         ioExecutor.execute(() -> {
             try {
+                List<ChannelItem> timelineChannels = selectTimelineChannels(selectedIndex);
                 List<TimelineChannelPrograms> rows = new ArrayList<>();
-                for (ChannelItem channel : channels) {
+                int selectedTimelineIndex = 0;
+                String selectedChannelId = channels.get(selectedIndex).id;
+                for (int i = 0; i < timelineChannels.size(); i++) {
+                    ChannelItem channel = timelineChannels.get(i);
+                    if (channel != null && selectedChannelId != null && selectedChannelId.equals(channel.id)) {
+                        selectedTimelineIndex = i;
+                    }
                     List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel, 12);
                     rows.add(new TimelineChannelPrograms(channel, programs));
                 }
+                final int selectedRowIndex = selectedTimelineIndex;
                 List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
                 if (!isOfflineRecordingsDisabled()) {
                     try {
@@ -2235,13 +2247,43 @@ public class MainActivity extends FragmentActivity {
                         showStatus(getString(R.string.status_no_epg_for_channel));
                         return;
                     }
-                    showTimelineGuideDialog(rows, selectedWindowStartMs, channels.get(selectedIndex).id, scheduledItems);
+                    ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
+                    showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? selectedChannelId : selectedChannel.id, scheduledItems);
                 });
             } catch (Exception e) {
                 Log.w(TAG, "timeline guide failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
+    }
+
+    private List<ChannelItem> selectTimelineChannels(int anchorIndex) {
+        List<ChannelItem> liveChannels = new ArrayList<>();
+        for (ChannelItem channel : channels) {
+            if (channel != null && !channel.isVod) {
+                liveChannels.add(channel);
+            }
+        }
+        if (liveChannels.size() <= TIMELINE_MAX_RENDERED_CHANNELS) {
+            return liveChannels;
+        }
+        String anchorId = anchorIndex >= 0 && anchorIndex < channels.size() && channels.get(anchorIndex) != null
+                ? channels.get(anchorIndex).id
+                : null;
+        int liveAnchorIndex = 0;
+        if (anchorId != null) {
+            for (int i = 0; i < liveChannels.size(); i++) {
+                if (anchorId.equals(liveChannels.get(i).id)) {
+                    liveAnchorIndex = i;
+                    break;
+                }
+            }
+        }
+        int half = TIMELINE_MAX_RENDERED_CHANNELS / 2;
+        int start = Math.max(0, liveAnchorIndex - half);
+        int end = Math.min(liveChannels.size(), start + TIMELINE_MAX_RENDERED_CHANNELS);
+        start = Math.max(0, end - TIMELINE_MAX_RENDERED_CHANNELS);
+        return new ArrayList<>(liveChannels.subList(start, end));
     }
 
 
@@ -2284,11 +2326,16 @@ public class MainActivity extends FragmentActivity {
                 List<VisualEpgEntry> movieEntries = bindVisualEpgEntries(moviePrograms, byId, byName);
                 List<VisualEpgEntry> seriesEntries = bindVisualEpgEntries(seriesPrograms, byId, byName);
                 List<VisualEpgEntry> sportsEntries = bindVisualEpgEntries(sportsPrograms, byId, byName);
-                liveEntries.removeIf(entry -> containsVisualEpgProgram(sportsEntries, entry));
+                final List<VisualEpgEntry> sportsEntriesForLiveFilter = sportsEntries;
+                liveEntries.removeIf(entry -> containsVisualEpgProgram(sportsEntriesForLiveFilter, entry));
                 sortVisualEpgEntries(liveEntries);
                 sortVisualEpgEntries(movieEntries);
                 sortVisualEpgEntries(seriesEntries);
                 sortVisualEpgEntries(sportsEntries);
+                liveEntries = trimVisualEpgEntries(liveEntries, anchorChannelId, VISUAL_EPG_MAX_ITEMS_PER_SECTION);
+                movieEntries = trimVisualEpgEntries(movieEntries, anchorChannelId, VISUAL_EPG_MAX_ITEMS_PER_SECTION);
+                seriesEntries = trimVisualEpgEntries(seriesEntries, anchorChannelId, VISUAL_EPG_MAX_ITEMS_PER_SECTION);
+                sportsEntries = trimVisualEpgEntries(sportsEntries, anchorChannelId, VISUAL_EPG_MAX_ITEMS_PER_SECTION);
                 if (!liveEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_live), liveEntries));
                 if (!movieEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_movies), movieEntries));
                 if (!seriesEntries.isEmpty()) sections.add(new VisualEpgSection(getString(R.string.visual_epg_section_series), seriesEntries));
@@ -2355,6 +2402,44 @@ public class MainActivity extends FragmentActivity {
             out.add(new VisualEpgEntry(channel, program));
         }
         return out;
+    }
+
+    private List<VisualEpgEntry> trimVisualEpgEntries(List<VisualEpgEntry> entries, String anchorChannelId, int maxItems) {
+        if (entries == null || entries.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (entries.size() <= maxItems) {
+            return entries;
+        }
+        List<VisualEpgEntry> trimmed = new ArrayList<>();
+        Set<String> seen = new java.util.HashSet<>();
+        if (anchorChannelId != null) {
+            for (VisualEpgEntry entry : entries) {
+                if (entry != null && entry.channel != null && anchorChannelId.equals(entry.channel.id) && seen.add(visualEpgEntryKey(entry))) {
+                    trimmed.add(entry);
+                    break;
+                }
+            }
+        }
+        for (VisualEpgEntry entry : entries) {
+            if (trimmed.size() >= maxItems) {
+                break;
+            }
+            if (entry != null && seen.add(visualEpgEntryKey(entry))) {
+                trimmed.add(entry);
+            }
+        }
+        return trimmed;
+    }
+
+    private String visualEpgEntryKey(VisualEpgEntry entry) {
+        if (entry == null) {
+            return "";
+        }
+        String channelId = entry.channel == null ? "" : String.valueOf(entry.channel.id);
+        String title = entry.program == null ? "" : String.valueOf(entry.program.title);
+        String start = entry.program == null ? "" : String.valueOf(entry.program.startTime);
+        return channelId + "|" + title + "|" + start;
     }
 
     private void sortVisualEpgEntries(List<VisualEpgEntry> entries) {
@@ -3381,6 +3466,11 @@ public class MainActivity extends FragmentActivity {
         if (showOfflineRecordingsUnavailableIfNeeded()) {
             return;
         }
+        if (!canScheduleRecordings()) {
+            showStatus(getString(R.string.status_recording_schedule_permission_denied));
+            return;
+        }
+        showStatus(getString(R.string.status_scheduling_recording));
         ioExecutor.execute(() -> {
             try {
                 JSONObject req = new JSONObject();
@@ -3397,14 +3487,14 @@ public class MainActivity extends FragmentActivity {
                         req,
                         10000,
                         15000,
-                        java.util.Collections.singletonMap("Content-Type", "application/json")
+                        buildAuthenticatedJsonHeaders()
                 );
                 if (!response.isSuccessful()) {
-                    throw new IllegalStateException("schedule HTTP " + response.code);
+                    throw new IllegalStateException("schedule HTTP " + response.code + ": " + response.body);
                 }
                 uiHandler.post(() -> {
                     showStatus(getString(R.string.status_recording_scheduled));
-                    markScheduledProgramInOpenTimeline(ch, program);
+                    markScheduledProgramInOpenGuides(ch, program);
                 });
             } catch (Exception e) {
                 Log.w(TAG, "schedule program failed", e);
@@ -3413,11 +3503,31 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
-    private void markScheduledProgramInOpenTimeline(ChannelItem channel, EpgRepository.EpgProgram program) {
-        if (channel == null || program == null || activeTimelineDialog == null || !activeTimelineDialog.isShowing()) {
+    private java.util.Map<String, String> buildAuthenticatedJsonHeaders() {
+        java.util.Map<String, String> headers = new java.util.HashMap<>();
+        headers.put("Content-Type", "application/json");
+        headers.put("Accept", "application/json");
+        String token = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+        if (token != null && !token.trim().isEmpty()) {
+            headers.put("Authorization", "Bearer " + token.trim());
+            headers.put("X-DRBEP-Access-Token", token.trim());
+        }
+        return headers;
+    }
+
+    private boolean canScheduleRecordings() {
+        return currentOfflinePermissions == null || currentOfflinePermissions.canScheduleRecordings;
+    }
+
+    private boolean canDeleteRecordings() {
+        return currentOfflinePermissions == null || currentOfflinePermissions.canDeleteRecordings;
+    }
+
+    private void markScheduledProgramInOpenGuides(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if (channel == null || program == null) {
             return;
         }
-        activeTimelineScheduledItems.add(new RecordingsRepository.RecordingItem(
+        RecordingsRepository.RecordingItem item = new RecordingsRepository.RecordingItem(
                 "timeline-" + System.currentTimeMillis(),
                 program.title == null || program.title.trim().isEmpty() ? channel.name : program.title,
                 "",
@@ -3430,8 +3540,12 @@ public class MainActivity extends FragmentActivity {
                 program.startTime == null ? "" : program.startTime,
                 program.endTime == null ? "" : program.endTime,
                 false
-        ));
-        refreshTimelineGuideDialog();
+        );
+        activeProgramScheduledItems.add(item);
+        if (activeTimelineDialog != null && activeTimelineDialog.isShowing()) {
+            activeTimelineScheduledItems.add(item);
+            refreshTimelineGuideDialog();
+        }
     }
 
     private void refreshTimelineGuideDialog() {
@@ -3451,6 +3565,10 @@ public class MainActivity extends FragmentActivity {
 
     private void cancelScheduledProgram(ChannelItem ch, EpgRepository.EpgProgram program) {
         if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
+        if (!canDeleteRecordings()) {
+            showStatus(getString(R.string.status_recording_delete_permission_denied));
             return;
         }
         RecordingsRepository.RecordingItem scheduled = findScheduledProgramRecording(ch, program, activeProgramScheduledItems);
@@ -6538,7 +6656,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isOfflineRecordingsDisabled() {
-        return BuildConfig.STANDALONE_MODE;
+        return baseUrl == null || baseUrl.trim().isEmpty();
     }
 
     private boolean showOfflineRecordingsUnavailableIfNeeded() {
@@ -7548,6 +7666,8 @@ public class MainActivity extends FragmentActivity {
                     .put("channel_name", displayName(channel))
                     .put("platform", channel.platformName == null ? "" : channel.platformName)
                     .put("group", channel.group == null ? "" : channel.group)
+                    .put("program_title", currentProgramTitleForHeartbeat(channel))
+                    .put("thumbnail_url", thumbnailUrlForHeartbeat(channel))
                     .put("position_ms", Math.max(0L, positionMs))
                     .put("direct_playback", channel.directPlayback)
                     .put("playback_profile", channel.playbackProfile == null ? "" : channel.playbackProfile)
@@ -7562,11 +7682,14 @@ public class MainActivity extends FragmentActivity {
                         .put("video_codec", diagnostics.videoCodec == null ? "" : diagnostics.videoCodec)
                         .put("video_bitrate", diagnostics.videoBitrate)
                         .put("video_frame_rate", diagnostics.videoFrameRate)
-                        .put("audio_codec", diagnostics.audioCodec == null ? "" : diagnostics.audioCodec);
+                        .put("audio_codec", diagnostics.audioCodec == null ? "" : diagnostics.audioCodec)
+                        .put("server_traffic", isServerTrafficHeartbeat(channel, diagnostics));
                 if ("error".equalsIgnoreCase(normalizedState)) {
                     payload.put("error_message", diagnostics.lastError == null ? "" : diagnostics.lastError)
                             .put("error_category", diagnostics.playbackState == null ? "" : diagnostics.playbackState);
                 }
+            } else {
+                payload.put("server_traffic", isServerTrafficHeartbeat(channel, null));
             }
         } catch (Exception e) {
             Log.d(TAG, "playback heartbeat payload failed", e);
@@ -7579,6 +7702,44 @@ public class MainActivity extends FragmentActivity {
                 Log.d(TAG, "playback heartbeat failed", e);
             }
         });
+    }
+
+    private String currentProgramTitleForHeartbeat(ChannelItem channel) {
+        EpgRepository.EpgProgramPair pair = channel == null ? null : epgProgramPairByChannelId.get(channel.id);
+        EpgRepository.EpgProgram current = pair == null ? null : pair.current;
+        if (current != null && current.title != null && !current.title.trim().isEmpty()) {
+            return current.title.trim();
+        }
+        return channel == null || channel.nowProgram == null ? "" : channel.nowProgram.trim();
+    }
+
+    private String thumbnailUrlForHeartbeat(ChannelItem channel) {
+        EpgRepository.EpgProgramPair pair = channel == null ? null : epgProgramPairByChannelId.get(channel.id);
+        EpgRepository.EpgProgram current = pair == null ? null : pair.current;
+        if (current != null && current.icon != null && !current.icon.trim().isEmpty()) {
+            return current.icon.trim();
+        }
+        return channel == null || channel.logoUrl == null ? "" : channel.logoUrl.trim();
+    }
+
+    private boolean isServerTrafficHeartbeat(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {
+        String profile = channel == null || channel.playbackProfile == null ? "" : channel.playbackProfile.trim().toLowerCase(Locale.ROOT);
+        if ("server_live".equals(profile) || "hevc_hls".equals(profile) || "proxy_manifest".equals(profile)) {
+            return true;
+        }
+        String target = diagnostics == null || diagnostics.targetUrl == null ? "" : diagnostics.targetUrl.trim().toLowerCase(Locale.ROOT);
+        if (target.isEmpty()) {
+            return false;
+        }
+        String base = baseUrl == null ? "" : baseUrl.trim().toLowerCase(Locale.ROOT);
+        return target.startsWith("/")
+                || (!base.isEmpty() && target.startsWith(base))
+                || target.contains("fire.tvbep.com")
+                || target.contains("192.168.93.223")
+                || target.contains("/proxy/")
+                || target.contains("/live/")
+                || target.contains("/hls/")
+                || target.contains("/recordings/");
     }
 
     private String safeHeartbeatText(String value) {
@@ -10972,9 +11133,24 @@ public class MainActivity extends FragmentActivity {
                     if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                         return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, centerMinute);
                     }
+                    if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_BUTTON_START) {
+                        Log.i(TAG, "timeline direct recording action channel=" + (row.channel == null ? "" : row.channel.id)
+                                + " scheduled=" + scheduled
+                                + " program=" + (program.title == null ? "" : program.title));
+                        if (scheduled) {
+                            cancelScheduledProgram(row.channel, program);
+                        } else {
+                            scheduleProgram(row.channel, program);
+                        }
+                        return true;
+                    }
                     return false;
                 });
-                block.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(row.channel, program));
+                block.setOnClickListener(v -> {
+                    Log.i(TAG, "timeline program click channel=" + (row.channel == null ? "" : row.channel.id)
+                            + " program=" + (program.title == null ? "" : program.title));
+                    channelActionsCoordinator.showProgramActionMenu(row.channel, program);
+                });
                 focusCenters.put(block, centerMinute);
                 rowFocusables.add(block);
                 boolean anchorMatch = anchorChannelId != null && anchorChannelId.equals(row.channel.id);

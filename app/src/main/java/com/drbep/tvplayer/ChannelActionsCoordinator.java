@@ -2,11 +2,14 @@ package com.drbep.tvplayer;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.List;
 
 final class ChannelActionsCoordinator {
+    private static final String TAG = "DRBEP-TV-Native";
+
     interface Host {
         void tuneSelectedChannel();
 
@@ -105,6 +108,7 @@ final class ChannelActionsCoordinator {
 
         String title = program.title == null || program.title.trim().isEmpty() ? context.getString(R.string.label_program_default) : program.title;
         boolean scheduled = host.isProgramScheduled(channelItem, program);
+        Log.i(TAG, "showProgramActionMenu channel=" + channelItem.id + " scheduled=" + scheduled + " title=" + title);
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(context.getString(R.string.menu_tune_channel));
@@ -126,6 +130,7 @@ final class ChannelActionsCoordinator {
         new AlertDialog.Builder(context)
                 .setTitle(title)
                 .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                    Log.i(TAG, "program action selected index=" + which + " channel=" + channelItem.id + " scheduled=" + scheduled);
                     if (which >= 0 && which < actions.size()) {
                         actions.get(which).run();
                     }

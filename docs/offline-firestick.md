@@ -49,6 +49,10 @@ El formato actual incluye:
 - `device_id`: dispositivo esperado
 - `expires_at`: caducidad Unix en segundos
 - `permissions`: resumen de permisos aplicados
+- `permissions.parental_vod_adult`: si el VOD adulto requiere PIN local
+- `permissions.parental_group_names`: grupos/bouquets protegidos por PIN local
+- `permissions.parental_channel_ids`: canales concretos protegidos por PIN local
+- `permissions.parental_filter_keys`: filtros protegidos por PIN local
 - `catalog`: respuesta filtrada de `/api/channels/catalog?include_disabled=0`
 - `vod`: respuesta de `/api/vod/tivify`
 - `adult`: VOD adulto de Tivify

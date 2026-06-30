@@ -4,11 +4,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URLEncoder;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 final class RecordingsRepository {
     static final class RecordingItem {
@@ -69,7 +72,7 @@ final class RecordingsRepository {
 
     RecordingsResult fetchCompletedRecordings() throws Exception {
         JSONObject body = httpClient.getJsonObject(
-                baseUrl + "/api/recordings/files",
+                withCacheBuster(baseUrl + "/api/recordings/files"),
                 10000,
                 20000,
                 jsonHeaders(false),
@@ -107,7 +110,7 @@ final class RecordingsRepository {
 
     RecordingsResult fetchScheduledRecordings() throws Exception {
         JSONObject body = httpClient.getJsonObject(
-                baseUrl + "/api/recordings/scheduled",
+                withCacheBuster(baseUrl + "/api/recordings/scheduled"),
                 10000,
                 20000,
                 jsonHeaders(false),
@@ -124,6 +127,11 @@ final class RecordingsRepository {
                 String id = String.valueOf(record.optLong("id", 0L));
                 String programTitle = record.optString("program_title", "");
                 String channelName = record.optString("channel_name", "");
+                String status = record.optString("status", "scheduled");
+                String endTime = record.optString("end_time", "");
+                if (!isLiveScheduledRecord(status, endTime)) {
+                    continue;
+                }
                 items.add(new RecordingItem(
                         id,
                         programTitle == null || programTitle.trim().isEmpty() ? channelName : programTitle,
@@ -133,14 +141,62 @@ final class RecordingsRepository {
                         channelName,
                         programTitle,
                         record.optString("poster", ""),
-                        record.optString("status", "scheduled"),
+                        status,
                         record.optString("start_time", ""),
-                        record.optString("end_time", ""),
+                        endTime,
                         false
                 ));
             }
         }
         return new RecordingsResult("", items, true);
+    }
+
+    private static String withCacheBuster(String url) {
+        String separator = url == null || !url.contains("?") ? "?" : "&";
+        return url + separator + "t=" + System.currentTimeMillis();
+    }
+
+    private static boolean isLiveScheduledRecord(String status, String endTime) {
+        String normalized = status == null ? "" : status.trim().toLowerCase(Locale.US);
+        if (normalized.isEmpty()) {
+            normalized = "scheduled";
+        }
+        switch (normalized) {
+            case "scheduled":
+            case "pending":
+            case "recording":
+            case "running":
+            case "in_progress":
+                break;
+            default:
+                return false;
+        }
+        long endMs = parseIsoMillis(endTime);
+        long staleGraceMs = 10L * 60L * 1000L;
+        return endMs <= 0L || endMs >= System.currentTimeMillis() - staleGraceMs;
+    }
+
+    private static long parseIsoMillis(String iso) {
+        if (iso == null || iso.trim().isEmpty()) {
+            return 0L;
+        }
+        String[] patterns = new String[]{
+                "yyyy-MM-dd'T'HH:mm:ssXXX",
+                "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        };
+        for (String pattern : patterns) {
+            try {
+                SimpleDateFormat format = new SimpleDateFormat(pattern, Locale.US);
+                Date parsed = format.parse(iso.trim());
+                if (parsed != null) {
+                    return parsed.getTime();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return 0L;
     }
 
     void deleteScheduledRecording(String recordingId) throws Exception {
@@ -229,6 +285,8 @@ final class RecordingsRepository {
     private Map<String, String> jsonHeaders(boolean contentType) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Accept", "application/json");
+        headers.put("Cache-Control", "no-cache");
+        headers.put("Pragma", "no-cache");
         if (contentType) {
             headers.put("Content-Type", "application/json");
         }

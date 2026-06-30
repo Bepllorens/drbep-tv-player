@@ -11,6 +11,10 @@ import java.util.Locale;
 import java.util.Map;
 
 final class EpgRepository {
+    private static final String PUBLIC_EPG_BASE_URL = "https://iptv.bepllorens.com";
+    private static final String OFFLINE_PUBLIC_BASE_URL = "https://fire.tvbep.com";
+    private static final String LAN_EPG_BASE_URL = "http://192.168.93.223:8080";
+
     static final class EpgProgram {
         final String channelId;
         final String channelName;
@@ -59,6 +63,7 @@ final class EpgRepository {
     private final Map<String, CachedPrograms> categoryCache = new HashMap<>();
     private CachedNowPrograms cachedNowPrograms;
     private CachedOfflineProgramMap cachedOfflineProgramMap;
+    private String cachedRemoteEpgBaseUrl = "";
     private static final long PROGRAMS_CACHE_MS = 120000L;
     private static final long NOW_CACHE_MS = 45000L;
     private static final long OFFLINE_PROGRAM_MAP_CACHE_MS = 120000L;
@@ -79,7 +84,7 @@ final class EpgRepository {
         if (cachedNowPrograms != null && now - cachedNowPrograms.loadedAtMs < NOW_CACHE_MS) {
             return new LinkedHashMap<>(cachedNowPrograms.items);
         }
-        if (standaloneMode) {
+        if (shouldUseOfflineEpg()) {
             Map<String, String> updates = new LinkedHashMap<>();
             for (EpgProgram program : loadOfflineNowPrograms()) {
                 String title = program.title == null ? "" : program.title.trim();
@@ -94,7 +99,7 @@ final class EpgRepository {
             cachedNowPrograms = new CachedNowPrograms(now, updates);
             return updates;
         }
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/now", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        HttpClient.Response response = getRemoteEpg("/api/epg/now");
         if (!response.isSuccessful()) {
             return new HashMap<>();
         }
@@ -106,8 +111,8 @@ final class EpgRepository {
             if (item == null) {
                 continue;
             }
-            String channelId = String.valueOf(item.optLong("channel_id", -1L));
-            if ("-1".equals(channelId)) {
+            String channelId = extractProgramChannelId(item);
+            if (channelId.isEmpty()) {
                 continue;
             }
             String title = item.optString("title", "").trim();
@@ -125,7 +130,7 @@ final class EpgRepository {
     }
 
     Map<String, String> fetchNowProgramsForChannels(List<ChannelItem> channelItems) throws Exception {
-        if (!standaloneMode) {
+        if (!shouldUseOfflineEpg()) {
             return fetchNowPrograms();
         }
         Map<String, String> updates = new LinkedHashMap<>();
@@ -148,6 +153,9 @@ final class EpgRepository {
         Map<String, EpgProgramPair> out = new LinkedHashMap<>();
         if (channelItems == null || channelItems.isEmpty()) {
             return out;
+        }
+        if (!shouldUseOfflineEpg()) {
+            return fetchRemoteProgramPairsForChannels(channelItems);
         }
         long now = System.currentTimeMillis();
         for (ChannelItem channel : channelItems) {
@@ -183,17 +191,12 @@ final class EpgRepository {
         if (cached != null && now - cached.loadedAtMs < PROGRAMS_CACHE_MS) {
             return new ArrayList<>(cached.items);
         }
-        if (standaloneMode) {
+        if (shouldUseOfflineEpg()) {
             List<EpgProgram> programs = loadOfflineChannelPrograms(channelId, maxItems);
             programsCache.put(cacheKey, new CachedPrograms(now, programs));
             return programs;
         }
-        HttpClient.Response response = httpClient.get(
-                baseUrl + "/api/epg/channel/" + channelId,
-                10000,
-                15000,
-                java.util.Collections.singletonMap("Accept", "application/json")
-        );
+        HttpClient.Response response = getRemoteEpg("/api/epg/channel/" + channelId);
         if (!response.isSuccessful()) {
             return new ArrayList<>();
         }
@@ -219,8 +222,12 @@ final class EpgRepository {
         if (channel == null) {
             return new ArrayList<>();
         }
-        if (!standaloneMode) {
-            return fetchChannelPrograms(channel.id, maxItems);
+        if (!shouldUseOfflineEpg()) {
+            List<EpgProgram> programs = fetchChannelPrograms(channel.id, maxItems);
+            if (!programs.isEmpty()) {
+                return programs;
+            }
+            return fetchRemoteProgramsForChannel(channel, maxItems);
         }
         long now = System.currentTimeMillis();
         List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
@@ -239,7 +246,7 @@ final class EpgRepository {
     }
 
     EpgProgram fetchProgramForChannel(String channelId, boolean next) throws Exception {
-        if (standaloneMode) {
+        if (shouldUseOfflineEpg()) {
             long now = System.currentTimeMillis();
             for (EpgProgram program : loadOfflineChannelPrograms(channelId, 64)) {
                 long startMs = parseIsoMillis(program.startTime);
@@ -253,7 +260,7 @@ final class EpgRepository {
             }
             return null;
         }
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/channel/" + channelId + (next ? "/next" : "/current"), 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        HttpClient.Response response = getRemoteEpg("/api/epg/channel/" + channelId + (next ? "/next" : "/current"));
         if (response.code == 404) {
             return null;
         }
@@ -264,8 +271,16 @@ final class EpgRepository {
         if (channel == null) {
             return null;
         }
-        if (!standaloneMode) {
-            return fetchProgramForChannel(channel.id, next);
+        if (!shouldUseOfflineEpg()) {
+            EpgProgram direct = fetchProgramForChannel(channel.id, next);
+            if (direct != null) {
+                return direct;
+            }
+            List<EpgProgram> fallbackPrograms = fetchRemoteProgramsForChannel(channel, next ? 2 : 1);
+            if (fallbackPrograms.isEmpty()) {
+                return null;
+            }
+            return next && fallbackPrograms.size() > 1 ? fallbackPrograms.get(1) : fallbackPrograms.get(0);
         }
         long now = System.currentTimeMillis();
         for (EpgProgram program : resolveOfflinePrograms(channel.id, channel.name, channel.tvgId)) {
@@ -288,12 +303,12 @@ final class EpgRepository {
         if (cached != null && now - cached.loadedAtMs < NOW_CACHE_MS) {
             return new ArrayList<>(cached.items);
         }
-        if (standaloneMode) {
+        if (shouldUseOfflineEpg()) {
             List<EpgProgram> items = loadOfflineNowPrograms();
             categoryCache.put(cacheKey, new CachedPrograms(now, items));
             return items;
         }
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/now", 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        HttpClient.Response response = getRemoteEpg("/api/epg/now");
         if (!response.isSuccessful()) {
             return new ArrayList<>();
         }
@@ -309,12 +324,12 @@ final class EpgRepository {
         if (cached != null && now - cached.loadedAtMs < PROGRAMS_CACHE_MS) {
             return new ArrayList<>(cached.items);
         }
-        if (standaloneMode) {
+        if (shouldUseOfflineEpg()) {
             List<EpgProgram> items = filterOfflineCategoryPrograms(type, hours);
             categoryCache.put(cacheKey, new CachedPrograms(now, items));
             return items;
         }
-        HttpClient.Response response = httpClient.get(baseUrl + "/api/epg/category?type=" + type + "&hours=" + hours, 10000, 15000, java.util.Collections.singletonMap("Accept", "application/json"));
+        HttpClient.Response response = getRemoteEpg("/api/epg/category?type=" + type + "&hours=" + hours);
         if (!response.isSuccessful()) {
             return new ArrayList<>();
         }
@@ -418,6 +433,54 @@ final class EpgRepository {
         return cached == null ? new LinkedHashMap<>() : cached.byChannelId;
     }
 
+    private boolean shouldUseOfflineEpg() {
+        if (!standaloneMode) {
+            return false;
+        }
+        try {
+            CachedOfflineProgramMap cached = loadCachedOfflineProgramMap();
+            return cached != null && !cached.byChannelId.isEmpty();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private Map<String, EpgProgramPair> fetchRemoteProgramPairsForChannels(List<ChannelItem> channelItems) throws Exception {
+        Map<String, EpgProgramPair> out = new LinkedHashMap<>();
+        if (channelItems == null || channelItems.isEmpty()) {
+            return out;
+        }
+        RemoteProgramIndex index = buildRemoteProgramIndex(fetchNowProgramsDetailed());
+        for (ChannelItem channel : channelItems) {
+            if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
+                continue;
+            }
+            EpgProgram current = matchRemoteProgram(index, channel);
+            if (current != null) {
+                out.put(channel.id.trim(), new EpgProgramPair(current, null));
+            }
+        }
+        return out;
+    }
+
+    private List<EpgProgram> fetchRemoteProgramsForChannel(ChannelItem channel, int maxItems) throws Exception {
+        List<EpgProgram> out = new ArrayList<>();
+        if (channel == null || channel.isVod) {
+            return out;
+        }
+        EpgProgramPair pair = fetchRemoteProgramPairsForChannels(java.util.Collections.singletonList(channel)).get(channel.id == null ? "" : channel.id.trim());
+        if (pair == null) {
+            return out;
+        }
+        if (pair.current != null) {
+            out.add(pair.current);
+        }
+        if (pair.next != null && out.size() < Math.max(1, maxItems)) {
+            out.add(pair.next);
+        }
+        return out;
+    }
+
     private CachedOfflineProgramMap loadCachedOfflineProgramMap() throws Exception {
         Map<String, List<EpgProgram>> empty = new LinkedHashMap<>();
         if (snapshotStore == null) {
@@ -504,6 +567,164 @@ final class EpgRepository {
         }
         CatalogSnapshotStore.SnapshotStatus status = snapshotStore.getStatus("");
         return status.updatedAtMs + ":" + status.sizeBytes + ":" + status.expiresAtMs;
+    }
+
+    private HttpClient.Response getRemoteEpg(String path) throws Exception {
+        Exception firstError = null;
+        HttpClient.Response firstHttpError = null;
+        for (String candidate : remoteEpgBaseUrlCandidates()) {
+            try {
+                HttpClient.Response response = httpClient.get(candidate + path, 10000, 15000, buildRequestHeaders());
+                if (response.isSuccessful()) {
+                    cachedRemoteEpgBaseUrl = candidate;
+                    return response;
+                }
+                if (response.code == 401 || response.code == 403) {
+                    cachedRemoteEpgBaseUrl = candidate;
+                    return response;
+                }
+                if (response.code != 404 && firstHttpError == null) {
+                    firstHttpError = response;
+                }
+            } catch (Exception e) {
+                if (firstError == null) {
+                    firstError = e;
+                }
+            }
+        }
+        if (firstHttpError != null) {
+            return firstHttpError;
+        }
+        if (firstError != null) {
+            throw firstError;
+        }
+        return new HttpClient.Response(404, "");
+    }
+
+    private List<String> remoteEpgBaseUrlCandidates() {
+        List<String> candidates = new ArrayList<>();
+        addCandidate(candidates, cachedRemoteEpgBaseUrl);
+        addCandidate(candidates, baseUrl);
+        if (snapshotStore != null) {
+            CatalogSnapshotStore.SnapshotStatus status = snapshotStore.getStatus("");
+            addCandidate(candidates, status == null ? "" : status.sourceBaseUrl);
+            addCandidate(candidates, extractBaseUrl(status == null ? "" : status.sourceUrl));
+        }
+        addCandidate(candidates, PUBLIC_EPG_BASE_URL);
+        addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
+        addCandidate(candidates, LAN_EPG_BASE_URL);
+        return candidates;
+    }
+
+    private static void addCandidate(List<String> candidates, String value) {
+        String clean = extractBaseUrl(value);
+        if (clean.isEmpty()) {
+            return;
+        }
+        for (String existing : candidates) {
+            if (existing.equalsIgnoreCase(clean)) {
+                return;
+            }
+        }
+        candidates.add(clean);
+    }
+
+    private static String extractBaseUrl(String value) {
+        String clean = value == null ? "" : value.trim();
+        if (clean.isEmpty()) {
+            return "";
+        }
+        try {
+            java.net.URI uri = new java.net.URI(clean);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            int port = uri.getPort();
+            if (scheme == null || host == null) {
+                return "";
+            }
+            if (port > 0) {
+                return scheme + "://" + host + ":" + port;
+            }
+            return scheme + "://" + host;
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static String extractProgramChannelId(JSONObject item) {
+        if (item == null) {
+            return "";
+        }
+        String direct = item.optString("channel_id", "").trim();
+        if (!direct.isEmpty() && !"null".equalsIgnoreCase(direct)) {
+            return direct;
+        }
+        Object raw = item.opt("channel_id");
+        if (raw instanceof Number) {
+            long numeric = ((Number) raw).longValue();
+            return numeric > 0L ? String.valueOf(numeric) : "";
+        }
+        long fallback = item.optLong("channel_id", -1L);
+        return fallback > 0L ? String.valueOf(fallback) : "";
+    }
+
+    private static RemoteProgramIndex buildRemoteProgramIndex(List<EpgProgram> programs) {
+        RemoteProgramIndex index = new RemoteProgramIndex();
+        if (programs == null) {
+            return index;
+        }
+        for (EpgProgram program : programs) {
+            if (program == null) {
+                continue;
+            }
+            putFirst(index.byChannelId, normalizeLookupKey(program.channelId), program);
+            putFirst(index.byTvgId, normalizeLookupKey(program.tvgId), program);
+            putFirst(index.byChannelName, normalizeLookupKey(program.channelName), program);
+        }
+        return index;
+    }
+
+    private static void putFirst(Map<String, EpgProgram> target, String key, EpgProgram program) {
+        if (target == null || key == null || key.isEmpty() || program == null || target.containsKey(key)) {
+            return;
+        }
+        target.put(key, program);
+    }
+
+    private static EpgProgram matchRemoteProgram(RemoteProgramIndex index, ChannelItem channel) {
+        if (index == null || channel == null) {
+            return null;
+        }
+        String channelId = normalizeLookupKey(channel.id);
+        if (!channelId.isEmpty() && index.byChannelId.containsKey(channelId)) {
+            return index.byChannelId.get(channelId);
+        }
+        String tvgId = normalizeLookupKey(channel.tvgId);
+        if (!tvgId.isEmpty() && index.byTvgId.containsKey(tvgId)) {
+            return index.byTvgId.get(tvgId);
+        }
+        String name = normalizeLookupKey(channel.name);
+        if (!name.isEmpty() && index.byChannelName.containsKey(name)) {
+            return index.byChannelName.get(name);
+        }
+        return null;
+    }
+
+    private Map<String, String> buildRequestHeaders() {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "application/json");
+        if (snapshotStore != null) {
+            String token = snapshotStore.getAccessToken();
+            if (token != null && !token.trim().isEmpty()) {
+                headers.put("Authorization", "Bearer " + token.trim());
+                headers.put("X-DRBEP-Access-Token", token.trim());
+            }
+            String deviceId = snapshotStore.getDeviceId();
+            if (deviceId != null && !deviceId.trim().isEmpty()) {
+                headers.put("X-DRBEP-Device-Id", deviceId.trim());
+            }
+        }
+        return headers;
     }
 
     private static JSONObject extractSnapshotEpg(JSONObject snapshot) {
@@ -609,6 +830,12 @@ final class EpgRepository {
             this.loadedAtMs = loadedAtMs;
             this.items = items == null ? new ArrayList<>() : new ArrayList<>(items);
         }
+    }
+
+    private static final class RemoteProgramIndex {
+        final Map<String, EpgProgram> byChannelId = new HashMap<>();
+        final Map<String, EpgProgram> byTvgId = new HashMap<>();
+        final Map<String, EpgProgram> byChannelName = new HashMap<>();
     }
 
     private static final class CachedNowPrograms {

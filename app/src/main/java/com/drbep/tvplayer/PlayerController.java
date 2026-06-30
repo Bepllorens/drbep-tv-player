@@ -247,6 +247,7 @@ final class PlayerController {
     private final PlaybackRouteResolver playbackRouteResolver;
     private final CatalogSnapshotStore catalogSnapshotStore;
     private final LocalSmoothManifestServer localSmoothManifestServer;
+    private final LocalDashManifestServer localDashManifestServer;
 
     private DefaultTrackSelector trackSelector;
     private DefaultHttpDataSource.Factory httpDataSourceFactory;
@@ -271,6 +272,8 @@ final class PlayerController {
     private String lastPlaybackQualityKey;
     private boolean pendingAutoRecoveryReadyReport;
     private String pendingAutoRecoveryReason;
+    private boolean firstFrameRenderedForCurrentItem;
+    private final Runnable firstFrameRecoveryRunnable;
     private final Runnable forceLiveEdgeRunnable = () -> {
         if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
             player.seekToDefaultPosition();
@@ -291,6 +294,8 @@ final class PlayerController {
         this.playbackRouteResolver = new PlaybackRouteResolver(baseUrl);
         this.catalogSnapshotStore = new CatalogSnapshotStore(context);
         this.localSmoothManifestServer = new LocalSmoothManifestServer();
+        this.localDashManifestServer = new LocalDashManifestServer();
+        this.firstFrameRecoveryRunnable = this::recoverPlaybackWhenReadyHasNoFirstFrame;
     }
 
     void initialize() {
@@ -348,6 +353,7 @@ final class PlayerController {
                         + " channel=" + describeRequest(currentRequest)
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " playWhenReady=" + (player != null && player.getPlayWhenReady()));
+                uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 if (playbackState == Player.STATE_BUFFERING) {
                     if (currentRequest != null && currentRequest.directPlayback) {
                         String mimeType = currentPlaybackDecision == null ? "" : currentPlaybackDecision.mimeType;
@@ -381,6 +387,9 @@ final class PlayerController {
                     }
                     maybeShowHdrBadge();
                     host.onPlaybackReady(currentRequest);
+                    if (shouldRecoverWhenReadyHasNoFirstFrame(currentRequest, currentPlaybackDecision)) {
+                        uiHandler.postDelayed(firstFrameRecoveryRunnable, 4_000L);
+                    }
                     if (pendingAutoRecoveryReadyReport && currentRequest != null) {
                         host.onPlaybackAutoRecoveryReady(currentRequest, getPlaybackDiagnostics(), pendingAutoRecoveryReason);
                         pendingAutoRecoveryReadyReport = false;
@@ -392,6 +401,8 @@ final class PlayerController {
             @Override
             public void onRenderedFirstFrame() {
                 PlaybackRequest request = currentRequest;
+                firstFrameRenderedForCurrentItem = true;
+                uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 Log.w(TAG, "firstFrame channel=" + describeRequest(request)
                         + " decision=" + describeDecision(currentPlaybackDecision));
                 host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
@@ -717,6 +728,18 @@ final class PlayerController {
         if (!host.isPlaybackRepairEnabled()) {
             return false;
         }
+        if (error != null && error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            String recoveryKey = routeAttemptKey(decision) + "|behind-live-window";
+            if (!attemptedRecoveryRoutes.contains(recoveryKey)) {
+                attemptedRecoveryRoutes.add(recoveryKey);
+                Log.w(TAG, "retrying playback after behind live window channel=" + describeRequest(request)
+                        + " decision=" + describeDecision(decision));
+                host.showStatus(context.getString(R.string.status_buffering));
+                markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_route, formatPlaybackModeLabel(decision.playbackMode)));
+                playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo);
+                return true;
+            }
+        }
         if (!usingVideoCompatibilityCap && shouldRetryWithVideoCompatibilityCap(request, decision, error)) {
             usingVideoCompatibilityCap = true;
             attemptedRecoveryRoutes.add(routeAttemptKey(decision) + "|video720");
@@ -743,7 +766,8 @@ final class PlayerController {
         attemptedRecoveryRoutes.add(routeAttemptKey(decision));
         PlaybackRequest[] alternatives = BuildConfig.STANDALONE_MODE
                 ? new PlaybackRequest[]{
-                cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT)
+                cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT),
+                cloneRequestWithMode(request, PlaybackModeStore.MODE_PROXY)
         }
                 : new PlaybackRequest[]{
                 cloneRequestWithMode(request, PlaybackModeStore.MODE_DIRECT),
@@ -787,6 +811,58 @@ final class PlayerController {
                 || message.contains("video/avc")
                 || causeMessage.contains("queuesecureinputbuffer")
                 || causeMessage.contains("media codec");
+    }
+
+    private void recoverPlaybackWhenReadyHasNoFirstFrame() {
+        PlaybackRequest request = currentRequest;
+        PlaybackRouteResolver.Decision decision = currentPlaybackDecision;
+        if (player == null || request == null || decision == null || firstFrameRenderedForCurrentItem) {
+            return;
+        }
+        if (!shouldRecoverWhenReadyHasNoFirstFrame(request, decision)) {
+            return;
+        }
+        if (!usingVideoCompatibilityCap) {
+            usingVideoCompatibilityCap = true;
+            attemptedRecoveryRoutes.add(routeAttemptKey(decision) + "|video720-ready-no-frame");
+            Log.w(TAG, "retrying playback after READY without first frame channel=" + describeRequest(request)
+                    + " decision=" + describeDecision(decision));
+            host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(decision.playbackMode)));
+            markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_video_cap));
+            playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo);
+            return;
+        }
+        PlaybackRequest proxyRequest = cloneRequestWithMode(request, PlaybackModeStore.MODE_PROXY);
+        PlaybackRouteResolver.Decision proxyDecision = buildPlaybackDecision(proxyRequest, false, currentStreamInfo);
+        String proxyRouteKey = routeAttemptKey(proxyDecision) + "|ready-no-frame";
+        if (routeAttemptKey(proxyDecision).equals(routeAttemptKey(decision)) || attemptedRecoveryRoutes.contains(proxyRouteKey)) {
+            return;
+        }
+        attemptedRecoveryRoutes.add(proxyRouteKey);
+        Log.w(TAG, "retrying playback via proxy after READY without first frame channel=" + describeRequest(request)
+                + " decision=" + describeDecision(proxyDecision));
+        host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(proxyRequest.playbackMode)));
+        markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_route, formatPlaybackModeLabel(proxyRequest.playbackMode)));
+        playChannelInternal(proxyRequest, true, false, currentStreamInfo);
+    }
+
+    private boolean shouldRecoverWhenReadyHasNoFirstFrame(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
+        if (request == null || decision == null || request.directPlayback) {
+            return false;
+        }
+        if (!host.isPlaybackRepairEnabled()) {
+            return false;
+        }
+        if (!isKnownClearKeyDecoderSensitiveChannel(request, decision)) {
+            return false;
+        }
+        if (!usingVideoCompatibilityCap) {
+            return true;
+        }
+        String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty()
+                ? PlaybackModeStore.MODE_AUTO
+                : request.playbackMode;
+        return !PlaybackModeStore.MODE_PROXY.equals(playbackMode);
     }
 
     private String formatPlaybackModeLabel(String playbackMode) {
@@ -906,7 +982,7 @@ final class PlayerController {
     }
 
     void resolveStreamInfoAndReplayIfNeeded(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache, long resumePositionMs) {
-        if (request == null || request.directPlayback || request.channelId == null || request.channelId.trim().isEmpty()) {
+        if (request == null || request.channelId == null || request.channelId.trim().isEmpty() || (request.directPlayback && !hasLocalDrmInfo(request))) {
             return;
         }
 
@@ -923,7 +999,7 @@ final class PlayerController {
                     streamInfoCache.put(channelId, info);
                 }
             }
-            info = ensurePatchedSmoothClearKeyManifest(channelId, info);
+            info = ensurePatchedClearKeyManifests(channelId, info);
             Log.d(TAG, "resolveStreamInfo channelId=" + channelId
                     + " fromCache=" + fromCache
                     + " streamInfo=" + describeStreamInfo(info));
@@ -961,7 +1037,7 @@ final class PlayerController {
     }
 
     void playChannelAfterResolvingStreamInfo(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache, long resumePositionMs) {
-        if (request == null || request.directPlayback || request.channelId == null || request.channelId.trim().isEmpty()) {
+        if (request == null || request.channelId == null || request.channelId.trim().isEmpty() || (request.directPlayback && !hasLocalDrmInfo(request))) {
             playChannel(request, autoPlay, null, resumePositionMs);
             return;
         }
@@ -978,7 +1054,7 @@ final class PlayerController {
                     streamInfoCache.put(channelId, info);
                 }
             }
-            info = ensurePatchedSmoothClearKeyManifest(channelId, info);
+            info = ensurePatchedClearKeyManifests(channelId, info);
             StreamInfo resolved = info;
             Log.d(TAG, "playChannelAfterResolvingStreamInfo channelId=" + channelId
                     + " fromCache=" + fromCache
@@ -1155,10 +1231,7 @@ final class PlayerController {
             pendingAutoRecoveryReason = "";
         }
         currentRequest = request;
-        if (streamInfo != null && "smooth".equals(safeLower(streamInfo.type))) {
-            streamInfo.patchedSmoothClearKeyManifestDataUri = "";
-            streamInfo = ensurePatchedSmoothClearKeyManifest(request.channelId, streamInfo);
-        }
+        streamInfo = ensurePatchedClearKeyManifests(request.channelId, streamInfo);
         currentStreamInfo = streamInfo;
         currentRecordingUrl = null;
         usingPlaybackFallback = useFallback;
@@ -1166,8 +1239,10 @@ final class PlayerController {
             usingVideoCompatibilityCap = false;
             clearPlaybackQuality();
         }
+        firstFrameRenderedForCurrentItem = false;
         lastErrorSummary = null;
         lastHdrBadgeChannelId = null;
+        uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
         forceLiveEdgeOnNextReady = request != null
                 && request.platformName != null
                 && request.platformName.toLowerCase(Locale.ROOT).contains("movistar");
@@ -1549,6 +1624,7 @@ final class PlayerController {
         info.clearKeyLicenseDataUri = request.drmLicenseUrl != null && request.drmLicenseUrl.startsWith(CLEARKEY_DATA_URI_PREFIX)
                 ? request.drmLicenseUrl
                 : "";
+        populateFirstClearKeyFromLicenseDataUri(info, info.clearKeyLicenseDataUri);
         info.encrypted = true;
         if (playUrlLower.contains(".isml/manifest") || playUrlLower.contains(".ism/manifest")) {
             info.type = "smooth";
@@ -1562,6 +1638,17 @@ final class PlayerController {
         }
         Log.d(TAG, "built local stream info channel=" + describeRequest(request) + " streamInfo=" + describeStreamInfo(info));
         return info;
+    }
+
+    private boolean hasLocalDrmInfo(PlaybackRequest request) {
+        if (request == null) {
+            return false;
+        }
+        String drmType = safeLower(request.drmScheme);
+        if (!"clearkey".equals(drmType) && !"widevine".equals(drmType)) {
+            return false;
+        }
+        return !isBlank(request.drmLicenseUrl) || !isBlank(request.playbackProfile);
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {
@@ -1608,6 +1695,32 @@ final class PlayerController {
         }
     }
 
+    private void populateFirstClearKeyFromLicenseDataUri(StreamInfo info, String licenseDataUri) {
+        if (info == null || isBlank(licenseDataUri) || !licenseDataUri.startsWith(CLEARKEY_DATA_URI_PREFIX)) {
+            return;
+        }
+        try {
+            String encoded = licenseDataUri.substring(CLEARKEY_DATA_URI_PREFIX.length());
+            String json = new String(Base64.decode(encoded, Base64.DEFAULT), StandardCharsets.UTF_8);
+            JSONArray keys = new JSONObject(json).optJSONArray("keys");
+            if (keys == null || keys.length() == 0) {
+                return;
+            }
+            JSONObject first = keys.optJSONObject(0);
+            if (first == null) {
+                return;
+            }
+            String kidHex = decodeBase64UrlAsHex(first.optString("kid", ""));
+            String keyHex = decodeBase64UrlAsHex(first.optString("k", ""));
+            if (!kidHex.isEmpty() && !keyHex.isEmpty()) {
+                info.clearKeyKidHex = kidHex;
+                info.clearKeyKeyHex = keyHex;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "failed to parse local clearkey data uri", e);
+        }
+    }
+
     private String buildPatchedClearKeyProxyManifestDataUri(String channelId, StreamInfo info) {
         if (!"1071554".equals(channelId)
                 || info == null
@@ -1637,12 +1750,48 @@ final class PlayerController {
     }
 
 
+    private StreamInfo ensurePatchedClearKeyManifests(String channelId, StreamInfo info) {
+        if (info == null) {
+            return null;
+        }
+        if ("dash".equals(safeLower(info.type)) && isBlank(info.patchedClearKeyManifestDataUri)) {
+            info.patchedClearKeyManifestDataUri = buildPatchedDirectClearKeyManifestDataUri(channelId, info);
+        }
+        if ("smooth".equals(safeLower(info.type))) {
+            info = ensurePatchedSmoothClearKeyManifest(channelId, info);
+        }
+        return info;
+    }
+
     private StreamInfo ensurePatchedSmoothClearKeyManifest(String channelId, StreamInfo info) {
         if (info == null || !isBlank(info.patchedSmoothClearKeyManifestDataUri)) {
             return info;
         }
         info.patchedSmoothClearKeyManifestDataUri = buildPatchedSmoothClearKeyManifestDataUri(channelId, info);
         return info;
+    }
+
+    private String buildPatchedDirectClearKeyManifestDataUri(String channelId, StreamInfo info) {
+        if (info == null
+                || !"clearkey".equals(safeLower(info.drmType))
+                || !"dash".equals(safeLower(info.type))
+                || isBlank(info.sourceUrl)
+                || isBlank(info.clearKeyKidHex)
+                || isBlank(info.clearKeyLicenseDataUri)) {
+            return "";
+        }
+        if (!info.sourceUrl.toLowerCase(Locale.ROOT).contains("vfsmartcdn.gb.vodafone.es/")
+                && !info.sourceUrl.toLowerCase(Locale.ROOT).contains("vfpc.gb.vodafone.es/")) {
+            return "";
+        }
+        try {
+            String localUrl = localDashManifestServer.register(channelId, info.sourceUrl, info.clearKeyKidHex);
+            Log.w(TAG, "registered live dash clearkey manifest channelId=" + channelId + " url=" + localUrl);
+            return localUrl;
+        } catch (Exception e) {
+            Log.w(TAG, "failed to build direct clearkey manifest channelId=" + channelId, e);
+            return "";
+        }
     }
 
     private String buildPatchedSmoothClearKeyManifestDataUri(String channelId, StreamInfo info) {
@@ -1689,6 +1838,93 @@ final class PlayerController {
                         + "&url=" + encodedMediaUrl;
             }
             matcher.appendReplacement(output, Matcher.quoteReplacement(attribute + "=\"" + xmlEscape(replacementUrl) + "\""));
+        }
+        matcher.appendTail(output);
+        return output.toString();
+    }
+
+    static String patchDashManifestForLocalClearKey(String manifest, String manifestUrl, String kidHex) {
+        if (isBlank(manifest) || isBlank(kidHex)) {
+            return manifest;
+        }
+        String patched = absolutizeDashTemplateAttributes(manifest, manifestUrl);
+        String normalizedKid = kidHex.toLowerCase(Locale.ROOT).replace("-", "");
+        if (normalizedKid.length() != 32) {
+            return patched;
+        }
+        String kidDashed = normalizedKid.substring(0, 8) + "-"
+                + normalizedKid.substring(8, 12) + "-"
+                + normalizedKid.substring(12, 16) + "-"
+                + normalizedKid.substring(16, 20) + "-"
+                + normalizedKid.substring(20);
+        Pattern mp4Protection = Pattern.compile("<ContentProtection[^>]*schemeIdUri=\"urn:mpeg:dash:mp4protection:2011\"[^>]*(?:/>|>)");
+        Matcher matcher = mp4Protection.matcher(patched);
+        StringBuffer output = new StringBuffer();
+        boolean found = false;
+        while (matcher.find()) {
+            found = true;
+            String tag = matcher.group(0);
+            String lower = tag.toLowerCase(Locale.ROOT);
+            if (!lower.contains("xmlns:cenc=")) {
+                tag = tag.replaceFirst("<ContentProtection", "<ContentProtection xmlns:cenc=\"urn:mpeg:cenc:2013\"");
+            }
+            if (!lower.contains("default_kid=")) {
+                if (tag.endsWith("/>")) {
+                    tag = tag.substring(0, tag.length() - 2) + " cenc:default_KID=\"" + kidDashed + "\"/>";
+                } else if (tag.endsWith(">")) {
+                    tag = tag.substring(0, tag.length() - 1) + " cenc:default_KID=\"" + kidDashed + "\">";
+                }
+            }
+            matcher.appendReplacement(output, Matcher.quoteReplacement(tag));
+        }
+        matcher.appendTail(output);
+        patched = output.toString();
+        if (!found) {
+            Pattern adaptationSet = Pattern.compile("(<AdaptationSet[^>]*>)");
+            patched = adaptationSet.matcher(patched).replaceAll("$1"
+                    + "<ContentProtection value=\"cenc\" schemeIdUri=\"urn:mpeg:dash:mp4protection:2011\" xmlns:cenc=\"urn:mpeg:cenc:2013\" cenc:default_KID=\""
+                    + kidDashed
+                    + "\"/>");
+        }
+        if (!patched.contains("urn:uuid:e2719d58-a985-b3c9-781a-b030af78d30e")) {
+            Pattern cencProtection = Pattern.compile("(<ContentProtection[^>]*schemeIdUri=\"urn:mpeg:dash:mp4protection:2011\"[^>]*(?:/>|>[^<]*</ContentProtection>))");
+            patched = cencProtection.matcher(patched).replaceAll("$1"
+                    + "<ContentProtection schemeIdUri=\"urn:uuid:e2719d58-a985-b3c9-781a-b030af78d30e\" value=\"ClearKey1.0\">"
+                    + "<cenc:pssh xmlns:cenc=\"urn:mpeg:cenc:2013\">AAAAA0JUY0sAAAAA</cenc:pssh>"
+                    + "</ContentProtection>");
+        }
+        return patched;
+    }
+
+    private static String absolutizeDashTemplateAttributes(String manifest, String manifestUrl) {
+        if (isBlank(manifest) || isBlank(manifestUrl)) {
+            return manifest;
+        }
+        String baseUrl = manifestUrl;
+        int query = baseUrl.indexOf('?');
+        if (query >= 0) {
+            baseUrl = baseUrl.substring(0, query);
+        }
+        int slash = baseUrl.lastIndexOf('/');
+        if (slash >= 0) {
+            baseUrl = baseUrl.substring(0, slash + 1);
+        }
+        baseUrl = baseUrl.replace("$", "%24");
+        String patched = absolutizeDashTemplateAttribute(manifest, "initialization", baseUrl);
+        return absolutizeDashTemplateAttribute(patched, "media", baseUrl);
+    }
+
+    private static String absolutizeDashTemplateAttribute(String manifest, String attribute, String baseUrl) {
+        Pattern pattern = Pattern.compile(attribute + "=\"([^\"]+)\"");
+        Matcher matcher = pattern.matcher(manifest);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            String value = xmlUnescape(matcher.group(1));
+            if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
+                matcher.appendReplacement(output, Matcher.quoteReplacement(matcher.group(0)));
+                continue;
+            }
+            matcher.appendReplacement(output, Matcher.quoteReplacement(attribute + "=\"" + xmlEscape(baseUrl + value) + "\""));
         }
         matcher.appendTail(output);
         return output.toString();
@@ -1779,6 +2015,22 @@ final class PlayerController {
         }
     }
 
+    private static String decodeBase64UrlAsHex(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            byte[] bytes = Base64.decode(value.trim(), Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
+            StringBuilder builder = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                builder.append(String.format(Locale.ROOT, "%02x", b & 0xff));
+            }
+            return builder.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private void updatePlaybackRequestHeaders() {
         if (httpDataSourceFactory != null) {
             httpDataSourceFactory.setDefaultRequestProperties(buildPlaybackRequestHeaders());
@@ -1790,8 +2042,7 @@ final class PlayerController {
             return url;
         }
         String trimmed = url.trim();
-        String normalizedBase = baseUrl == null ? "" : baseUrl.trim();
-        if (normalizedBase.isEmpty() || !trimmed.startsWith(normalizedBase)) {
+        if (!shouldAttachOfflineAccessToken(trimmed)) {
             return trimmed;
         }
         if (trimmed.contains("access_token=")) {
@@ -1803,6 +2054,38 @@ final class PlayerController {
         }
         String separator = trimmed.contains("?") ? "&" : "?";
         return trimmed + separator + "access_token=" + Uri.encode(token.trim());
+    }
+
+    private boolean shouldAttachOfflineAccessToken(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return false;
+        }
+        String normalizedBase = baseUrl == null ? "" : baseUrl.trim();
+        if (!normalizedBase.isEmpty() && url.startsWith(normalizedBase)) {
+            return true;
+        }
+        Uri uri;
+        try {
+            uri = Uri.parse(url);
+        } catch (Exception ignored) {
+            return false;
+        }
+        String host = uri.getHost();
+        String path = uri.getPath();
+        if (host == null || path == null) {
+            return false;
+        }
+        String lowerHost = host.trim().toLowerCase(Locale.ROOT);
+        if (!"fire.tvbep.com".equals(lowerHost) && !"iptv.bepllorens.com".equals(lowerHost)) {
+            return false;
+        }
+        return path.startsWith("/proxy/")
+                || path.startsWith("/drm/")
+                || path.startsWith("/hls/")
+                || path.startsWith("/ios/")
+                || path.startsWith("/live/")
+                || path.startsWith("/api/stream/")
+                || path.startsWith("/api/vod/");
     }
 
     private boolean isBackendLivePlaybackUrl(String url) {
@@ -1873,8 +2156,27 @@ final class PlayerController {
         if (decision == null) {
             return context.getString(R.string.diagnostics_state_idle);
         }
+        boolean directRequest = currentRequest != null && currentRequest.directPlayback;
+        boolean directTarget = isDirectDecisionTarget(decision);
         if (decision.useFallback) {
             return context.getString(R.string.diagnostics_route_compat);
+        }
+        if (directRequest || directTarget) {
+            if (MimeTypes.APPLICATION_M3U8.equals(decision.mimeType)) {
+                return context.getString(R.string.diagnostics_route_direct_hls);
+            }
+            if (MimeTypes.APPLICATION_MPD.equals(decision.mimeType)) {
+                return context.getString(R.string.diagnostics_route_direct_dash);
+            }
+            if (MimeTypes.APPLICATION_SS.equals(decision.mimeType)) {
+                return "Directo Smooth";
+            }
+            if ("widevine".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
+                return "Directo DRM";
+            }
+        }
+        if (isRuntimeManifestOnlyRoute(decision)) {
+            return context.getString(R.string.diagnostics_route_direct_hls);
         }
         if ("widevine".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
             return context.getString(R.string.diagnostics_route_proxy_drm);
@@ -1895,6 +2197,45 @@ final class PlayerController {
             return "Directo Smooth";
         }
         return context.getString(R.string.diagnostics_route_direct_generic);
+    }
+
+    private boolean isRuntimeManifestOnlyRoute(PlaybackRouteResolver.Decision decision) {
+        if (decision == null || decision.targetUrl == null || currentRequest == null) {
+            return false;
+        }
+        String target = decision.targetUrl.trim().toLowerCase(Locale.ROOT);
+        if (!target.contains("/proxy/manifest/") && !target.contains("/api/vod/runtime/stream/")) {
+            return false;
+        }
+        String platform = safeLower(currentRequest.platformName);
+        String name = safeLower(currentRequest.channelName);
+        return platform.contains("runtime") || name.contains("runtime");
+    }
+
+    private boolean isDirectDecisionTarget(PlaybackRouteResolver.Decision decision) {
+        if (decision == null || decision.targetUrl == null || decision.targetUrl.trim().isEmpty()) {
+            return false;
+        }
+        String target = decision.targetUrl.trim().toLowerCase(Locale.ROOT);
+        Uri targetUri = Uri.parse(target);
+        String targetHost = targetUri == null ? "" : safeLower(targetUri.getHost());
+        Uri backendUri = Uri.parse(baseUrl);
+        String backendHost = backendUri == null ? "" : safeLower(backendUri.getHost());
+        boolean backendHosted = !targetHost.isEmpty()
+                && (targetHost.equals(backendHost)
+                || targetHost.contains("fire.tvbep.com")
+                || targetHost.contains("iptv.bepllorens.com")
+                || targetHost.contains("192.168.93.223")
+                || targetHost.contains("192.168.93.16"));
+        if (!backendHosted) {
+            return true;
+        }
+        return !target.contains("/proxy/")
+                && !target.contains("/recordings/")
+                && !target.contains("/api/remux/")
+                && !target.contains("/api/proxy/")
+                && !target.contains("/live/")
+                && !target.contains("/hls/");
     }
 
     private static String playbackStateToString(int state) {

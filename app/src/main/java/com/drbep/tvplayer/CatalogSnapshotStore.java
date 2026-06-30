@@ -572,7 +572,7 @@ final class CatalogSnapshotStore {
 
         boolean liveDrop = isSuspiciousCatalogDrop(previousLive, candidateLive, 20, 10);
         boolean totalDrop = isSuspiciousCatalogDrop(previousTotal, candidateTotal, 30, 15);
-        if (!liveDrop && !totalDrop) {
+        if (!liveDrop || !totalDrop) {
             return;
         }
         String reason = "catalogo candidato reducido: canales "

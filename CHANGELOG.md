@@ -1,3 +1,193 @@
+## 2.0.141-beta-la1uhd-template-escape
+- Offline beta: el MPD local de `La 1 UHD` escapa el `$` de la ruta `LIVE$CUP...` al absolutizar segmentos, evitando que ExoPlayer lo confunda con una variable DASH invalida.
+
+## 2.0.140-beta-la1uhd-patched-target
+- Offline beta: el resolver da prioridad al MPD local parcheado en directos DASH ClearKey, evitando que `La 1 UHD` vuelva a cargar el manifest original sin `default_KID`.
+
+## 2.0.139-beta-la1uhd-direct-resolve
+- Offline beta: los canales directos DASH ClearKey, como `La 1 UHD`, pasan por resolucion previa de StreamInfo para activar el manifest local parcheado antes de reproducir.
+
+## 2.0.138-beta-la1uhd-clearkey-direct
+- Offline beta: `La 1 UHD` parchea localmente el MPD directo de Vodafone con `cenc:default_KID`, evitando pantalla negra por manifests ClearKey sin KID.
+- Offline beta: `La 1 UHD` deja de arrancar con cap fijo de compatibilidad, permitiendo seleccionar la pista HEVC 2160p en Fire TV 4K compatibles.
+
+## 2.0.137-beta-tdt-uhd-overlay-context
+- Offline beta: el overlay lateral muestra en la cabecera el contexto actual de plataforma o grupo, por ejemplo `TDT` o `Vodafone`, para saber donde estas mientras navegas canales.
+- Offline backend: `La 1 UHD` y otros DASH ClearKey de `vfsmartcdn.gb.vodafone.es` se exportan como reproduccion directa, evitando el perfil proxy que no arrancaba en la app offline.
+
+## 2.0.136-beta-mobile-relaunch-catalog-baseline
+- Offline beta: se evita el cierre en moviles cuando Android recrea la Activity por orientacion durante el arranque y quedaban callbacks intentando usar un executor ya cerrado.
+- Offline beta: la proteccion de catalogo reducido ya no bloquea un snapshot firmado cuando solo baja live pero el total del catalogo sigue dentro de margen, permitiendo adoptar el nuevo baseline bueno del servidor.
+
+## 2.0.135-beta-mobile-platform-picker
+- Offline beta: la barra tactil inferior incorpora un boton `Plataforma` que abre un selector nativo con todos los filtros/plataformas/grupos disponibles.
+- Offline beta: elegir una plataforma/grupo desde ese selector refresca la lista de canales y mantiene visible el overlay, sin depender de flechas ocultas ni cabeceras Compose experimentales.
+
+## 2.0.134-beta-mobile-filter-header-rollback
+- Offline beta: se desactiva temporalmente la cabecera tactil de filtros de la lista movil para evitar el cierre al iniciar detectado en la beta anterior.
+- Offline beta: se conserva el copy mas claro de `Canales`, `Plataforma / grupo`, `Ant.` y `Sig.` mientras se revisa la cabecera con log del Moto.
+
+## 2.0.133-beta-mobile-filter-header
+- Offline beta: la lista de canales en movil incluye una cabecera fija `Plataforma / grupo` con botones grandes `◀` y `▶` para cambiar de plataforma/grupo sin buscar controles ocultos.
+- Offline beta: el scroll de la lista compensa la nueva cabecera para mantener seleccionado el canal correcto.
+
+## 2.0.132-beta-mobile-platform-filter-ux
+- Offline beta: en moviles el boton principal pasa a llamarse `Canales` y el selector superior de la lista explica que cambia entre plataforma/grupo.
+- Offline beta: los controles tactiles de filtro dejan de mostrarse como flechas sueltas y pasan a `Ant.` / `Sig.` con etiquetas mas cortas para evitar cortes en pantallas estrechas.
+
+## 2.0.131-beta-mobile-startup-crash-fix
+- Offline beta: se evita el cierre al arrancar en moviles cuando un callback tardio de catalogo/reproduccion coincide con el cambio de orientacion inicial.
+- Offline beta: la reproduccion inicial revalida que la Activity y el `PlayerController` siguen activos antes de preparar el canal.
+
+## 2.0.130-beta-mobile-tv-all-filter
+- Offline beta: el catalogo standalone vuelve a exponer el filtro `Todos`, evitando que moviles/tablets queden aparentemente limitados a la primera plataforma disponible.
+- Offline beta: el acceso rapido `TV` del hub tactil prioriza `Todos` cuando existe, mientras la lista principal evita mezclar VOD en ese filtro.
+
+## 2.0.129-beta-compose-vod-epg
+- Offline beta: la EPG visual avanza en Compose con cabecera, detalle, secciones y tarjetas de programa, manteniendo la navegacion con mando existente.
+- Offline beta: la ficha VOD y el panel de acciones VOD migran sus bloques principales a Compose para un layout mas consistente en Fire TV, moviles y tablets.
+- Offline beta: se unifica la semantica de foco de botones Compose para mejorar accesibilidad y navegacion con mando en los nuevos paneles.
+
+## 2.0.128-beta-pluto-proxy-hls-token
+- Offline beta: Pluto vuelve a tratarse como HLS sobre `proxy_manifest`, evitando que ExoPlayer intente abrir esos manifests como DASH cuando aun no hay `StreamInfo`.
+- Offline beta: las rutas media servidas desde `fire.tvbep.com` reciben tambien el `access_token` por query para que las playlists hijas y segmentos del proxy HLS no acaben devolviendo `session required`.
+
+## 2.0.127-beta-pluto-runtime-direct-label
+- Offline beta: Pluto deja de publicarse en el snapshot como `proxy_manifest`; los HLS sin DRM de Pluto se entregan como reproduccion directa para evitar caidas a modo compatibilidad.
+- Offline beta: Runtime live/VOD se etiqueta como `Directo HLS` y no como trafico servidor cuando el servidor solo resuelve el manifest y las playlists/segmentos ya salen hacia CDN externa.
+
+## 2.0.126-beta-runtime-vod-direct-menu
+- Offline beta: `Actualizar catalogo local` vuelve a estar visible directamente en `Herramientas` y en el hub de arranque, para refrescar el snapshot sin entrar en ajustes profundos.
+- Offline beta: las rutas directas resueltas desde `StreamInfo.sourceUrl` ya no se fuerzan a proxy solo porque la URL inicial del catalogo venga de `/live/{id}` del backend.
+- Servidor: el VOD de Runtime en snapshots offline se publica con base publica principal para evitar 404 en `fire.tvbep.com` cuando la app esta fuera de casa.
+
+## 2.0.124-beta-movistar-compat-restore
+- Offline beta: Movistar normal vuelve a priorizar la ruta compatible/proxy en standalone cuando el DASH ClearKey directo esta devolviendo `Source error`, evitando que el usuario vea intentos fallidos antes de caer a reproduccion compatible.
+- Offline beta: se mantiene la correccion de telemetria para que el dashboard no se quede pegado en `trafico servidor` si la ruta final activa ya es directa de verdad.
+
+## 2.0.123-beta-direct-traffic-telemetry-fix
+- Offline beta: el heartbeat deja de marcar como `trafico servidor` reproducciones DRM/HLS/DASH que ya van directas al origen solo por arrastrar un `proxy_manifest` historico.
+- Offline beta: las rutas finales directas vuelven a etiquetarse como `Directo HLS`, `Directo DASH`, `Directo Smooth` o `Directo DRM` tambien cuando el modo `auto` resuelve un origen directo sin pasar por el backend.
+
+## 2.0.122-beta-standalone-direct-route-balance
+- Offline beta: el modo standalone deja de ser `proxy-first` tambien en HLS y DASH normales, no solo en algunos DRM concretos de Movistar.
+- Offline beta: los modos `proxy` aprendidos automaticamente ya no fuerzan proximos arranques en standalone, permitiendo reevaluar rutas directas tras instalar la nueva beta.
+- Offline beta: los canales/plataformas Adultos o Hot mantienen una ruta conservadora para no romper su reproduccion mientras afinamos su compatibilidad aparte.
+
+## 2.0.121-beta-drm-direct-first-offline
+- Offline beta: el modo `auto` del reproductor independiente pasa a priorizar rutas directas tambien en muchos canales DRM, y solo cae a proxy cuando la reproduccion directa falla.
+- Offline beta: los perfiles `proxy_manifest` dejan de bloquear por completo las rutas directas en standalone, permitiendo que el aprendizaje automatico favorezca ahorro real de trafico del servidor.
+
+## 2.0.120-beta-actual-route-directness-fix
+- Offline beta: el heartbeat ya no considera `direct_playback` real solo porque el catalogo marque el canal como directo; ahora se alinea con el modo y la ruta final que usa el reproductor.
+- Offline beta: esto evita diagnosticos confusos en sesiones que empiezan como candidatas a directo pero acaban resolviendose por `Proxy DRM`.
+
+## 2.0.119-beta-direct-playback-heartbeat-fix
+- Offline beta: el heartbeat deja de enviar `direct_playback` solo desde el catalogo y pasa a reportar la ruta real que ha resuelto el reproductor.
+- Offline beta: se conserva `catalog_direct_playback` como dato auxiliar para distinguir lo que decia el snapshot frente a lo que realmente se esta usando en reproduccion.
+
+## 2.0.118-beta-direct-traffic-heartbeat-fix
+- Offline beta: los heartbeats de reproduccion dejan de marcar como trafico de servidor cualquier stream directo solo por parecer `hls/live` o por colgar del mismo host.
+- Offline beta: ahora pesa primero el modo real de reproduccion directa y solo se reporta trafico de servidor en rutas backend claras como `proxy`, `remux` o `recordings`.
+
+## 2.0.117-beta-mobile-launcher-manifest-fix
+- Offline beta: la app deja de declarar orientacion fija en el `manifest`, evitando que algunos launchers Android la traten como app solo-paisaje/TV y no la muestren bien en moviles Motorola.
+- Offline beta: el modo tactil sigue forzando paisaje desde codigo, asi que el comportamiento visual de la app no cambia aunque el icono ya pueda quedar normal en el launcher.
+
+## 2.0.116-beta-device-label-mobile-visibility
+- Offline beta: la activacion por codigo ya registra el nombre real del dispositivo, por ejemplo un movil Motorola, en lugar de etiquetarlo siempre como `Fire Stick offline`.
+- Offline beta: los reportes al servidor incluyen tambien fabricante, modelo y tipo de dispositivo para que el dashboard nuevo pueda distinguir mejor moviles, tablets y TV.
+
+## 2.0.115-beta-mobile-launcher-hub-flow
+- Offline beta: la app ya se expone como lanzador Android normal en moviles y tablets, sin depender de abrirla manualmente por ADB.
+- Offline beta: el hub tactil se reparte en varias filas en pantallas estrechas, evitando botones demasiado comprimidos y mejorando el uso real en telefono.
+
+## 2.0.114-beta-guide-dialog-owner-fix
+- Offline beta: `Guia` deja de cerrar la app en Fire TV al abrir el timeline fullscreen con Compose, propagando correctamente el ciclo de vida al dialogo.
+- Offline beta: el mismo refuerzo se aplica a la vista fullscreen de EPG visual para evitar el mismo patron de crash en paneles similares.
+
+## 2.0.113-beta-mobile-touch-crash-fix
+- Offline beta: la app deja de cerrarse al arrancar en moviles Android por una medicion invalida del panel tactil horizontal.
+- Offline beta: la barra tactil conserva el scroll horizontal, pero ya solo en la capa nativa para evitar conflictos de Compose en pantallas de telefono.
+- Offline beta: el HUD principal gana algo mas de ancho util y ajusta mejor el tamano del texto para evitar etiquetas truncadas como `Canales`.
+
+## 2.0.112-beta-hud-actions-nav-fix
+- Offline beta: el HUD de TV recupera todas las acciones rapidas en una sola fila realmente ancha, con reparto equilibrado entre botones.
+- Offline beta: la seleccion del HUD se vuelve a pintar al instante al mover el mando, y anade accesos directos a calidad y favorito del canal actual.
+
+## 2.0.111-beta-hud-nav-header-fix
+- Offline beta: el HUD de TV vuelve a una sola fila mas ancha y la seleccion lateral deja de hacer saltos raros al llegar a los extremos.
+- Offline beta: el overlay lateral recupera la cabecera informativa de plataforma/canal, pero sigue reservando mucho mas espacio real para la lista.
+
+## 2.0.110-beta-overlay-hud-space-fix
+- Offline beta: el HUD inferior reparte las acciones en filas mas estables para que no se recorten ni queden tan apretadas.
+- Offline beta: el overlay de canales en TV prioriza la lista y esconde el panel superior de exploracion/estado que quitaba espacio sin aportar navegacion real.
+
+## 2.0.109-beta-compose-timeline-grid-refactor
+- Offline beta: la guia Timeline avanza bastante en su migracion a Compose con cabecera, escala horaria, placa de canal, bloques visuales de programa y estado sin EPG.
+- Offline beta: la rejilla timeline se refactoriza por dentro en filas, strips y bloques visibles para facilitar las siguientes correcciones sin tocar la navegacion con mando.
+
+## 2.0.108-beta-compose-timeline-shell
+- Offline beta: varios paneles del modo offline pasan a Compose, incluyendo busqueda global, mini guia, resultados EPG, listas personales y canales rapidos.
+- Offline beta: la guia Timeline empieza su migracion a Compose con la cabecera y la ficha inferior de detalle, manteniendo intacta la navegacion fina con mando en la rejilla principal.
+
+## 2.0.107-beta-tv-hud-centered-actions
+- Offline beta: la fila de acciones del HUD se centra mejor dentro del panel para que `Canales` no roce el borde.
+- Offline beta: la pastilla de calidad se compacta un poco para dejar mas aire en la cabecera.
+
+## 2.0.106-beta-tv-hud-order-spacing
+- Offline beta: el HUD baja un poco mas en pantalla y el primer boton deja de recortarse.
+- Offline beta: los dos primeros accesos pasan a `Canales` y `Guia`, manteniendo el mismo orden tambien con el mando.
+
+## 2.0.105-beta-tv-hud-smaller-logo-fill
+- Offline beta: el HUD inferior se compacta aun mas para ocupar menos pantalla.
+- Offline beta: el logo del canal rellena mejor la placa y gana tamaño visual sin cambiar el marco.
+
+## 2.0.104-beta-tv-hud-compact-logo
+- Offline beta: el HUD inferior reduce un poco mas su tamaño general para encajar mejor en TV.
+- Offline beta: el logo del canal gana presencia dentro de su marco sin agrandar la placa exterior.
+
+## 2.0.103-beta-tv-hud-nav-fix
+- Offline beta: el HUD inferior reduce tamaño y densidad para verse mejor en TV y no quedar desproporcionado.
+- Offline beta: los accesos del HUD ya se recorren con izquierda/derecha y se activan con OK desde el mando.
+
+## 2.0.102-beta-tv-hud-backstack
+- Offline beta: el cartel inferior de zapping pasa a un HUD mas rico con logo, programa actual, siguiente, progreso y accesos rapidos a guia, canales, grabar, familia, audio y mas.
+- Offline beta: la tecla `Atras` cierra primero el HUD inferior y los submenus de ajustes/familia vuelven al nivel anterior en vez de expulsarte de todo el flujo.
+
+## 2.0.101-beta-epg-channel-mapping
+- Offline beta: la EPG remota y la embebida en snapshot ya se cruzan por `channel_id`, `tvg_id` y nombre de canal, evitando que solo casen plataformas como Pluto.
+- Herramientas internas: el exportador de snapshots rellena la guia por canal con fallback desde `/api/epg/now` cuando el endpoint por `channel_id` no devuelve datos.
+
+## 2.0.100-beta-epg-host-fallback
+- Offline beta: el fallback de EPG remoto prueba varias bases compatibles y evita quedarse atascado en hosts que no publican `/api/epg`, como `fire.tvbep.com`.
+- Offline beta: al encontrar una base EPG valida, la app la reutiliza para acelerar las siguientes consultas de guia.
+
+## 2.0.99-beta-offline-epg-fallback
+- Offline beta: la app vuelve a cargar EPG aunque el snapshot local no traiga la seccion `epg`, usando fallback autenticado al backend offline.
+- Offline beta: las consultas EPG en modo independiente envian token y `device_id`, igual que el resto de flujos protegidos.
+- Herramientas internas: el exportador manual de snapshots ya puede incrustar `epg` por canal para pruebas o despliegues externos.
+
+## 2.0.95-beta-menu-back-parental
+- Offline beta: los submenus del menu offline ya respetan `Atras` y vuelven al nivel anterior en lugar de cerrar todo el flujo de golpe.
+- Offline beta: `Familia y control` y `Control parental` dejan de parecer solo un cartel informativo y muestran acciones claras para ver estado, configurar, cambiar, desbloquear o quitar el PIN.
+- Offline beta: los menus con jerarquia usan `Volver` como salida contextual y reservan `Cerrar` para salir realmente del flujo.
+
+## 2.0.94-beta-offline-menu-copy
+- Offline beta: `Herramientas` vuelve a abrir el menu principal correctamente en lugar de quedarse solo en un texto descriptivo.
+- Offline beta: el menu simple usa copywriting mas claro para usuarios no tecnicos, con etiquetas como `TV y guia`, `Peliculas y series`, `Familia y control` y `Opciones avanzadas`.
+- Offline beta: varios accesos internos se renombran para que sean mas faciles de entender con mando, incluyendo grabaciones, diagnostico, listas y multiview.
+
+## 2.0.93-beta-simple-offline-menu
+- Offline beta: `Herramientas` pasa a un menu simple para uso diario con bloques claros de TV/guia, grabaciones, VOD, busqueda, familia y avanzado.
+- Offline beta: el hub rapido y los accesos tactiles dejan mas a mano `Control parental`, guia y grabaciones, y esconden lo tecnico detras de `Ajustes avanzados`.
+- Offline beta: el contenido protegido desbloqueado sigue marcado visualmente con candado en filtros, listas y accesos relevantes.
+
+## 2.0.92-beta-parental-pin
+- Offline beta: la app ya admite PIN local para contenido protegido por el dashboard offline, con desbloqueo temporal por sesion.
+- Offline beta: bouquets, filtros y canales marcados por el snapshot se ocultan mientras la sesion siga bloqueada y piden PIN al intentar abrirlos.
+- Dashboard: el snapshot offline puede marcar `parental_group_names`, `parental_channel_ids`, `parental_filter_keys` y `parental_vod_adult`.
+
 ## 2.0.91-beta-device-traffic-thumbnails
 - Offline beta: los heartbeats de reproduccion envian programa actual, miniatura EPG/logo y si el stream esta consumiendo trafico del servidor.
 - Servidor: Actividad offline estima consumo por sesion con el bitrate real detectado y separa el trafico que pasa por DRBEP.
@@ -218,3 +408,8 @@
 - Added logo prefetching to make multiview channel picker artwork appear faster.
 - Refreshes the timeline immediately after scheduling so programmed events are marked in place.
 - Hides touch-only quick access chips and favorite star in Fire Stick overlay.
+## 2.0.125-beta-direct-routing-pluto-zap
+
+- Corrige la deteccion de trafico directo cuando una CDN externa contiene `/live/` en su propia URL.
+- Pluto arranca directamente desde el HLS del catalogo y evita la consulta previa que ralentizaba el zapping.
+- Mantiene la ruta de compatibilidad de Pluto como recuperacion si falla el origen directo.

@@ -12,6 +12,8 @@ final class RemoteInputRouter {
 
         boolean isOverlayVisible();
 
+        boolean isZapBannerVisible();
+
         boolean isTvTimeshiftHudActive();
 
         boolean canResumeTimeshiftLive();
@@ -38,6 +40,10 @@ final class RemoteInputRouter {
 
         void switchRecordingsMode(boolean scheduledMode);
 
+        void moveRecordingsHeaderFocus(int delta);
+
+        boolean activateRecordingsHeaderFocus();
+
         void showChannelActionMenu();
 
         void openTimelineGuideAroundSelection();
@@ -55,6 +61,12 @@ final class RemoteInputRouter {
         void showLeaveRecordingPrompt();
 
         void hideOverlay();
+
+        void hideZapBanner();
+
+        void moveZapBannerSelection(int delta);
+
+        void activateZapBannerSelection();
 
         void finishActivity();
 
@@ -310,6 +322,10 @@ final class RemoteInputRouter {
             host.showLeaveRecordingPrompt();
             return true;
         }
+        if (host.isZapBannerVisible()) {
+            host.hideZapBanner();
+            return true;
+        }
         if (host.isOverlayVisible()) {
             host.hideOverlay();
             return true;
@@ -379,11 +395,15 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isRecordingsPanelVisible()) {
-            host.hideRecordingsPanel();
+            host.moveRecordingsHeaderFocus(-1);
             return true;
         }
         if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftBack()) {
             host.showTimeshiftHudTemporarily();
+            return true;
+        }
+        if (host.isZapBannerVisible()) {
+            host.moveZapBannerSelection(-1);
             return true;
         }
         if (host.isOverlayVisible()) {
@@ -400,11 +420,15 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isRecordingsPanelVisible()) {
-            host.switchRecordingsMode(true);
+            host.moveRecordingsHeaderFocus(1);
             return true;
         }
         if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftForward()) {
             host.showTimeshiftHudTemporarily();
+            return true;
+        }
+        if (host.isZapBannerVisible()) {
+            host.moveZapBannerSelection(1);
             return true;
         }
         if (host.isOverlayVisible()) {
@@ -421,7 +445,14 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isRecordingsPanelVisible()) {
+            if (host.activateRecordingsHeaderFocus()) {
+                return true;
+            }
             host.playSelectedRecording();
+            return true;
+        }
+        if (host.isZapBannerVisible()) {
+            host.activateZapBannerSelection();
             return true;
         }
         if (host.isOverlayVisible()) {

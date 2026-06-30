@@ -19,183 +19,53 @@
         android:layout_height="match_parent"
         android:background="@android:color/transparent" />
 
-    <LinearLayout
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/timeshiftBarContainer"
-        android:layout_width="620dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="78dp"
-        android:background="#C8121820"
-        android:orientation="vertical"
-        android:paddingLeft="14dp"
-        android:paddingTop="10dp"
-        android:paddingRight="14dp"
-        android:paddingBottom="10dp"
-        android:visibility="gone">
+        android:layout_marginStart="@dimen/touch_surface_panel_side_margin"
+        android:layout_marginTop="@dimen/touch_surface_panel_top_margin"
+        android:layout_marginEnd="@dimen/touch_surface_panel_side_margin"
+        android:layout_marginBottom="@dimen/touch_surface_panel_bottom_margin"
+        android:focusable="false"
+        android:visibility="gone" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/timeshiftStatusText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="#DFF0FF"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/timeshiftLiveButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:paddingLeft="10dp"
-                android:paddingTop="4dp"
-                android:paddingRight="10dp"
-                android:paddingBottom="4dp"
-                android:text="@string/timeshift_live_button"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <SeekBar
-            android:id="@+id/timeshiftSeekBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:max="1000"
-            android:progress="1000" />
-    </LinearLayout>
-
-    <TextView
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/liveStateBadgeText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|start"
         android:layout_marginLeft="24dp"
         android:layout_marginTop="24dp"
-        android:background="@drawable/channel_overlay_chip_bg"
-        android:paddingLeft="12dp"
-        android:paddingTop="6dp"
-        android:paddingRight="12dp"
-        android:paddingBottom="6dp"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:textStyle="bold"
         android:visibility="gone" />
 
-    <TextView
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
         android:layout_marginTop="@dimen/player_status_margin_top"
-        android:background="#B3000000"
-        android:paddingLeft="@dimen/player_status_padding_horizontal"
-        android:paddingTop="@dimen/player_status_padding_vertical"
-        android:paddingRight="@dimen/player_status_padding_horizontal"
-        android:paddingBottom="@dimen/player_status_padding_vertical"
-        android:textColor="#FFFFFF"
-        android:textSize="@dimen/player_status_text_size"
         android:visibility="gone" />
 
-    <LinearLayout
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/zapBanner"
         android:layout_width="@dimen/zap_banner_width"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_marginLeft="@dimen/player_edge_margin"
-        android:layout_marginBottom="@dimen/player_edge_margin"
-        android:background="#D9151A22"
-        android:orientation="vertical"
-        android:padding="@dimen/panel_compact_padding"
-        android:visibility="gone">
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="12dp"
+        android:focusable="false"
+        android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/zapChannelText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:maxLines="1"
-            android:textColor="#FFFFFF"
-            android:textSize="@dimen/zap_channel_text_size"
-            android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/zapMetaText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:maxLines="2"
-                android:textColor="#CFE0F4"
-                android:textSize="@dimen/player_status_text_size" />
-
-        <TextView
-            android:id="@+id/zapQualityText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#9BD0FF"
-            android:textSize="@dimen/player_status_text_size"
-            android:textStyle="bold"
-            android:visibility="gone" />
-    </LinearLayout>
-
-    <LinearLayout
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/quickSearchOverlay"
         android:layout_width="@dimen/quick_search_width"
         android:layout_height="wrap_content"
         android:layout_gravity="top|start"
         android:layout_marginLeft="@dimen/player_edge_margin"
         android:layout_marginTop="@dimen/quick_search_margin_top"
-        android:background="#E0161D27"
-        android:orientation="vertical"
-        android:padding="@dimen/panel_compact_padding"
-        android:visibility="gone">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/quick_search_title"
-            android:textAllCaps="true"
-            android:textColor="#9FD0FF"
-            android:textSize="@dimen/player_status_text_size"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/quickSearchQueryText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textColor="#FFFFFF"
-            android:textSize="@dimen/section_title_text_size"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/quickSearchResultText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:maxLines="3"
-            android:textColor="#D5E6F8"
-            android:textSize="@dimen/player_status_text_size" />
-
-        <TextView
-            android:id="@+id/quickSearchHintText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="@string/quick_search_hint"
-            android:textColor="#96AFC8"
-            android:textSize="@dimen/player_status_text_size" />
-    </LinearLayout>
+        android:focusable="false"
+        android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/channelOverlay"
@@ -210,764 +80,55 @@
         android:paddingBottom="@dimen/channel_overlay_padding"
         android:visibility="gone">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingBottom="4dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/channels_title"
-                android:textColor="#FFFFFF"
-                android:textSize="@dimen/section_title_text_size"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:paddingLeft="8dp"
-                android:paddingTop="4dp"
-                android:paddingRight="8dp"
-                android:paddingBottom="4dp"
-                android:text="@string/overlay_tools_hint"
-                android:textColor="#DFF0FF"
-                android:textSize="10sp" />
-        </LinearLayout>
-
-        <LinearLayout
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/overlayNowPlayingSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/channel_overlay_card_bg"
-            android:orientation="vertical"
-            android:padding="@dimen/panel_compact_padding">
+            android:focusable="false" />
 
-            <TextView
-                android:id="@+id/overlayCurrentChannelText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#FFFFFF"
-                android:textSize="@dimen/overlay_title_text_size"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/overlayPlaybackRouteText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#F9FDFF"
-                android:textSize="@dimen/overlay_meta_text_size"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/overlayPlaybackQualityText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#9BD0FF"
-                android:textSize="@dimen/overlay_meta_text_size"
-                android:textStyle="bold"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/overlayCurrentMetaText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxLines="3"
-                android:textColor="#CFE0F4"
-                android:textSize="@dimen/overlay_meta_text_size" />
-
-            <TextView
-                android:id="@+id/overlayRecentText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:maxLines="2"
-                android:textColor="#B8CBDF"
-                android:textSize="@dimen/overlay_meta_text_size" />
-        </LinearLayout>
-
-        <LinearLayout
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/overlayExploreSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/channel_overlay_section_bg"
-            android:orientation="vertical"
-            android:padding="@dimen/panel_compact_padding">
+            android:focusable="false" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/filter_navigation_hint"
-                android:textAllCaps="true"
-                android:textColor="#8FB5D4"
-                android:textSize="@dimen/overlay_meta_text_size"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/touchPrevFilterButton"
-                    android:layout_width="52dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:text="@string/filter_prev_button"
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/filterText"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_marginRight="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center_vertical"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
-                    android:text="@string/filter_all_label"
-                    android:textColor="#F3FAFF"
-                    android:textSize="@dimen/filter_text_size"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/touchSearchButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="44dp"
-                    android:layout_marginRight="8dp"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:minWidth="68dp"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
-                    android:text="@string/filter_search_button"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/touchNextFilterButton"
-                    android:layout_width="52dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:text="@string/filter_next_button"
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-            </LinearLayout>
-
-            <EditText
-                android:id="@+id/overlaySearchInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:hint="@string/overlay_search_hint"
-                android:imeOptions="actionSearch"
-                android:inputType="text"
-                android:paddingLeft="10dp"
-                android:paddingTop="8dp"
-                android:paddingRight="10dp"
-                android:paddingBottom="8dp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#8FB5D4"
-                android:visibility="gone" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/quickTvButton"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:text="@string/overlay_quick_tv"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/quickVodButton"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:text="@string/overlay_quick_vod"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/quickAdultButton"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:text="@string/overlay_quick_adult"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/quickGrabButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:layout_marginLeft="8dp"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:minWidth="72dp"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
-                    android:text="@string/overlay_quick_grab"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/touchRecentButton"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:text="@string/overlay_recent_button"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/touchFavoritesButton"
-                    android:layout_width="0dp"
-                    android:layout_height="40dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:text="@string/overlay_favorites_button_off"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <LinearLayout
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/overlayListSection"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="@drawable/channel_overlay_section_bg"
-            android:orientation="vertical"
-            android:padding="@dimen/panel_compact_padding">
-
-            <TextView
-                android:id="@+id/overlayEmptyText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:paddingTop="20dp"
-                android:paddingBottom="14dp"
-                android:text="@string/overlay_no_results"
-                android:textColor="#9FC1DF"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/channelList"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:clipToPadding="false"
-                android:descendantFocusability="beforeDescendants"
-                android:focusable="false"
-                android:overScrollMode="never"
-                android:paddingTop="2dp"
-                android:paddingBottom="4dp" />
-        </LinearLayout>
+            android:focusable="false" />
     </LinearLayout>
 
-    <TextView
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/hdrBadgeText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
         android:layout_marginTop="@dimen/player_status_margin_top"
         android:layout_marginRight="24dp"
-        android:background="#E0A86A00"
-        android:paddingLeft="12dp"
-        android:paddingTop="6dp"
-        android:paddingRight="12dp"
-        android:paddingBottom="6dp"
-        android:text="HDR"
-        android:textColor="#FFFFFF"
-        android:textSize="@dimen/player_status_text_size"
-        android:textStyle="bold"
         android:visibility="gone" />
 
-    <TextView
-        android:id="@+id/versionBadgeText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_marginRight="18dp"
-        android:layout_marginBottom="@dimen/touch_controls_margin_bottom"
-        android:background="#7A10151C"
-        android:paddingLeft="8dp"
-        android:paddingTop="4dp"
-        android:paddingRight="8dp"
-        android:paddingBottom="4dp"
-        android:textColor="#D7E7F5"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
-
-    <LinearLayout
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/recordingsPanel"
         android:layout_width="@dimen/recordings_panel_width"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:background="#EF171B22"
-        android:orientation="vertical"
-        android:padding="@dimen/recordings_panel_padding"
-        android:visibility="gone">
+        android:focusable="false"
+        android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/recordingsSectionText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/title_recordings_visual"
-            android:textColor="#FFFFFF"
-            android:textSize="@dimen/recordings_header_text_size"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/recordingsSummaryText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="#9BD0FF"
-            android:textSize="@dimen/player_status_text_size"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/recordingsCompletedButton"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_weight="1"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:text="@string/recording_action_switch_completed"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/recordingsScheduledButton"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:text="@string/recording_action_switch_scheduled"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/recordingsRefreshButton"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:layout_marginLeft="8dp"
-                android:background="@drawable/channel_overlay_chip_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:minWidth="92dp"
-                android:paddingLeft="10dp"
-                android:paddingRight="10dp"
-                android:text="@string/recording_action_refresh"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/recordingsHintText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:text="@string/recordings_panel_hint_touch"
-            android:textColor="#B8C8D8"
-            android:textSize="@dimen/overlay_title_text_size" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="14dp"
-            android:background="#2F3540"
-            android:orientation="horizontal"
-            android:padding="14dp">
-
-            <ImageView
-                android:id="@+id/recordingDetailPosterImage"
-                android:layout_width="86dp"
-                android:layout_height="128dp"
-                android:layout_marginEnd="14dp"
-                android:background="#1F252F"
-                android:contentDescription="@string/title_recordings"
-                android:scaleType="centerCrop"
-                android:visibility="gone" />
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/recordingDetailTitleText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:maxLines="2"
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/recordingDetailMetaText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#F2D5AF"
-                    android:textSize="@dimen/overlay_title_text_size" />
-
-                <TextView
-                    android:id="@+id/recordingDetailPathText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:maxLines="2"
-                    android:textColor="#C7D2E2"
-                    android:textSize="@dimen/player_status_text_size" />
-
-                <TextView
-                    android:id="@+id/recordingDetailActionText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:textColor="#9BD0FF"
-                    android:textSize="@dimen/player_status_text_size"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recordingsRecyclerView"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:overScrollMode="never" />
-    </LinearLayout>
-
-    <LinearLayout
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/touchHomeHub"
-        android:layout_width="620dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="138dp"
-        android:background="#C4121820"
-        android:orientation="vertical"
-        android:paddingLeft="14dp"
-        android:paddingTop="12dp"
-        android:paddingRight="14dp"
-        android:paddingBottom="12dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/touchHomeTitleText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/touch_home_title"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchHomeSubtitleText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="#A8C5DE"
-            android:textSize="12sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="#332B5F68"
-            android:orientation="vertical"
-            android:paddingLeft="8dp"
-            android:paddingTop="8dp"
-            android:paddingRight="8dp"
-            android:paddingBottom="8dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/touch_home_section_library"
-                android:textColor="#A8DCE2"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/touchHomeTvButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/touchHomeVodButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/touchHomeAdultButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/touchHomeGrabButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="#334A3126"
-            android:orientation="vertical"
-            android:paddingLeft="8dp"
-            android:paddingTop="8dp"
-            android:paddingRight="8dp"
-            android:paddingBottom="8dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/touch_home_section_access"
-                android:textColor="#F1C79A"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/touchHomeRecentButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/touchHomeFavoritesButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/touchHomeListButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/touchHomeMultiButton"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginLeft="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="2"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:text="@string/touch_home_button_multi"
-                    android:textAlignment="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-    </LinearLayout>
+        android:layout_marginStart="@dimen/touch_home_hub_side_margin"
+        android:layout_marginEnd="@dimen/touch_home_hub_side_margin"
+        android:layout_marginBottom="@dimen/touch_home_hub_bottom_margin"
+        android:focusable="false"
+        android:visibility="gone" />
 
     <FrameLayout
         android:id="@+id/multiViewContainer"
@@ -989,39 +150,11 @@
                 android:orientation="horizontal"
                 android:paddingBottom="10dp">
 
-                <TextView
-                    android:id="@+id/multiViewTitleText"
-                    android:layout_width="0dp"
+                <androidx.compose.ui.platform.ComposeView
+                    android:id="@+id/multiViewHeaderComposeView"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/multiview_title"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/multiViewHintText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginRight="10dp"
-                    android:text="@string/multiview_hint_touch"
-                    android:textColor="#A8C5DE"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/multiViewCloseButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/channel_overlay_chip_bg"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:paddingLeft="12dp"
-                    android:paddingTop="6dp"
-                    android:paddingRight="12dp"
-                    android:paddingBottom="6dp"
-                    android:text="@string/multiview_close"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
+                    android:focusable="false" />
             </LinearLayout>
 
             <LinearLayout
@@ -1050,35 +183,11 @@
                             android:layout_height="match_parent"
                             app:surface_type="texture_view" />
 
-                        <TextView
-                            android:id="@+id/multiLabel1"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="top|start"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:textColor="#FFFFFF"
-                            android:textStyle="bold" />
-                        <TextView
-                            android:id="@+id/multiAudioBadge1"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="bottom|end"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:backgroundTint="#CCB77C12"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:text="AUDIO"
-                            android:textColor="#FFF4D4"
-                            android:textStyle="bold"
-                            android:visibility="gone" />
+                        <androidx.compose.ui.platform.ComposeView
+                            android:id="@+id/multiOverlay1"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:focusable="false" />
 
                     </FrameLayout>
 
@@ -1096,35 +205,11 @@
                             android:layout_height="match_parent"
                             app:surface_type="texture_view" />
 
-                        <TextView
-                            android:id="@+id/multiLabel2"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="top|start"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:textColor="#FFFFFF"
-                            android:textStyle="bold" />
-                        <TextView
-                            android:id="@+id/multiAudioBadge2"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="bottom|end"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:backgroundTint="#CCB77C12"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:text="AUDIO"
-                            android:textColor="#FFF4D4"
-                            android:textStyle="bold"
-                            android:visibility="gone" />
+                        <androidx.compose.ui.platform.ComposeView
+                            android:id="@+id/multiOverlay2"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:focusable="false" />
 
                     </FrameLayout>
                 </LinearLayout>
@@ -1150,35 +235,11 @@
                             android:layout_height="match_parent"
                             app:surface_type="texture_view" />
 
-                        <TextView
-                            android:id="@+id/multiLabel3"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="top|start"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:textColor="#FFFFFF"
-                            android:textStyle="bold" />
-                        <TextView
-                            android:id="@+id/multiAudioBadge3"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="bottom|end"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:backgroundTint="#CCB77C12"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:text="AUDIO"
-                            android:textColor="#FFF4D4"
-                            android:textStyle="bold"
-                            android:visibility="gone" />
+                        <androidx.compose.ui.platform.ComposeView
+                            android:id="@+id/multiOverlay3"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:focusable="false" />
 
                     </FrameLayout>
 
@@ -1196,35 +257,11 @@
                             android:layout_height="match_parent"
                             app:surface_type="texture_view" />
 
-                        <TextView
-                            android:id="@+id/multiLabel4"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="top|start"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:textColor="#FFFFFF"
-                            android:textStyle="bold" />
-                        <TextView
-                            android:id="@+id/multiAudioBadge4"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="bottom|end"
-                            android:layout_margin="8dp"
-                            android:background="@drawable/channel_overlay_chip_bg"
-                            android:backgroundTint="#CCB77C12"
-                            android:paddingLeft="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingRight="10dp"
-                            android:paddingBottom="5dp"
-                            android:text="AUDIO"
-                            android:textColor="#FFF4D4"
-                            android:textStyle="bold"
-                            android:visibility="gone" />
+                        <androidx.compose.ui.platform.ComposeView
+                            android:id="@+id/multiOverlay4"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:focusable="false" />
 
                     </FrameLayout>
                 </LinearLayout>
@@ -1232,198 +269,19 @@
         </LinearLayout>
     </FrameLayout>
 
-    <HorizontalScrollView
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/touchControlsBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="@dimen/touch_controls_margin_bottom"
         android:translationY="@dimen/touch_controls_translation_y"
-        android:background="#AA11161D"
-        android:paddingLeft="@dimen/touch_controls_padding_horizontal"
-        android:paddingTop="@dimen/touch_controls_padding_vertical"
-        android:paddingRight="@dimen/touch_controls_padding_horizontal"
-        android:paddingBottom="@dimen/touch_controls_padding_vertical"
-        android:scrollbars="none"
-        android:visibility="gone">
+        android:focusable="false"
+        android:visibility="gone" />
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/touchListButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_list"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchGuideButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_guide"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchPreviousButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_previous"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchInfoButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_info"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchVodLibraryButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_vod_library"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/touchToolsButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_tools"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchRotateButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_rotate_free"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchRewindButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_rewind"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchPlayPauseButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_play_pause"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/touchForwardButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="8dp"
-            android:background="@drawable/channel_overlay_chip_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingLeft="@dimen/touch_button_padding_horizontal"
-            android:paddingTop="@dimen/touch_button_padding_vertical"
-            android:paddingRight="@dimen/touch_button_padding_horizontal"
-            android:paddingBottom="@dimen/touch_button_padding_vertical"
-            android:text="@string/touch_button_forward"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-        </LinearLayout>
-    </HorizontalScrollView>
-
-    <TextView
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/errorText"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#CC000000"
-        android:gravity="center"
-        android:lineSpacingExtra="6dp"
-        android:padding="56dp"
-        android:textColor="#FFFFFF"
-        android:textSize="@dimen/zap_channel_text_size"
         android:visibility="gone" />
 </FrameLayout>

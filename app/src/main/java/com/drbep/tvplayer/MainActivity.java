@@ -6,18 +6,14 @@ import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.res.ColorStateList;
-import android.text.Editable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.util.LruCache;
-import android.text.TextWatcher;
 import android.util.Log;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
@@ -28,7 +24,6 @@ import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.inputmethod.InputMethodManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Canvas;
@@ -38,18 +33,22 @@ import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.SeekBar;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
+import androidx.compose.ui.platform.ComposeView;
+import androidx.lifecycle.ViewTreeLifecycleOwner;
+import androidx.lifecycle.ViewTreeViewModelStoreOwner;
 import androidx.media3.ui.PlayerView;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
+import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
 
 import org.json.JSONObject;
 
@@ -63,6 +62,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
@@ -166,86 +166,37 @@ public class MainActivity extends FragmentActivity {
     private static final int GLOBAL_SEARCH_FILTER_FAVORITES = 3;
     private static final int GLOBAL_SEARCH_FILTER_EPG = 4;
     private static final int GLOBAL_SEARCH_FILTER_RECORDINGS = 5;
+    private static final String PARENTAL_PREF_PREFIX = "parental_control";
 
     private PlayerView playerView;
-    private TextView errorText;
-    private TextView statusText;
-    private TextView filterText;
-    private TextView touchPrevFilterButton;
-    private TextView touchNextFilterButton;
-    private TextView touchSearchButton;
-    private TextView touchRecentButton;
-    private TextView touchFavoritesButton;
-    private TextView quickTvButton;
-    private TextView quickVodButton;
-    private TextView quickAdultButton;
-    private TextView quickGrabButton;
+    private ComposeView errorText;
+    private ComposeView statusText;
+    private ComposeView overlayControlsComposeView;
     private View touchHomeHub;
-    private TextView touchHomeTitleText;
-    private TextView touchHomeSubtitleText;
-    private TextView touchHomeTvButton;
-    private TextView touchHomeVodButton;
-    private TextView touchHomeAdultButton;
-    private TextView touchHomeGrabButton;
-    private TextView touchHomeRecentButton;
-    private TextView touchHomeFavoritesButton;
-    private TextView touchHomeListButton;
-    private TextView touchHomeMultiButton;
+    private ComposeView touchHomeComposeView;
     private View multiViewContainer;
-    private TextView multiViewCloseButton;
-    private TextView multiViewHintText;
+    private ComposeView multiViewHeaderComposeView;
     private final PlayerView[] multiPlayerViews = new PlayerView[4];
     private final View[] multiTiles = new View[4];
-    private final TextView[] multiLabels = new TextView[4];
-    private final TextView[] multiAudioBadges = new TextView[4];
+    private final ComposeView[] multiOverlayViews = new ComposeView[4];
+    private final List<ZapActionItem> zapActionItems = new ArrayList<>();
     private final List<PlayerController> multiPlayerControllers = new ArrayList<>();
     private final List<ChannelItem> multiViewChannels = new ArrayList<>();
     private final String[] multiViewChannelIds = new String[4];
     private int multiViewActiveIndex = 0;
     private boolean mainWasPlayingBeforeMultiView;
-    private EditText overlaySearchInput;
-    private TextView overlayCurrentChannelText;
-    private TextView overlayCurrentMetaText;
-    private TextView overlayPlaybackRouteText;
-    private TextView overlayPlaybackQualityText;
-    private TextView overlayEmptyText;
-    private TextView overlayRecentText;
-    private TextView zapChannelText;
-    private TextView zapMetaText;
-    private TextView zapQualityText;
-    private TextView quickSearchQueryText;
-    private TextView quickSearchResultText;
-    private TextView recordingsSectionText;
-    private TextView recordingsSummaryText;
-    private TextView recordingsHintText;
-    private TextView recordingsCompletedButton;
-    private TextView recordingsScheduledButton;
-    private TextView recordingsRefreshButton;
-    private TextView versionBadgeText;
-    private TextView hdrBadgeText;
-    private TextView liveStateBadgeText;
+    private ComposeView overlayNowPlayingComposeView;
+    private View overlayNowPlayingSection;
+    private View overlayExploreSection;
+    private View overlayListSection;
+    private ComposeView hdrBadgeText;
+    private ComposeView liveStateBadgeText;
     private View touchControlsBar;
     private View timeshiftBarContainer;
-    private TextView touchListButton;
-    private TextView touchGuideButton;
-    private TextView touchPreviousButton;
-    private TextView touchInfoButton;
-    private TextView touchVodLibraryButton;
-    private TextView touchToolsButton;
-    private TextView touchRotateButton;
-    private TextView touchRewindButton;
-    private TextView touchPlayPauseButton;
-    private TextView touchForwardButton;
-    private TextView timeshiftStatusText;
-    private TextView timeshiftLiveButton;
+    private ComposeView touchControlsComposeView;
+    private ComposeView timeshiftComposeView;
     private View playbackGestureLayer;
-    private ImageView recordingDetailPosterImage;
-    private TextView recordingDetailTitleText;
-    private TextView recordingDetailMetaText;
-    private TextView recordingDetailPathText;
-    private TextView recordingDetailActionText;
     private android.app.Dialog activeTimelineDialog;
-    private LinearLayout activeVodVisualFilterRow;
     private List<TimelineChannelPrograms> activeTimelineRows = new ArrayList<>();
     private List<RecordingsRepository.RecordingItem> activeTimelineScheduledItems = new ArrayList<>();
     private List<RecordingsRepository.RecordingItem> activeProgramScheduledItems = new ArrayList<>();
@@ -265,12 +216,11 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, Long> vodResumePositions = new HashMap<>();
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
-    private View zapBanner;
-    private View quickSearchOverlay;
-    private View recordingsPanel;
-    private RecyclerView channelList;
-    private RecyclerView recordingsRecyclerView;
-    private SeekBar timeshiftSeekBar;
+    private ComposeView zapBanner;
+    private final ZapBannerState zapBannerState = new ZapBannerState();
+    private ComposeView quickSearchOverlay;
+    private ComposeView recordingsPanel;
+    private ComposeView channelListComposeView;
 
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
@@ -320,7 +270,6 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
     private volatile boolean epgLoadInFlight = false;
     private final LruCache<String, Drawable> channelLogoCache = new LruCache<>(96);
-    private ChannelAdapter channelAdapter;
     private CatalogRepository catalogRepository;
     private CatalogSnapshotStore catalogSnapshotStore;
     private EpgRepository epgRepository;
@@ -332,6 +281,7 @@ public class MainActivity extends FragmentActivity {
     private ChannelCollectionStore channelCollectionStore;
     private ChannelProfileStore channelProfileStore;
     private PlaybackDiagnosticsStore playbackDiagnosticsStore;
+    private ParentalControlStore parentalControlStore;
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
     private RemoteInputRouter remoteInputRouter;
@@ -339,18 +289,19 @@ public class MainActivity extends FragmentActivity {
     private HttpClient httpClient;
     private AppUpdateManager appUpdateManager;
     private AudioManager audioManager;
+    private int pendingOverlayListScrollIndex = -1;
+    private int overlayListScrollRequestToken;
     private String baseUrl;
     private SharedPreferences prefs;
     private String playbackHeartbeatSessionId;
     private ChannelItem playbackHeartbeatChannel;
     private long playbackHeartbeatStartedAtMs;
 
-    private int currentIndex = -1;
-    private int selectedOverlayIndex = 0;
-    private boolean favoritesOnly;
+    private final OverlayNavigationState overlayNavigationState = new OverlayNavigationState();
+    private int overlaySearchFocusRequestToken;
+    private int overlaySearchClearFocusRequestToken;
     private boolean startupHubShown;
     private String lastChannelId;
-    private String selectedFilterKey = "all";
     private final StringBuilder quickSearchBuffer = new StringBuilder();
     private final List<ChannelItem> quickSearchMatches = new ArrayList<>();
     private final List<String> globalSearchRecents = new ArrayList<>();
@@ -360,11 +311,12 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, String> learnedPlaybackModesByChannelId = new HashMap<>();
     private final Map<String, Set<String>> playbackRepairAttemptsByChannelId = new HashMap<>();
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
-    private RecordingsAdapter recordingsAdapter;
     private final RecordingsController recordingsController = new RecordingsController();
     private OfflinePermissions currentOfflinePermissions = new OfflinePermissions();
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
+    private int recordingsHeaderFocusIndex = -1;
+    private boolean recordingsHeaderFocusActive;
     private boolean touchDeviceMode;
     private boolean recordingsAutoRefreshEnabled;
     private boolean playbackRepairEnabled = true;
@@ -402,6 +354,7 @@ public class MainActivity extends FragmentActivity {
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
     private Runnable pendingGlobalSearchRunnable;
+    private int pendingRecordingsListScrollIndex = -1;
 
     private static final class TimelineChannelPrograms {
         final ChannelItem channel;
@@ -410,6 +363,26 @@ public class MainActivity extends FragmentActivity {
         TimelineChannelPrograms(ChannelItem channel, List<EpgRepository.EpgProgram> programs) {
             this.channel = channel;
             this.programs = programs;
+        }
+    }
+
+    private static final class TimelineVisibleBlock {
+        final EpgRepository.EpgProgram program;
+        final boolean scheduled;
+        final boolean live;
+        final boolean activeNow;
+        final int spacerWidth;
+        final int blockWidth;
+        final int centerMinute;
+
+        TimelineVisibleBlock(EpgRepository.EpgProgram program, boolean scheduled, boolean live, boolean activeNow, int spacerWidth, int blockWidth, int centerMinute) {
+            this.program = program;
+            this.scheduled = scheduled;
+            this.live = live;
+            this.activeNow = activeNow;
+            this.spacerWidth = spacerWidth;
+            this.blockWidth = blockWidth;
+            this.centerMinute = centerMinute;
         }
     }
 
@@ -519,30 +492,11 @@ public class MainActivity extends FragmentActivity {
         playerView = findViewById(R.id.playerView);
         errorText = findViewById(R.id.errorText);
         statusText = findViewById(R.id.statusText);
-        filterText = findViewById(R.id.filterText);
-        touchPrevFilterButton = findViewById(R.id.touchPrevFilterButton);
-        touchNextFilterButton = findViewById(R.id.touchNextFilterButton);
-        touchSearchButton = findViewById(R.id.touchSearchButton);
-        touchRecentButton = findViewById(R.id.touchRecentButton);
-        touchFavoritesButton = findViewById(R.id.touchFavoritesButton);
-        quickTvButton = findViewById(R.id.quickTvButton);
-        quickVodButton = findViewById(R.id.quickVodButton);
-        quickAdultButton = findViewById(R.id.quickAdultButton);
-        quickGrabButton = findViewById(R.id.quickGrabButton);
+        overlayControlsComposeView = findViewById(R.id.overlayExploreSection);
         touchHomeHub = findViewById(R.id.touchHomeHub);
-        touchHomeTitleText = findViewById(R.id.touchHomeTitleText);
-        touchHomeSubtitleText = findViewById(R.id.touchHomeSubtitleText);
-        touchHomeTvButton = findViewById(R.id.touchHomeTvButton);
-        touchHomeVodButton = findViewById(R.id.touchHomeVodButton);
-        touchHomeAdultButton = findViewById(R.id.touchHomeAdultButton);
-        touchHomeGrabButton = findViewById(R.id.touchHomeGrabButton);
-        touchHomeRecentButton = findViewById(R.id.touchHomeRecentButton);
-        touchHomeFavoritesButton = findViewById(R.id.touchHomeFavoritesButton);
-        touchHomeListButton = findViewById(R.id.touchHomeListButton);
-        touchHomeMultiButton = findViewById(R.id.touchHomeMultiButton);
+        touchHomeComposeView = findViewById(R.id.touchHomeHub);
         multiViewContainer = findViewById(R.id.multiViewContainer);
-        multiViewCloseButton = findViewById(R.id.multiViewCloseButton);
-        multiViewHintText = findViewById(R.id.multiViewHintText);
+        multiViewHeaderComposeView = findViewById(R.id.multiViewHeaderComposeView);
         multiPlayerViews[0] = findViewById(R.id.multiPlayerView1);
         multiPlayerViews[1] = findViewById(R.id.multiPlayerView2);
         multiPlayerViews[2] = findViewById(R.id.multiPlayerView3);
@@ -551,60 +505,26 @@ public class MainActivity extends FragmentActivity {
         multiTiles[1] = findViewById(R.id.multiTile2);
         multiTiles[2] = findViewById(R.id.multiTile3);
         multiTiles[3] = findViewById(R.id.multiTile4);
-        multiLabels[0] = findViewById(R.id.multiLabel1);
-        multiLabels[1] = findViewById(R.id.multiLabel2);
-        multiLabels[2] = findViewById(R.id.multiLabel3);
-        multiLabels[3] = findViewById(R.id.multiLabel4);
-        multiAudioBadges[0] = findViewById(R.id.multiAudioBadge1);
-        multiAudioBadges[1] = findViewById(R.id.multiAudioBadge2);
-        multiAudioBadges[2] = findViewById(R.id.multiAudioBadge3);
-        multiAudioBadges[3] = findViewById(R.id.multiAudioBadge4);
-        overlaySearchInput = findViewById(R.id.overlaySearchInput);
-        overlayCurrentChannelText = findViewById(R.id.overlayCurrentChannelText);
-        overlayCurrentMetaText = findViewById(R.id.overlayCurrentMetaText);
-        overlayPlaybackRouteText = findViewById(R.id.overlayPlaybackRouteText);
-        overlayPlaybackQualityText = findViewById(R.id.overlayPlaybackQualityText);
-        overlayEmptyText = findViewById(R.id.overlayEmptyText);
-        overlayRecentText = findViewById(R.id.overlayRecentText);
+        multiOverlayViews[0] = findViewById(R.id.multiOverlay1);
+        multiOverlayViews[1] = findViewById(R.id.multiOverlay2);
+        multiOverlayViews[2] = findViewById(R.id.multiOverlay3);
+        multiOverlayViews[3] = findViewById(R.id.multiOverlay4);
+        overlayNowPlayingComposeView = findViewById(R.id.overlayNowPlayingSection);
+        overlayNowPlayingSection = findViewById(R.id.overlayNowPlayingSection);
+        overlayExploreSection = findViewById(R.id.overlayExploreSection);
+        overlayListSection = findViewById(R.id.overlayListSection);
         zapBanner = findViewById(R.id.zapBanner);
-        zapChannelText = findViewById(R.id.zapChannelText);
-        zapMetaText = findViewById(R.id.zapMetaText);
-        zapQualityText = findViewById(R.id.zapQualityText);
         quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
-        quickSearchQueryText = findViewById(R.id.quickSearchQueryText);
-        quickSearchResultText = findViewById(R.id.quickSearchResultText);
-        recordingsSectionText = findViewById(R.id.recordingsSectionText);
-        recordingsSummaryText = findViewById(R.id.recordingsSummaryText);
-        recordingsHintText = findViewById(R.id.recordingsHintText);
-        recordingsCompletedButton = findViewById(R.id.recordingsCompletedButton);
-        recordingsScheduledButton = findViewById(R.id.recordingsScheduledButton);
-        recordingsRefreshButton = findViewById(R.id.recordingsRefreshButton);
-        versionBadgeText = findViewById(R.id.versionBadgeText);
         hdrBadgeText = findViewById(R.id.hdrBadgeText);
         liveStateBadgeText = findViewById(R.id.liveStateBadgeText);
         touchControlsBar = findViewById(R.id.touchControlsBar);
         timeshiftBarContainer = findViewById(R.id.timeshiftBarContainer);
-        touchListButton = findViewById(R.id.touchListButton);
-        touchGuideButton = findViewById(R.id.touchGuideButton);
-        touchPreviousButton = findViewById(R.id.touchPreviousButton);
-        touchInfoButton = findViewById(R.id.touchInfoButton);
-        touchVodLibraryButton = findViewById(R.id.touchVodLibraryButton);
-        touchToolsButton = findViewById(R.id.touchToolsButton);
-        touchRotateButton = findViewById(R.id.touchRotateButton);
-        touchRewindButton = findViewById(R.id.touchRewindButton);
-        touchPlayPauseButton = findViewById(R.id.touchPlayPauseButton);
-        touchForwardButton = findViewById(R.id.touchForwardButton);
-        timeshiftStatusText = findViewById(R.id.timeshiftStatusText);
-        timeshiftLiveButton = findViewById(R.id.timeshiftLiveButton);
+        touchControlsComposeView = findViewById(R.id.touchControlsBar);
+        timeshiftComposeView = findViewById(R.id.timeshiftBarContainer);
         playbackGestureLayer = findViewById(R.id.playbackGestureLayer);
-        recordingDetailPosterImage = findViewById(R.id.recordingDetailPosterImage);
-        recordingDetailTitleText = findViewById(R.id.recordingDetailTitleText);
-        recordingDetailMetaText = findViewById(R.id.recordingDetailMetaText);
-        recordingDetailPathText = findViewById(R.id.recordingDetailPathText);
-        recordingDetailActionText = findViewById(R.id.recordingDetailActionText);
         channelOverlay = findViewById(R.id.channelOverlay);
         recordingsPanel = findViewById(R.id.recordingsPanel);
-        channelList = findViewById(R.id.channelList);
+        channelListComposeView = findViewById(R.id.overlayListSection);
         if (channelOverlay != null) {
             channelOverlay.setClickable(true);
             channelOverlay.setOnTouchListener((v, event) -> {
@@ -618,12 +538,7 @@ public class MainActivity extends FragmentActivity {
             recordingsPanel.setClickable(true);
             recordingsPanel.setOnTouchListener((v, event) -> true);
         }
-        recordingsRecyclerView = findViewById(R.id.recordingsRecyclerView);
-        timeshiftSeekBar = findViewById(R.id.timeshiftSeekBar);
-
-        if (versionBadgeText != null) {
-            versionBadgeText.setVisibility(View.GONE);
-        }
+        applyResponsiveSurfaceLayout();
         if (liveStateBadgeText != null) {
             liveStateBadgeText.setClickable(true);
             liveStateBadgeText.setFocusable(true);
@@ -633,7 +548,6 @@ public class MainActivity extends FragmentActivity {
                 return true;
             });
         }
-
         baseUrl = resolveBaseUrl();
         catalogSnapshotStore = new CatalogSnapshotStore(this);
         catalogRepository = new CatalogRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
@@ -650,11 +564,12 @@ public class MainActivity extends FragmentActivity {
         channelCollectionStore = new ChannelCollectionStore(prefs, PREF_CHANNEL_COLLECTIONS);
         channelProfileStore = new ChannelProfileStore(prefs, PREF_CHANNEL_PROFILES);
         playbackDiagnosticsStore = new PlaybackDiagnosticsStore(prefs, PREF_PLAYBACK_DIAGNOSTICS);
+        parentalControlStore = new ParentalControlStore(prefs, PARENTAL_PREF_PREFIX);
         loadRecordingResumePositions();
         loadVodResumePositions();
         loadGlobalSearchRecents();
         loadLearnedPlaybackModes();
-        channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore);
+        channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore, parentalControlStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
             @Override
             public void tuneSelectedChannel() {
@@ -742,13 +657,18 @@ public class MainActivity extends FragmentActivity {
             public void createReminder(ChannelItem channelItem, EpgRepository.EpgProgram program) {
                 MainActivity.this.createReminder(channelItem, program);
             }
+
+            @Override
+            public void showActionMenu(String title, List<String> options, List<Runnable> actions) {
+                MainActivity.this.showTvOptionsDialog(title, null, options, actions);
+            }
         });
         lastChannelId = prefs.getString(PREF_LAST_CHANNEL_ID, "");
-        selectedFilterKey = prefs.getString(PREF_LAST_FILTER_KEY, "all");
-        favoritesOnly = prefs.getBoolean(PREF_FAVORITES_ONLY, false);
+        overlayNavigationState.selectedFilterKey = prefs.getString(PREF_LAST_FILTER_KEY, "all");
+        overlayNavigationState.favoritesOnly = prefs.getBoolean(PREF_FAVORITES_ONLY, false);
         playbackRepairEnabled = prefs.getBoolean(PREF_PLAYBACK_REPAIR_ENABLED, true);
         lastVodId = prefs.getString(PREF_LAST_VOD_ID, "");
-        favoritesOnly = false;
+        overlayNavigationState.favoritesOnly = false;
         remoteInputRouter = new RemoteInputRouter(createRemoteInputHost(), MENU_DOUBLE_PRESS_MS);
         Set<String> storedFavorites = prefs.getStringSet(PREF_FAVORITES, new HashSet<>());
         if (storedFavorites != null) {
@@ -764,16 +684,6 @@ public class MainActivity extends FragmentActivity {
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
         touchDeviceMode = detectTouchDeviceMode();
         touchControlsController = new TouchControlsController(uiHandler, createTouchControlsHost(), TOUCH_CONTROLS_HIDE_MS, TV_TIMESHIFT_HUD_HIDE_MS);
-        if (!touchDeviceMode) {
-            if (quickTvButton != null) quickTvButton.setVisibility(View.GONE);
-            if (quickVodButton != null) quickVodButton.setVisibility(View.GONE);
-            if (quickAdultButton != null) quickAdultButton.setVisibility(View.GONE);
-            if (quickGrabButton != null) quickGrabButton.setVisibility(View.GONE);
-        }
-        if (isOfflineRecordingsDisabled()) {
-            if (quickGrabButton != null) quickGrabButton.setVisibility(View.GONE);
-            if (touchHomeGrabButton != null) touchHomeGrabButton.setVisibility(View.GONE);
-        }
         tabletOrientationLocked = prefs.getBoolean(PREF_TABLET_ORIENTATION_LOCK, false);
         initializeTabletBrightness();
         applyTabletOrientationMode();
@@ -869,7 +779,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean isChannelCurrent(String channelId) {
-                ChannelItem current = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
+                ChannelItem current = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : null;
                 return current != null && channelId != null && channelId.equals(current.id);
             }
 
@@ -918,26 +828,58 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void setupChannelList() {
-        channelAdapter = new ChannelAdapter();
-        channelList.setLayoutManager(new LinearLayoutManager(this));
-        channelList.setItemViewCacheSize(24);
-        channelList.setAdapter(channelAdapter);
+        refreshOverlayChannelList();
     }
 
     private void setupRecordingsPanel() {
-        if (recordingsRecyclerView != null) {
-            recordingsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        refreshRecordingsPanelSurface();
+    }
+
+    private void applyResponsiveSurfaceLayout() {
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        applyBoundedPanelWidth(zapBanner, screenWidth, R.dimen.zap_banner_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin) * 2);
+        applyBoundedPanelWidth(quickSearchOverlay, screenWidth, R.dimen.quick_search_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin) * 2);
+        applyBoundedPanelWidth(channelOverlay, screenWidth, R.dimen.channel_overlay_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin));
+        applyBoundedPanelWidth(recordingsPanel, screenWidth, R.dimen.recordings_panel_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin));
+        applyBoundedPanelWidth(timeshiftBarContainer, screenWidth, R.dimen.touch_surface_panel_max_width, getResources().getDimensionPixelSize(R.dimen.touch_surface_panel_side_margin) * 2);
+        applyBoundedPanelWidth(touchHomeHub, screenWidth, R.dimen.touch_home_hub_max_width, getResources().getDimensionPixelSize(R.dimen.touch_home_hub_side_margin) * 2);
+        applyOverlayPanelMode();
+    }
+
+    private void applyOverlayPanelMode() {
+        boolean tvListMode = !touchDeviceMode;
+        if (overlayNowPlayingSection != null) {
+            overlayNowPlayingSection.setVisibility(View.VISIBLE);
         }
-        if (recordingsCompletedButton != null) {
-            recordingsCompletedButton.setOnClickListener(v -> switchRecordingsMode(false));
+        if (overlayExploreSection != null) {
+            overlayExploreSection.setVisibility(tvListMode ? View.GONE : View.VISIBLE);
         }
-        if (recordingsScheduledButton != null) {
-            recordingsScheduledButton.setOnClickListener(v -> switchRecordingsMode(true));
+        if (overlayListSection != null) {
+            ViewGroup.LayoutParams params = overlayListSection.getLayoutParams();
+            if (params instanceof LinearLayout.LayoutParams) {
+                LinearLayout.LayoutParams linearParams = (LinearLayout.LayoutParams) params;
+                linearParams.height = 0;
+                linearParams.weight = 1f;
+                overlayListSection.setLayoutParams(linearParams);
+            }
         }
-        if (recordingsRefreshButton != null) {
-            recordingsRefreshButton.setOnClickListener(v -> refreshRecordingsPanel());
+    }
+
+    private void applyBoundedPanelWidth(View view, int screenWidthPx, int maxWidthDimenRes, int reservedHorizontalPx) {
+        if (view == null) {
+            return;
         }
-        updateRecordingsDetailPanel();
+        int maxWidth = getResources().getDimensionPixelSize(maxWidthDimenRes);
+        int availableWidth = Math.max(dp(220), screenWidthPx - Math.max(0, reservedHorizontalPx));
+        int targetWidth = Math.min(maxWidth, availableWidth);
+        ViewGroup.LayoutParams rawParams = view.getLayoutParams();
+        if (rawParams == null) {
+            return;
+        }
+        if (rawParams.width != targetWidth) {
+            rawParams.width = targetWidth;
+            view.setLayoutParams(rawParams);
+        }
     }
 
     private boolean detectTouchDeviceMode() {
@@ -1022,12 +964,6 @@ public class MainActivity extends FragmentActivity {
                 timeshiftBarContainer.setVisibility(View.GONE);
             }
             updateVodTouchControlsState();
-            if (touchPrevFilterButton != null) {
-                touchPrevFilterButton.setVisibility(View.GONE);
-            }
-            if (touchNextFilterButton != null) {
-                touchNextFilterButton.setVisibility(View.GONE);
-            }
             return;
         }
         touchControlsBar.setVisibility(View.VISIBLE);
@@ -1035,123 +971,6 @@ public class MainActivity extends FragmentActivity {
         updateTouchHomeHub();
         updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
-        if (touchPrevFilterButton != null) {
-            touchPrevFilterButton.setVisibility(View.VISIBLE);
-            touchPrevFilterButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                cycleFilter(-1);
-            });
-        }
-        if (touchNextFilterButton != null) {
-            touchNextFilterButton.setVisibility(View.VISIBLE);
-            touchNextFilterButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                cycleFilter(1);
-            });
-        }
-        if (filterText != null) {
-            filterText.setClickable(true);
-            filterText.setFocusable(true);
-            filterText.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                cycleFilter(1);
-            });
-            filterText.setOnLongClickListener(v -> {
-                showTouchControlsTemporarily();
-                cycleFilter(-1);
-                return true;
-            });
-        }
-        if (touchSearchButton != null) {
-            touchSearchButton.setVisibility(View.VISIBLE);
-            touchSearchButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                focusOverlaySearchInput();
-            });
-        }
-        if (touchRecentButton != null) {
-            touchRecentButton.setVisibility(View.VISIBLE);
-            touchRecentButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                showRecentChannelsQuickDialog();
-            });
-        }
-        if (touchFavoritesButton != null) {
-            touchFavoritesButton.setVisibility(View.VISIBLE);
-            touchFavoritesButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                showFavoriteChannelsQuickDialog();
-            });
-            touchFavoritesButton.setOnLongClickListener(v -> {
-                showTouchControlsTemporarily();
-                toggleFavoritesOnlyMode();
-                return true;
-            });
-        }
-        if (quickTvButton != null) {
-            quickTvButton.setOnClickListener(v -> applyQuickOverlayTarget("tv"));
-        }
-        if (quickVodButton != null) {
-            quickVodButton.setOnClickListener(v -> applyQuickOverlayTarget("vod"));
-        }
-        if (quickAdultButton != null) {
-            quickAdultButton.setOnClickListener(v -> applyQuickOverlayTarget("vod-adult"));
-        }
-        if (quickGrabButton != null) {
-            quickGrabButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                openRecordingsBrowser();
-            });
-        }
-        if (touchHomeTvButton != null) {
-            touchHomeTvButton.setOnClickListener(v -> applyQuickOverlayTarget("tv"));
-        }
-        if (touchHomeVodButton != null) {
-            touchHomeVodButton.setOnClickListener(v -> applyQuickOverlayTarget("vod"));
-        }
-        if (touchHomeAdultButton != null) {
-            touchHomeAdultButton.setOnClickListener(v -> applyQuickOverlayTarget("vod-adult"));
-        }
-        if (touchHomeGrabButton != null) {
-            touchHomeGrabButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                openRecordingsBrowser();
-            });
-        }
-        if (touchHomeRecentButton != null) {
-            touchHomeRecentButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                showRecentChannelsQuickDialog();
-            });
-        }
-        if (touchHomeFavoritesButton != null) {
-            touchHomeFavoritesButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                applyQuickOverlayTarget("favorites");
-            });
-            touchHomeFavoritesButton.setOnLongClickListener(v -> {
-                showTouchControlsTemporarily();
-                showFavoriteChannelsQuickDialog();
-                return true;
-            });
-        }
-        if (touchHomeListButton != null) {
-            touchHomeListButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                showGlobalSearchDialog();
-            });
-            touchHomeListButton.setOnLongClickListener(v -> {
-                showTouchControlsTemporarily();
-                showOverlay();
-                return true;
-            });
-        }
-        if (touchHomeMultiButton != null) {
-            touchHomeMultiButton.setOnClickListener(v -> openMultiView());
-        }
-        if (multiViewCloseButton != null) {
-            multiViewCloseButton.setOnClickListener(v -> closeMultiView());
-        }
         for (int i = 0; i < multiTiles.length; i++) {
             final int slot = i;
             if (multiTiles[i] != null) {
@@ -1162,184 +981,18 @@ public class MainActivity extends FragmentActivity {
                 });
             }
         }
-        if (overlaySearchInput != null) {
-            overlaySearchInput.setVisibility(View.VISIBLE);
-            overlaySearchInput.addTextChangedListener(new TextWatcher() {
-                @Override
-                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                }
-
-                @Override
-                public void onTextChanged(CharSequence s, int start, int before, int count) {
-                    applyOverlaySearchQuery(s == null ? "" : s.toString());
-                }
-
-                @Override
-                public void afterTextChanged(Editable s) {
-                }
-            });
-            overlaySearchInput.setOnFocusChangeListener((v, hasFocus) -> {
-                if (hasFocus) {
-                    showTouchControlsTemporarily();
-                    uiHandler.removeCallbacks(hideOverlayRunnable);
-                }
-            });
-        }
-
-        if (touchListButton != null) {
-            touchListButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                if (isOverlayVisible()) {
-                    hideOverlay();
-                } else {
-                    showOverlay();
-                }
-            });
-        }
-        if (touchGuideButton != null) {
-            touchGuideButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                ChannelItem current = getCurrentPlaybackChannelItem();
-                if (current != null && current.isVod) {
-                    showVodLibraryDialog();
-                } else {
-                    openTimelineGuideAroundSelection();
-                }
-            });
-        }
-        if (touchPreviousButton != null) {
-            touchPreviousButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                ChannelItem current = getCurrentPlaybackChannelItem();
-                if (current != null && current.isVod) {
-                    showVodInfoDialog(current);
-                } else {
-                    tunePreviousChannel();
-                }
-            });
-        }
-        if (touchInfoButton != null) {
-            touchInfoButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                openCurrentProgramInfoFromTouch();
-            });
-            touchInfoButton.setOnLongClickListener(v -> {
-                showTouchControlsTemporarily();
-                showPlaybackDiagnosticsDialog();
-                return true;
-            });
-        }
-        if (touchVodLibraryButton != null) {
-            touchVodLibraryButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                showVodLibraryDialog();
-            });
-        }
-        if (touchToolsButton != null) {
-            touchToolsButton.setText("Grab");
-            touchToolsButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                openRecordingsBrowser();
-            });
-            touchToolsButton.setOnLongClickListener(v -> {
-                showTouchControlsTemporarily();
-                showV12ToolsMenu();
-                return true;
-            });
-        }
-        if (touchRotateButton != null) {
-            touchRotateButton.setVisibility(View.VISIBLE);
-            touchRotateButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                toggleTabletOrientationLock();
-            });
-            updateTouchRotateButtonLabel();
-        }
-        if (touchPlayPauseButton != null) {
-            touchPlayPauseButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                if (playerController != null) {
-                    playerController.togglePlayback();
-                }
-            });
-        }
-        if (touchRewindButton != null) {
-            touchRewindButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                if (playerController == null || !playerController.seekTimeshiftBack()) {
-                    showStatus(getString(R.string.status_touch_seek_unavailable));
-                }
-            });
-        }
-        if (touchForwardButton != null) {
-            touchForwardButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                if (playerController == null || !playerController.seekTimeshiftForward()) {
-                    showStatus(getString(R.string.status_touch_seek_unavailable));
-                }
-            });
-        }
+        refreshTouchControlsBar();
         if (playbackGestureLayer != null) {
             playbackGestureLayer.setOnTouchListener((v, event) -> handlePlayerSurfaceTouch(event));
-        }
-        if (timeshiftLiveButton != null) {
-            timeshiftLiveButton.setOnClickListener(v -> {
-                showTouchControlsTemporarily();
-                if (playerController == null || !playerController.resumeTimeshiftLive()) {
-                    showStatus(getString(R.string.timeshift_status_unavailable));
-                }
-                updateTimeshiftBar();
-            });
-        }
-        if (timeshiftSeekBar != null) {
-            timeshiftSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                    if (!fromUser || playerController == null) {
-                        return;
-                    }
-                    PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
-                    if (state == null || timeshiftStatusText == null) {
-                        return;
-                    }
-                    long range = Math.max(1L, state.endMs - state.startMs);
-                    long target = state.startMs + Math.round((progress / 1000f) * range);
-                    timeshiftStatusText.setText(formatPlaybackPreviewLabel(state, target));
-                }
-
-                @Override
-                public void onStartTrackingTouch(SeekBar seekBar) {
-                    timeshiftSeekUserDragging = true;
-                    showTouchControlsTemporarily();
-                }
-
-                @Override
-                public void onStopTrackingTouch(SeekBar seekBar) {
-                    if (playerController != null) {
-                        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
-                        if (state != null) {
-                            long range = Math.max(1L, state.endMs - state.startMs);
-                            long target = state.startMs + Math.round((seekBar.getProgress() / 1000f) * range);
-                            playerController.seekTimeshiftTo(target);
-                        }
-                    }
-                    timeshiftSeekUserDragging = false;
-                    updateTimeshiftBar();
-                    scheduleTouchControlsAutoHide();
-                }
-            });
         }
     }
 
     private void updateTimeshiftBar() {
-        if (timeshiftBarContainer == null || timeshiftSeekBar == null || timeshiftStatusText == null || playerController == null) {
+        if (timeshiftBarContainer == null || timeshiftComposeView == null || playerController == null) {
             updatePlaybackStateBadge(null);
             return;
         }
         updateVodTouchControlsState();
-        if (timeshiftLiveButton != null) {
-            timeshiftLiveButton.setVisibility(View.GONE);
-        }
         boolean showForTouch = touchDeviceMode
                 && touchControlsBar != null
                 && touchControlsBar.getVisibility() == View.VISIBLE;
@@ -1356,16 +1009,42 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         timeshiftBarContainer.setVisibility(View.VISIBLE);
-        if (timeshiftLiveButton != null) {
-            timeshiftLiveButton.setVisibility(state.liveCapable ? View.VISIBLE : View.GONE);
-        }
-        if (!timeshiftSeekUserDragging) {
-            long range = Math.max(1L, state.endMs - state.startMs);
-            int progress = (int) Math.max(0L, Math.min(1000L, Math.round(((state.currentMs - state.startMs) * 1000f) / range)));
-            timeshiftSeekBar.setProgress(progress);
-            timeshiftStatusText.setText(buildPlaybackSeekLabel(state));
-        }
+        TimeshiftBarComposeBinder.bind(timeshiftComposeView, buildTimeshiftBarUiModel(state));
         updatePlaybackStateBadge(playerController.getTimeshiftState());
+    }
+
+    private TimeshiftBarUiModel buildTimeshiftBarUiModel(PlayerController.PlaybackSeekState state) {
+        long range = Math.max(1L, state.endMs - state.startMs);
+        int progress = (int) Math.max(0L, Math.min(1000L, Math.round(((state.currentMs - state.startMs) * 1000f) / range)));
+        return new TimeshiftBarUiModel(
+                buildPlaybackSeekLabel(state),
+                progress,
+                state.liveCapable,
+                () -> {
+                    showTouchControlsTemporarily();
+                    if (playerController == null || !playerController.resumeTimeshiftLive()) {
+                        showStatus(getString(R.string.timeshift_status_unavailable));
+                    }
+                    updateTimeshiftBar();
+                },
+                () -> {
+                    timeshiftSeekUserDragging = true;
+                    showTouchControlsTemporarily();
+                },
+                previewProgress -> {
+                    long previewTarget = state.startMs + Math.round((previewProgress / 1000f) * range);
+                    return formatPlaybackPreviewLabel(state, previewTarget);
+                },
+                commitProgress -> {
+                    if (playerController != null) {
+                        long target = state.startMs + Math.round((commitProgress / 1000f) * range);
+                        playerController.seekTimeshiftTo(target);
+                    }
+                    timeshiftSeekUserDragging = false;
+                    updateTimeshiftBar();
+                    scheduleTouchControlsAutoHide();
+                }
+        );
     }
 
     private String buildPlaybackSeekLabel(PlayerController.PlaybackSeekState state) {
@@ -1380,20 +1059,161 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateVodTouchControlsState() {
+        if (touchControlsComposeView != null) {
+            refreshTouchControlsBar();
+        }
+    }
+
+    private void refreshTouchControlsBar() {
+        if (touchControlsComposeView == null) {
+            return;
+        }
+        TouchControlsComposeBinder.bind(touchControlsComposeView, buildTouchControlsBarUiModel());
+    }
+
+    private TouchControlsBarUiModel buildTouchControlsBarUiModel() {
         ChannelItem current = getCurrentPlaybackChannelItem();
         boolean vod = current != null && current.isVod;
-        if (touchVodLibraryButton != null) {
-            touchVodLibraryButton.setVisibility(vod ? View.VISIBLE : View.GONE);
+        List<ZapActionItem> actions = new ArrayList<>();
+        actions.add(new ZapActionItem(
+                getString(R.string.touch_button_list),
+                true,
+                false,
+                isOverlayVisible(),
+                () -> {
+                    showTouchControlsTemporarily();
+                    if (isOverlayVisible()) {
+                        hideOverlay();
+                    } else {
+                        showOverlay();
+                    }
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(R.string.touch_button_platform),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    showFilterPickerDialog();
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(vod ? R.string.touch_button_vod_library : R.string.touch_button_guide),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    if (vod) {
+                        showVodLibraryDialog();
+                    } else {
+                        openTimelineGuideAroundSelection();
+                    }
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(vod ? R.string.touch_button_vod_detail : R.string.touch_button_previous),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    if (vod && current != null) {
+                        showVodInfoDialog(current);
+                    } else {
+                        tunePreviousChannel();
+                    }
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(vod ? R.string.touch_button_vod_detail : R.string.touch_button_info),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    openCurrentProgramInfoFromTouch();
+                },
+                () -> {
+                    showTouchControlsTemporarily();
+                    showPlaybackDiagnosticsDialog();
+                }
+        ));
+        if (vod) {
+            actions.add(new ZapActionItem(
+                    getString(R.string.touch_button_vod_library),
+                    true,
+                    false,
+                    false,
+                    () -> {
+                        showTouchControlsTemporarily();
+                        showVodLibraryDialog();
+                    }
+            ));
         }
-        if (touchGuideButton != null) {
-            touchGuideButton.setText(vod ? R.string.touch_button_vod_library : R.string.touch_button_guide);
-        }
-        if (touchPreviousButton != null) {
-            touchPreviousButton.setText(vod ? R.string.touch_button_vod_detail : R.string.touch_button_previous);
-        }
-        if (touchInfoButton != null) {
-            touchInfoButton.setText(vod ? R.string.touch_button_vod_detail : R.string.touch_button_info);
-        }
+        actions.add(new ZapActionItem(
+                getString(R.string.touch_button_recordings),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    openRecordingsBrowser();
+                },
+                () -> {
+                    showTouchControlsTemporarily();
+                    showV12ToolsMenu();
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(tabletOrientationLocked ? R.string.touch_button_rotate_locked : R.string.touch_button_rotate_free),
+                true,
+                false,
+                tabletOrientationLocked,
+                () -> {
+                    showTouchControlsTemporarily();
+                    toggleTabletOrientationLock();
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(R.string.touch_button_rewind),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    if (playerController == null || !playerController.seekTimeshiftBack()) {
+                        showStatus(getString(R.string.status_touch_seek_unavailable));
+                    }
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(R.string.touch_button_play_pause),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    if (playerController != null) {
+                        playerController.togglePlayback();
+                    }
+                }
+        ));
+        actions.add(new ZapActionItem(
+                getString(R.string.touch_button_forward),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    if (playerController == null || !playerController.seekTimeshiftForward()) {
+                        showStatus(getString(R.string.status_touch_seek_unavailable));
+                    }
+                }
+        ));
+        return new TouchControlsBarUiModel(actions);
     }
 
     private String formatPlaybackPreviewLabel(PlayerController.PlaybackSeekState state, long targetMs) {
@@ -1651,33 +1471,35 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateTouchRotateButtonLabel() {
-        if (touchRotateButton == null) {
+        if (touchControlsComposeView == null) {
             return;
         }
-        touchRotateButton.setText(getString(tabletOrientationLocked ? R.string.touch_button_rotate_locked : R.string.touch_button_rotate_free));
+        refreshTouchControlsBar();
     }
 
     private void updatePlaybackStateBadge(PlayerController.TimeshiftState state) {
         if (liveStateBadgeText == null || !touchDeviceMode) {
             return;
         }
+        String text;
+        int backgroundColor;
         if (state == null) {
-            liveStateBadgeText.setText(getString(R.string.playback_state_live));
-            liveStateBadgeText.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xCC1F7A3C));
-            liveStateBadgeText.setVisibility(View.VISIBLE);
-            return;
-        }
-        long offsetMs = Math.max(0L, state.endMs - state.currentMs);
-        if (offsetMs < LIVE_BADGE_THRESHOLD_MS) {
-            liveStateBadgeText.setText(getString(R.string.playback_state_live));
-            liveStateBadgeText.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xCC1F7A3C));
+            text = getString(R.string.playback_state_live);
+            backgroundColor = 0xCC1F7A3C;
         } else {
-            long totalSeconds = Math.round(offsetMs / 1000f);
-            long mins = totalSeconds / 60L;
-            long secs = totalSeconds % 60L;
-            liveStateBadgeText.setText(getString(R.string.playback_state_timeshift, mins, secs));
-            liveStateBadgeText.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xCC9A5A00));
+            long offsetMs = Math.max(0L, state.endMs - state.currentMs);
+            if (offsetMs < LIVE_BADGE_THRESHOLD_MS) {
+                text = getString(R.string.playback_state_live);
+                backgroundColor = 0xCC1F7A3C;
+            } else {
+                long totalSeconds = Math.round(offsetMs / 1000f);
+                long mins = totalSeconds / 60L;
+                long secs = totalSeconds % 60L;
+                text = getString(R.string.playback_state_timeshift, mins, secs);
+                backgroundColor = 0xCC9A5A00;
+            }
         }
+        SurfaceBadgeComposeBinder.bind(liveStateBadgeText, new SurfaceBadgeUiModel(text, backgroundColor, 0xFFFFFFFF, false, false));
         liveStateBadgeText.setVisibility(View.VISIBLE);
     }
 
@@ -1757,16 +1579,23 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showCatalogRecoveryDialog(String reason) {
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.startup_recovery_title)
-                .setMessage(getString(R.string.startup_recovery_message, fallbackUnknown(reason), BuildConfig.VERSION_NAME))
-                .setPositiveButton(R.string.startup_recovery_retry, (dialog, which) -> loadChannels())
-                .setNeutralButton(R.string.tools_menu_install_status, (dialog, which) -> showInstallStatusDialog())
-                .setNegativeButton(R.string.dialog_close, null)
-                .show();
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.startup_recovery_retry), false, this::loadChannels));
+        actions.add(new TvMessageActionUiModel(getString(R.string.tools_menu_install_status), false, this::showInstallStatusDialog));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(
+                getString(R.string.startup_recovery_title),
+                getString(R.string.startup_recovery_message, fallbackUnknown(reason), BuildConfig.VERSION_NAME),
+                actions,
+                null
+        );
     }
 
     private void applyLoadedChannels(CatalogLoadResult result) {
+        if (!isActivityReadyForUiWork()) {
+            Log.w(TAG, "Ignoring catalog result because activity is no longer active");
+            return;
+        }
         long startMs = System.currentTimeMillis();
         currentOfflinePermissions = result == null || result.offlinePermissions == null ? new OfflinePermissions() : result.offlinePermissions;
         syncOverlayCoordinator();
@@ -1776,7 +1605,7 @@ public class MainActivity extends FragmentActivity {
         channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
         syncOverlayStateFromCoordinator();
         persistNavigationState();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
 
@@ -1817,15 +1646,19 @@ public class MainActivity extends FragmentActivity {
             index = 0;
         }
 
-        currentIndex = index;
-        selectedOverlayIndex = index;
-        channelAdapter.notifyDataSetChanged();
-        channelList.scrollToPosition(index);
+        overlayNavigationState.currentIndex = index;
+        overlayNavigationState.selectedOverlayIndex = index;
+        refreshOverlayChannelList();
+        scrollOverlayChannelListToPosition(index);
         playChannelItem(channels.get(index), autoPlay);
     }
 
     private void playChannelItem(ChannelItem ch, boolean autoPlay) {
         if (ch == null) {
+            return;
+        }
+        if (isProtectedItem(ch) && isProtectedContentLocked()) {
+            ensureParentalAccessForItem(ch, () -> playChannelItem(ch, autoPlay));
             return;
         }
         rememberCurrentVodPosition();
@@ -1848,18 +1681,28 @@ public class MainActivity extends FragmentActivity {
         };
         Runnable resumeFromSaved = () -> playChannelItemInternal(ch, autoPlay, resumePositionMs);
         if (resumePositionMs > 30_000L) {
-            new AlertDialog.Builder(this)
-                    .setTitle(displayName(ch))
-                    .setMessage(getString(R.string.vod_continue_prompt, formatDurationShort(resumePositionMs)))
-                    .setPositiveButton(R.string.vod_action_continue, (dialog, which) -> resumeFromSaved.run())
-                    .setNegativeButton(R.string.vod_action_start_over, (dialog, which) -> startFromBeginning.run())
-                    .show();
+            List<TvMessageActionUiModel> actions = new ArrayList<>();
+            actions.add(new TvMessageActionUiModel(getString(R.string.vod_action_continue), false, resumeFromSaved));
+            actions.add(new TvMessageActionUiModel(getString(R.string.vod_action_start_over), true, startFromBeginning));
+            showTvMessagePanel(displayName(ch), getString(R.string.vod_continue_prompt, formatDurationShort(resumePositionMs)), actions, null);
             return;
         }
         startFromBeginning.run();
     }
 
     private void playChannelItemInternal(ChannelItem ch, boolean autoPlay, long resumePositionMs) {
+        if (!isActivityReadyForUiWork()) {
+            Log.w(TAG, "Ignoring playback request because activity is no longer active channel=" + (ch == null ? "" : ch.id));
+            return;
+        }
+        if (playerController == null) {
+            Log.w(TAG, "Reinitializing player before playback channel=" + (ch == null ? "" : ch.id));
+            setupPlayer();
+        }
+        if (playerController == null) {
+            showError(getString(R.string.error_playback_message, "Player no inicializado"));
+            return;
+        }
         stopPlaybackHeartbeat("stop");
         saveLastChannelId(ch.id);
         if (recentChannelsStore != null) {
@@ -1877,10 +1720,7 @@ public class MainActivity extends FragmentActivity {
         updateTimeshiftBar();
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(ch.id);
         PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
-        boolean resolveBeforePlayback = BuildConfig.STANDALONE_MODE
-                && playbackRequest != null
-                && !playbackRequest.directPlayback
-                && !ch.isVod;
+        boolean resolveBeforePlayback = shouldResolveStreamInfoBeforePlayback(ch, playbackRequest);
         if (resolveBeforePlayback) {
             showStatus(getString(R.string.status_buffering));
             playerController.playChannelAfterResolvingStreamInfo(playbackRequest, autoPlay, streamInfoByChannelId, resumePositionMs);
@@ -1903,6 +1743,37 @@ public class MainActivity extends FragmentActivity {
         startPlaybackHeartbeat(ch);
     }
 
+    private boolean isActivityReadyForUiWork() {
+        return !isFinishing() && (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 || !isDestroyed());
+    }
+
+    private boolean shouldResolveStreamInfoBeforePlayback(ChannelItem channel, PlayerController.PlaybackRequest request) {
+        if (!BuildConfig.STANDALONE_MODE || request == null || channel == null || channel.isVod) {
+            return false;
+        }
+        if (request.directPlayback) {
+            return shouldResolveDirectDrmBeforePlayback(channel, request);
+        }
+        String platform = safeLower(channel.platformName);
+        String playUrl = safeLower(request.playUrl);
+        if (platform.contains("pluto") && playUrl.contains(".m3u8") && !isBackendHostedTarget(playUrl)) {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean shouldResolveDirectDrmBeforePlayback(ChannelItem channel, PlayerController.PlaybackRequest request) {
+        if (channel == null || request == null || !request.directPlayback) {
+            return false;
+        }
+        String drm = safeLower(channel.drmScheme);
+        String playUrl = safeLower(request.playUrl);
+        return "clearkey".equals(drm)
+                && playUrl.contains(".mpd")
+                && request.drmLicenseUrl != null
+                && request.drmLicenseUrl.startsWith("data:application/json;base64,");
+    }
+
     private String displayName(ChannelItem channelItem) {
         if (channelItem == null) {
             return "";
@@ -1912,8 +1783,8 @@ public class MainActivity extends FragmentActivity {
 
     private String getCurrentChannelName() {
         ChannelItem channel = null;
-        if (currentIndex >= 0 && currentIndex < channels.size()) {
-            channel = channels.get(currentIndex);
+        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            channel = channels.get(overlayNavigationState.currentIndex);
         }
         if (channel == null && lastChannelId != null && !lastChannelId.trim().isEmpty()) {
             channel = findChannelItemById(lastChannelId);
@@ -2023,7 +1894,7 @@ public class MainActivity extends FragmentActivity {
                             + " fullCatalog=" + fullCatalog
                             + " standalone=" + BuildConfig.STANDALONE_MODE
                             + " durationMs=" + lastEpgNowLoadDurationMs);
-                    channelAdapter.notifyDataSetChanged();
+                    refreshOverlayChannelList();
                     updateOverlayPanel();
                     ChannelItem currentChannel = getCurrentPlaybackChannelItem();
                     if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
@@ -2079,10 +1950,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showChannelActionMenu() {
-        if (channels.isEmpty() || selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
+        if (channels.isEmpty() || overlayNavigationState.selectedOverlayIndex < 0 || overlayNavigationState.selectedOverlayIndex >= channels.size()) {
             return;
         }
-        ChannelItem ch = channels.get(selectedOverlayIndex);
+        ChannelItem ch = channels.get(overlayNavigationState.selectedOverlayIndex);
         boolean fav = favoriteChannelIds.contains(ch.id);
         channelActionsCoordinator.showChannelActionMenu(ch, fav);
     }
@@ -2115,9 +1986,9 @@ public class MainActivity extends FragmentActivity {
         }
         int anchorIndex = findChannelIndexById(lastTimelineAnchorChannelId);
         if (anchorIndex < 0) {
-            anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
-                    ? selectedOverlayIndex
-                    : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
+            anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size()
+                    ? overlayNavigationState.selectedOverlayIndex
+                    : (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size() ? overlayNavigationState.currentIndex : 0);
         }
         long windowStartMs = lastTimelineWindowStartMs > 0L ? lastTimelineWindowStartMs : System.currentTimeMillis();
         openTimelineGuide(anchorIndex, windowStartMs);
@@ -2127,9 +1998,9 @@ public class MainActivity extends FragmentActivity {
         if (channels.isEmpty()) {
             return;
         }
-        int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
-                ? selectedOverlayIndex
-                : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
+        int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size()
+                ? overlayNavigationState.selectedOverlayIndex
+                : (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size() ? overlayNavigationState.currentIndex : 0);
         lastTimelineFocusedCenterMinute = -1;
         openTimelineGuide(anchorIndex, System.currentTimeMillis());
     }
@@ -2137,7 +2008,7 @@ public class MainActivity extends FragmentActivity {
     private void openTimelineGuideForChannel(ChannelItem channel) {
         int anchorIndex = channel == null ? -1 : findChannelIndexById(channel.id);
         if (anchorIndex < 0) {
-            anchorIndex = currentIndex;
+            anchorIndex = overlayNavigationState.currentIndex;
         }
         openTimelineGuide(anchorIndex, System.currentTimeMillis());
     }
@@ -2149,9 +2020,9 @@ public class MainActivity extends FragmentActivity {
         String anchorChannelId = activeTimelineAnchorChannelId != null ? activeTimelineAnchorChannelId : lastTimelineAnchorChannelId;
         int anchorIndex = findChannelIndexById(anchorChannelId);
         if (anchorIndex < 0) {
-            anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()
-                    ? selectedOverlayIndex
-                    : (currentIndex >= 0 && currentIndex < channels.size() ? currentIndex : 0);
+            anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size()
+                    ? overlayNavigationState.selectedOverlayIndex
+                    : (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size() ? overlayNavigationState.currentIndex : 0);
         }
         long referenceMs = System.currentTimeMillis();
         if (activeTimelineWindowStartMs > 0L && activeTimelineFocusedCenterMinute >= 0) {
@@ -2294,9 +2165,9 @@ public class MainActivity extends FragmentActivity {
         int visualAnchorIndex = findChannelIndexById(lastVisualEpgChannelId);
         final ChannelItem anchorChannel = (visualAnchorIndex >= 0 && visualAnchorIndex < channels.size())
                 ? channels.get(visualAnchorIndex)
-                : ((selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size())
-                ? channels.get(selectedOverlayIndex)
-                : ((currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : channels.get(0)));
+                : ((overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size())
+                ? channels.get(overlayNavigationState.selectedOverlayIndex)
+                : ((overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : channels.get(0)));
         final String anchorChannelId = anchorChannel.id;
         final String platformLabel = (anchorChannel.platformName == null || anchorChannel.platformName.trim().isEmpty())
                 ? getString(R.string.visual_epg_platform_visible)
@@ -2553,37 +2424,100 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_visual_epg_guide, null, false);
-        TextView subtitleText = dialogView.findViewById(R.id.visualEpgSubtitleText);
-        TextView refreshButton = dialogView.findViewById(R.id.visualEpgRefreshButton);
-        TextView closeButton = dialogView.findViewById(R.id.visualEpgCloseButton);
-        android.widget.ScrollView verticalScroll = dialogView.findViewById(R.id.visualEpgScroll);
-        LinearLayout sectionsContainer = dialogView.findViewById(R.id.visualEpgSectionsContainer);
-        ImageView posterImage = dialogView.findViewById(R.id.visualEpgPosterImage);
-        TextView titleText = dialogView.findViewById(R.id.visualEpgDetailTitleText);
-        TextView metaText = dialogView.findViewById(R.id.visualEpgMetaText);
-        TextView descText = dialogView.findViewById(R.id.visualEpgDescText);
+        FrameLayout dialogView = new FrameLayout(this);
+        dialogView.setBackgroundColor(0xB0101720);
+        int outerPadding = getResources().getDimensionPixelSize(R.dimen.visual_epg_outer_padding);
+        dialogView.setPadding(outerPadding, outerPadding, outerPadding, outerPadding);
+        LinearLayout visualPanel = new LinearLayout(this);
+        visualPanel.setOrientation(LinearLayout.VERTICAL);
+        visualPanel.setBackgroundColor(0xE6111822);
+        int innerPadding = getResources().getDimensionPixelSize(R.dimen.visual_epg_inner_padding);
+        visualPanel.setPadding(innerPadding, innerPadding, innerPadding, innerPadding);
+        dialogView.addView(visualPanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ComposeView visualEpgHeaderComposeView = new ComposeView(this);
+        visualEpgHeaderComposeView.setFocusable(true);
+        visualEpgHeaderComposeView.setFocusableInTouchMode(true);
+        visualPanel.addView(visualEpgHeaderComposeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        android.widget.ScrollView verticalScroll = new android.widget.ScrollView(this);
+        verticalScroll.setFillViewport(true);
+        verticalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout sectionsContainer = new LinearLayout(this);
+        sectionsContainer.setOrientation(LinearLayout.VERTICAL);
+        verticalScroll.addView(sectionsContainer, new android.widget.ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        scrollParams.topMargin = dp(8);
+        visualPanel.addView(verticalScroll, scrollParams);
+        ComposeView visualEpgProgramDetailComposeView = new ComposeView(this);
+        visualEpgProgramDetailComposeView.setFocusable(false);
+        visualEpgProgramDetailComposeView.setFocusableInTouchMode(false);
+        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        detailParams.topMargin = dp(8);
+        visualPanel.addView(visualEpgProgramDetailComposeView, detailParams);
         final View[] initialFocus = new View[1];
         final List<List<View>> focusRows = new ArrayList<>();
         final Map<View, Integer> focusCenters = new HashMap<>();
         final Map<View, View> focusAnchors = new HashMap<>();
+        final android.app.Dialog[] visualEpgDialogRef = new android.app.Dialog[1];
+        final Runnable focusInitialVisualEpgCard = () -> {
+            if (initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
+            }
+        };
+        final java.util.function.Consumer<TimelineProgramDetailUiModel> renderVisualEpgDetail = model ->
+                TimelineProgramDetailComposeBinder.bind(
+                        visualEpgProgramDetailComposeView,
+                        model,
+                        (imageView, item) -> {
+                            if (imageView == null || item == null || item.imageUrl == null || item.imageUrl.trim().isEmpty()) {
+                                if (imageView != null) {
+                                    Glide.with(this).clear(imageView);
+                                    imageView.setImageDrawable(null);
+                                }
+                                return;
+                            }
+                            Glide.with(this).load(item.imageUrl.trim()).fitCenter().into(imageView);
+                        }
+                );
+        boolean compactModal = getResources().getDisplayMetrics().widthPixels <= dp(720);
 
         int totalItems = 0;
         for (VisualEpgSection section : sections) {
             totalItems += section.entries.size();
         }
         activeProgramScheduledItems = scheduledItems == null ? new ArrayList<>() : new ArrayList<>(scheduledItems);
-        subtitleText.setText(getString(R.string.visual_epg_subtitle, platformLabel, totalItems));
-        posterImage.setVisibility(View.GONE);
-        titleText.setText(getString(R.string.title_visual_epg));
-        metaText.setText(getString(R.string.visual_epg_detail_hint));
-        descText.setText(getString(R.string.timeline_program_desc_empty));
+        VisualEpgHeaderComposeBinder.bind(
+                visualEpgHeaderComposeView,
+                new VisualEpgHeaderUiModel(
+                        getString(R.string.title_visual_epg),
+                        getString(R.string.visual_epg_subtitle, platformLabel, totalItems),
+                        Arrays.asList(
+                                new VisualEpgHeaderUiModel.VisualEpgHeaderActionUiModel(getString(R.string.recording_action_refresh), () -> {
+                                    if (visualEpgDialogRef[0] != null) {
+                                        visualEpgDialogRef[0].dismiss();
+                                    }
+                                    openVisualEpgAroundSelection();
+                                }, focusInitialVisualEpgCard),
+                                new VisualEpgHeaderUiModel.VisualEpgHeaderActionUiModel(getString(R.string.dialog_close), () -> {
+                                    if (visualEpgDialogRef[0] != null) {
+                                        visualEpgDialogRef[0].dismiss();
+                                    }
+                                }, focusInitialVisualEpgCard)
+                        )
+                )
+        );
+        renderVisualEpgDetail.accept(new TimelineProgramDetailUiModel(
+                getString(R.string.title_visual_epg),
+                getString(R.string.visual_epg_detail_hint),
+                getString(R.string.timeline_program_desc_empty),
+                "",
+                "",
+                getString(R.string.timeline_program_action_hint)
+        ));
         sectionsContainer.removeAllViews();
 
-        int cardWidth = dp(164);
-        int cardHeight = dp(208);
-        int posterHeight = dp(104);
-        int cardGap = dp(10);
+        int cardWidth = compactModal ? dp(136) : dp(164);
+        int cardHeight = compactModal ? dp(182) : dp(208);
+        int cardGap = compactModal ? dp(8) : dp(10);
 
         for (VisualEpgSection section : sections) {
             if (section.entries == null || section.entries.isEmpty()) {
@@ -2592,13 +2526,11 @@ public class MainActivity extends FragmentActivity {
             final int rowIndex = focusRows.size();
             final List<View> rowFocusables = new ArrayList<>();
 
-            TextView sectionTitle = new TextView(this);
+            ComposeView sectionTitle = new ComposeView(this);
             sectionTitle.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            sectionTitle.setText(section.title);
-            sectionTitle.setTextColor(0xFFFFFFFF);
-            sectionTitle.setTextSize(18f);
-            sectionTitle.setTypeface(Typeface.DEFAULT_BOLD);
-            sectionTitle.setPadding(dp(2), rowIndex == 0 ? dp(2) : dp(14), dp(2), dp(8));
+            sectionTitle.setFocusable(false);
+            sectionTitle.setFocusableInTouchMode(false);
+            VisualEpgSectionTitleComposeBinder.bind(sectionTitle, section.title, rowIndex == 0);
             sectionsContainer.addView(sectionTitle);
 
             android.widget.HorizontalScrollView horizontalScroll = new android.widget.HorizontalScrollView(this);
@@ -2622,76 +2554,23 @@ public class MainActivity extends FragmentActivity {
                 boolean scheduled = isProgramScheduled(channel, program, scheduledItems);
                 boolean live = program.progress >= 0;
 
-                LinearLayout card = new LinearLayout(this);
-                card.setOrientation(LinearLayout.VERTICAL);
+                ComposeView card = new ComposeView(this);
                 card.setFocusable(true);
                 card.setFocusableInTouchMode(true);
                 card.setClickable(true);
                 LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(cardWidth, cardHeight);
                 cardParams.rightMargin = cardGap;
                 card.setLayoutParams(cardParams);
-                card.setPadding(dp(8), dp(8), dp(8), dp(8));
-                card.setGravity(Gravity.TOP);
-
-                android.widget.FrameLayout posterFrame = new android.widget.FrameLayout(this);
-                posterFrame.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, posterHeight));
-                posterFrame.setBackgroundColor(0xFF0E1820);
-
-                ImageView posterView = new ImageView(this);
-                posterView.setLayoutParams(new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                posterView.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 String heroPoster = program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon.trim();
-                bindRecordingPoster(posterView, heroPoster);
-                posterFrame.addView(posterView);
-
-                TextView topBadge = new TextView(this);
-                android.widget.FrameLayout.LayoutParams topBadgeParams = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
-                topBadgeParams.setMargins(dp(6), dp(6), dp(6), dp(6));
-                topBadge.setLayoutParams(topBadgeParams);
-                topBadge.setPadding(dp(7), dp(3), dp(7), dp(3));
-                topBadge.setText(scheduled ? getString(R.string.timeline_program_scheduled_short) : (live ? getString(R.string.guide_program_now) : channel.name));
-                topBadge.setTextColor(0xFFFFFFFF);
-                topBadge.setTextSize(10f);
-                topBadge.setTypeface(Typeface.DEFAULT_BOLD);
-                android.graphics.drawable.GradientDrawable topBadgeBg = new android.graphics.drawable.GradientDrawable();
-                topBadgeBg.setCornerRadius(dp(12));
-                topBadgeBg.setColor(scheduled ? 0xCC8E5B16 : 0xCC214A72);
-                topBadge.setBackground(topBadgeBg);
-                posterFrame.addView(topBadge);
-                card.addView(posterFrame);
-
-                TextView programTitle = new TextView(this);
-                LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                titleParams.topMargin = dp(8);
-                programTitle.setLayoutParams(titleParams);
-                programTitle.setText(program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title.trim());
-                programTitle.setTextColor(0xFFFFFFFF);
-                programTitle.setTypeface(Typeface.DEFAULT_BOLD);
-                programTitle.setTextSize(12f);
-                programTitle.setMaxLines(2);
-                programTitle.setMinLines(2);
-                card.addView(programTitle);
-
-                TextView programMeta = new TextView(this);
-                LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                metaParams.topMargin = dp(4);
-                programMeta.setLayoutParams(metaParams);
-                programMeta.setText(shortTime(program.startTime) + " - " + shortTime(program.endTime));
-                programMeta.setTextColor(0xFFC9D8E8);
-                programMeta.setTextSize(10f);
-                programMeta.setMaxLines(1);
-                programMeta.setMinLines(1);
-                card.addView(programMeta);
-
+                String cardTitle = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title.trim();
+                String cardTime = shortTime(program.startTime) + " - " + shortTime(program.endTime);
+                String cardBadge = scheduled ? getString(R.string.timeline_program_scheduled_short) : (live ? getString(R.string.guide_program_now) : channel.name);
                 Runnable applyState = () -> {
-                    boolean focused = card.hasFocus();
-                    android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-                    bg.setCornerRadius(dp(18));
-                    bg.setColor(focused ? 0xFF213447 : 0xFF17232F);
-                    bg.setStroke(dp(2), focused ? 0xFF68B6FF : (scheduled ? 0xFFAF7A21 : 0xFF284156));
-                    card.setBackground(bg);
-                    card.setScaleX(focused ? 1.03f : 1f);
-                    card.setScaleY(focused ? 1.03f : 1f);
+                    VisualEpgCardComposeBinder.bind(
+                            card,
+                            new VisualEpgCardUiModel(cardTitle, cardTime, cardBadge, heroPoster, scheduled, card.hasFocus()),
+                            (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
+                    );
                 };
                 applyState.run();
 
@@ -2705,9 +2584,6 @@ public class MainActivity extends FragmentActivity {
                     }
                     lastVisualEpgChannelId = channel == null ? lastVisualEpgChannelId : channel.id;
                     lastVisualEpgProgramStartTime = program == null ? lastVisualEpgProgramStartTime : program.startTime;
-                    titleText.setText(program.title == null || program.title.trim().isEmpty()
-                            ? getString(R.string.label_program_default)
-                            : program.title.trim());
                     String detailMeta = channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
                     if (live) {
                         detailMeta = detailMeta + "  ·  " + getString(R.string.guide_program_now);
@@ -2715,18 +2591,15 @@ public class MainActivity extends FragmentActivity {
                     if (scheduled) {
                         detailMeta = detailMeta + "  ·  " + getString(R.string.timeline_program_scheduled_short);
                     }
-                    metaText.setText(detailMeta);
-                    descText.setText(program.description == null || program.description.trim().isEmpty()
-                            ? getString(R.string.timeline_program_desc_empty)
-                            : program.description.trim());
-                    if (heroPoster == null || heroPoster.trim().isEmpty()) {
-                        posterImage.setVisibility(View.GONE);
-                        Glide.with(this).clear(posterImage);
-                    } else {
-                        posterImage.setVisibility(View.VISIBLE);
-                        Glide.with(this).load(heroPoster.trim()).fitCenter().into(posterImage);
-                    }
-                    horizontalScroll.post(() -> horizontalScroll.smoothScrollTo(Math.max(0, card.getLeft() - dp(24)), 0));
+                    renderVisualEpgDetail.accept(new TimelineProgramDetailUiModel(
+                            program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title.trim(),
+                            detailMeta,
+                            program.description == null || program.description.trim().isEmpty() ? getString(R.string.timeline_program_desc_empty) : program.description.trim(),
+                            heroPoster,
+                            scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
+                            getString(R.string.timeline_program_action_hint)
+                    ));
+                    horizontalScroll.post(() -> horizontalScroll.smoothScrollTo(Math.max(0, card.getLeft() - (compactModal ? dp(16) : dp(24))), 0));
                     if (verticalScroll != null) {
                         View anchor = focusAnchors.get(card);
                         verticalScroll.postDelayed(() -> scrollVisualEpgSectionIntoPlace(verticalScroll, anchor != null ? anchor : card), 24L);
@@ -2771,7 +2644,9 @@ public class MainActivity extends FragmentActivity {
             focusRows.add(rowFocusables);
         }
 
+        attachDialogViewTreeOwnersRecursive(dialogView);
         android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        visualEpgDialogRef[0] = dialog;
         dialog.setContentView(dialogView);
         dialog.setCancelable(true);
         dialog.setOnShowListener(d -> {
@@ -2783,16 +2658,11 @@ public class MainActivity extends FragmentActivity {
             }
         });
         dialog.setOnDismissListener(d -> enableImmersiveMode());
-        refreshButton.setOnClickListener(v -> {
-            dialog.dismiss();
-            openVisualEpgAroundSelection();
-        });
-        closeButton.setOnClickListener(v -> dialog.dismiss());
         dialog.show();
     }
 
     private void openCurrentProgramInfoFromTouch() {
-        ChannelItem channel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : null;
+        ChannelItem channel = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : null;
         if (channel == null) {
             showStatus(getString(R.string.status_no_program_in_epg));
             return;
@@ -2818,182 +2688,93 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showAboutDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.title_about_app, BuildConfig.VERSION_NAME))
-                .setMessage(getString(R.string.message_about_app))
-                .setPositiveButton(R.string.dialog_close, null)
-                .show();
+        showTvMessagePanel(
+                getString(R.string.title_about_app, BuildConfig.VERSION_NAME),
+                getString(R.string.message_about_app),
+                java.util.Collections.singletonList(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null)),
+                null
+        );
     }
 
     private void showVodInfoDialog(ChannelItem channel) {
         if (channel == null) {
             return;
         }
+        if (isProtectedItem(channel) && isProtectedContentLocked()) {
+            ensureParentalAccessForItem(channel, () -> showVodInfoDialog(channel));
+            return;
+        }
         rememberCurrentVodPosition();
         prepareModalSurface();
-
-        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int panelWidth = Math.min(dp(880), Math.max(dp(720), metrics.widthPixels - dp(140)));
-        int panelMaxHeight = Math.max(dp(420), metrics.heightPixels - dp(120));
-        android.widget.ScrollView panelScrollView = new android.widget.ScrollView(this);
-        panelScrollView.setFillViewport(false);
-        panelScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        panelScrollView.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, panelMaxHeight));
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(16);
-        panel.setPadding(padding, padding, padding, padding);
-        panel.setBackgroundColor(0xF0181E28);
-        panel.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.TOP);
-        panel.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        ImageView posterView = new ImageView(this);
-        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(dp(150), dp(202));
-        posterParams.setMarginEnd(dp(18));
-        posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        posterView.setBackgroundColor(0xFF0E1820);
-        header.addView(posterView, posterParams);
-        bindRecordingPoster(posterView, channel.logoUrl);
-
-        LinearLayout infoColumn = new LinearLayout(this);
-        infoColumn.setOrientation(LinearLayout.VERTICAL);
-        header.addView(infoColumn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView titleView = new TextView(this);
-        titleView.setText(channel.name == null || channel.name.trim().isEmpty() ? getString(R.string.label_program_default) : channel.name.trim());
-        titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(23f);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        titleView.setMaxLines(2);
-        infoColumn.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView metaView = new TextView(this);
-        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        metaParams.topMargin = dp(8);
-        metaView.setText(buildVodInfoMeta(channel));
-        metaView.setTextColor(0xFF9BD0FF);
-        metaView.setTextSize(15f);
-        infoColumn.addView(metaView, metaParams);
-
-        TextView descView = new TextView(this);
-        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        descParams.topMargin = dp(14);
-        descView.setText(buildVodDescription(channel));
-        descView.setTextColor(0xFFD5E6F8);
-        descView.setTextSize(14f);
-        descView.setMaxLines(3);
-        infoColumn.addView(descView, descParams);
-
         long resumeMs = getVodResumePosition(channel.id);
-        if (resumeMs > 0L) {
-            TextView resumeView = new TextView(this);
-            LinearLayout.LayoutParams resumeParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            resumeParams.topMargin = dp(14);
-            resumeView.setText(buildVodProgressLabel(channel, resumeMs));
-            resumeView.setTextColor(0xFFFFD082);
-            resumeView.setTextSize(14f);
-            resumeView.setTypeface(Typeface.DEFAULT_BOLD);
-            resumeView.setGravity(Gravity.CENTER_VERTICAL);
-            resumeView.setMinHeight(dp(38));
-            resumeView.setPadding(dp(12), 0, dp(12), 0);
-            resumeView.setBackground(makeRoundedBackground(0xFF2F3A25, 0xFFFFD782, dp(1), dp(8)));
-            infoColumn.addView(resumeView, resumeParams);
-        }
-
-        TextView primaryTitle = new TextView(this);
-        LinearLayout.LayoutParams primaryTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        primaryTitleParams.topMargin = dp(18);
-        primaryTitle.setText(R.string.vod_detail_primary_actions);
-        primaryTitle.setTextColor(0xFFFFFFFF);
-        primaryTitle.setTextSize(15f);
-        primaryTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        panel.addView(primaryTitle, primaryTitleParams);
-
-        LinearLayout primaryActionsRow = new LinearLayout(this);
-        primaryActionsRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams primaryActionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54));
-        primaryActionsParams.topMargin = dp(8);
-        panel.addView(primaryActionsRow, primaryActionsParams);
-
         final Dialog[] dialogHolder = new Dialog[1];
-        List<TextView> primaryActions = new ArrayList<>();
-        addVodDetailPrimaryAction(primaryActionsRow, primaryActions, getString(R.string.vod_action_play), () -> {
+        List<VodPanelActionUiModel> primaryActions = new ArrayList<>();
+        primaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_play), true, () -> {
             Dialog activeDialog = dialogHolder[0];
             if (activeDialog != null && activeDialog.isShowing()) {
                 activeDialog.dismiss();
             }
             playVodItem(channel, true);
-        });
+        }));
         if (resumeMs > 30_000L) {
-            addVodDetailPrimaryAction(primaryActionsRow, primaryActions, getString(R.string.vod_action_continue), () -> {
+            primaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_continue), true, () -> {
                 Dialog activeDialog = dialogHolder[0];
                 if (activeDialog != null && activeDialog.isShowing()) {
                     activeDialog.dismiss();
                 }
                 playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
-            });
-            addVodDetailPrimaryAction(primaryActionsRow, primaryActions, getString(R.string.vod_action_start_over), () -> {
+            }));
+            primaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_start_over), true, () -> {
                 Dialog activeDialog = dialogHolder[0];
                 if (activeDialog != null && activeDialog.isShowing()) {
                     activeDialog.dismiss();
                 }
                 clearVodResumePosition(channel.id);
                 playChannelItemInternal(channel, true, 0L);
-            });
+            }));
         }
-
-        TextView secondaryTitle = new TextView(this);
-        LinearLayout.LayoutParams secondaryTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        secondaryTitleParams.topMargin = dp(16);
-        secondaryTitle.setText(R.string.vod_detail_secondary_actions);
-        secondaryTitle.setTextColor(0xFFB7C4D6);
-        secondaryTitle.setTextSize(13f);
-        secondaryTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        panel.addView(secondaryTitle, secondaryTitleParams);
-
-        TextView hintView = new TextView(this);
-        LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hintParams.topMargin = dp(6);
-        hintView.setText(R.string.vod_detail_action_hint);
-        hintView.setTextColor(0xFFB7C4D6);
-        hintView.setTextSize(12f);
-        panel.addView(hintView, hintParams);
-
-        LinearLayout actionsColumn = new LinearLayout(this);
-        actionsColumn.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsParams.topMargin = dp(8);
-        panel.addView(actionsColumn, actionsParams);
-
-        List<TextView> secondaryActions = new ArrayList<>();
-        addVodDetailAction(actionsColumn, secondaryActions, getString(R.string.vod_action_more_vod), () -> {
+        List<VodPanelActionUiModel> secondaryActions = new ArrayList<>();
+        secondaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_more_vod), false, () -> {
             Dialog activeDialog = dialogHolder[0];
             if (activeDialog != null && activeDialog.isShowing()) {
                 activeDialog.dismiss();
             }
             showVodActionsDialog(channel);
-        });
-        addVodDetailAction(actionsColumn, secondaryActions, getString(favoriteChannelIds.contains(channel.id) ? R.string.vod_action_remove_favorite : R.string.vod_action_add_favorite), () -> toggleFavoriteForChannel(channel));
+        }));
+        secondaryActions.add(new VodPanelActionUiModel(getString(favoriteChannelIds.contains(channel.id) ? R.string.vod_action_remove_favorite : R.string.vod_action_add_favorite), false, () -> toggleFavoriteForChannel(channel)));
         if (resumeMs > 30_000L) {
-            addVodDetailAction(actionsColumn, secondaryActions, getString(R.string.vod_action_clear_progress_vod), () -> {
+            secondaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_clear_progress_vod), false, () -> {
                 clearVodResumePosition(channel.id);
                 showStatus(getString(R.string.vod_status_progress_cleared));
-            });
+            }));
         }
-        wireVodDetailActions(primaryActions, secondaryActions, panelScrollView);
-        panelScrollView.addView(panel, new android.widget.ScrollView.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        Dialog dialog = showCenteredTvPanelDialog(panelScrollView, () -> Glide.with(this).clear(posterView));
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
-        if (!primaryActions.isEmpty()) {
-            primaryActions.get(0).post(() -> {
-                panelScrollView.scrollTo(0, 0);
-                primaryActions.get(0).requestFocus();
-            });
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        VodDetailPanelComposeBinder.bind(
+                composeView,
+                new VodDetailPanelUiModel(
+                        channel.name == null || channel.name.trim().isEmpty() ? getString(R.string.label_program_default) : channel.name.trim(),
+                        buildVodInfoMeta(channel),
+                        buildVodDescription(channel),
+                        resumeMs > 0L ? buildVodProgressLabel(channel, resumeMs) : "",
+                        channel.logoUrl,
+                        getString(R.string.vod_detail_primary_actions),
+                        getString(R.string.vod_detail_secondary_actions),
+                        getString(R.string.vod_detail_action_hint),
+                        primaryActions,
+                        secondaryActions
+                ),
+                (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
+        );
+        dialog.setContentView(composeView);
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
         }
     }
 
@@ -3001,8 +2782,8 @@ public class MainActivity extends FragmentActivity {
         android.widget.FrameLayout root = new android.widget.FrameLayout(this);
         root.setBackgroundColor(0xCC000000);
         android.widget.FrameLayout.LayoutParams contentParams = new android.widget.FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                resolveCenteredDialogWidth(),
+                resolveCenteredDialogHeight(),
                 Gravity.CENTER
         );
         root.addView(contentView, contentParams);
@@ -3025,6 +2806,22 @@ public class MainActivity extends FragmentActivity {
         return dialog;
     }
 
+    private int resolveCenteredDialogWidth() {
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        if (screenWidth <= dp(720)) {
+            return Math.max(dp(280), screenWidth - dp(24));
+        }
+        return ViewGroup.LayoutParams.WRAP_CONTENT;
+    }
+
+    private int resolveCenteredDialogHeight() {
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        if (screenHeight <= dp(900)) {
+            return Math.max(dp(320), screenHeight - dp(40));
+        }
+        return ViewGroup.LayoutParams.WRAP_CONTENT;
+    }
+
     private String buildVodProgressLabel(ChannelItem channel, long resumeMs) {
         String progress = getString(R.string.vod_resume_meta, formatDurationShort(resumeMs));
         if (channel != null && channel.vodDurationSeconds > 0L) {
@@ -3044,35 +2841,29 @@ public class MainActivity extends FragmentActivity {
         return background;
     }
 
-    private void addVodDetailPrimaryAction(LinearLayout parent, List<TextView> actionRows, String label, Runnable action) {
+    private boolean isCompactModalLayout() {
+        return getResources().getDisplayMetrics().widthPixels <= dp(720);
+    }
+
+    private void addVodDetailPrimaryAction(LinearLayout parent, List<View> actionRows, String label, Runnable action) {
         if (parent == null || label == null) {
             return;
         }
-        TextView row = new TextView(this);
-        row.setText(label);
-        row.setTextColor(0xFF111820);
-        row.setTextSize(15f);
-        row.setTypeface(Typeface.DEFAULT_BOLD);
-        row.setGravity(Gravity.CENTER);
-        row.setSingleLine(true);
-        row.setEllipsize(TextUtils.TruncateAt.END);
-        row.setMinHeight(dp(54));
-        row.setPadding(dp(12), 0, dp(12), 0);
-        row.setBackground(makeRoundedBackground(0xFFFFD782, 0xFFFFFFFF, dp(1), dp(10)));
+        boolean compactModal = isCompactModalLayout();
+        ComposeView row = new ComposeView(this);
+        row.setTag(label);
         row.setFocusable(true);
         row.setFocusableInTouchMode(true);
         row.setClickable(true);
-        row.setOnFocusChangeListener((v, hasFocus) -> row.setBackground(hasFocus
-                ? makeRoundedBackground(0xFFFFFFFF, 0xFFFFD782, dp(3), dp(10))
-                : makeRoundedBackground(0xFFFFD782, 0xFFFFFFFF, dp(1), dp(10))));
+        VodActionComposeBinder.bind(row, new VodActionUiModel(label, true, false));
         row.setOnClickListener(v -> {
             if (action != null) {
                 action.run();
             }
         });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(54), 1f);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, compactModal ? dp(48) : dp(54), 1f);
         if (actionRows != null && !actionRows.isEmpty()) {
-            params.setMarginStart(dp(8));
+            params.setMarginStart(compactModal ? dp(6) : dp(8));
         }
         parent.addView(row, params);
         if (actionRows != null) {
@@ -3080,44 +2871,39 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private void addVodDetailAction(LinearLayout parent, List<TextView> actionRows, String label, Runnable action) {
+    private void addVodDetailAction(LinearLayout parent, List<View> actionRows, String label, Runnable action) {
         if (parent == null || label == null) {
             return;
         }
-        TextView row = new TextView(this);
-        row.setText(label);
-        row.setTextColor(0xFFFFFFFF);
-        row.setTextSize(16f);
-        row.setTypeface(Typeface.DEFAULT_BOLD);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinHeight(dp(48));
-        row.setPadding(dp(14), 0, dp(14), 0);
-        row.setBackgroundResource(R.drawable.search_channel_item_bg);
+        boolean compactModal = isCompactModalLayout();
+        ComposeView row = new ComposeView(this);
+        row.setTag(label);
         row.setFocusable(true);
         row.setFocusableInTouchMode(true);
         row.setClickable(true);
+        VodActionComposeBinder.bind(row, new VodActionUiModel(label, false, false));
         row.setOnClickListener(v -> {
             if (action != null) {
                 action.run();
             }
         });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
-        params.topMargin = actionRows == null || actionRows.isEmpty() ? 0 : dp(8);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, compactModal ? dp(42) : dp(48));
+        params.topMargin = actionRows == null || actionRows.isEmpty() ? 0 : (compactModal ? dp(6) : dp(8));
         parent.addView(row, params);
         if (actionRows != null) {
             actionRows.add(row);
         }
     }
 
-    private void wireVodDetailActions(List<TextView> primaryActions, List<TextView> secondaryActions, android.widget.ScrollView scrollView) {
+    private void wireVodDetailActions(List<View> primaryActions, List<View> secondaryActions, android.widget.ScrollView scrollView) {
         if (primaryActions != null) {
             for (int i = 0; i < primaryActions.size(); i++) {
                 final int index = i;
-                TextView action = primaryActions.get(i);
+                View action = primaryActions.get(i);
                 action.setOnFocusChangeListener((v, hasFocus) -> {
-                    action.setBackground(hasFocus
-                            ? makeRoundedBackground(0xFFFFFFFF, 0xFFFFD782, dp(3), dp(10))
-                            : makeRoundedBackground(0xFFFFD782, 0xFFFFFFFF, dp(1), dp(10)));
+                    if (action instanceof ComposeView) {
+                        VodActionComposeBinder.bind((ComposeView) action, new VodActionUiModel(actionLabel(action), true, hasFocus));
+                    }
                     if (hasFocus) {
                         ensureVodVisualItemVisible(scrollView, action);
                     }
@@ -3142,9 +2928,13 @@ public class MainActivity extends FragmentActivity {
         if (secondaryActions != null) {
             for (int i = 0; i < secondaryActions.size(); i++) {
                 final int index = i;
-                TextView action = secondaryActions.get(i);
+                View action = secondaryActions.get(i);
                 action.setOnFocusChangeListener((v, hasFocus) -> {
-                    action.setSelected(hasFocus);
+                    if (action instanceof ComposeView) {
+                        VodActionComposeBinder.bind((ComposeView) action, new VodActionUiModel(actionLabel(action), false, hasFocus));
+                    } else {
+                        action.setSelected(hasFocus);
+                    }
                     if (hasFocus) {
                         ensureVodVisualItemVisible(scrollView, action);
                     }
@@ -3170,109 +2960,100 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private String actionLabel(View action) {
+        Object tag = action == null ? null : action.getTag();
+        return tag == null ? "" : String.valueOf(tag);
+    }
+
     private void showVodActionsDialog(ChannelItem channel) {
         if (channel == null) {
             return;
         }
         prepareModalSurface();
-        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int panelWidth = Math.min(dp(720), Math.max(dp(620), metrics.widthPixels - dp(220)));
-        int panelMaxHeight = Math.max(dp(420), metrics.heightPixels - dp(120));
-        android.widget.ScrollView panelScrollView = new android.widget.ScrollView(this);
-        panelScrollView.setFillViewport(false);
-        panelScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        panelScrollView.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, panelMaxHeight));
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(16);
-        panel.setPadding(padding, padding, padding, padding);
-        panel.setBackgroundColor(0xF0181E28);
-        panel.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView titleView = new TextView(this);
-        titleView.setText(getString(R.string.vod_actions_title, displayName(channel)));
-        titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(20f);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        titleView.setMaxLines(2);
-        panel.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView metaView = new TextView(this);
-        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        metaParams.topMargin = dp(6);
-        metaView.setText(buildVodInfoMeta(channel));
-        metaView.setTextColor(0xFFB7C4D6);
-        metaView.setTextSize(13f);
-        panel.addView(metaView, metaParams);
-
-        LinearLayout actionsColumn = new LinearLayout(this);
-        actionsColumn.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsParams.topMargin = dp(12);
-        panel.addView(actionsColumn, actionsParams);
-
         final Dialog[] dialogHolder = new Dialog[1];
-        List<TextView> actionRows = new ArrayList<>();
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_play_vod), () -> {
+        List<VodPanelActionUiModel> actionRows = new ArrayList<>();
+        actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_play_vod), false, () -> {
             dismissDialog(dialogHolder[0]);
             clearVodResumePosition(channel.id);
             playChannelItemInternal(channel, true, 0L);
-        });
+        }));
         if (getVodResumePosition(channel.id) > 30_000L) {
-            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_continue_vod), () -> {
+            actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_continue_vod), false, () -> {
                 dismissDialog(dialogHolder[0]);
                 playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
-            });
-            addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_start_over_vod), () -> {
+            }));
+            actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_start_over_vod), false, () -> {
                 dismissDialog(dialogHolder[0]);
                 clearVodResumePosition(channel.id);
                 playChannelItemInternal(channel, true, 0L);
-            });
+            }));
         }
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_diagnostics), () -> showVodDiagnosticsDialog(channel));
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_retry_route), () -> {
+        actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_diagnostics), false, () -> showVodDiagnosticsDialog(channel)));
+        actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_retry_route), false, () -> {
             dismissDialog(dialogHolder[0]);
             retryCurrentPlaybackWithNextRoute(channel);
-        });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_temporary_mode), () -> {
+        }));
+        actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_temporary_mode), false, () -> {
             dismissDialog(dialogHolder[0]);
             showTemporaryPlaybackModeDialog(channel);
-        });
-        addVodDetailAction(actionsColumn, actionRows, getString(favoriteChannelIds.contains(channel.id) ? R.string.vod_action_remove_favorite : R.string.vod_action_add_favorite), () -> toggleFavoriteForChannel(channel));
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_personal_lists), () -> {
+        }));
+        actionRows.add(new VodPanelActionUiModel(getString(favoriteChannelIds.contains(channel.id) ? R.string.vod_action_remove_favorite : R.string.vod_action_add_favorite), false, () -> toggleFavoriteForChannel(channel)));
+        actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_personal_lists), false, () -> {
             dismissDialog(dialogHolder[0]);
             showPersonalListsDialog(channel);
-        });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_playback_diagnostics), () -> {
+        }));
+        actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_playback_diagnostics), false, () -> {
             dismissDialog(dialogHolder[0]);
             currentPlaybackVodId = channel.id;
             showPlaybackDiagnosticsDialog();
-        });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_clear_progress_vod), () -> {
+        }));
+        actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_clear_progress_vod), false, () -> {
             clearVodResumePosition(channel.id);
             showStatus(getString(R.string.vod_status_progress_cleared));
-        });
-        wireVodActionRows(actionRows, panelScrollView);
-        panelScrollView.addView(panel, new android.widget.ScrollView.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-        Dialog dialog = showCenteredTvPanelDialog(panelScrollView, null);
+        }));
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
-        if (!actionRows.isEmpty()) {
-            actionRows.get(0).post(() -> {
-                panelScrollView.scrollTo(0, 0);
-                actionRows.get(0).requestFocus();
-            });
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        VodDetailPanelComposeBinder.bind(
+                composeView,
+                new VodDetailPanelUiModel(
+                        getString(R.string.vod_actions_title, displayName(channel)),
+                        buildVodInfoMeta(channel),
+                        "",
+                        "",
+                        channel.logoUrl,
+                        "",
+                        getString(R.string.vod_detail_secondary_actions),
+                        getString(R.string.vod_detail_action_hint),
+                        new ArrayList<>(),
+                        actionRows
+                ),
+                (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
+        );
+        dialog.setContentView(composeView);
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
         }
     }
 
-    private void wireVodActionRows(List<TextView> actionRows, android.widget.ScrollView scrollView) {
+    private void wireVodActionRows(List<View> actionRows, android.widget.ScrollView scrollView) {
         if (actionRows == null) {
             return;
         }
         for (int i = 0; i < actionRows.size(); i++) {
             final int index = i;
-            TextView action = actionRows.get(i);
+            View action = actionRows.get(i);
             action.setOnFocusChangeListener((v, hasFocus) -> {
-                action.setSelected(hasFocus);
+                if (action instanceof ComposeView) {
+                    VodActionComposeBinder.bind((ComposeView) action, new VodActionUiModel(actionLabel(action), false, hasFocus));
+                } else {
+                    action.setSelected(hasFocus);
+                }
                 if (hasFocus) {
                     ensureVodVisualItemVisible(scrollView, action);
                 }
@@ -3352,13 +3133,11 @@ public class MainActivity extends FragmentActivity {
         if (channel.playUrl != null && channel.playUrl.contains("/api/vod/runtime/stream/")) {
             appendDiagnosticLine(message, getString(R.string.vod_diagnostics_runtime_hls));
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.vod_action_diagnostics)
-                .setMessage(message.toString().trim())
-                .setPositiveButton(R.string.vod_action_play, (d, which) -> playVodItem(channel, true))
-                .setNeutralButton(R.string.diagnostics_action_temporary_mode, (d, which) -> showTemporaryPlaybackModeDialog(channel))
-                .setNegativeButton(R.string.dialog_close, null)
-                .show();
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.vod_action_play), false, () -> playVodItem(channel, true)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.diagnostics_action_temporary_mode), false, () -> showTemporaryPlaybackModeDialog(channel)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(getString(R.string.vod_action_diagnostics), message.toString().trim(), actions, null);
     }
 
     private void showCurrentProgramInfoDialog(ChannelItem channel, EpgRepository.EpgProgram program) {
@@ -3408,18 +3187,18 @@ public class MainActivity extends FragmentActivity {
         descView.setTextSize(15f);
         container.addView(descView);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.title_touch_program_info))
-                .setView(container)
-                .setPositiveButton(isOfflineRecordingsDisabled() ? R.string.dialog_close : R.string.menu_record, (d, which) -> {
-                    if (!isOfflineRecordingsDisabled()) {
-                        scheduleProgram(channel, program);
-                    }
-                })
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
-        dialog.setOnDismissListener(d -> Glide.with(this).clear(posterView));
-        dialog.show();
+        String title = program.title == null || program.title.trim().isEmpty() ? channel.name : program.title;
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        if (!isOfflineRecordingsDisabled()) {
+            actions.add(new TvMessageActionUiModel(getString(R.string.menu_record), false, () -> scheduleProgram(channel, program)));
+        }
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(
+                getString(R.string.title_touch_program_info),
+                title + "\n" + channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime) + "\n\n" + description,
+                actions,
+                () -> Glide.with(this).clear(posterView)
+        );
     }
 
     private void createScheduleFromEndpoint(ChannelItem ch, boolean next) {
@@ -3677,13 +3456,15 @@ public class MainActivity extends FragmentActivity {
         if (item == null || item.playable) {
             return;
         }
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.title_recording_cancel_confirm)
-                .setMessage(getString(R.string.recording_cancel_confirm_message, buildRecordingTitle(item), buildRecordingMeta(item)))
-                .setPositiveButton(R.string.recording_action_cancel_confirm, (unused, which) -> cancelScheduledRecording(item))
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        showTvDialog(dialog);
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_cancel_confirm), true, () -> cancelScheduledRecording(item)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, null));
+        showTvMessagePanel(
+                getString(R.string.title_recording_cancel_confirm),
+                getString(R.string.recording_cancel_confirm_message, buildRecordingTitle(item), buildRecordingMeta(item)),
+                actions,
+                null
+        );
     }
 
     private void cancelScheduledRecording(RecordingsRepository.RecordingItem item) {
@@ -3722,22 +3503,13 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.recording_action_extend),
                 getString(R.string.recording_action_shorten)
         };
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.title_recording_edit_time)
-                .setItems(options, (unused, which) -> {
-                    if (which == 0) {
-                        adjustSelectedScheduledRecording(-15L * 60L * 1000L, -15L * 60L * 1000L);
-                    } else if (which == 1) {
-                        adjustSelectedScheduledRecording(15L * 60L * 1000L, 15L * 60L * 1000L);
-                    } else if (which == 2) {
-                        adjustSelectedScheduledRecording(0L, 15L * 60L * 1000L);
-                    } else if (which == 3) {
-                        adjustSelectedScheduledRecording(0L, -15L * 60L * 1000L);
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        showTvDialog(dialog);
+        List<String> labels = Arrays.asList(options);
+        List<Runnable> actions = new ArrayList<>();
+        actions.add(() -> adjustSelectedScheduledRecording(-15L * 60L * 1000L, -15L * 60L * 1000L));
+        actions.add(() -> adjustSelectedScheduledRecording(15L * 60L * 1000L, 15L * 60L * 1000L));
+        actions.add(() -> adjustSelectedScheduledRecording(0L, 15L * 60L * 1000L));
+        actions.add(() -> adjustSelectedScheduledRecording(0L, -15L * 60L * 1000L));
+        showTvOptionsDialog(R.string.title_recording_edit_time, null, labels, actions);
     }
 
     private void adjustSelectedScheduledRecording(long startDeltaMs, long endDeltaMs) {
@@ -3801,13 +3573,10 @@ public class MainActivity extends FragmentActivity {
             hideOverlay();
         };
         if (resumePositionMs > 30_000L) {
-            AlertDialog dialog = new AlertDialog.Builder(this)
-                    .setTitle(R.string.title_recordings_visual)
-                    .setMessage(getString(R.string.recording_resume_prompt, formatPlaybackPosition(resumePositionMs)))
-                    .setPositiveButton(R.string.recording_resume_continue, (unused, which) -> resumeFromSaved.run())
-                    .setNegativeButton(R.string.recording_resume_restart, (unused, which) -> startFromBeginning.run())
-                    .create();
-            showTvDialog(dialog);
+            List<TvMessageActionUiModel> actions = new ArrayList<>();
+            actions.add(new TvMessageActionUiModel(getString(R.string.recording_resume_continue), false, resumeFromSaved));
+            actions.add(new TvMessageActionUiModel(getString(R.string.recording_resume_restart), true, startFromBeginning));
+            showTvMessagePanel(getString(R.string.title_recordings_visual), getString(R.string.recording_resume_prompt, formatPlaybackPosition(resumePositionMs)), actions, null);
             return;
         }
         startFromBeginning.run();
@@ -3844,12 +3613,7 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(recordingsController.isScheduledMode() ? R.string.recording_action_switch_completed : R.string.recording_action_switch_scheduled));
         actions.add(() -> switchRecordingsMode(!recordingsController.isScheduledMode()));
         addRecordingFilterActions(options, actions, item);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.title_recording_actions)
-                .setItems(options.toArray(new String[0]), (unused, which) -> actions.get(which).run())
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        showTvDialog(dialog);
+        showTvOptionsDialog(R.string.title_recording_actions, null, options, actions);
     }
 
     private void clearSelectedRecordingProgress(RecordingsRepository.RecordingItem item) {
@@ -3857,10 +3621,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         clearRecordingResumePosition(item.id);
-        if (recordingsAdapter != null) {
-            recordingsAdapter.notifyDataSetChanged();
-        }
-        updateRecordingsDetailPanel();
+        refreshRecordingsPanelSurface();
         showStatus(getString(R.string.status_recording_progress_cleared));
     }
 
@@ -3969,13 +3730,13 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         int size = channels.size();
-        int anchor = currentIndex < 0 ? 0 : currentIndex;
+        int anchor = overlayNavigationState.currentIndex < 0 ? 0 : overlayNavigationState.currentIndex;
         int next = ((anchor + delta) % size + size) % size;
         tuneToIndex(next, true);
     }
 
     private void tuneSelectedChannel() {
-        tuneToIndex(selectedOverlayIndex, true);
+        tuneToIndex(overlayNavigationState.selectedOverlayIndex, true);
         hideOverlay();
     }
 
@@ -3983,8 +3744,8 @@ public class MainActivity extends FragmentActivity {
         syncOverlayCoordinator();
         channelOverlayCoordinator.moveOverlaySelection(delta);
         syncOverlayStateFromCoordinator();
-        channelAdapter.notifyDataSetChanged();
-        channelList.scrollToPosition(selectedOverlayIndex);
+        refreshOverlayChannelList();
+        scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         showOverlay();
     }
 
@@ -4024,17 +3785,22 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         prefs.edit()
-                .putString(PREF_LAST_FILTER_KEY, selectedFilterKey == null || selectedFilterKey.trim().isEmpty() ? "all" : selectedFilterKey)
-                .putBoolean(PREF_FAVORITES_ONLY, favoritesOnly)
+                .putString(PREF_LAST_FILTER_KEY, overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.trim().isEmpty() ? "all" : overlayNavigationState.selectedFilterKey)
+                .putBoolean(PREF_FAVORITES_ONLY, overlayNavigationState.favoritesOnly)
                 .apply();
     }
 
     private void cycleFilter(int delta) {
+        ChannelFilter targetFilter = findAdjacentFilter(delta);
+        if (targetFilter != null && isProtectedFilter(targetFilter) && isProtectedContentLocked()) {
+            ensureParentalAccessForFilterKey(targetFilter.key, () -> cycleFilter(delta));
+            return;
+        }
         syncOverlayCoordinator();
         ChannelFilter filter = channelOverlayCoordinator.cycleFilter(delta);
         syncOverlayStateFromCoordinator();
         persistNavigationState();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
 
@@ -4044,21 +3810,106 @@ public class MainActivity extends FragmentActivity {
             return;
         }
 
-        if (currentIndex < 0) {
+        if (overlayNavigationState.currentIndex < 0) {
             tuneToIndex(0, true);
-        } else if (selectedOverlayIndex >= 0) {
-            channelList.scrollToPosition(selectedOverlayIndex);
+        } else if (overlayNavigationState.selectedOverlayIndex >= 0) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         }
 
         if (filter != null) {
-            showStatus(getString(R.string.status_filter_changed, filter.label));
+            showStatus(getString(R.string.status_filter_changed, decorateProtectedFilterLabel(filter)));
         }
         showOverlay();
     }
 
-    private void updateFilterText() {
+    private void showFilterPickerDialog() {
+        if (filters.isEmpty()) {
+            showStatus(getString(R.string.status_no_channels_for_filter));
+            return;
+        }
+        List<ChannelFilter> selectableFilters = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        int checkedIndex = -1;
+        for (ChannelFilter filter : filters) {
+            if (filter == null || filter.key == null || filter.key.trim().isEmpty()) {
+                continue;
+            }
+            selectableFilters.add(filter);
+            labels.add(decorateProtectedFilterLabel(filter));
+            if (filter.key.equals(overlayNavigationState.selectedFilterKey)) {
+                checkedIndex = selectableFilters.size() - 1;
+            }
+        }
+        if (selectableFilters.isEmpty()) {
+            showStatus(getString(R.string.status_no_channels_for_filter));
+            return;
+        }
+        List<Runnable> actions = new ArrayList<>();
+        for (int i = 0; i < selectableFilters.size(); i++) {
+            final ChannelFilter selected = selectableFilters.get(i);
+            if (i == checkedIndex) {
+                labels.set(i, getString(R.string.settings_selected_prefix, labels.get(i)));
+            }
+            actions.add(() -> applySelectedFilterFromPicker(selected));
+        }
+        showTvOptionsDialog(R.string.filter_navigation_hint, null, labels, actions);
+    }
+
+    private void applySelectedFilterFromPicker(ChannelFilter filter) {
+        if (filter == null || filter.key == null || filter.key.trim().isEmpty()) {
+            return;
+        }
+        if (isProtectedFilter(filter) && isProtectedContentLocked()) {
+            ensureParentalAccessForFilterKey(filter.key, () -> applySelectedFilterFromPicker(filter));
+            return;
+        }
         syncOverlayCoordinator();
-        channelOverlayCoordinator.updateFilterText(filterText, this);
+        channelOverlayCoordinator.setSearchQuery("");
+        channelOverlayCoordinator.setFavoritesOnly("favorites".equals(filter.key));
+        channelOverlayCoordinator.setSelectedFilterKey(filter.key);
+        String currentId = overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()
+                ? channels.get(overlayNavigationState.currentIndex).id
+                : lastChannelId == null ? "" : lastChannelId;
+        channelOverlayCoordinator.refreshVisibleChannels(currentId, currentId);
+        syncOverlayStateFromCoordinator();
+        persistNavigationState();
+        clearOverlaySearchQuery();
+        refreshOverlayChannelList();
+        updateFilterText();
+        updateOverlaySearchState();
+        if (channels.isEmpty()) {
+            showStatus(getString(R.string.status_no_channels_for_filter));
+        } else if (overlayNavigationState.selectedOverlayIndex >= 0) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
+        }
+        showStatus(getString(R.string.status_filter_changed, decorateProtectedFilterLabel(filter)));
+        showOverlay();
+    }
+
+    private ChannelFilter findAdjacentFilter(int delta) {
+        if (filters.isEmpty()) {
+            return null;
+        }
+        int currentFilterIndex = 0;
+        for (int i = 0; i < filters.size(); i++) {
+            ChannelFilter filter = filters.get(i);
+            if (filter != null && filter.key != null && filter.key.equals(overlayNavigationState.selectedFilterKey)) {
+                currentFilterIndex = i;
+                break;
+            }
+        }
+        int next = currentFilterIndex + delta;
+        if (next < 0) {
+            next = filters.size() - 1;
+        }
+        if (next >= filters.size()) {
+            next = 0;
+        }
+        return filters.get(next);
+    }
+
+    private void updateFilterText() {
+        updateQuickAccessButtons();
     }
 
     private void saveFavorites() {
@@ -4069,24 +3920,24 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void toggleFavoriteSelected() {
-        if (channels.isEmpty() || selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
+        if (channels.isEmpty() || overlayNavigationState.selectedOverlayIndex < 0 || overlayNavigationState.selectedOverlayIndex >= channels.size()) {
             return;
         }
         syncOverlayCoordinator();
         boolean added = channelOverlayCoordinator.toggleFavoriteSelected();
         syncOverlayStateFromCoordinator();
         showStatus(getString(added ? R.string.status_favorite_added : R.string.status_favorite_removed));
-        String selectedId = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? channels.get(selectedOverlayIndex).id : null;
+        String selectedId = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? channels.get(overlayNavigationState.selectedOverlayIndex).id : null;
         if (added) {
             favoriteOrderStore.addIfMissing(selectedId);
         } else {
             favoriteOrderStore.remove(selectedId);
         }
         saveFavorites();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateOverlaySearchState();
-        if (selectedOverlayIndex >= 0) {
-            channelList.scrollToPosition(selectedOverlayIndex);
+        if (overlayNavigationState.selectedOverlayIndex >= 0) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         }
         showOverlay();
     }
@@ -4098,7 +3949,7 @@ public class MainActivity extends FragmentActivity {
         }
         int index = findChannelIndexById(channelItem.id);
         if (index >= 0) {
-            selectedOverlayIndex = index;
+            overlayNavigationState.selectedOverlayIndex = index;
             toggleFavoriteSelected();
             return;
         }
@@ -4120,7 +3971,7 @@ public class MainActivity extends FragmentActivity {
             }
         }
         saveFavorites();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateOverlaySearchState();
         showStatus(getString(added ? R.string.status_favorite_added : R.string.status_favorite_removed));
     }
@@ -4140,18 +3991,16 @@ public class MainActivity extends FragmentActivity {
             added = true;
         }
         saveFavorites();
-        if (channelAdapter != null) {
-            channelAdapter.notifyDataSetChanged();
-        }
+        refreshOverlayChannelList();
         updateOverlaySearchState();
         showStatus(getString(added ? R.string.status_favorite_added : R.string.status_favorite_removed));
     }
 
     private void moveFavoriteSelected(int delta) {
-        if (channels.isEmpty() || selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
+        if (channels.isEmpty() || overlayNavigationState.selectedOverlayIndex < 0 || overlayNavigationState.selectedOverlayIndex >= channels.size()) {
             return;
         }
-        ChannelItem selected = channels.get(selectedOverlayIndex);
+        ChannelItem selected = channels.get(overlayNavigationState.selectedOverlayIndex);
         if (!selected.favorite) {
             showStatus(getString(R.string.status_favorite_move_unavailable));
             return;
@@ -4162,12 +4011,12 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         syncOverlayCoordinator();
-        String currentId = currentIndex >= 0 && currentIndex < channels.size() ? channels.get(currentIndex).id : "";
+        String currentId = overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size() ? channels.get(overlayNavigationState.currentIndex).id : "";
         channelOverlayCoordinator.refreshVisibleChannels(currentId, selected.id);
         syncOverlayStateFromCoordinator();
-        channelAdapter.notifyDataSetChanged();
-        if (selectedOverlayIndex >= 0) {
-            channelList.scrollToPosition(selectedOverlayIndex);
+        refreshOverlayChannelList();
+        if (overlayNavigationState.selectedOverlayIndex >= 0) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         }
         showStatus(getString(delta < 0 ? R.string.status_favorite_moved_up : R.string.status_favorite_moved_down));
         showOverlay();
@@ -4177,7 +4026,7 @@ public class MainActivity extends FragmentActivity {
         syncOverlayCoordinator();
         boolean nowFavoritesOnly = channelOverlayCoordinator.toggleFavoritesOnlyMode();
         syncOverlayStateFromCoordinator();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateOverlaySearchState();
 
         if (channels.isEmpty() && nowFavoritesOnly) {
@@ -4185,8 +4034,8 @@ public class MainActivity extends FragmentActivity {
             return;
         }
 
-        if (selectedOverlayIndex >= 0) {
-            channelList.scrollToPosition(selectedOverlayIndex);
+        if (overlayNavigationState.selectedOverlayIndex >= 0) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         }
         showStatus(getString(nowFavoritesOnly ? R.string.status_favorites_only_on : R.string.status_favorites_only_off));
         showOverlay();
@@ -4204,8 +4053,13 @@ public class MainActivity extends FragmentActivity {
         return multiViewContainer != null && multiViewContainer.getVisibility() == View.VISIBLE;
     }
 
+    private boolean isZapBannerVisible() {
+        return zapBannerState.isVisible() && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE;
+    }
+
     private void showOverlay() {
         clearQuickSearchOverlay();
+        hideZapBanner();
         hideRecordingsPanel();
         closeMultiView();
         if (touchDeviceMode) {
@@ -4235,12 +4089,20 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void hideZapBanner() {
+        uiHandler.removeCallbacks(hideZapBannerRunnable);
+        if (zapBanner != null) {
+            zapBanner.setVisibility(View.GONE);
+        }
+        zapBannerState.hide();
+    }
+
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result) {
         showRecordingsPanel(result, null);
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result, String preferredId) {
-        if (recordingsPanel == null || recordingsRecyclerView == null) {
+        if (recordingsPanel == null) {
             showRecordingsDialog(result);
             return;
         }
@@ -4257,11 +4119,11 @@ public class MainActivity extends FragmentActivity {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
         recordingsController.applyResult(result, preferredId);
+        recordingsHeaderFocusIndex = result.scheduledMode ? 1 : 0;
+        recordingsHeaderFocusActive = false;
         Log.d(TAG, "showRecordingsPanel scheduled=" + result.scheduledMode + " count=" + result.items.size());
-        recordingsAdapter = new RecordingsAdapter(result);
-        recordingsRecyclerView.setAdapter(recordingsAdapter);
-        recordingsRecyclerView.scrollToPosition(recordingsController.getSelectedIndex());
-        updateRecordingsDetailPanel();
+        pendingRecordingsListScrollIndex = recordingsController.getSelectedIndex();
+        refreshRecordingsPanelSurface();
         recordingsPanel.setVisibility(View.VISIBLE);
         scheduleRecordingsAutoRefresh();
         Log.d(TAG, "recordingsPanel visible=" + (recordingsPanel.getVisibility() == View.VISIBLE));
@@ -4270,10 +4132,12 @@ public class MainActivity extends FragmentActivity {
     private void hideRecordingsPanel() {
         uiHandler.removeCallbacks(recordingsAutoRefreshRunnable);
         recordingsController.clearCurrentResult();
+        recordingsHeaderFocusIndex = -1;
+        recordingsHeaderFocusActive = false;
         if (recordingsPanel != null) {
             recordingsPanel.setVisibility(View.GONE);
         }
-        updateRecordingsDetailPanel();
+        refreshRecordingsPanelSurface();
     }
 
     private void scheduleRecordingsAutoRefresh() {
@@ -4334,7 +4198,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateQuickSearchOverlay() {
-        if (quickSearchOverlay == null || quickSearchQueryText == null || quickSearchResultText == null) {
+        if (quickSearchOverlay == null) {
             return;
         }
         String query = quickSearchBuffer.toString().trim();
@@ -4348,21 +4212,30 @@ public class MainActivity extends FragmentActivity {
             quickSearchSelectionIndex = 0;
         }
         quickSearchOverlay.setVisibility(View.VISIBLE);
-        quickSearchQueryText.setText(query.toUpperCase(Locale.getDefault()));
+        String resultText;
         if (quickSearchMatches.isEmpty()) {
-            quickSearchResultText.setText(getString(R.string.quick_search_no_results));
+            resultText = getString(R.string.quick_search_no_results);
         } else {
             ChannelItem selected = quickSearchMatches.get(quickSearchSelectionIndex);
             String primaryMeta = selected.nowProgram != null && !selected.nowProgram.trim().isEmpty() ? selected.nowProgram : selected.group;
             if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
                 primaryMeta = getString(R.string.search_channel_action_hint);
             }
-            quickSearchResultText.setText(getString(
+            resultText = getString(
                     R.string.quick_search_result,
                     getString(R.string.quick_search_result_index, quickSearchSelectionIndex + 1, quickSearchMatches.size()) + "  ·  " + selected.name,
                     primaryMeta
-            ));
+            );
         }
+        QuickSearchOverlayComposeBinder.bind(
+                quickSearchOverlay,
+                new QuickSearchOverlayUiModel(
+                        getString(R.string.quick_search_title),
+                        query.toUpperCase(Locale.getDefault()),
+                        resultText,
+                        getString(R.string.quick_search_hint)
+                )
+        );
         uiHandler.removeCallbacks(clearQuickSearchRunnable);
         uiHandler.postDelayed(clearQuickSearchRunnable, 3200L);
     }
@@ -4399,13 +4272,42 @@ public class MainActivity extends FragmentActivity {
         if (recordingsController.moveSelection(delta) == null) {
             return;
         }
-        if (recordingsAdapter != null) {
-            recordingsAdapter.notifyDataSetChanged();
+        recordingsHeaderFocusActive = false;
+        pendingRecordingsListScrollIndex = recordingsController.getSelectedIndex();
+        refreshRecordingsPanelSurface();
+    }
+
+    private void moveRecordingsHeaderFocus(int delta) {
+        if (!isRecordingsPanelVisible()) {
+            return;
         }
-        if (recordingsRecyclerView != null) {
-            recordingsRecyclerView.scrollToPosition(recordingsController.getSelectedIndex());
+        int anchor = recordingsHeaderFocusIndex;
+        if (anchor < 0 || anchor > 2) {
+            anchor = recordingsController.isScheduledMode() ? 1 : 0;
         }
-        updateRecordingsDetailPanel();
+        int next = ((anchor + delta) % 3 + 3) % 3;
+        recordingsHeaderFocusIndex = next;
+        recordingsHeaderFocusActive = true;
+        refreshRecordingsPanelSurface();
+    }
+
+    private boolean activateRecordingsHeaderFocus() {
+        if (!recordingsHeaderFocusActive || recordingsHeaderFocusIndex < 0) {
+            return false;
+        }
+        switch (recordingsHeaderFocusIndex) {
+            case 0:
+                switchRecordingsMode(false);
+                return true;
+            case 1:
+                switchRecordingsMode(true);
+                return true;
+            case 2:
+                refreshRecordingsPanel();
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void playSelectedRecording() {
@@ -4422,54 +4324,99 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateRecordingsDetailPanel() {
-        if (recordingsSectionText == null || recordingsSummaryText == null || recordingDetailPosterImage == null || recordingDetailTitleText == null || recordingDetailMetaText == null || recordingDetailPathText == null || recordingDetailActionText == null) {
-            return;
-        }
-        updateRecordingsPanelButtons();
-        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
-        if (result == null || result.items.isEmpty()) {
-            recordingsSectionText.setText(getString(recordingsController.isScheduledMode() ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
-            recordingsSummaryText.setText(buildRecordingsSummary(result));
-            recordingDetailTitleText.setText(getString(R.string.recordings_detail_empty));
-            recordingDetailMetaText.setText("");
-            recordingDetailMetaText.setTextColor(0xFFF2D5AF);
-            recordingDetailPathText.setText("");
-            recordingDetailActionText.setText(getString(recordingsController.isScheduledMode() ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
-            recordingDetailPathText.setVisibility(View.GONE);
-            recordingDetailPosterImage.setVisibility(View.GONE);
-            Glide.with(this).clear(recordingDetailPosterImage);
-            return;
-        }
-        RecordingsRepository.RecordingItem item = recordingsController.getSelectedItem();
-        recordingsSectionText.setText(getString(result.scheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed));
-        recordingsSummaryText.setText(buildRecordingsSummary(result));
-        recordingDetailTitleText.setText(buildRecordingTitle(item));
-        recordingDetailMetaText.setText(buildRecordingMeta(item));
-        recordingDetailMetaText.setTextColor(recordingMetaColor(item));
-        if (item.playable) {
-            recordingDetailPathText.setVisibility(View.VISIBLE);
-            recordingDetailPathText.setText(getString(R.string.recordings_path, item.path == null ? "" : item.path));
-        } else {
-            recordingDetailPathText.setVisibility(View.GONE);
-            recordingDetailPathText.setText("");
-        }
-        recordingDetailActionText.setText(getString(result.scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint));
-        bindRecordingPoster(recordingDetailPosterImage, item.poster);
+        refreshRecordingsPanelSurface();
     }
 
-    private void updateRecordingsPanelButtons() {
-        if (recordingsCompletedButton != null) {
-            recordingsCompletedButton.setBackgroundTintList(ColorStateList.valueOf(recordingsController.isScheduledMode() ? 0xFF2B3642 : 0xFF2A7C86));
+    private void refreshRecordingsPanelList() {
+        refreshRecordingsPanelSurface();
+    }
+
+    private void refreshRecordingsPanelSurface() {
+        if (recordingsPanel == null) {
+            return;
         }
-        if (recordingsScheduledButton != null) {
-            recordingsScheduledButton.setBackgroundTintList(ColorStateList.valueOf(recordingsController.isScheduledMode() ? 0xFF2A7C86 : 0xFF2B3642));
+        RecordingsSurfaceComposeBinder.bind(
+                recordingsPanel,
+                new RecordingsSurfaceUiModel(buildRecordingsPanelUiModel(), buildRecordingListUiModel()),
+                this::bindRecordingPoster
+        );
+        pendingRecordingsListScrollIndex = -1;
+    }
+
+    private RecordingsPanelUiModel buildRecordingsPanelUiModel() {
+        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
+        boolean scheduledMode = recordingsController.isScheduledMode();
+        String sectionTitle = getString(scheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed);
+        String summary = buildRecordingsSummary(result);
+        String hint = buildRecordingsHint();
+        String detailTitle = getString(R.string.recordings_detail_empty);
+        String detailMeta = "";
+        int detailMetaColor = 0xFFF2D5AF;
+        String detailPath = "";
+        boolean detailPathVisible = false;
+        String detailAction = getString(scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint);
+        String posterUrl = "";
+
+        if (result != null && !result.items.isEmpty()) {
+            RecordingsRepository.RecordingItem item = recordingsController.getSelectedItem();
+            if (item != null) {
+                detailTitle = buildRecordingTitle(item);
+                detailMeta = buildRecordingMeta(item);
+                detailMetaColor = recordingMetaColor(item);
+                if (item.playable) {
+                    detailPathVisible = true;
+                    detailPath = getString(R.string.recordings_path, item.path == null ? "" : item.path);
+                }
+                posterUrl = item.poster == null ? "" : item.poster;
+            }
         }
-        if (recordingsRefreshButton != null) {
-            recordingsRefreshButton.setBackgroundTintList(ColorStateList.valueOf(0xFF2B3642));
+
+        return new RecordingsPanelUiModel(
+                sectionTitle,
+                summary,
+                scheduledMode,
+                recordingsHeaderFocusActive ? recordingsHeaderFocusIndex : -1,
+                () -> switchRecordingsMode(false),
+                () -> switchRecordingsMode(true),
+                this::refreshRecordingsPanel,
+                hint,
+                posterUrl,
+                detailTitle,
+                detailMeta,
+                detailMetaColor,
+                detailPath,
+                detailPathVisible,
+                detailAction
+        );
+    }
+
+    private RecordingListUiModel buildRecordingListUiModel() {
+        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
+        List<RecordingListRowUiModel> items = new ArrayList<>();
+        if (result != null && result.items != null) {
+            for (int i = 0; i < result.items.size(); i++) {
+                final int position = i;
+                final RecordingsRepository.RecordingItem item = result.items.get(i);
+                items.add(new RecordingListRowUiModel(
+                        buildRecordingTitle(item),
+                        buildRecordingMeta(item),
+                        recordingMetaColor(item),
+                        buildRecordingStatusLabel(item),
+                        recordingStatusBadgeColor(item),
+                        item == null ? "" : item.poster,
+                        position == recordingsController.getSelectedIndex(),
+                        () -> {
+                            recordingsController.selectIndex(position);
+                            pendingRecordingsListScrollIndex = position;
+                            refreshRecordingsPanelSurface();
+                            if (item != null && result != null) {
+                                playRecording(item, result.basePath);
+                            }
+                        }
+                ));
+            }
         }
-        if (recordingsHintText != null) {
-            recordingsHintText.setText(buildRecordingsHint());
-        }
+        return new RecordingListUiModel(items, pendingRecordingsListScrollIndex);
     }
 
     private String buildRecordingsHint() {
@@ -4633,7 +4580,10 @@ public class MainActivity extends FragmentActivity {
         if (hdrBadgeText == null) {
             return;
         }
-        hdrBadgeText.setText(label == null || label.trim().isEmpty() ? getString(R.string.status_hdr_detected) : label.trim());
+        SurfaceBadgeComposeBinder.bind(
+                hdrBadgeText,
+                new SurfaceBadgeUiModel(label == null || label.trim().isEmpty() ? getString(R.string.status_hdr_detected) : label.trim(), 0xE0A86A00, 0xFFFFFFFF, false, false)
+        );
         hdrBadgeText.setVisibility(View.VISIBLE);
         uiHandler.removeCallbacks(hideHdrBadgeRunnable);
         uiHandler.postDelayed(hideHdrBadgeRunnable, 2000L);
@@ -4649,7 +4599,7 @@ public class MainActivity extends FragmentActivity {
             uiHandler.removeCallbacks(hideStatusRunnable);
             return;
         }
-        statusText.setText(text);
+        SurfaceBadgeComposeBinder.bind(statusText, new SurfaceBadgeUiModel(text, 0xB3000000, 0xFFFFFFFF, true, false));
         statusText.setVisibility(View.VISIBLE);
         updateOverlayPanel();
         uiHandler.removeCallbacks(hideStatusRunnable);
@@ -4677,19 +4627,19 @@ public class MainActivity extends FragmentActivity {
         ChannelItem current = getCurrentPlaybackChannelItem();
         if (current != null && current.isVod) {
             errorText.setVisibility(View.VISIBLE);
-            errorText.setText(getString(
+            SurfaceBadgeComposeBinder.bind(errorText, new SurfaceBadgeUiModel(getString(
                     R.string.error_vod_playback_details,
                     reason == null ? getString(R.string.error_unknown_reason) : reason,
                     displayName(current)
-            ));
+            ), 0xCC000000, 0xFFFFFFFF, true, true));
             return;
         }
         errorText.setVisibility(View.VISIBLE);
-        errorText.setText(getString(
+        SurfaceBadgeComposeBinder.bind(errorText, new SurfaceBadgeUiModel(getString(
             R.string.error_playback_details,
             reason == null ? getString(R.string.error_unknown_reason) : reason,
             baseUrl
-        ));
+        ), 0xCC000000, 0xFFFFFFFF, true, true));
     }
 
     private void hideError() {
@@ -4718,6 +4668,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public boolean isOverlayVisible() {
                 return MainActivity.this.isOverlayVisible();
+            }
+
+            @Override
+            public boolean isZapBannerVisible() {
+                return MainActivity.this.isZapBannerVisible();
             }
 
             @Override
@@ -4757,12 +4712,12 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hasSelectedOverlayChannel() {
-                return selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size();
+                return overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size();
             }
 
             @Override
             public boolean hasCurrentChannel() {
-                return currentIndex >= 0 && currentIndex < channels.size();
+                return overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size();
             }
 
             @Override
@@ -4786,6 +4741,16 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public void moveRecordingsHeaderFocus(int delta) {
+                MainActivity.this.moveRecordingsHeaderFocus(delta);
+            }
+
+            @Override
+            public boolean activateRecordingsHeaderFocus() {
+                return MainActivity.this.activateRecordingsHeaderFocus();
+            }
+
+            @Override
             public void showChannelActionMenu() {
                 MainActivity.this.showChannelActionMenu();
             }
@@ -4797,7 +4762,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openTimelineGuideForCurrentChannel() {
-                MainActivity.this.openTimelineGuide(currentIndex, System.currentTimeMillis());
+                MainActivity.this.openTimelineGuide(overlayNavigationState.currentIndex, System.currentTimeMillis());
             }
 
             @Override
@@ -4828,6 +4793,21 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void hideOverlay() {
                 MainActivity.this.hideOverlay();
+            }
+
+            @Override
+            public void hideZapBanner() {
+                MainActivity.this.hideZapBanner();
+            }
+
+            @Override
+            public void moveZapBannerSelection(int delta) {
+                MainActivity.this.moveZapBannerSelection(delta);
+            }
+
+            @Override
+            public void activateZapBannerSelection() {
+                MainActivity.this.activateZapBannerSelection();
             }
 
             @Override
@@ -4877,7 +4857,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void tuneOverlaySelectionAndHide() {
-                MainActivity.this.tuneToIndex(selectedOverlayIndex, true);
+                MainActivity.this.tuneToIndex(overlayNavigationState.selectedOverlayIndex, true);
                 MainActivity.this.hideOverlay();
             }
 
@@ -4905,10 +4885,10 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void scheduleSelectedOrCurrentProgram() {
-                if (MainActivity.this.isOverlayVisible() && selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) {
-                    MainActivity.this.createScheduleFromEndpoint(channels.get(selectedOverlayIndex), false);
-                } else if (currentIndex >= 0 && currentIndex < channels.size()) {
-                    MainActivity.this.createScheduleFromEndpoint(channels.get(currentIndex), false);
+                if (MainActivity.this.isOverlayVisible() && overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size()) {
+                    MainActivity.this.createScheduleFromEndpoint(channels.get(overlayNavigationState.selectedOverlayIndex), false);
+                } else if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+                    MainActivity.this.createScheduleFromEndpoint(channels.get(overlayNavigationState.currentIndex), false);
                 }
             }
 
@@ -4982,7 +4962,10 @@ public class MainActivity extends FragmentActivity {
             touchControlsController.cancelTimers();
         }
         uiHandler.removeCallbacksAndMessages(null);
-        ioExecutor.shutdownNow();
+        if (!isChangingConfigurations()) {
+            ioExecutor.shutdownNow();
+            epgExecutor.shutdownNow();
+        }
         if (playerController != null) {
             playerController.release();
             playerController = null;
@@ -5011,7 +4994,7 @@ public class MainActivity extends FragmentActivity {
         if (channelItem == null || channelItem.id == null) {
             return PlaybackModeStore.MODE_AUTO;
         }
-        if (isProxyManifestProfile(channelItem)) {
+        if (!BuildConfig.STANDALONE_MODE && isProxyManifestProfile(channelItem)) {
             if (PlaybackModeStore.MODE_DIRECT.equals(sanitizePlaybackMode(temporaryPlaybackModesByChannelId.get(channelItem.id)))) {
                 temporaryPlaybackModesByChannelId.remove(channelItem.id);
             }
@@ -5030,7 +5013,11 @@ public class MainActivity extends FragmentActivity {
         if (!playbackRepairEnabled) {
             return PlaybackModeStore.MODE_AUTO;
         }
-        return sanitizePlaybackMode(learnedPlaybackModesByChannelId.get(channelItem.id));
+        String learnedMode = sanitizePlaybackMode(learnedPlaybackModesByChannelId.get(channelItem.id));
+        if (BuildConfig.STANDALONE_MODE && PlaybackModeStore.MODE_PROXY.equals(learnedMode)) {
+            return PlaybackModeStore.MODE_AUTO;
+        }
+        return learnedMode;
     }
 
     private boolean isProxyManifestProfile(ChannelItem channelItem) {
@@ -5038,8 +5025,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private ChannelItem getCurrentPlaybackChannelItem() {
-        if (currentIndex >= 0 && currentIndex < channels.size()) {
-            return channels.get(currentIndex);
+        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            return channels.get(overlayNavigationState.currentIndex);
         }
         return findChannelItemById(lastChannelId);
     }
@@ -5051,11 +5038,11 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         showStatus(getString(R.string.status_retry_channel, displayName(channelItem)));
-        currentIndex = findChannelIndexById(channelItem.id);
-        if (currentIndex >= 0) {
-            selectedOverlayIndex = currentIndex;
-            channelAdapter.notifyDataSetChanged();
-            tuneToIndex(currentIndex, true);
+        overlayNavigationState.currentIndex = findChannelIndexById(channelItem.id);
+        if (overlayNavigationState.currentIndex >= 0) {
+            overlayNavigationState.selectedOverlayIndex = overlayNavigationState.currentIndex;
+            refreshOverlayChannelList();
+            tuneToIndex(overlayNavigationState.currentIndex, true);
             return;
         }
         playChannelItem(channelItem, true);
@@ -5079,22 +5066,24 @@ public class MainActivity extends FragmentActivity {
                 ? 1
                 : (PlaybackModeStore.MODE_PROXY.equals(currentMode) ? 2 : 0);
         String[] options = getResources().getStringArray(R.array.playback_mode_options);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_playback_mode)
-                .setSingleChoiceItems(options, checkedItem, (dialog, which) -> {
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (int i = 0; i < options.length; i++) {
+            final int which = i;
+            labels.add(i == checkedItem ? getString(R.string.settings_selected_prefix, options[i]) : options[i]);
+            actions.add(() -> {
                     String selectedMode = which == 1
                             ? PlaybackModeStore.MODE_DIRECT
                             : (which == 2 ? PlaybackModeStore.MODE_PROXY : PlaybackModeStore.MODE_AUTO);
                     playbackModeStore.setMode(channelItem.id, selectedMode);
                     showStatus(getString(R.string.status_playback_mode_changed, options[which]));
-                    dialog.dismiss();
                     ChannelItem currentPlaybackChannel = getCurrentPlaybackChannelItem();
                     if (currentPlaybackChannel != null && channelItem.id.equals(currentPlaybackChannel.id)) {
                         retryCurrentPlayback();
                     }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+            });
+        }
+        showTvOptionsDialog(R.string.title_playback_mode, displayName(channelItem), labels, actions);
     }
 
     private void showTemporaryPlaybackModeDialog(ChannelItem channelItem) {
@@ -5106,9 +5095,12 @@ public class MainActivity extends FragmentActivity {
                 ? 1
                 : (PlaybackModeStore.MODE_PROXY.equals(currentMode) ? 2 : 0);
         String[] options = getResources().getStringArray(R.array.playback_mode_options);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_playback_mode_temporary)
-                .setSingleChoiceItems(options, checkedItem, (dialog, which) -> {
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (int i = 0; i < options.length; i++) {
+            final int which = i;
+            labels.add(i == checkedItem ? getString(R.string.settings_selected_prefix, options[i]) : options[i]);
+            actions.add(() -> {
                     String selectedMode = which == 1
                             ? PlaybackModeStore.MODE_DIRECT
                             : (which == 2 ? PlaybackModeStore.MODE_PROXY : PlaybackModeStore.MODE_AUTO);
@@ -5118,14 +5110,13 @@ public class MainActivity extends FragmentActivity {
                         temporaryPlaybackModesByChannelId.put(channelItem.id, selectedMode);
                     }
                     showStatus(getString(R.string.status_playback_mode_temporary_changed, options[which]));
-                    dialog.dismiss();
                     ChannelItem currentPlaybackChannel = getCurrentPlaybackChannelItem();
                     if (currentPlaybackChannel != null && channelItem.id.equals(currentPlaybackChannel.id)) {
                         retryCurrentPlayback();
                     }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+            });
+        }
+        showTvOptionsDialog(R.string.title_playback_mode_temporary, displayName(channelItem), labels, actions);
     }
 
     private void showPersonalListsDialog(ChannelItem channelItem) {
@@ -5133,25 +5124,37 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         List<ChannelCollectionStore.ChannelCollection> collections = channelCollectionStore.getCollections();
-        String[] labels = new String[collections.size()];
         boolean[] checked = new boolean[collections.size()];
+        showPersonalListsDialog(channelItem, collections, checked, true);
+    }
+
+    private void showPersonalListsDialog(ChannelItem channelItem, List<ChannelCollectionStore.ChannelCollection> collections, boolean[] checked, boolean initialize) {
+        if (channelItem == null || channelCollectionStore == null || collections == null || checked == null) {
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
         for (int i = 0; i < collections.size(); i++) {
             ChannelCollectionStore.ChannelCollection collection = collections.get(i);
-            labels[i] = collection.label;
-            checked[i] = channelCollectionStore.contains(collection.key, channelItem.id);
+            if (initialize) {
+                checked[i] = channelCollectionStore.contains(collection.key, channelItem.id);
+            }
+            final int index = i;
+            options.add((checked[i] ? "[x] " : "[ ] ") + collection.label);
+            actions.add(() -> {
+                checked[index] = !checked[index];
+                showPersonalListsDialog(channelItem, collections, checked, false);
+            });
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_personal_lists)
-                .setMultiChoiceItems(labels, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
-                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                    for (int i = 0; i < collections.size(); i++) {
-                        channelCollectionStore.setMembership(collections.get(i).key, channelItem.id, checked[i]);
-                    }
-                    refreshLocalChannelFilters(channelItem.id);
-                    showStatus(getString(R.string.status_personal_lists_updated));
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        options.add(getString(android.R.string.ok));
+        actions.add(() -> {
+            for (int i = 0; i < collections.size(); i++) {
+                channelCollectionStore.setMembership(collections.get(i).key, channelItem.id, checked[i]);
+            }
+            refreshLocalChannelFilters(channelItem.id);
+            showStatus(getString(R.string.status_personal_lists_updated));
+        });
+        showTvOptionsDialog(R.string.title_personal_lists, displayName(channelItem), options, actions);
     }
 
     private void showChannelProfileDialog(ChannelItem channelItem) {
@@ -5195,55 +5198,51 @@ public class MainActivity extends FragmentActivity {
         });
         options.add(getString(R.string.menu_playback_mode_temporary));
         actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
-        new AlertDialog.Builder(this)
-                .setTitle(displayName(channelItem))
-                .setItems(options.toArray(new String[0]), (dialog, which) -> actions.get(which).run())
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        showTvOptionsDialog(displayName(channelItem), null, options, actions);
     }
 
     private void showChannelTagDialog(ChannelItem channelItem) {
         if (channelItem == null || channelProfileStore == null) {
             return;
         }
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint(R.string.channel_profile_tag_hint);
-        input.setText(channelProfileStore.getTag(channelItem.id));
-        input.setSelectAllOnFocus(true);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.channel_profile_tag)
-                .setView(input)
-                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                    String value = input.getText() == null ? "" : input.getText().toString();
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.channel_profile_tag),
+                displayName(channelItem),
+                getString(android.R.string.ok),
+                getString(R.string.dialog_cancel),
+                "",
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.channel_profile_tag_hint), channelProfileStore.getTag(channelItem.id), false, false)),
+                values -> {
+                    String value = values == null || values.isEmpty() ? "" : values.get(0);
                     channelProfileStore.setTag(channelItem.id, value);
                     refreshLocalChannelFilters(channelItem.id);
                     showStatus(getString(value.trim().isEmpty() ? R.string.status_channel_tag_cleared : R.string.status_channel_tag_updated));
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                },
+                null,
+                null
+        ));
     }
 
     private void showChannelAliasDialog(ChannelItem channelItem) {
         if (channelItem == null || channelProfileStore == null) {
             return;
         }
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint(R.string.channel_profile_alias_hint);
-        input.setText(channelProfileStore.getDisplayName(channelItem.id, channelItem.name));
-        input.setSelectAllOnFocus(true);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.channel_profile_alias)
-                .setView(input)
-                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                    String value = input.getText() == null ? "" : input.getText().toString();
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.channel_profile_alias),
+                displayName(channelItem),
+                getString(android.R.string.ok),
+                getString(R.string.dialog_cancel),
+                "",
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.channel_profile_alias_hint), channelProfileStore.getDisplayName(channelItem.id, channelItem.name), false, false)),
+                values -> {
+                    String value = values == null || values.isEmpty() ? "" : values.get(0);
                     channelProfileStore.setAlias(channelItem.id, value);
                     refreshLocalChannelFilters(channelItem.id);
                     showStatus(getString(value.trim().isEmpty() ? R.string.status_channel_alias_cleared : R.string.status_channel_alias_updated));
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                },
+                null,
+                null
+        ));
     }
 
     private void refreshLocalChannelFilters(String selectedId) {
@@ -5252,90 +5251,54 @@ public class MainActivity extends FragmentActivity {
         }
         syncOverlayCoordinator();
         channelOverlayCoordinator.refreshLocalFilters();
-        String currentId = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : lastChannelId;
+        String currentId = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex).id : lastChannelId;
         channelOverlayCoordinator.refreshVisibleChannels(currentId, selectedId == null ? currentId : selectedId);
         syncOverlayStateFromCoordinator();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
-        if (!channels.isEmpty() && selectedOverlayIndex >= 0) {
-            channelList.scrollToPosition(selectedOverlayIndex);
+        if (!channels.isEmpty() && overlayNavigationState.selectedOverlayIndex >= 0) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         }
         showOverlay();
     }
 
     private void focusOverlaySearchInput() {
-        if (overlaySearchInput == null) {
-            return;
-        }
-        overlaySearchInput.setVisibility(View.VISIBLE);
-        overlaySearchInput.requestFocus();
-        overlaySearchInput.setSelection(overlaySearchInput.getText() == null ? 0 : overlaySearchInput.getText().length());
-        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.showSoftInput(overlaySearchInput, InputMethodManager.SHOW_IMPLICIT);
-        }
+        overlaySearchFocusRequestToken++;
+        updateQuickAccessButtons();
+        showTouchControlsTemporarily();
+        uiHandler.removeCallbacks(hideOverlayRunnable);
     }
 
     private void hideOverlaySearchKeyboard() {
-        if (overlaySearchInput == null) {
-            return;
-        }
-        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.hideSoftInputFromWindow(overlaySearchInput.getWindowToken(), 0);
-        }
-        overlaySearchInput.clearFocus();
+        overlaySearchClearFocusRequestToken++;
+        updateQuickAccessButtons();
     }
 
     private void clearOverlaySearchQuery() {
-        if (overlaySearchInput == null) {
-            syncOverlayCoordinator();
-            channelOverlayCoordinator.setSearchQuery("");
-            return;
-        }
-        if (overlaySearchInput.getText() != null && overlaySearchInput.getText().length() > 0) {
-            overlaySearchInput.setText("");
-        } else {
-            syncOverlayCoordinator();
-            channelOverlayCoordinator.setSearchQuery("");
-        }
+        syncOverlayCoordinator();
+        channelOverlayCoordinator.setSearchQuery("");
         hideOverlaySearchKeyboard();
+        updateOverlaySearchState();
     }
 
     private void applyOverlaySearchQuery(String query) {
         syncOverlayCoordinator();
         channelOverlayCoordinator.setSearchQuery(query);
-        String currentId = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : lastChannelId;
-        String selectedId = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) ? channels.get(selectedOverlayIndex).id : currentId;
+        String currentId = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex).id : lastChannelId;
+        String selectedId = (overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size()) ? channels.get(overlayNavigationState.selectedOverlayIndex).id : currentId;
         channelOverlayCoordinator.refreshVisibleChannels(currentId, selectedId);
         syncOverlayStateFromCoordinator();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
-        if (!channels.isEmpty() && selectedOverlayIndex >= 0) {
-            channelList.scrollToPosition(selectedOverlayIndex);
+        if (!channels.isEmpty() && overlayNavigationState.selectedOverlayIndex >= 0) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         }
     }
 
     private void updateOverlaySearchState() {
-        if (overlayEmptyText != null) {
-            String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
-            boolean hasQuery = query != null && !query.trim().isEmpty();
-            overlayEmptyText.setVisibility(channels.isEmpty() ? View.VISIBLE : View.GONE);
-            overlayEmptyText.setText(hasQuery
-                    ? getString(R.string.overlay_no_results_search, query.trim())
-                    : getString(R.string.overlay_no_results));
-        }
-        if (touchRecentButton != null) {
-            touchRecentButton.setText(getString(R.string.overlay_recent_button_count, buildRecentQuickChannels().size()));
-        }
-        if (touchFavoritesButton != null) {
-            int favoriteCount = buildFavoriteQuickChannels().size();
-            touchFavoritesButton.setText(getString(
-                    favoritesOnly ? R.string.overlay_favorites_button_on_count : R.string.overlay_favorites_button_off_count,
-                    favoriteCount));
-        }
+        refreshOverlayChannelList();
         updateQuickAccessButtons();
         updateTouchHomeHub();
     }
@@ -5357,18 +5320,26 @@ public class MainActivity extends FragmentActivity {
         } else if ("vod-adult".equals(targetKey)) {
             filterKey = findPreferredVodFilterKey(true);
         }
-        channelOverlayCoordinator.setSelectedFilterKey(filterKey);
-        String currentId = lastChannelId == null ? "" : lastChannelId;
-        channelOverlayCoordinator.refreshVisibleChannels(currentId, currentId);
-        syncOverlayStateFromCoordinator();
-        clearOverlaySearchQuery();
-        channelAdapter.notifyDataSetChanged();
-        updateFilterText();
-        updateOverlaySearchState();
-        showOverlay();
+        String finalFilterKey = filterKey;
+        ensureParentalAccessForFilterKey(finalFilterKey, () -> {
+            channelOverlayCoordinator.setSelectedFilterKey(finalFilterKey);
+            String currentId = lastChannelId == null ? "" : lastChannelId;
+            channelOverlayCoordinator.refreshVisibleChannels(currentId, currentId);
+            syncOverlayStateFromCoordinator();
+            clearOverlaySearchQuery();
+            refreshOverlayChannelList();
+            updateFilterText();
+            updateOverlaySearchState();
+            showOverlay();
+        });
     }
 
     private String findPreferredTvFilterKey() {
+        for (ChannelFilter filter : filters) {
+            if (filter != null && "all".equals(filter.key)) {
+                return filter.key;
+            }
+        }
         for (ChannelFilter filter : filters) {
             if (filter != null && filter.type == 1) {
                 return filter.key;
@@ -5439,45 +5410,231 @@ public class MainActivity extends FragmentActivity {
         return total;
     }
 
-    private void styleQuickAccessButton(TextView view, boolean active, String label) {
-        if (view == null) {
+    private String formatOverlayCountLabel(int labelRes, int count) {
+        return ChannelOverlayUi.buildQuickCountLabel(this, labelRes, count);
+    }
+
+    private OverlayControlsUiModel buildOverlayControlsModel(boolean tvActive, boolean vodActive, boolean adultActive) {
+        List<ZapActionItem> filterActions = new ArrayList<>();
+        filterActions.add(new ZapActionItem(getString(R.string.filter_prev_button), true, false, false, () -> {
+            showTouchControlsTemporarily();
+            cycleFilter(-1);
+        }));
+        filterActions.add(new ZapActionItem(currentOverlayFilterLabel(), true, false, false, () -> {
+            showTouchControlsTemporarily();
+            cycleFilter(1);
+        }, () -> {
+            showTouchControlsTemporarily();
+            cycleFilter(-1);
+        }));
+        filterActions.add(new ZapActionItem(getString(R.string.filter_search_button), true, false, false, () -> {
+            showTouchControlsTemporarily();
+            focusOverlaySearchInput();
+        }));
+        filterActions.add(new ZapActionItem(getString(R.string.filter_next_button), true, false, false, () -> {
+            showTouchControlsTemporarily();
+            cycleFilter(1);
+        }));
+
+        List<ZapActionItem> primaryActions = new ArrayList<>();
+        primaryActions.add(new ZapActionItem(formatOverlayCountLabel(R.string.overlay_quick_tv, countItemsForQuickTarget("tv")), true, false, tvActive, () -> applyQuickOverlayTarget("tv")));
+        if (shouldShowGenericVodQuickTarget(false)) {
+            primaryActions.add(new ZapActionItem(formatOverlayCountLabel(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")), true, false, vodActive, () -> applyQuickOverlayTarget("vod")));
+        }
+        if (shouldShowGenericVodQuickTarget(true)) {
+            primaryActions.add(new ZapActionItem(
+                    decorateProtectedLabel(formatOverlayCountLabel(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")), currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod),
+                    true,
+                    currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod,
+                    adultActive,
+                    () -> applyQuickOverlayTarget("vod-adult")
+            ));
+        }
+        if (!isOfflineRecordingsDisabled()) {
+            primaryActions.add(new ZapActionItem(getString(R.string.overlay_quick_grab), true, false, isRecordingsPanelVisible(), () -> {
+                showTouchControlsTemporarily();
+                openRecordingsBrowser();
+            }));
+        }
+
+        int favoriteCount = buildFavoriteQuickChannels().size();
+        List<ZapActionItem> secondaryActions = new ArrayList<>();
+        secondaryActions.add(new ZapActionItem(getString(R.string.overlay_recent_button_count, buildRecentQuickChannels().size()), true, false, false, () -> {
+            showTouchControlsTemporarily();
+            showRecentChannelsQuickDialog();
+        }));
+        secondaryActions.add(new ZapActionItem(
+                getString(overlayNavigationState.favoritesOnly ? R.string.overlay_favorites_button_on_count : R.string.overlay_favorites_button_off_count, favoriteCount),
+                true,
+                false,
+                overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey),
+                () -> {
+                    showTouchControlsTemporarily();
+                    showFavoriteChannelsQuickDialog();
+                },
+                () -> {
+                    showTouchControlsTemporarily();
+                    toggleFavoritesOnlyMode();
+                }
+        ));
+
+        return new OverlayControlsUiModel(
+                getString(R.string.filter_navigation_hint),
+                currentOverlayFilterLabel(),
+                getString(R.string.overlay_search_hint),
+                channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery(),
+                overlaySearchFocusRequestToken,
+                overlaySearchClearFocusRequestToken,
+                this::applyOverlaySearchQuery,
+                () -> {
+                    showTouchControlsTemporarily();
+                    uiHandler.removeCallbacks(hideOverlayRunnable);
+                },
+                filterActions,
+                primaryActions,
+                secondaryActions
+        );
+    }
+
+    private OverlayChannelListUiModel buildOverlayChannelListUiModel() {
+        List<OverlayChannelRowUiModel> items = new ArrayList<>();
+        String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
+        for (int position = 0; position < channels.size(); position++) {
+            ChannelItem ch = channels.get(position);
+            if (ch == null) {
+                continue;
+            }
+            String name = decorateProtectedItemTitle(ch, displayName(ch));
+            String metaText;
+            String badge = "";
+            boolean badgeVisible = false;
+            int badgeTextColor = 0xFFDDE8F6;
+            if (ch.isVod) {
+                metaText = decorateProtectedMeta(ch, buildVodRowMeta(ch));
+                String listLabel = buildChannelMembershipLabel(ch, 2);
+                if (!listLabel.isEmpty()) {
+                    metaText = listLabel + "  ·  " + metaText;
+                }
+                badge = buildProtectedTypeBadge(ch, ch.isAdultVod ? getString(R.string.channel_badge_vod_adult) : getString(R.string.channel_badge_vod));
+                badgeVisible = true;
+                badgeTextColor = isProtectedItem(ch) ? 0xFFFFE08A : (ch.isAdultVod ? 0xFFFFD6D6 : 0xFFDDE8F6);
+            } else {
+                String tag = profileTag(ch);
+                String listLabel = buildChannelMembershipLabel(ch, 2);
+                metaText = "";
+                if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
+                    metaText = tag.isEmpty() ? ch.nowProgram : tag + "  ·  " + ch.nowProgram;
+                } else if (ch.group != null && !ch.group.trim().isEmpty()) {
+                    metaText = tag.isEmpty() ? ch.group : tag + "  ·  " + ch.group;
+                } else if (!tag.isEmpty()) {
+                    metaText = tag;
+                }
+                if (!listLabel.isEmpty()) {
+                    metaText = metaText.isEmpty() ? listLabel : listLabel + "  ·  " + metaText;
+                }
+                metaText = decorateProtectedMeta(ch, metaText);
+                if (isProtectedItem(ch)) {
+                    badge = getString(R.string.parental_lock_pin_badge);
+                    badgeVisible = true;
+                    badgeTextColor = 0xFFFFE08A;
+                }
+            }
+            final int rowPosition = position;
+            items.add(new OverlayChannelRowUiModel(
+                    ch.logoUrl,
+                    name,
+                    metaText,
+                    badge,
+                    badgeVisible,
+                    badgeTextColor,
+                    touchDeviceMode,
+                    ch.favorite,
+                    getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off),
+                    ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF,
+                    rowPosition == overlayNavigationState.selectedOverlayIndex,
+                    rowPosition == overlayNavigationState.currentIndex,
+                    ch.isVod,
+                    query,
+                    () -> {
+                        overlayNavigationState.selectedOverlayIndex = rowPosition;
+                        tuneToIndex(rowPosition, true);
+                        hideOverlay();
+                    },
+                    touchDeviceMode ? () -> {
+                        overlayNavigationState.selectedOverlayIndex = rowPosition;
+                        toggleFavoriteSelected();
+                    } : null
+            ));
+        }
+        boolean hasQuery = query != null && !query.trim().isEmpty();
+        String emptyMessage = hasQuery
+                ? getString(R.string.overlay_no_results_search, query.trim())
+                : getString(R.string.overlay_no_results);
+        return new OverlayChannelListUiModel(
+                items,
+                pendingOverlayListScrollIndex,
+                overlayListScrollRequestToken,
+                getString(R.string.overlay_section_list),
+                "",
+                "",
+                emptyMessage,
+                null,
+                null,
+                () -> moveOverlaySelection(-1),
+                () -> moveOverlaySelection(1)
+        );
+    }
+
+    private void refreshOverlayChannelList() {
+        if (channelListComposeView == null) {
             return;
         }
-        view.setText(label);
-        view.setBackgroundTintList(ColorStateList.valueOf(active ? 0xFF2A7C86 : 0xFF2A3440));
-        view.setTextColor(0xFFFFFFFF);
+        OverlayChannelListComposeBinder.bind(channelListComposeView, buildOverlayChannelListUiModel(), (imageView, item) -> {
+            if (item == null || imageView == null) {
+                return;
+            }
+            if (item.vod) {
+                bindRecordingPoster(imageView, item.logoUrl);
+            } else {
+                bindChannelLogo(imageView, item.logoUrl, item.name, 38, 38);
+            }
+        });
+    }
+
+    private void scrollOverlayChannelListToPosition(int position) {
+        pendingOverlayListScrollIndex = position;
+        overlayListScrollRequestToken++;
+        refreshOverlayChannelList();
+    }
+
+    private String currentOverlayFilterLabel() {
+        if (overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey)) {
+            return getString(R.string.status_filter_changed, getString(R.string.touch_home_filter_favorites));
+        }
+        if (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.trim().isEmpty()) {
+            return getString(R.string.filter_all_label);
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && overlayNavigationState.selectedFilterKey.equals(filter.key)) {
+                return getString(R.string.status_filter_changed, decorateProtectedFilterLabel(filter));
+            }
+        }
+        return getString(R.string.filter_all_label);
     }
 
     private void updateQuickAccessButtons() {
-        if (!touchDeviceMode) {
+        if (overlayControlsComposeView == null) {
             return;
         }
         String activeTvKey = findPreferredTvFilterKey();
-        boolean tvActive = !favoritesOnly && (selectedFilterKey == null || selectedFilterKey.equals(activeTvKey) || ("all".equals(selectedFilterKey) && "all".equals(activeTvKey)));
-        boolean vodActive = !favoritesOnly && isVodFilterSelected(false);
-        boolean adultActive = !favoritesOnly && isVodFilterSelected(true);
-        styleQuickAccessButton(quickTvButton, tvActive, getString(R.string.overlay_quick_tv, countItemsForQuickTarget("tv")));
-        if (quickVodButton != null) {
-            if (shouldShowGenericVodQuickTarget(false)) {
-                quickVodButton.setVisibility(View.VISIBLE);
-                styleQuickAccessButton(quickVodButton, vodActive, getString(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")));
-            } else {
-                quickVodButton.setVisibility(View.GONE);
-            }
-        }
-        if (quickAdultButton != null) {
-            if (shouldShowGenericVodQuickTarget(true)) {
-                quickAdultButton.setVisibility(View.VISIBLE);
-                styleQuickAccessButton(quickAdultButton, adultActive, getString(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")));
-            } else {
-                quickAdultButton.setVisibility(View.GONE);
-            }
-        }
-        styleQuickAccessButton(quickGrabButton, isRecordingsPanelVisible(), getString(R.string.overlay_quick_grab));
+        boolean tvActive = !overlayNavigationState.favoritesOnly && (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.equals(activeTvKey) || ("all".equals(overlayNavigationState.selectedFilterKey) && "all".equals(activeTvKey)));
+        boolean vodActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(false);
+        boolean adultActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(true);
+        OverlayControlsComposeBinder.bind(overlayControlsComposeView, buildOverlayControlsModel(tvActive, vodActive, adultActive));
     }
 
     private void updateTouchHomeHub() {
-        if (touchHomeHub == null) {
+        if (touchHomeHub == null || touchHomeComposeView == null) {
             return;
         }
         boolean visible = touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE && !isOverlayVisible() && !isRecordingsPanelVisible() && !isMultiViewVisible();
@@ -5485,49 +5642,15 @@ public class MainActivity extends FragmentActivity {
         if (!visible) {
             return;
         }
-        if (touchHomeTitleText != null) {
-            touchHomeTitleText.setText(getString(R.string.touch_home_title));
-        }
-        if (touchHomeSubtitleText != null) {
-            String label = buildTouchHomeFilterLabel();
-            int count = (favoritesOnly || "favorites".equals(selectedFilterKey)) ? buildFavoriteQuickChannels().size() : channels.size();
-            String continueLabel = buildTouchHomeContinueLabel();
-            String subtitle = getString(R.string.touch_home_subtitle, label, count);
-            if (!continueLabel.isEmpty()) {
-                subtitle = subtitle + "\n" + continueLabel;
-            }
-            touchHomeSubtitleText.setText(subtitle);
-        }
-        styleHomeHubPrimaryButton(touchHomeTvButton, !favoritesOnly && isTvHubActive(), getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")));
-        if (touchHomeVodButton != null) {
-            if (shouldShowGenericVodQuickTarget(false)) {
-                touchHomeVodButton.setVisibility(View.VISIBLE);
-                styleHomeHubPrimaryButton(touchHomeVodButton, !favoritesOnly && isVodFilterSelected(false), getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
-            } else {
-                touchHomeVodButton.setVisibility(View.GONE);
-            }
-        }
-        if (touchHomeAdultButton != null) {
-            if (shouldShowGenericVodQuickTarget(true)) {
-                touchHomeAdultButton.setVisibility(View.VISIBLE);
-                styleHomeHubPrimaryButton(touchHomeAdultButton, !favoritesOnly && isVodFilterSelected(true), getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
-            } else {
-                touchHomeAdultButton.setVisibility(View.GONE);
-            }
-        }
-        styleHomeHubPrimaryButton(touchHomeGrabButton, false, getString(R.string.touch_home_button_grab));
-        styleHomeHubSecondaryButton(touchHomeRecentButton, false, getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()));
-        styleHomeHubSecondaryButton(touchHomeFavoritesButton, favoritesOnly || "favorites".equals(selectedFilterKey), getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()));
-        styleHomeHubSecondaryButton(touchHomeListButton, false, getString(R.string.touch_home_button_list));
-        styleHomeHubSecondaryButton(touchHomeMultiButton, isMultiViewVisible(), getString(R.string.touch_home_button_multi));
+        TouchHomeHubComposeBinder.bind(touchHomeComposeView, buildTouchHomeHubModel());
     }
 
     private String buildTouchHomeContinueLabel() {
         ChannelItem lastVod = findChannelItemById(lastVodId);
-        if (lastVod != null && lastVod.isVod) {
+        if (lastVod != null && lastVod.isVod && !shouldHideProtectedItem(lastVod)) {
             long resumeMs = getVodResumePosition(lastVod.id);
             if (resumeMs > 30_000L) {
-                return getString(R.string.touch_home_continue_vod, displayName(lastVod), formatDurationShort(resumeMs));
+                return getString(R.string.touch_home_continue_vod, decorateProtectedItemTitle(lastVod, displayName(lastVod)), formatDurationShort(resumeMs));
             }
         }
         if (!recordingResumePositions.isEmpty()) {
@@ -5538,52 +5661,112 @@ public class MainActivity extends FragmentActivity {
 
     private boolean isTvHubActive() {
         String activeTvKey = findPreferredTvFilterKey();
-        return selectedFilterKey == null || selectedFilterKey.equals(activeTvKey) || ("all".equals(selectedFilterKey) && "all".equals(activeTvKey));
+        return overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.equals(activeTvKey) || ("all".equals(overlayNavigationState.selectedFilterKey) && "all".equals(activeTvKey));
     }
 
     private boolean isVodFilterSelected(boolean adult) {
-        if (selectedFilterKey == null || selectedFilterKey.trim().isEmpty()) {
+        if (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.trim().isEmpty()) {
             return false;
         }
         for (ChannelFilter filter : filters) {
-            if (filter == null || !selectedFilterKey.equals(filter.key)) {
+            if (filter == null || !overlayNavigationState.selectedFilterKey.equals(filter.key)) {
                 continue;
             }
             return adult ? filter.type == FILTER_VOD_ADULT : filter.type == FILTER_VOD;
         }
-        return adult ? "vod-adult".equals(selectedFilterKey) : "vod".equals(selectedFilterKey);
+        return adult ? "vod-adult".equals(overlayNavigationState.selectedFilterKey) : "vod".equals(overlayNavigationState.selectedFilterKey);
     }
 
     private String buildTouchHomeFilterLabel() {
-        if (favoritesOnly || "favorites".equals(selectedFilterKey)) {
+        if (overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey)) {
             return getString(R.string.touch_home_filter_favorites);
         }
-        if (selectedFilterKey == null || selectedFilterKey.trim().isEmpty() || "all".equals(selectedFilterKey)) {
+        if (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.trim().isEmpty() || "all".equals(overlayNavigationState.selectedFilterKey)) {
             return getString(R.string.touch_home_filter_all);
         }
         for (ChannelFilter filter : filters) {
-            if (filter != null && selectedFilterKey.equals(filter.key) && filter.label != null && !filter.label.trim().isEmpty()) {
-                return filter.label.trim();
+            if (filter != null && overlayNavigationState.selectedFilterKey.equals(filter.key) && filter.label != null && !filter.label.trim().isEmpty()) {
+                return decorateProtectedFilterLabel(filter);
             }
         }
         return getString(R.string.touch_home_filter_all);
     }
 
-    private void styleHomeHubPrimaryButton(TextView view, boolean active, String label) {
-        styleHomeHubButton(view, active, label, 0xFF244252, 0xFF1F90A2);
-    }
-
-    private void styleHomeHubSecondaryButton(TextView view, boolean active, String label) {
-        styleHomeHubButton(view, active, label, 0xFF4C3427, 0xFFB46B29);
-    }
-
-    private void styleHomeHubButton(TextView view, boolean active, String label, int inactiveColor, int activeColor) {
-        if (view == null) {
-            return;
+    private TouchHomeHubUiModel buildTouchHomeHubModel() {
+        String label = buildTouchHomeFilterLabel();
+        int count = (overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey))
+                ? buildFavoriteQuickChannels().size()
+                : channels.size();
+        String continueLabel = buildTouchHomeContinueLabel();
+        String subtitle = getString(R.string.touch_home_subtitle, label, count);
+        if (!continueLabel.isEmpty()) {
+            subtitle = subtitle + "\n" + continueLabel;
         }
-        view.setText(label);
-        view.setBackgroundTintList(ColorStateList.valueOf(active ? activeColor : inactiveColor));
-        view.setTextColor(0xFFFFFFFF);
+
+        List<ZapActionItem> libraryActions = new ArrayList<>();
+        libraryActions.add(new ZapActionItem(getString(R.string.touch_home_button_tv, countItemsForQuickTarget("tv")), true, false, !overlayNavigationState.favoritesOnly && isTvHubActive(), () -> applyQuickOverlayTarget("tv")));
+        if (shouldShowGenericVodQuickTarget(false)) {
+            libraryActions.add(new ZapActionItem(getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")), true, false, !overlayNavigationState.favoritesOnly && isVodFilterSelected(false), () -> applyQuickOverlayTarget("vod")));
+        }
+        if (shouldShowGenericVodQuickTarget(true)) {
+            libraryActions.add(new ZapActionItem(
+                    decorateProtectedLabel(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")), currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod),
+                    true,
+                    currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod,
+                    !overlayNavigationState.favoritesOnly && isVodFilterSelected(true),
+                    () -> applyQuickOverlayTarget("vod-adult")
+            ));
+        }
+        if (!isOfflineRecordingsDisabled()) {
+            libraryActions.add(new ZapActionItem(getString(R.string.touch_home_button_grab), true, false, false, () -> {
+                showTouchControlsTemporarily();
+                openRecordingsBrowser();
+            }));
+        }
+
+        List<ZapActionItem> accessActions = new ArrayList<>();
+        accessActions.add(new ZapActionItem(getString(R.string.touch_home_button_recent, buildRecentQuickChannels().size()), true, false, false, () -> {
+            showTouchControlsTemporarily();
+            showRecentChannelsQuickDialog();
+        }));
+        accessActions.add(new ZapActionItem(
+                getString(R.string.touch_home_button_favorites, buildFavoriteQuickChannels().size()),
+                true,
+                false,
+                overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey),
+                () -> {
+                    showTouchControlsTemporarily();
+                    applyQuickOverlayTarget("favorites");
+                },
+                () -> {
+                    showTouchControlsTemporarily();
+                    showFavoriteChannelsQuickDialog();
+                }
+        ));
+        accessActions.add(new ZapActionItem(
+                getString(R.string.touch_home_button_list),
+                true,
+                false,
+                false,
+                () -> {
+                    showTouchControlsTemporarily();
+                    showGlobalSearchDialog();
+                },
+                () -> {
+                    showTouchControlsTemporarily();
+                    showOverlay();
+                }
+        ));
+        accessActions.add(new ZapActionItem(getString(R.string.touch_home_button_multi), true, false, isMultiViewVisible(), this::openMultiView));
+
+        return new TouchHomeHubUiModel(
+                getString(R.string.touch_home_title),
+                subtitle,
+                getString(R.string.touch_home_section_library),
+                getString(R.string.touch_home_section_access),
+                libraryActions,
+                accessActions
+        );
     }
 
     private void openMultiView() {
@@ -5607,11 +5790,6 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
-        if (multiViewHintText != null) {
-            multiViewHintText.setText(touchDeviceMode
-                    ? getString(R.string.multiview_hint_touch)
-                    : getString(R.string.multiview_hint_tv));
-        }
         mainWasPlayingBeforeMultiView = playerController != null && playerController.isPlaying();
         if (playerController != null) {
             playerController.setMuted(true);
@@ -5625,26 +5803,29 @@ public class MainActivity extends FragmentActivity {
         }
         multiViewActiveIndex = 0;
         for (int i = 0; i < multiTiles.length; i++) {
-            if (multiTiles[i] == null || multiLabels[i] == null) {
+            if (multiTiles[i] == null) {
                 continue;
             }
             if (i < selected.size()) {
                 ChannelItem item = selected.get(i);
                 multiTiles[i].setVisibility(View.VISIBLE);
-                multiLabels[i].setText(item.name);
                 PlayerController controller = multiPlayerControllers.get(i);
                 controller.setMuted(i != multiViewActiveIndex);
                 PlayerController.PlaybackRequest request = toPlaybackRequest(item);
                 PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(item.id);
-                controller.playChannel(request, true, cachedStreamInfo);
-                if (request != null && !request.directPlayback) {
+                if (shouldResolveStreamInfoBeforePlayback(item, request)) {
+                    controller.playChannelAfterResolvingStreamInfo(request, true, streamInfoByChannelId, 0L);
+                } else {
+                    controller.playChannel(request, true, cachedStreamInfo);
+                }
+                if (request != null && !shouldResolveStreamInfoBeforePlayback(item, request) && !request.directPlayback) {
                     controller.resolveStreamInfoAndReplayIfNeeded(request, true, streamInfoByChannelId);
                 }
             } else {
                 multiTiles[i].setVisibility(View.INVISIBLE);
-                multiLabels[i].setText("");
             }
         }
+        refreshMultiViewHeader();
         updateMultiViewFocus();
         if (multiViewContainer != null) {
             multiViewContainer.setVisibility(View.VISIBLE);
@@ -5739,8 +5920,8 @@ public class MainActivity extends FragmentActivity {
     private List<ChannelItem> buildMultiViewChannels() {
         List<ChannelItem> selected = new ArrayList<>();
         Set<String> added = new HashSet<>();
-        if (currentIndex >= 0 && currentIndex < channels.size()) {
-            ChannelItem current = channels.get(currentIndex);
+        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            ChannelItem current = channels.get(overlayNavigationState.currentIndex);
             if (current != null && !current.isVod && current.id != null && added.add(current.id)) {
                 selected.add(current);
             }
@@ -5850,14 +6031,16 @@ public class MainActivity extends FragmentActivity {
         for (int i = 0; i < MULTIVIEW_PRESET_COUNT; i++) {
             labels[i] = buildMultiViewPresetLabel(i);
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.multiview_save_preset_title)
-                .setItems(labels, (dialog, which) -> {
+        List<String> options = Arrays.asList(labels);
+        List<Runnable> actions = new ArrayList<>();
+        for (int i = 0; i < labels.length; i++) {
+            final int which = i;
+            actions.add(() -> {
                     saveMultiViewPreset(which, source);
                     showStatus(getString(R.string.status_multiview_preset_saved, which + 1));
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+            });
+        }
+        showTvOptionsDialog(R.string.multiview_save_preset_title, null, options, actions);
     }
 
     private void showOpenMultiViewPresetDialog() {
@@ -5865,18 +6048,20 @@ public class MainActivity extends FragmentActivity {
         for (int i = 0; i < MULTIVIEW_PRESET_COUNT; i++) {
             labels[i] = buildMultiViewPresetLabel(i);
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.multiview_open_preset_title)
-                .setItems(labels, (dialog, which) -> {
+        List<String> options = Arrays.asList(labels);
+        List<Runnable> actions = new ArrayList<>();
+        for (int i = 0; i < labels.length; i++) {
+            final int which = i;
+            actions.add(() -> {
                     List<ChannelItem> preset = resolveMultiViewPreset(which);
                     if (preset.size() < 2) {
                         showStatus(getString(R.string.status_multiview_preset_empty));
                         return;
                     }
                     openMultiView(preset);
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+            });
+        }
+        showTvOptionsDialog(R.string.multiview_open_preset_title, null, options, actions);
     }
 
     private void showMultiViewChannelPicker(int slot) {
@@ -5930,8 +6115,12 @@ public class MainActivity extends FragmentActivity {
         controller.setMuted(slot != multiViewActiveIndex);
         PlayerController.PlaybackRequest request = toPlaybackRequest(item);
         PlayerController.StreamInfo cachedStreamInfo = streamInfoByChannelId.get(item.id);
-        controller.playChannel(request, true, cachedStreamInfo);
-        if (request != null && !request.directPlayback) {
+        if (shouldResolveStreamInfoBeforePlayback(item, request)) {
+            controller.playChannelAfterResolvingStreamInfo(request, true, streamInfoByChannelId, 0L);
+        } else {
+            controller.playChannel(request, true, cachedStreamInfo);
+        }
+        if (request != null && !shouldResolveStreamInfoBeforePlayback(item, request) && !request.directPlayback) {
             controller.resolveStreamInfoAndReplayIfNeeded(request, true, streamInfoByChannelId);
         }
         updateMultiViewFocus();
@@ -5987,6 +6176,35 @@ public class MainActivity extends FragmentActivity {
         tuneChannelById(item.id);
     }
 
+    private void refreshMultiViewHeader() {
+        MultiViewHeaderComposeBinder.bind(
+                multiViewHeaderComposeView,
+                new MultiViewHeaderUiModel(
+                        getString(R.string.multiview_title),
+                        touchDeviceMode ? getString(R.string.multiview_hint_touch) : getString(R.string.multiview_hint_tv),
+                        getString(R.string.multiview_close),
+                        this::closeMultiView
+                )
+        );
+    }
+
+    private void refreshMultiViewOverlays() {
+        for (int i = 0; i < multiOverlayViews.length; i++) {
+            boolean hasChannel = i < multiViewChannels.size() && multiViewChannels.get(i) != null;
+            ChannelItem item = hasChannel ? multiViewChannels.get(i) : null;
+            MultiViewTileOverlayComposeBinder.bind(
+                    multiOverlayViews[i],
+                    new MultiViewTileOverlayUiModel(
+                            item == null ? "" : item.name,
+                            hasChannel,
+                            i == multiViewActiveIndex && hasChannel,
+                            false,
+                            ""
+                    )
+            );
+        }
+    }
+
     private void updateMultiViewFocus() {
         for (int i = 0; i < multiTiles.length; i++) {
             if (multiTiles[i] == null) {
@@ -5999,14 +6217,8 @@ public class MainActivity extends FragmentActivity {
             tileBackground.setStroke(active ? dpToPx(4) : dpToPx(2), active ? Color.parseColor("#FFCC7A00") : Color.parseColor("#55384B5E"));
             multiTiles[i].setBackground(tileBackground);
             multiTiles[i].setAlpha(hasChannel ? 1f : 0.7f);
-            if (multiLabels[i] != null) {
-                multiLabels[i].setText(hasChannel ? multiViewChannels.get(i).name : "");
-                multiLabels[i].setBackgroundTintList(ColorStateList.valueOf(active ? 0xCC0E3E46 : 0xCC243447));
-            }
-            if (multiAudioBadges[i] != null) {
-                multiAudioBadges[i].setVisibility(View.GONE);
-            }
         }
+        refreshMultiViewOverlays();
     }
 
     private int dpToPx(int dp) {
@@ -6038,76 +6250,77 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void syncOverlayCoordinator() {
-        channelOverlayCoordinator.syncState(currentIndex, selectedOverlayIndex, favoritesOnly, selectedFilterKey);
+        channelOverlayCoordinator.syncState(overlayNavigationState.currentIndex, overlayNavigationState.selectedOverlayIndex, overlayNavigationState.favoritesOnly, overlayNavigationState.selectedFilterKey);
     }
 
     private void syncOverlayStateFromCoordinator() {
-        currentIndex = channelOverlayCoordinator.getCurrentIndex();
-        selectedOverlayIndex = channelOverlayCoordinator.getSelectedOverlayIndex();
-        favoritesOnly = channelOverlayCoordinator.isFavoritesOnly();
-        selectedFilterKey = channelOverlayCoordinator.getSelectedFilterKey();
+        overlayNavigationState.currentIndex = channelOverlayCoordinator.getCurrentIndex();
+        overlayNavigationState.selectedOverlayIndex = channelOverlayCoordinator.getSelectedOverlayIndex();
+        overlayNavigationState.favoritesOnly = channelOverlayCoordinator.isFavoritesOnly();
+        overlayNavigationState.selectedFilterKey = channelOverlayCoordinator.getSelectedFilterKey();
         persistNavigationState();
     }
 
     private void updateOverlayPanel() {
-        if (overlayCurrentChannelText == null || overlayCurrentMetaText == null || overlayPlaybackRouteText == null || overlayPlaybackQualityText == null || overlayRecentText == null) {
+        if (overlayNowPlayingComposeView == null) {
             return;
         }
-        ChannelItem currentChannel = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex) : findChannelItemById(lastChannelId);
-        if (currentChannel == null) {
-            overlayCurrentChannelText.setText(getString(R.string.status_ready));
-            overlayCurrentMetaText.setVisibility(View.VISIBLE);
-            overlayCurrentMetaText.setText(getString(R.string.overlay_current_program_empty));
-        } else {
-            overlayCurrentChannelText.setText(displayName(currentChannel));
-            String currentProgram = buildOverlayProgramSummary(currentChannel);
-            String tag = profileTag(currentChannel);
-            if (!tag.isEmpty()) {
-                currentProgram = tag + "  ·  " + currentProgram;
-            }
-            overlayCurrentMetaText.setVisibility(View.VISIBLE);
-            overlayCurrentMetaText.setText(currentProgram);
-        }
-
+        ChannelItem currentChannel = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : findChannelItemById(lastChannelId);
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
-        String routeLabel = diagnostics == null || diagnostics.routeLabel == null || diagnostics.routeLabel.trim().isEmpty()
-                ? getString(R.string.diagnostics_state_idle)
-                : diagnostics.routeLabel;
-        overlayPlaybackRouteText.setText(getString(R.string.overlay_playback_route, routeLabel));
-        String qualityLabel = formatPlaybackQualityCompact(diagnostics);
-        if (!qualityLabel.trim().isEmpty()) {
-            overlayPlaybackQualityText.setVisibility(View.VISIBLE);
-            overlayPlaybackQualityText.setText(getString(R.string.overlay_playback_quality, qualityLabel));
-        } else if (currentChannel != null && diagnostics != null && diagnostics.playbackState != null && !"IDLE".equalsIgnoreCase(diagnostics.playbackState)) {
-            overlayPlaybackQualityText.setVisibility(View.VISIBLE);
-            overlayPlaybackQualityText.setText(R.string.overlay_playback_quality_detecting);
-        } else {
-            overlayPlaybackQualityText.setVisibility(View.GONE);
-            overlayPlaybackQualityText.setText("");
-        }
-
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
-        overlayRecentText.setVisibility(View.VISIBLE);
-        if (items.isEmpty()) {
-            overlayRecentText.setText(getString(R.string.overlay_recent_channels_empty));
-            return;
-        }
-        List<String> names = new ArrayList<>();
-        int max = Math.min(4, items.size());
-        for (int i = 0; i < max; i++) {
-            names.add(items.get(i).channelName);
-        }
-        overlayRecentText.setText(getString(R.string.overlay_recent_channels, joinLabels(names)));
+        ChannelOverlayUi.NowPlayingModel model = ChannelOverlayUi.buildNowPlayingModel(
+                this,
+                currentChannel,
+                currentChannel == null ? "" : displayName(currentChannel),
+                profileTag(currentChannel),
+                overlayContextLabel(currentChannel),
+                diagnostics,
+                formatPlaybackQualityCompact(diagnostics),
+                items
+        );
+        OverlayNowPlayingComposeBinder.bind(overlayNowPlayingComposeView, model);
     }
 
-    private String buildOverlayProgramSummary(ChannelItem channel) {
-        String currentLine = channel == null || channel.nowProgram == null || channel.nowProgram.trim().isEmpty()
-                ? getString(R.string.overlay_current_program_empty)
-                : getString(R.string.overlay_current_program, channel.nowProgram.trim());
-        String nextLine = channel == null || channel.nextProgram == null || channel.nextProgram.trim().isEmpty()
-                ? getString(R.string.overlay_next_program_empty)
-                : getString(R.string.overlay_next_program, channel.nextProgram.trim());
-        return currentLine + "\n" + nextLine;
+    private String overlayContextLabel(ChannelItem channel) {
+        ChannelFilter filter = selectedOverlayFilter();
+        if (filter != null && filter.type == FILTER_CUSTOM_GROUP && filter.groupName != null && !filter.groupName.trim().isEmpty()) {
+            return filter.groupName.trim();
+        }
+        if (filter != null && filter.type == FILTER_PLATFORM && filter.label != null && !filter.label.trim().isEmpty()) {
+            return stripOverlayFilterPrefix(filter.label);
+        }
+        if (channel != null && channel.platformName != null && !channel.platformName.trim().isEmpty()) {
+            return channel.platformName.trim();
+        }
+        if (channel != null && channel.group != null && !channel.group.trim().isEmpty()) {
+            return channel.group.trim();
+        }
+        return buildCurrentFilterLabel();
+    }
+
+    private ChannelFilter selectedOverlayFilter() {
+        String selectedKey = overlayNavigationState == null ? "" : overlayNavigationState.selectedFilterKey;
+        if (selectedKey == null || selectedKey.trim().isEmpty()) {
+            return null;
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && selectedKey.equals(filter.key)) {
+                return filter;
+            }
+        }
+        return null;
+    }
+
+    private String stripOverlayFilterPrefix(String label) {
+        if (label == null) {
+            return "";
+        }
+        String trimmed = label.trim();
+        int separator = trimmed.indexOf(':');
+        if (separator >= 0 && separator + 1 < trimmed.length()) {
+            return trimmed.substring(separator + 1).trim();
+        }
+        return trimmed;
     }
 
     private String buildZapProgramSummary(ChannelItem channel) {
@@ -6120,31 +6333,331 @@ public class MainActivity extends FragmentActivity {
         return getString(R.string.zap_banner_empty_meta);
     }
 
+    private String buildZapChannelBadge(ChannelItem channelItem) {
+        int channelNumber = channelItem == null ? 0 : Math.max(channelItem.dashboardOrder, channelItem.originalOrder);
+        if (channelNumber <= 0 && overlayNavigationState.currentIndex >= 0) {
+            channelNumber = overlayNavigationState.currentIndex + 1;
+        }
+        if (channelNumber <= 0) {
+            return getString(R.string.zap_banner_channel_badge_unavailable);
+        }
+        return getString(R.string.zap_banner_channel_badge, String.valueOf(channelNumber));
+    }
+
+    private String buildZapProgramMeta(ChannelItem channelItem, EpgRepository.EpgProgram currentProgram) {
+        List<String> parts = new ArrayList<>();
+        if (currentProgram != null) {
+            String start = shortTime(currentProgram.startTime);
+            String end = shortTime(currentProgram.endTime);
+            if (!start.isEmpty() && !end.isEmpty()) {
+                parts.add(start + " - " + end);
+            }
+            long startMs = parseIsoMillis(currentProgram.startTime);
+            long endMs = parseIsoMillis(currentProgram.endTime);
+            long durationMs = endMs > startMs ? (endMs - startMs) : 0L;
+            if (durationMs > 0L) {
+                parts.add(formatDurationShort(durationMs));
+            }
+        } else {
+            String fallback = buildZapProgramSummary(channelItem);
+            if (!fallback.trim().isEmpty()) {
+                parts.add(fallback);
+            }
+        }
+        String tag = profileTag(channelItem);
+        if (!tag.isEmpty()) {
+            parts.add(tag);
+        }
+        return joinLabels(parts);
+    }
+
+    private void updateZapActionButtons(ChannelItem channelItem) {
+        int selectedIndex = zapBannerState.getSelectedActionIndex();
+        boolean favorite = channelItem != null && favoriteChannelIds.contains(channelItem.id);
+        zapActionItems.clear();
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_channels, true, false, selectedIndex == 0, this::showOverlay));
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_guide, true, false, selectedIndex == 1, this::openTimelineGuideForCurrentPlayback));
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_record, !isOfflineRecordingsDisabled(), false, selectedIndex == 2, this::scheduleCurrentProgramFromHud));
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_family, true, isProtectedItem(channelItem), selectedIndex == 3, this::showParentalSettingsDialog));
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_audio, true, false, selectedIndex == 4, this::showAudioTrackDialog));
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_quality, true, false, selectedIndex == 5, this::showPlaybackDiagnosticsFromHud));
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_favorite, true, favorite, selectedIndex == 6, this::toggleCurrentChannelFavoriteFromHud));
+        zapActionItems.add(buildZapActionItem(R.string.zap_action_more, true, false, selectedIndex == 7, this::showSimpleOfflineToolsMenu));
+        zapBannerState.ensureValidSelection(zapActionItems);
+        int normalizedIndex = zapBannerState.getSelectedActionIndex();
+        for (int i = 0; i < zapActionItems.size(); i++) {
+            ZapActionItem item = zapActionItems.get(i);
+            if (item == null) {
+                continue;
+            }
+            zapActionItems.set(i, new ZapActionItem(
+                    item.label,
+                    item.enabled,
+                    item.highlighted,
+                    i == normalizedIndex,
+                    item.onClick,
+                    item.onLongClick
+            ));
+        }
+    }
+
+    private ZapBannerUiModel buildZapBannerUiModel(ChannelItem channelItem) {
+        updateZapActionButtons(channelItem);
+        EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channelItem.id);
+        EpgRepository.EpgProgram currentProgram = pair == null ? null : pair.current;
+        EpgRepository.EpgProgram nextProgram = pair == null ? null : pair.next;
+
+        String currentTitle = currentProgram != null && currentProgram.title != null && !currentProgram.title.trim().isEmpty()
+                ? currentProgram.title.trim()
+                : (channelItem.nowProgram == null ? "" : channelItem.nowProgram.trim());
+        String nextTitle = nextProgram != null && nextProgram.title != null && !nextProgram.title.trim().isEmpty()
+                ? nextProgram.title.trim()
+                : (channelItem.nextProgram == null ? "" : channelItem.nextProgram.trim());
+
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        String qualityLabel = formatPlaybackQualityCompact(diagnostics);
+        boolean qualityVisible = !qualityLabel.trim().isEmpty()
+                || (diagnostics != null && diagnostics.playbackState != null && !"IDLE".equalsIgnoreCase(diagnostics.playbackState));
+        String qualityText = !qualityLabel.trim().isEmpty()
+                ? getString(R.string.overlay_playback_quality, qualityLabel)
+                : getString(R.string.overlay_playback_quality_detecting);
+
+        int progress = currentProgram == null ? 0 : Math.max(0, Math.min(100, currentProgram.progress));
+        boolean progressVisible = currentProgram != null && currentProgram.progress >= 0;
+        long endMs = currentProgram == null ? 0L : parseIsoMillis(currentProgram.endTime);
+        long nowMs = System.currentTimeMillis();
+        String remainingText = (progressVisible && endMs > nowMs)
+                ? getString(R.string.zap_banner_remaining, formatDurationShort(endMs - nowMs))
+                : "";
+        String endTimeText = currentProgram == null ? "" : shortTime(currentProgram.endTime);
+
+        return new ZapBannerUiModel(
+                channelItem.logoUrl,
+                buildZapChannelBadge(channelItem),
+                displayName(channelItem),
+                qualityText,
+                qualityVisible,
+                currentTitle.isEmpty() ? getString(R.string.zap_banner_epg_missing) : currentTitle,
+                buildZapProgramMeta(channelItem, currentProgram),
+                nextTitle.isEmpty() ? "" : getString(R.string.zap_banner_next_prefix) + ": " + nextTitle,
+                !nextTitle.isEmpty(),
+                remainingText,
+                progress,
+                progressVisible,
+                endTimeText,
+                zapActionItems
+        );
+    }
+
+    private ZapActionItem buildZapActionItem(int labelRes, boolean enabled, boolean highlighted, boolean selected, Runnable action) {
+        return new ZapActionItem(
+                getString(labelRes),
+                enabled,
+                highlighted,
+                selected,
+                () -> {
+                    uiHandler.removeCallbacks(hideZapBannerRunnable);
+                    if (action != null) {
+                        action.run();
+                    }
+                }
+        );
+    }
+
+    private void moveZapBannerSelection(int delta) {
+        if (zapBannerState.moveSelection(delta, zapActionItems)) {
+            ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+            if (currentChannel != null) {
+                updateZapBannerContent(currentChannel);
+            } else {
+                updateZapActionButtons(null);
+            }
+            uiHandler.removeCallbacks(hideZapBannerRunnable);
+            uiHandler.postDelayed(hideZapBannerRunnable, 5500L);
+        }
+    }
+
+    private void activateZapBannerSelection() {
+        ZapActionItem item = zapBannerState.getSelectedAction(zapActionItems);
+        if (item != null && item.enabled && item.onClick != null) {
+            item.onClick.run();
+        }
+    }
+
+    private void openTimelineGuideForCurrentPlayback() {
+        ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+        if (currentChannel == null) {
+            showOverlay();
+            return;
+        }
+        openTimelineGuideForChannel(currentChannel);
+    }
+
+    private void scheduleCurrentProgramFromHud() {
+        if (isOverlayVisible() && overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size()) {
+            createScheduleFromEndpoint(channels.get(overlayNavigationState.selectedOverlayIndex), false);
+            return;
+        }
+        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            createScheduleFromEndpoint(channels.get(overlayNavigationState.currentIndex), false);
+        }
+    }
+
+    private void showPlaybackDiagnosticsFromHud() {
+        ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+        if (currentChannel != null) {
+            showPlaybackDiagnosticsActionsDialog(currentChannel);
+            return;
+        }
+        showPlaybackDiagnosticsDialog();
+    }
+
+    private void toggleCurrentChannelFavoriteFromHud() {
+        ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+        if (currentChannel == null) {
+            showOverlay();
+            return;
+        }
+        toggleFavoriteForChannel(currentChannel);
+        if (isZapBannerVisible()) {
+            updateZapBannerContent(currentChannel);
+            uiHandler.removeCallbacks(hideZapBannerRunnable);
+            uiHandler.postDelayed(hideZapBannerRunnable, 5500L);
+        }
+    }
+
     private void showV12ToolsMenu() {
+        showSimpleOfflineToolsMenu();
+    }
+
+    private void showSimpleOfflineToolsMenu() {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
-        options.add(getString(R.string.tools_section_current_channel));
-        actions.add(this::showCurrentChannelQuickActionsDialog);
-        options.add(getString(R.string.tools_section_playback));
-        actions.add(this::showPlaybackToolsDialog);
-        options.add(getString(R.string.tools_section_navigation));
-        actions.add(this::showNavigationToolsDialog);
-        options.add(getString(R.string.tools_section_vod));
-        actions.add(this::showVodLibraryDialog);
-        options.add(getString(R.string.tools_section_lists));
-        actions.add(this::showListsToolsDialog);
+        options.add(getString(R.string.tools_section_tv_guide));
+        actions.add(() -> showTvAndGuideToolsDialog(this::showSimpleOfflineToolsMenu));
         if (!isOfflineRecordingsDisabled()) {
             options.add(getString(R.string.tools_section_recordings));
-            actions.add(this::showRecordingsToolsDialog);
+            actions.add(() -> showRecordingsSimpleToolsDialog(this::showSimpleOfflineToolsMenu));
         }
-        options.add(getString(R.string.tools_section_multiview));
-        actions.add(this::showMultiviewToolsDialog);
-        options.add(getString(R.string.tools_section_settings));
-        actions.add(this::showSettingsAndDiagnosticsToolsDialog);
+        options.add(getString(R.string.tools_section_vod));
+        actions.add(this::showVodLibraryDialog);
+        options.add(getString(R.string.offline_catalog_action_refresh));
+        actions.add(this::refreshOfflineCatalogFromSettings);
+        options.add(getString(R.string.tools_section_search_recents));
+        actions.add(() -> showSearchAndRecentsToolsDialog(this::showSimpleOfflineToolsMenu));
+        options.add(getString(R.string.tools_section_lists));
+        actions.add(() -> showListsToolsDialog(this::showSimpleOfflineToolsMenu));
+        options.add(getString(R.string.tools_section_family));
+        actions.add(() -> showFamilyAndSecurityToolsDialog(this::showSimpleOfflineToolsMenu));
+        options.add(getString(R.string.tools_section_advanced));
+        actions.add(() -> showAdvancedToolsMenu(this::showSimpleOfflineToolsMenu));
         showTvOptionsDialog(R.string.tools_menu_title_short, null, options, actions);
     }
 
+    private void showAdvancedToolsMenu() {
+        showAdvancedToolsMenu(null);
+    }
+
+    private void showAdvancedToolsMenu(Runnable onBack) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_section_current_channel));
+        actions.add(() -> showCurrentChannelQuickActionsDialog(() -> showAdvancedToolsMenu(onBack)));
+        options.add(getString(R.string.tools_section_playback));
+        actions.add(() -> showPlaybackToolsDialog(() -> showAdvancedToolsMenu(onBack)));
+        options.add(getString(R.string.tools_section_navigation));
+        actions.add(() -> showNavigationToolsDialog(() -> showAdvancedToolsMenu(onBack)));
+        options.add(getString(R.string.tools_section_multiview));
+        actions.add(() -> showMultiviewToolsDialog(() -> showAdvancedToolsMenu(onBack)));
+        options.add(getString(R.string.tools_section_settings));
+        actions.add(() -> showSettingsAndDiagnosticsToolsDialog(() -> showAdvancedToolsMenu(onBack)));
+        showTvOptionsDialog(R.string.tools_section_advanced, null, options, actions, onBack);
+    }
+
+    private void showTvAndGuideToolsDialog() {
+        showTvAndGuideToolsDialog(null);
+    }
+
+    private void showTvAndGuideToolsDialog(Runnable onBack) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_timeline_guide));
+        actions.add(this::openTimelineGuideAroundSelection);
+        options.add(getString(R.string.tools_menu_visual_epg));
+        actions.add(this::openVisualEpgAroundSelection);
+        options.add(getString(R.string.tools_menu_epg_search));
+        actions.add(this::showEpgSearchDialog);
+        options.add(getString(R.string.tools_menu_search_channels));
+        actions.add(this::showChannelSearchDialog);
+        options.add(getString(R.string.tools_section_current_channel));
+        actions.add(() -> showCurrentChannelQuickActionsDialog(() -> showTvAndGuideToolsDialog(onBack)));
+        showTvOptionsDialog(R.string.tools_section_tv_guide, null, options, actions, onBack);
+    }
+
+    private void showSearchAndRecentsToolsDialog() {
+        showSearchAndRecentsToolsDialog(null);
+    }
+
+    private void showSearchAndRecentsToolsDialog(Runnable onBack) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.quick_hub_global_search));
+        actions.add(this::showGlobalSearchDialog);
+        options.add(getString(R.string.tools_menu_search_channels));
+        actions.add(this::showChannelSearchDialog);
+        options.add(getString(R.string.tools_menu_recent_channels));
+        actions.add(this::showRecentChannelsDialog);
+        options.add(getString(R.string.quick_hub_recent));
+        actions.add(this::showRecentChannelsQuickDialog);
+        options.add(getString(R.string.quick_hub_favorites));
+        actions.add(this::showFavoriteChannelsQuickDialog);
+        showTvOptionsDialog(R.string.tools_section_search_recents, null, options, actions, onBack);
+    }
+
+    private void showFamilyAndSecurityToolsDialog() {
+        showFamilyAndSecurityToolsDialog(null);
+    }
+
+    private void showFamilyAndSecurityToolsDialog(Runnable onBack) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_open_parental));
+        actions.add(() -> showParentalSettingsDialog(() -> showFamilyAndSecurityToolsDialog(onBack)));
+        options.add(getString(R.string.tools_menu_favorite_channels));
+        actions.add(this::showFavoriteChannelsQuickDialog);
+        options.add(getString(R.string.tools_menu_manage_personal_lists));
+        actions.add(this::showPersonalListsManagerDialog);
+        options.add(getString(R.string.settings_parental_view_status));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_parental, buildParentalSettingsSummary()));
+        showTvOptionsDialog(R.string.tools_section_family, null, options, actions, onBack);
+    }
+
+    private void showRecordingsSimpleToolsDialog() {
+        showRecordingsSimpleToolsDialog(null);
+    }
+
+    private void showRecordingsSimpleToolsDialog(Runnable onBack) {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.tools_menu_recordings_panel));
+        actions.add(this::openRecordingsBrowser);
+        if (canScheduleRecordings()) {
+            options.add(getString(R.string.menu_record_current_program));
+            actions.add(() -> createScheduleFromEndpoint(getCurrentPlaybackChannelItem(), false));
+            options.add(getString(R.string.menu_record_next_program));
+            actions.add(() -> createScheduleFromEndpoint(getCurrentPlaybackChannelItem(), true));
+        }
+        showTvOptionsDialog(R.string.tools_section_recordings, null, options, actions, onBack);
+    }
+
     private void showPlaybackToolsDialog() {
+        showPlaybackToolsDialog(null);
+    }
+
+    private void showPlaybackToolsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.diagnostics_action_retry_next_route));
@@ -6157,10 +6670,14 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showAudioTrackDialog);
         options.add(getString(R.string.tools_menu_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
-        showTvOptionsDialog(R.string.tools_section_playback, null, options, actions);
+        showTvOptionsDialog(R.string.tools_section_playback, null, options, actions, onBack);
     }
 
     private void showNavigationToolsDialog() {
+        showNavigationToolsDialog(null);
+    }
+
+    private void showNavigationToolsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.tools_menu_quick_hub));
@@ -6177,7 +6694,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showEpgSearchDialog);
         options.add(getString(R.string.tools_menu_recent_channels));
         actions.add(this::showRecentChannelsDialog);
-        showTvOptionsDialog(R.string.tools_section_navigation, null, options, actions);
+        showTvOptionsDialog(R.string.tools_section_navigation, null, options, actions, onBack);
     }
 
     private void showVodLibraryDialog() {
@@ -6206,8 +6723,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> showVodLibraryList(R.string.vod_library_recent, recentItems, false));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_tivify, tivifyItems));
         actions.add(() -> showVodLibraryList(R.string.vod_library_tivify, tivifyItems, false));
-        options.add(buildVodLibraryOptionLabel(R.string.vod_library_tivify_adult, tivifyAdultItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify_adult, tivifyAdultItems, false));
+        options.add(decorateProtectedLabel(buildVodLibraryOptionLabel(R.string.vod_library_tivify_adult, tivifyAdultItems), currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod));
+        actions.add(() -> ensureParentalAccessForFilterKey("vod:tivify:adult", () -> showVodLibraryList(R.string.vod_library_tivify_adult, tivifyAdultItems, false)));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_runtime, runtimeItems));
         actions.add(() -> showVodLibraryList(R.string.vod_library_runtime, runtimeItems, false));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_with_progress, progressItems));
@@ -6238,133 +6755,18 @@ public class MainActivity extends FragmentActivity {
         prepareModalSurface();
         final Dialog[] dialogHolder = new Dialog[1];
         String trimmedSearchQuery = searchQuery == null ? "" : searchQuery.trim();
-        boolean searchMode = !trimmedSearchQuery.isEmpty();
-
-        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int dialogWidth = Math.max(dp(900), metrics.widthPixels - dp(56));
-        int dialogHeight = Math.max(dp(560), metrics.heightPixels - dp(80));
-        int contentWidth = dialogWidth;
-        android.widget.ScrollView scrollView = new android.widget.ScrollView(this);
-        scrollView.setLayoutParams(new ViewGroup.LayoutParams(dialogWidth, dialogHeight));
-        scrollView.setFillViewport(true);
-
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setMinimumWidth(contentWidth);
-        content.setLayoutParams(new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-        int padding = dp(16);
-        content.setPadding(padding, padding, padding, padding);
-        content.setBackgroundColor(0xF0181E28);
-
-        TextView titleView = new TextView(this);
-        titleView.setText(searchMode ? getString(R.string.vod_search_results_title, trimmedSearchQuery) : getString(R.string.tools_section_vod));
-        titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(24f);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        content.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView subtitleView = new TextView(this);
-        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        subtitleParams.topMargin = dp(4);
-        subtitleView.setText(searchMode ? buildVodSearchSummary(trimmedSearchQuery) : buildVodLibrarySummary());
-        subtitleView.setTextColor(0xFFB7C4D6);
-        subtitleView.setTextSize(13f);
-        content.addView(subtitleView, subtitleParams);
-
-        TextView helpView = new TextView(this);
-        LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        helpParams.topMargin = dp(8);
-        helpView.setText(R.string.vod_visual_help);
-        helpView.setTextColor(0xFFFFD082);
-        helpView.setTextSize(12f);
-        helpView.setTypeface(Typeface.DEFAULT_BOLD);
-        content.addView(helpView, helpParams);
-
-        LinearLayout filtersRow = new LinearLayout(this);
-        filtersRow.setOrientation(LinearLayout.HORIZONTAL);
-        filtersRow.setGravity(Gravity.CENTER_VERTICAL);
-        filtersRow.setFocusable(false);
-        LinearLayout.LayoutParams filtersParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-        filtersParams.topMargin = dp(12);
-        content.addView(filtersRow, filtersParams);
-        activeVodVisualFilterRow = filtersRow;
-
-        if (searchMode) {
-            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_edit_search), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(() -> showVodSearchDialog(trimmedSearchQuery));
-            });
-        }
-        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_type, typeFilter.label), true, () -> {
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter.next(), platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
-        });
-        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> {
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter, trimmedSearchQuery));
-        });
-        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_status, statusFilter.label), true, () -> {
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter, trimmedSearchQuery));
-        });
-        addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_sort, sortFilter.label), true, () -> {
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next(), trimmedSearchQuery));
-        });
-        if (searchMode) {
-            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_clear_search), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(this::showVodVisualLibraryDialog);
-            });
-        } else {
-            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_search), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(this::showVodSearchDialog);
-            });
-            addVodVisualAction(filtersRow, getString(R.string.vod_visual_filter_list_view), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(this::showVodLibraryMenuDialog);
-            });
-        }
-
-        List<RecyclerView> shelfRows = new ArrayList<>();
-        if (searchMode) {
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery), false);
-        } else if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_continue), buildVodContinueItems(), true);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_recent), buildRecentVodItems(), false);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), false);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), false);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_with_progress), buildVodProgressItems(), true);
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), false);
-        } else {
-            addVodShelf(content, scrollView, shelfRows, contentWidth - (padding * 2), getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), false);
-        }
-        if (shelfRows.isEmpty()) {
-            TextView emptyView = new TextView(this);
-            LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            emptyParams.topMargin = dp(22);
-            emptyView.setText(R.string.vod_library_empty);
-            emptyView.setTextColor(0xFFB7C4D6);
-            emptyView.setTextSize(15f);
-            content.addView(emptyView, emptyParams);
-        }
-
-        scrollView.addView(content, new android.widget.ScrollView.LayoutParams(contentWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
-        root.setBackgroundColor(0xCC000000);
-        android.widget.FrameLayout.LayoutParams scrollParams = new android.widget.FrameLayout.LayoutParams(dialogWidth, dialogHeight, Gravity.CENTER);
-        root.addView(scrollView, scrollParams);
-
-        Dialog dialog = new Dialog(this);
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(root);
+        VodVisualPanelComposeBinder.bind(
+                composeView,
+                buildVodVisualPanelModel(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, dialogHolder),
+                (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
+        );
+        dialog.setContentView(composeView);
         dialog.setOnDismissListener(d -> {
-            if (activeVodVisualFilterRow == filtersRow) {
-                activeVodVisualFilterRow = null;
-            }
             enableImmersiveMode();
         });
         dialog.show();
@@ -6373,160 +6775,125 @@ public class MainActivity extends FragmentActivity {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setDimAmount(0f);
         }
-        wireVodVisualHeaderNavigation(filtersRow, shelfRows, scrollView);
-        if (!focusVodShelfItem(shelfRows, 0, 0, scrollView)) {
-            focusVodVisualRowButton(filtersRow, 0, scrollView);
+    }
+
+    private VodVisualPanelUiModel buildVodVisualPanelModel(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String trimmedSearchQuery, Dialog[] dialogHolder) {
+        boolean searchMode = trimmedSearchQuery != null && !trimmedSearchQuery.trim().isEmpty();
+        List<VodVisualActionUiModel> actions = new ArrayList<>();
+        if (searchMode) {
+            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_edit_search), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(() -> showVodSearchDialog(trimmedSearchQuery));
+            }));
         }
+        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_type, typeFilter.label), true, () -> {
+            VodVisualTypeFilter nextType = typeFilter.next();
+            if (nextType == VodVisualTypeFilter.ADULT && currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod && isProtectedContentLocked()) {
+                ensureParentalAccessForFilterKey("vod:tivify:adult", () -> {
+                    dismissVodVisualDialog(dialogHolder[0]);
+                    uiHandler.post(() -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
+                });
+                return;
+            }
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
+        }));
+        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> {
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter, trimmedSearchQuery));
+        }));
+        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_status, statusFilter.label), true, () -> {
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter, trimmedSearchQuery));
+        }));
+        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_sort, sortFilter.label), true, () -> {
+            dismissVodVisualDialog(dialogHolder[0]);
+            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next(), trimmedSearchQuery));
+        }));
+        if (searchMode) {
+            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_clear_search), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(this::showVodVisualLibraryDialog);
+            }));
+        } else {
+            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_search), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(this::showVodSearchDialog);
+            }));
+            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_list_view), false, () -> {
+                dismissVodVisualDialog(dialogHolder[0]);
+                uiHandler.post(this::showVodLibraryMenuDialog);
+            }));
+        }
+
+        List<VodVisualSectionUiModel> sections = new ArrayList<>();
+        if (searchMode) {
+            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
+        } else if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_continue), buildVodContinueItems());
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_recent), buildRecentVodItems());
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false));
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false));
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_with_progress), buildVodProgressItems());
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA));
+        } else {
+            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter));
+        }
+        return new VodVisualPanelUiModel(
+                searchMode ? getString(R.string.vod_search_results_title, trimmedSearchQuery) : getString(R.string.tools_section_vod),
+                searchMode ? buildVodSearchSummary(trimmedSearchQuery) : buildVodLibrarySummary(),
+                getString(R.string.vod_visual_help),
+                getString(R.string.vod_library_empty),
+                actions,
+                sections
+        );
+    }
+
+    private void addVodVisualSectionModel(List<VodVisualSectionUiModel> sections, String title, List<ChannelItem> items) {
+        if (sections == null || items == null || items.isEmpty()) {
+            return;
+        }
+        List<VodVisualItemUiModel> mapped = new ArrayList<>();
+        for (ChannelItem item : items) {
+            if (item == null) {
+                continue;
+            }
+            long progressMs = getVodResumePosition(item.id);
+            mapped.add(new VodVisualItemUiModel(
+                    decorateProtectedItemTitle(item, displayName(item)),
+                    decorateProtectedMeta(item, buildVodPosterMeta(item)),
+                    progressMs > 30_000L ? formatDurationShort(progressMs) : "",
+                    item.logoUrl,
+                    () -> showVodInfoDialog(item),
+                    () -> showVodActionsDialog(item)
+            ));
+        }
+        if (!mapped.isEmpty()) {
+            sections.add(new VodVisualSectionUiModel(getString(R.string.vod_visual_section_title, title, mapped.size()), mapped));
+        }
+    }
+
+    private String buildVodPosterMeta(ChannelItem item) {
+        if (item == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (item.vodYear != null && !item.vodYear.trim().isEmpty()) {
+            parts.add(item.vodYear.trim());
+        }
+        if (item.platformName != null && !item.platformName.trim().isEmpty()) {
+            parts.add(item.platformName.trim());
+        }
+        if (parts.isEmpty() && item.group != null && !item.group.trim().isEmpty()) {
+            parts.add(item.group.trim());
+        }
+        return TextUtils.join("  ·  ", parts);
     }
 
     private void dismissVodVisualDialog(Dialog dialog) {
         if (dialog != null && dialog.isShowing()) {
             dialog.dismiss();
         }
-    }
-
-    private TextView addVodVisualAction(LinearLayout parent, String label, Runnable action) {
-        return addVodVisualAction(parent, label, false, action);
-    }
-
-    private TextView addVodVisualAction(LinearLayout parent, String label, boolean filterButton, Runnable action) {
-        if (parent == null || label == null) {
-            return null;
-        }
-        TextView button = new TextView(this);
-        button.setText(label);
-        button.setTextColor(0xFFFFFFFF);
-        button.setTextSize(13f);
-        button.setTypeface(Typeface.DEFAULT_BOLD);
-        button.setGravity(Gravity.CENTER);
-        button.setSingleLine(true);
-        button.setEllipsize(TextUtils.TruncateAt.END);
-        button.setMinHeight(dp(42));
-        button.setPadding(dp(12), 0, dp(12), 0);
-        applyVodVisualActionStyle(button, filterButton, false);
-        button.setOnFocusChangeListener((v, hasFocus) -> applyVodVisualActionStyle(button, filterButton, hasFocus));
-        button.setFocusable(true);
-        button.setFocusableInTouchMode(true);
-        button.setClickable(true);
-        if (button.getId() == View.NO_ID) {
-            button.setId(View.generateViewId());
-        }
-        button.setOnClickListener(v -> {
-            if (action != null) {
-                action.run();
-            }
-        });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
-        params.setMarginEnd(dp(8));
-        parent.addView(button, params);
-        return button;
-    }
-
-    private void applyVodVisualActionStyle(TextView button, boolean filterButton, boolean focused) {
-        if (button == null) {
-            return;
-        }
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.RECTANGLE);
-        background.setCornerRadius(dp(8));
-        if (focused) {
-            background.setColor(0xFFFFD782);
-            background.setStroke(dp(2), 0xFFFFFFFF);
-            button.setTextColor(0xFF111820);
-        } else if (filterButton) {
-            background.setColor(0xFF235D78);
-            background.setStroke(dp(1), 0xFF7FD8FF);
-            button.setTextColor(0xFFFFFFFF);
-        } else {
-            background.setColor(0xFF263645);
-            background.setStroke(dp(1), 0xFF54677A);
-            button.setTextColor(0xFFD8E4F2);
-        }
-        button.setBackground(background);
-    }
-
-    private void addVodShelf(LinearLayout parent, android.widget.ScrollView scrollView, List<RecyclerView> shelfRows, int shelfWidth, String title, List<ChannelItem> items, boolean progressFirst) {
-        if (parent == null || items == null || items.isEmpty()) {
-            return;
-        }
-        if (progressFirst) {
-            sortVodLibraryItems(items);
-        }
-        TextView titleView = new TextView(this);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleParams.topMargin = dp(18);
-        titleView.setText(getString(R.string.vod_visual_section_title, title, items.size()));
-        titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(17f);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        parent.addView(titleView, titleParams);
-
-        int rowIndex = shelfRows == null ? 0 : shelfRows.size();
-        RecyclerView recyclerView = new VodShelfRecyclerView(shelfRows, rowIndex, scrollView);
-        if (shelfRows != null) {
-            shelfRows.add(recyclerView);
-        }
-        recyclerView.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false));
-        recyclerView.setItemViewCacheSize(8);
-        recyclerView.setFocusable(true);
-        recyclerView.setFocusableInTouchMode(true);
-        recyclerView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
-        recyclerView.setMinimumWidth(shelfWidth);
-        recyclerView.setAdapter(new VodPosterAdapter(items, shelfRows, rowIndex, scrollView));
-        recyclerView.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_UP && rowIndex == 0) {
-                return false;
-            }
-            return false;
-        });
-        LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(shelfWidth, dp(248));
-        listParams.topMargin = dp(8);
-        parent.addView(recyclerView, listParams);
-    }
-
-    private void wireVodVisualHeaderNavigation(LinearLayout actionsRow, List<RecyclerView> shelfRows, android.widget.ScrollView scrollView) {
-        wireVodVisualRowNavigation(actionsRow, shelfRows, scrollView);
-    }
-
-    private void wireVodVisualRowNavigation(LinearLayout row, List<RecyclerView> shelfRows, android.widget.ScrollView scrollView) {
-        if (row == null) {
-            return;
-        }
-        for (int i = 0; i < row.getChildCount(); i++) {
-            final int actionIndex = i;
-            View child = row.getChildAt(i);
-            child.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                    return false;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    return focusVodShelfItem(shelfRows, 0, actionIndex, scrollView);
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    return focusVodVisualRowButton(row, actionIndex - 1, scrollView);
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    return focusVodVisualRowButton(row, actionIndex + 1, scrollView);
-                }
-                return false;
-            });
-        }
-    }
-
-    private boolean focusVodVisualRowButton(LinearLayout row, int index, android.widget.ScrollView scrollView) {
-        if (row == null || row.getChildCount() == 0) {
-            return false;
-        }
-        int targetIndex = Math.max(0, Math.min(index, row.getChildCount() - 1));
-        View target = row.getChildAt(targetIndex);
-        if (target == null) {
-            return false;
-        }
-        target.post(() -> {
-            target.requestFocus();
-            ensureVodVisualItemVisible(scrollView, target);
-        });
-        return true;
     }
 
     private boolean isFocusInsideView(View container) {
@@ -6545,80 +6912,6 @@ public class MainActivity extends FragmentActivity {
             focused = parent instanceof View ? (View) parent : null;
         }
         return false;
-    }
-
-    private int findFocusedChildIndex(LinearLayout row) {
-        return findFocusedChildIndex(row, getCurrentFocus());
-    }
-
-    private int findFocusedChildIndex(LinearLayout row, View focused) {
-        if (row == null || row.getChildCount() == 0) {
-            return 0;
-        }
-        for (int i = 0; i < row.getChildCount(); i++) {
-            if (row.getChildAt(i) == focused) {
-                return i;
-            }
-        }
-        return 0;
-    }
-
-    private int findFocusedVodShelfPosition(RecyclerView recyclerView) {
-        return findFocusedVodShelfPosition(recyclerView, getCurrentFocus());
-    }
-
-    private int findFocusedVodShelfPosition(RecyclerView recyclerView, View focused) {
-        if (recyclerView == null) {
-            return 0;
-        }
-        if (focused == null) {
-            return 0;
-        }
-        View child = focused;
-        while (child != null && child.getParent() != recyclerView) {
-            Object parent = child.getParent();
-            child = parent instanceof View ? (View) parent : null;
-        }
-        if (child == null) {
-            return 0;
-        }
-        int position = recyclerView.getChildAdapterPosition(child);
-        return position == RecyclerView.NO_POSITION ? 0 : position;
-    }
-
-    private boolean focusVodShelfItem(List<RecyclerView> shelfRows, int rowIndex, int itemIndex, android.widget.ScrollView scrollView) {
-        if (rowIndex < 0) {
-            return focusVodVisualRowButton(activeVodVisualFilterRow, itemIndex, scrollView);
-        }
-        if (shelfRows == null || rowIndex < 0 || rowIndex >= shelfRows.size()) {
-            return false;
-        }
-        RecyclerView recyclerView = shelfRows.get(rowIndex);
-        if (recyclerView == null || recyclerView.getAdapter() == null || recyclerView.getAdapter().getItemCount() == 0) {
-            return false;
-        }
-        int targetIndex = Math.max(0, Math.min(itemIndex, recyclerView.getAdapter().getItemCount() - 1));
-        RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
-        if (layoutManager instanceof LinearLayoutManager) {
-            ((LinearLayoutManager) layoutManager).scrollToPositionWithOffset(targetIndex, dp(8));
-        } else {
-            recyclerView.scrollToPosition(targetIndex);
-        }
-        recyclerView.post(() -> {
-            View target = null;
-            RecyclerView.LayoutManager updatedLayoutManager = recyclerView.getLayoutManager();
-            if (updatedLayoutManager != null) {
-                target = updatedLayoutManager.findViewByPosition(targetIndex);
-            }
-            if (target != null) {
-                target.requestFocus();
-                ensureVodVisualItemVisible(scrollView, target);
-            } else {
-                recyclerView.requestFocus();
-                ensureVodVisualItemVisible(scrollView, recyclerView);
-            }
-        });
-        return true;
     }
 
     private void ensureVodVisualItemVisible(android.widget.ScrollView scrollView, View target) {
@@ -6642,6 +6935,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showListsToolsDialog() {
+        showListsToolsDialog(null);
+    }
+
+    private void showListsToolsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.tools_menu_favorite_channels));
@@ -6652,7 +6949,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::openCurrentChannelPersonalLists);
         options.add(getString(R.string.tools_menu_channel_profile_current));
         actions.add(this::openCurrentChannelProfile);
-        showTvOptionsDialog(R.string.tools_section_lists, null, options, actions);
+        showTvOptionsDialog(R.string.tools_section_lists, null, options, actions, onBack);
     }
 
     private boolean isOfflineRecordingsDisabled() {
@@ -6684,6 +6981,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showMultiviewToolsDialog() {
+        showMultiviewToolsDialog(null);
+    }
+
+    private void showMultiviewToolsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.tools_menu_multiview));
@@ -6692,10 +6993,14 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showOpenMultiViewPresetDialog);
         options.add(getString(R.string.tools_menu_multiview_save_preset));
         actions.add(this::showSaveMultiViewPresetDialog);
-        showTvOptionsDialog(R.string.tools_section_multiview, null, options, actions);
+        showTvOptionsDialog(R.string.tools_section_multiview, null, options, actions, onBack);
     }
 
     private void showSettingsAndDiagnosticsToolsDialog() {
+        showSettingsAndDiagnosticsToolsDialog(null);
+    }
+
+    private void showSettingsAndDiagnosticsToolsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.tools_menu_settings_center));
@@ -6706,10 +7011,14 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showInstallStatusDialog);
         options.add(getString(R.string.app_update_channel_action, currentUpdateChannelLabel()));
         actions.add(this::showUpdateChannelDialog);
-        showTvOptionsDialog(R.string.tools_section_settings, null, options, actions);
+        showTvOptionsDialog(R.string.tools_section_settings, null, options, actions, onBack);
     }
 
     private void showCurrentChannelQuickActionsDialog() {
+        showCurrentChannelQuickActionsDialog(null);
+    }
+
+    private void showCurrentChannelQuickActionsDialog(Runnable onBack) {
         ChannelItem channelItem = getCurrentPlaybackChannelItem();
         if (channelItem == null) {
             showStatus(getString(R.string.diagnostics_none));
@@ -6734,7 +7043,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> openMiniGuideForChannel(channelItem));
         options.add(getString(R.string.tools_menu_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
-        showTvOptionsDialog(R.string.tools_section_current_channel, displayName(channelItem), options, actions);
+        showTvOptionsDialog(R.string.tools_section_current_channel, displayName(channelItem), options, actions, onBack);
     }
 
     private String buildCurrentChannelToolsMessage() {
@@ -6768,44 +7077,50 @@ public class MainActivity extends FragmentActivity {
                 updatedAt,
                 "com.drbep.tvplayer.firetv, com.drbep.tvplayer, com.drbep.tv.v2.fixed"
         );
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.title_install_status)
-                .setMessage(message)
-                .setPositiveButton(R.string.dialog_close, null)
-                .create();
-        showTvDialog(dialog);
+        showTvMessagePanel(
+                getString(R.string.title_install_status),
+                message,
+                java.util.Collections.singletonList(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null)),
+                null
+        );
     }
 
     private void showSettingsCenterDialog() {
+        showSettingsCenterDialog(null);
+    }
+
+    private void showSettingsCenterDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.settings_section_startup));
-        actions.add(this::showStartupSettingsDialog);
+        actions.add(() -> showStartupSettingsDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.settings_section_playback));
-        actions.add(this::showPlaybackSettingsDialog);
+        actions.add(() -> showPlaybackSettingsDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.settings_section_search));
-        actions.add(this::showSearchSettingsDialog);
+        actions.add(() -> showSearchSettingsDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.settings_section_recordings));
-        actions.add(this::showRecordingSettingsDialog);
+        actions.add(() -> showRecordingSettingsDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.settings_section_local_data));
-        actions.add(this::showLocalDataSettingsDialog);
+        actions.add(() -> showLocalDataSettingsDialog(() -> showSettingsCenterDialog(onBack)));
+        options.add(getString(R.string.settings_section_parental));
+        actions.add(() -> showParentalSettingsDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.settings_section_offline_system));
-        actions.add(this::showOfflineSystemDialog);
+        actions.add(() -> showOfflineSystemDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.settings_offline_full_sync));
         actions.add(this::runManualOfflineFullSync);
         options.add(getString(R.string.settings_section_offline_catalog));
-        actions.add(this::showOfflineCatalogSettingsDialog);
+        actions.add(() -> showOfflineCatalogSettingsDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.app_update_action_check));
         actions.add(this::checkAppUpdateManually);
         options.add(getString(R.string.app_update_channel_action, currentUpdateChannelLabel()));
-        actions.add(this::showUpdateChannelDialog);
+        actions.add(() -> showUpdateChannelDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.app_update_action_rescue));
         actions.add(this::checkRescueAppUpdateManually);
         options.add(getString(R.string.settings_section_diagnostics));
-        actions.add(this::showSettingsDiagnosticsDialog);
+        actions.add(() -> showSettingsDiagnosticsDialog(() -> showSettingsCenterDialog(onBack)));
         options.add(getString(R.string.settings_section_reset));
-        actions.add(this::showResetSettingsDialog);
-        showTvOptionsDialog(R.string.title_settings_center, null, options, actions);
+        actions.add(() -> showResetSettingsDialog(() -> showSettingsCenterDialog(onBack)));
+        showTvOptionsDialog(R.string.title_settings_center, null, options, actions, onBack);
     }
 
     private String buildSettingsSummary() {
@@ -6815,7 +7130,7 @@ public class MainActivity extends FragmentActivity {
                 BuildConfig.VERSION_CODE,
                 prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false) ? getString(R.string.diagnostics_value_no) : getString(R.string.diagnostics_value_yes),
                 recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
-                favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                overlayNavigationState.favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 globalSearchRecents.size(),
                 vodResumePositions.size(),
                 recordingResumePositions.size()
@@ -6823,6 +7138,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showStartupSettingsDialog() {
+        showStartupSettingsDialog(null);
+    }
+
+    private void showStartupSettingsDialog(Runnable onBack) {
         boolean startupEnabled = prefs == null || !prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false);
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
@@ -6853,8 +7172,8 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.settings_status_last_vod_cleared));
         });
         options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_startup, buildStartupSettingsSummary()));
-        showTvOptionsDialog(R.string.settings_section_startup, null, options, actions);
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_startup, buildStartupSettingsSummary(), () -> showStartupSettingsDialog(onBack)));
+        showTvOptionsDialog(R.string.settings_section_startup, null, options, actions, onBack);
     }
 
     private String buildStartupSettingsSummary() {
@@ -6869,6 +7188,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showPlaybackSettingsDialog() {
+        showPlaybackSettingsDialog(null);
+    }
+
+    private void showPlaybackSettingsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(playbackRepairEnabled ? R.string.settings_playback_repair_disable : R.string.settings_playback_repair_enable));
@@ -6878,14 +7201,14 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.settings_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
         options.add(getString(R.string.settings_playback_clear_learned));
-        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_learned, R.string.settings_confirm_clear_learned_routes, this::clearLearnedPlaybackModes));
+        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_learned, R.string.settings_confirm_clear_learned_routes, this::clearLearnedPlaybackModes, () -> showPlaybackSettingsDialog(onBack)));
         options.add(getString(R.string.settings_playback_clear_modes));
-        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_modes, R.string.settings_confirm_clear_modes, this::clearPlaybackModes));
+        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_modes, R.string.settings_confirm_clear_modes, this::clearPlaybackModes, () -> showPlaybackSettingsDialog(onBack)));
         options.add(getString(R.string.settings_playback_clear_diagnostics));
-        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_diagnostics, R.string.settings_confirm_clear_diagnostics, this::clearAllPlaybackDiagnostics));
+        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_diagnostics, R.string.settings_confirm_clear_diagnostics, this::clearAllPlaybackDiagnostics, () -> showPlaybackSettingsDialog(onBack)));
         options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_playback, buildPlaybackSettingsSummary()));
-        showTvOptionsDialog(R.string.settings_section_playback, null, options, actions);
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_playback, buildPlaybackSettingsSummary(), () -> showPlaybackSettingsDialog(onBack)));
+        showTvOptionsDialog(R.string.settings_section_playback, null, options, actions, onBack);
     }
 
     private String buildPlaybackSettingsSummary() {
@@ -6903,26 +7226,34 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showSearchSettingsDialog() {
+        showSearchSettingsDialog(null);
+    }
+
+    private void showSearchSettingsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.quick_hub_global_search));
         actions.add(this::showGlobalSearchDialog);
         options.add(getString(R.string.settings_search_clear_recent));
-        actions.add(() -> confirmSettingsAction(R.string.settings_search_clear_recent, R.string.settings_confirm_clear_searches, this::clearGlobalSearchRecents));
+        actions.add(() -> confirmSettingsAction(R.string.settings_search_clear_recent, R.string.settings_confirm_clear_searches, this::clearGlobalSearchRecents, () -> showSearchSettingsDialog(onBack)));
         options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_search, getString(R.string.settings_search_summary, globalSearchRecents.size())));
-        showTvOptionsDialog(R.string.settings_section_search, null, options, actions);
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_search, getString(R.string.settings_search_summary, globalSearchRecents.size()), () -> showSearchSettingsDialog(onBack)));
+        showTvOptionsDialog(R.string.settings_section_search, null, options, actions, onBack);
     }
 
     private void showRecordingSettingsDialog() {
+        showRecordingSettingsDialog(null);
+    }
+
+    private void showRecordingSettingsDialog(Runnable onBack) {
         if (isOfflineRecordingsDisabled()) {
             List<String> options = new ArrayList<>();
             List<Runnable> actions = new ArrayList<>();
             options.add(getString(R.string.settings_recordings_clear_progress));
-            actions.add(() -> confirmSettingsAction(R.string.settings_recordings_clear_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress));
+            actions.add(() -> confirmSettingsAction(R.string.settings_recordings_clear_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress, () -> showRecordingSettingsDialog(onBack)));
             options.add(getString(R.string.settings_action_view_summary));
-            actions.add(() -> showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_offline_summary, recordingResumePositions.size())));
-            showTvOptionsDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_offline_summary, recordingResumePositions.size()), options, actions);
+            actions.add(() -> showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_offline_summary, recordingResumePositions.size()), () -> showRecordingSettingsDialog(onBack)));
+            showTvOptionsDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_offline_summary, recordingResumePositions.size()), options, actions, onBack);
             return;
         }
         List<String> options = new ArrayList<>();
@@ -6932,28 +7263,32 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.tools_menu_recordings_panel));
         actions.add(this::openRecordingsBrowser);
         options.add(getString(R.string.settings_recordings_clear_progress));
-        actions.add(() -> confirmSettingsAction(R.string.settings_recordings_clear_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress));
+        actions.add(() -> confirmSettingsAction(R.string.settings_recordings_clear_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress, () -> showRecordingSettingsDialog(onBack)));
         options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_summary, recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no), recordingResumePositions.size())));
-        showTvOptionsDialog(R.string.settings_section_recordings, null, options, actions);
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_summary, recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no), recordingResumePositions.size()), () -> showRecordingSettingsDialog(onBack)));
+        showTvOptionsDialog(R.string.settings_section_recordings, null, options, actions, onBack);
     }
 
     private void showLocalDataSettingsDialog() {
+        showLocalDataSettingsDialog(null);
+    }
+
+    private void showLocalDataSettingsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.settings_data_clear_vod_progress));
-        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_vod_progress, R.string.settings_confirm_clear_vod_progress, this::clearAllVodProgress));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_vod_progress, R.string.settings_confirm_clear_vod_progress, this::clearAllVodProgress, () -> showLocalDataSettingsDialog(onBack)));
         options.add(getString(R.string.settings_data_clear_recording_progress));
-        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_recording_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_recording_progress, R.string.settings_confirm_clear_recording_progress, this::clearAllRecordingProgress, () -> showLocalDataSettingsDialog(onBack)));
         options.add(getString(R.string.settings_data_clear_recent_channels));
-        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_recent_channels, R.string.settings_confirm_clear_recent_channels, this::clearRecentChannels));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_recent_channels, R.string.settings_confirm_clear_recent_channels, this::clearRecentChannels, () -> showLocalDataSettingsDialog(onBack)));
         options.add(getString(R.string.settings_data_clear_favorites));
-        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_favorites, R.string.settings_confirm_clear_favorites, this::clearFavorites));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_clear_favorites, R.string.settings_confirm_clear_favorites, this::clearFavorites, () -> showLocalDataSettingsDialog(onBack)));
         options.add(getString(R.string.settings_data_reset_lists_profiles));
-        actions.add(() -> confirmSettingsAction(R.string.settings_data_reset_lists_profiles, R.string.settings_confirm_reset_lists_profiles, this::resetListsAndProfiles));
+        actions.add(() -> confirmSettingsAction(R.string.settings_data_reset_lists_profiles, R.string.settings_confirm_reset_lists_profiles, this::resetListsAndProfiles, () -> showLocalDataSettingsDialog(onBack)));
         options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_local_data, buildLocalDataSummary()));
-        showTvOptionsDialog(R.string.settings_section_local_data, null, options, actions);
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_local_data, buildLocalDataSummary(), () -> showLocalDataSettingsDialog(onBack)));
+        showTvOptionsDialog(R.string.settings_section_local_data, null, options, actions, onBack);
     }
 
     private String buildLocalDataSummary() {
@@ -6968,23 +7303,347 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private void showParentalSettingsDialog() {
+        showParentalSettingsDialog(null);
+    }
+
+    private void showParentalSettingsDialog(Runnable onBack) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.settings_parental_view_status));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_parental, buildParentalSettingsSummary(), () -> showParentalSettingsDialog(onBack)));
+        if (parentalControlStore != null && parentalControlStore.hasPinConfigured()) {
+            options.add(getString(parentalControlStore.isUnlocked() ? R.string.settings_parental_lock_now : R.string.settings_parental_unlock));
+            actions.add(() -> {
+                if (parentalControlStore.isUnlocked()) {
+                    parentalControlStore.lockSession();
+                    refreshProtectedContentState();
+                    showStatus(getString(R.string.settings_parental_locked));
+                } else {
+                    showParentalPinPrompt(getString(R.string.settings_section_parental), getString(R.string.parental_unlock_prompt), () -> showStatus(getString(R.string.settings_parental_unlocked)), () -> showParentalSettingsDialog(onBack));
+                }
+            });
+            options.add(getString(R.string.settings_parental_change_pin));
+            actions.add(() -> showParentalPinPrompt(getString(R.string.settings_parental_change_pin), getString(R.string.parental_change_pin_prompt), () -> showParentalPinSetupDialog(true, () -> showParentalSettingsDialog(onBack)), () -> showParentalSettingsDialog(onBack)));
+            options.add(getString(R.string.settings_parental_clear_pin));
+            actions.add(() -> confirmSettingsAction(R.string.settings_parental_clear_pin, R.string.settings_parental_clear_pin_confirm, this::clearParentalPin, () -> showParentalSettingsDialog(onBack)));
+        } else {
+            options.add(getString(R.string.settings_parental_set_pin));
+            actions.add(() -> showParentalPinSetupDialog(false, () -> showParentalSettingsDialog(onBack)));
+        }
+        showTvOptionsDialog(R.string.settings_section_parental, null, options, actions, onBack);
+    }
+
+    private String buildParentalSettingsSummary() {
+        int protectedFilters = 0;
+        for (ChannelFilter filter : filters) {
+            if (isProtectedFilter(filter)) {
+                protectedFilters++;
+            }
+        }
+        int protectedChannels = 0;
+        int protectedVod = 0;
+        for (ChannelItem item : allChannels) {
+            if (!isProtectedItem(item)) {
+                continue;
+            }
+            if (item.isVod) {
+                protectedVod++;
+            } else {
+                protectedChannels++;
+            }
+        }
+        String rulesState = hasParentalRules()
+                ? getString(R.string.diagnostics_value_yes)
+                : getString(R.string.diagnostics_value_no);
+        String pinState = parentalControlStore != null && parentalControlStore.hasPinConfigured()
+                ? getString(R.string.diagnostics_value_yes)
+                : getString(R.string.diagnostics_value_no);
+        String sessionState = parentalControlStore != null && parentalControlStore.isUnlocked()
+                ? getString(R.string.settings_parental_unlocked_remaining, formatDurationShort(parentalControlStore.getUnlockedRemainingMs()))
+                : getString(R.string.settings_parental_locked_short);
+        return getString(
+                R.string.settings_parental_summary,
+                rulesState,
+                pinState,
+                sessionState,
+                protectedFilters,
+                protectedChannels,
+                protectedVod
+        );
+    }
+
+    private void showParentalPinSetupDialog(boolean replaceExisting) {
+        showParentalPinSetupDialog(replaceExisting, null);
+    }
+
+    private void showParentalPinSetupDialog(boolean replaceExisting, Runnable onBack) {
+        List<TvTextInputFieldUiModel> fields = new ArrayList<>();
+        fields.add(new TvTextInputFieldUiModel(getString(R.string.parental_pin_hint), "", true, true));
+        fields.add(new TvTextInputFieldUiModel(getString(R.string.parental_pin_confirm_hint), "", true, true));
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(replaceExisting ? R.string.settings_parental_change_pin : R.string.settings_parental_set_pin),
+                getString(R.string.parental_pin_setup_message),
+                getString(android.R.string.ok),
+                getString(R.string.dialog_cancel),
+                "",
+                fields,
+                values -> {
+                    String pin = values == null || values.isEmpty() ? "" : values.get(0);
+                    String confirm = values == null || values.size() < 2 ? "" : values.get(1);
+                    if (!ParentalControlStore.isValidPin(pin)) {
+                        showStatus(getString(R.string.parental_pin_invalid));
+                        return;
+                    }
+                    if (!ParentalControlStore.normalizePin(pin).equals(ParentalControlStore.normalizePin(confirm))) {
+                        showStatus(getString(R.string.parental_pin_mismatch));
+                        return;
+                    }
+                    parentalControlStore.setPin(pin);
+                    refreshProtectedContentState();
+                    showStatus(getString(replaceExisting ? R.string.settings_parental_pin_changed : R.string.settings_parental_pin_set));
+                    if (onBack != null) {
+                        uiHandler.post(onBack);
+                    }
+                },
+                () -> {
+                    if (onBack != null) {
+                        uiHandler.post(onBack);
+                    }
+                },
+                null
+        ));
+    }
+
+    private void clearParentalPin() {
+        if (parentalControlStore == null) {
+            return;
+        }
+        parentalControlStore.clearPin();
+        refreshProtectedContentState();
+        showStatus(getString(R.string.settings_parental_pin_cleared));
+    }
+
+    private void showParentalPinPrompt(String title, String message, Runnable onSuccess) {
+        showParentalPinPrompt(title, message, onSuccess, null);
+    }
+
+    private void showParentalPinPrompt(String title, String message, Runnable onSuccess, Runnable onBack) {
+        if (parentalControlStore == null) {
+            if (onSuccess != null) {
+                onSuccess.run();
+            }
+            return;
+        }
+        if (!parentalControlStore.hasPinConfigured()) {
+            showParentalPinRequiredDialog(onBack);
+            return;
+        }
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                title,
+                message,
+                getString(android.R.string.ok),
+                getString(R.string.dialog_cancel),
+                "",
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.parental_pin_hint), "", true, true)),
+                values -> {
+                    String value = values == null || values.isEmpty() ? "" : values.get(0);
+                    if (!parentalControlStore.verifyPin(value)) {
+                        showStatus(getString(R.string.parental_pin_wrong));
+                        return;
+                    }
+                    parentalControlStore.unlockSession();
+                    refreshProtectedContentState();
+                    if (onSuccess != null) {
+                        onSuccess.run();
+                    }
+                },
+                () -> {
+                    if (onBack != null) {
+                        uiHandler.post(onBack);
+                    }
+                },
+                null
+        ));
+    }
+
+    private void showParentalPinRequiredDialog() {
+        showParentalPinRequiredDialog(null);
+    }
+
+    private void showParentalPinRequiredDialog(Runnable onBack) {
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.settings_parental_set_pin), false, () -> showParentalPinSetupDialog(false, onBack)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, () -> {
+            if (onBack != null) {
+                uiHandler.post(onBack);
+            }
+        }));
+        showTvMessagePanel(getString(R.string.settings_section_parental), getString(R.string.parental_pin_required_setup), actions, onBack);
+    }
+
+    private boolean hasParentalRules() {
+        return currentOfflinePermissions != null && currentOfflinePermissions.hasParentalRules();
+    }
+
+    private boolean isProtectedItem(ChannelItem item) {
+        return item != null && currentOfflinePermissions != null && currentOfflinePermissions.isProtectedItem(item);
+    }
+
+    private boolean isProtectedFilter(ChannelFilter filter) {
+        return filter != null && currentOfflinePermissions != null && currentOfflinePermissions.isProtectedFilter(filter);
+    }
+
+    private boolean isProtectedFilterKey(String filterKey) {
+        if (filterKey == null || filterKey.trim().isEmpty()) {
+            return false;
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filterKey.equals(filter.key)) {
+                return isProtectedFilter(filter);
+            }
+        }
+        return false;
+    }
+
+    private String protectedPrefix() {
+        return getString(R.string.parental_lock_icon) + " ";
+    }
+
+    private String decorateProtectedLabel(String label, boolean protectedEntry) {
+        String value = label == null ? "" : label.trim();
+        if (!protectedEntry || value.isEmpty()) {
+            return value;
+        }
+        return value.startsWith(getString(R.string.parental_lock_icon)) ? value : protectedPrefix() + value;
+    }
+
+    private String decorateProtectedFilterLabel(ChannelFilter filter) {
+        if (filter == null) {
+            return "";
+        }
+        return decorateProtectedLabel(filter.label, isProtectedFilter(filter));
+    }
+
+    private String decorateProtectedItemTitle(ChannelItem item, String title) {
+        return decorateProtectedLabel(title, isProtectedItem(item));
+    }
+
+    private String decorateProtectedMeta(ChannelItem item, String meta) {
+        String value = meta == null ? "" : meta.trim();
+        if (!isProtectedItem(item)) {
+            return value;
+        }
+        if (value.isEmpty()) {
+            return getString(R.string.parental_lock_label);
+        }
+        return getString(R.string.parental_lock_label) + "  ·  " + value;
+    }
+
+    private String buildProtectedTypeBadge(ChannelItem item, String fallback) {
+        if (isProtectedItem(item)) {
+            return getString(R.string.parental_lock_pin_badge);
+        }
+        return fallback == null ? "" : fallback;
+    }
+
+    private boolean isProtectedContentLocked() {
+        return hasParentalRules()
+                && parentalControlStore != null
+                && parentalControlStore.hasPinConfigured()
+                && !parentalControlStore.isUnlocked();
+    }
+
+    private boolean shouldHideProtectedItem(ChannelItem item) {
+        return isProtectedContentLocked() && isProtectedItem(item);
+    }
+
+    private void ensureParentalAccessForItem(ChannelItem item, Runnable onAllowed) {
+        if (item == null || !isProtectedItem(item)) {
+            if (onAllowed != null) {
+                onAllowed.run();
+            }
+            return;
+        }
+        if (!hasParentalRules()) {
+            if (onAllowed != null) {
+                onAllowed.run();
+            }
+            return;
+        }
+        if (parentalControlStore == null || !parentalControlStore.hasPinConfigured()) {
+            showParentalPinRequiredDialog();
+            return;
+        }
+        if (!isProtectedContentLocked()) {
+            if (onAllowed != null) {
+                onAllowed.run();
+            }
+            return;
+        }
+        showParentalPinPrompt(getString(R.string.settings_section_parental), getString(R.string.parental_unlock_content_prompt), onAllowed);
+    }
+
+    private void ensureParentalAccessForFilterKey(String filterKey, Runnable onAllowed) {
+        if (!isProtectedFilterKey(filterKey)) {
+            if (onAllowed != null) {
+                onAllowed.run();
+            }
+            return;
+        }
+        if (parentalControlStore == null || !parentalControlStore.hasPinConfigured()) {
+            showParentalPinRequiredDialog();
+            return;
+        }
+        if (!isProtectedContentLocked()) {
+            if (onAllowed != null) {
+                onAllowed.run();
+            }
+            return;
+        }
+        showParentalPinPrompt(getString(R.string.settings_section_parental), getString(R.string.parental_unlock_filter_prompt), onAllowed);
+    }
+
+    private void refreshProtectedContentState() {
+        syncOverlayCoordinator();
+        String keepCurrentId = overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size() ? channels.get(overlayNavigationState.currentIndex).id : lastChannelId;
+        String keepSelectedId = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? channels.get(overlayNavigationState.selectedOverlayIndex).id : keepCurrentId;
+        channelOverlayCoordinator.refreshVisibleChannels(keepCurrentId, keepSelectedId);
+        syncOverlayStateFromCoordinator();
+        refreshOverlayChannelList();
+        updateFilterText();
+        updateOverlaySearchState();
+        if (channels.isEmpty()) {
+            return;
+        }
+        if (overlayNavigationState.currentIndex < 0 || overlayNavigationState.currentIndex >= channels.size()) {
+            tuneToIndex(0, true);
+        } else if (overlayNavigationState.selectedOverlayIndex >= 0 && channelListComposeView != null) {
+            scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
+        }
+    }
+
     private void showOfflineSystemDialog() {
+        showOfflineSystemDialog(null);
+    }
+
+    private void showOfflineSystemDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.settings_offline_system_status));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary(), () -> showOfflineSystemDialog(onBack)));
         options.add(getString(R.string.settings_offline_full_sync));
         actions.add(this::runManualOfflineFullSync);
         options.add(getString(R.string.offline_catalog_action_repair));
         actions.add(this::repairOfflineCatalog);
         options.add(getString(R.string.settings_offline_sync_history));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_offline_sync_history, buildOfflineSyncHistorySummary()));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_offline_sync_history, buildOfflineSyncHistorySummary(), () -> showOfflineSystemDialog(onBack)));
         options.add(getString(R.string.offline_catalog_action_refresh));
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.app_update_action_check));
         actions.add(this::checkAppUpdateManually);
         options.add(getString(R.string.app_update_channel_action, currentUpdateChannelLabel()));
-        actions.add(this::showUpdateChannelDialog);
+        actions.add(() -> showUpdateChannelDialog(() -> showOfflineSystemDialog(onBack)));
         options.add(getString(R.string.app_update_action_rescue));
         actions.add(this::checkRescueAppUpdateManually);
         options.add(getString(R.string.app_update_action_diagnostics));
@@ -6993,7 +7652,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::startOfflineActivationCodeFlow);
         options.add(getString(R.string.settings_playback_diagnostics));
         actions.add(this::showPlaybackDiagnosticsDialog);
-        showTvOptionsDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary(), options, actions);
+        showTvOptionsDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary(), options, actions, onBack);
     }
 
     private String buildOfflineSystemSummary() {
@@ -7156,10 +7815,14 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showOfflineCatalogSettingsDialog() {
+        showOfflineCatalogSettingsDialog(null);
+    }
+
+    private void showOfflineCatalogSettingsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.settings_offline_system_status));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary(), () -> showOfflineCatalogSettingsDialog(onBack)));
         options.add(getString(R.string.settings_offline_full_sync));
         actions.add(this::runManualOfflineFullSync);
         options.add(getString(R.string.offline_catalog_action_repair));
@@ -7169,16 +7832,16 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.offline_catalog_action_refresh));
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.offline_catalog_action_verify));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogVerificationSummary()));
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogVerificationSummary(), () -> showOfflineCatalogSettingsDialog(onBack)));
         options.add(getString(R.string.offline_catalog_action_set_url));
         actions.add(this::showOfflineCatalogUrlDialog);
         options.add(getString(R.string.offline_catalog_action_set_token));
         actions.add(this::showOfflineCatalogTokenDialog);
         options.add(getString(R.string.offline_catalog_action_clear));
-        actions.add(() -> confirmSettingsAction(R.string.offline_catalog_action_clear, R.string.offline_catalog_confirm_clear, this::clearOfflineCatalog));
+        actions.add(() -> confirmSettingsAction(R.string.offline_catalog_action_clear, R.string.offline_catalog_confirm_clear, this::clearOfflineCatalog, () -> showOfflineCatalogSettingsDialog(onBack)));
         options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogSummary()));
-        showTvOptionsDialog(R.string.settings_section_offline_catalog, null, options, actions);
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogSummary(), () -> showOfflineCatalogSettingsDialog(onBack)));
+        showTvOptionsDialog(R.string.settings_section_offline_catalog, null, options, actions, onBack);
     }
 
     private void startOfflineActivationCodeFlow() {
@@ -7188,7 +7851,10 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.offline_catalog_activation_waiting));
         ioExecutor.execute(() -> {
             try {
-                JSONObject payload = catalogSnapshotStore.startActivation(BuildConfig.OFFLINE_BASE_URL, "Fire Stick offline");
+                JSONObject payload = catalogSnapshotStore.startActivation(
+                        BuildConfig.OFFLINE_BASE_URL,
+                        buildOfflineActivationDeviceLabel()
+                );
                 String code = payload.optString("code", "").trim();
                 uiHandler.post(() -> showOfflineActivationCodeDialog(code));
             } catch (Exception e) {
@@ -7203,22 +7869,33 @@ public class MainActivity extends FragmentActivity {
             showError(getString(R.string.offline_catalog_activation_error, "codigo vacio"));
             return;
         }
-        TextView codeView = new TextView(this);
-        codeView.setText(getString(R.string.offline_catalog_activation_message, formatActivationCode(code)));
-        codeView.setTextSize(22f);
-        codeView.setTypeface(Typeface.DEFAULT_BOLD);
-        codeView.setGravity(Gravity.CENTER);
-        int pad = (int) (24 * getResources().getDisplayMetrics().density);
-        codeView.setPadding(pad, pad, pad, pad);
         final boolean[] active = {true};
         final int[] attempts = {0};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.offline_catalog_activation_title)
-                .setView(codeView)
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        dialog.setOnDismissListener(unused -> active[0] = false);
-        showTvDialog(dialog);
+        prepareModalSurface();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, dialog::dismiss));
+        TvMessagePanelComposeBinder.bind(
+                composeView,
+                new TvMessagePanelUiModel(
+                        getString(R.string.offline_catalog_activation_title),
+                        getString(R.string.offline_catalog_activation_message, formatActivationCode(code)),
+                        actions
+                )
+        );
+        dialog.setContentView(composeView);
+        dialog.setOnDismissListener(unused -> {
+            active[0] = false;
+            enableImmersiveMode();
+        });
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
         pollOfflineActivationCode(code, active, attempts, dialog);
     }
 
@@ -7560,7 +8237,7 @@ public class MainActivity extends FragmentActivity {
                     .put("uptime_ms", activityCreatedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - activityCreatedAtMs))
                     .put("channels_visible", channels.size())
                     .put("channels_total", allChannels.size())
-                    .put("selected_filter", selectedFilterKey == null ? "" : selectedFilterKey)
+                    .put("selected_filter", overlayNavigationState.selectedFilterKey == null ? "" : overlayNavigationState.selectedFilterKey)
                     .put("last_catalog_load_ms", lastCatalogLoadDurationMs)
                     .put("last_apply_channels_ms", lastApplyChannelsDurationMs)
                     .put("last_epg_now_load_ms", lastEpgNowLoadDurationMs)
@@ -7657,6 +8334,7 @@ public class MainActivity extends FragmentActivity {
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
         long startupMs = playbackHeartbeatStartedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - playbackHeartbeatStartedAtMs);
         String normalizedState = state == null ? "heartbeat" : state.trim();
+        boolean actualDirectPlayback = isDirectPlaybackHeartbeat(channel, diagnostics);
         JSONObject payload = new JSONObject();
         try {
             payload.put("session_id", sessionId)
@@ -7669,12 +8347,14 @@ public class MainActivity extends FragmentActivity {
                     .put("program_title", currentProgramTitleForHeartbeat(channel))
                     .put("thumbnail_url", thumbnailUrlForHeartbeat(channel))
                     .put("position_ms", Math.max(0L, positionMs))
-                    .put("direct_playback", channel.directPlayback)
+                    .put("direct_playback", actualDirectPlayback)
+                    .put("catalog_direct_playback", channel.directPlayback)
                     .put("playback_profile", channel.playbackProfile == null ? "" : channel.playbackProfile)
                     .put("startup_ms", "ready".equalsIgnoreCase(normalizedState) ? startupMs : 0L);
             if (diagnostics != null) {
                 payload.put("playback_mode", diagnostics.playbackMode == null ? "" : diagnostics.playbackMode)
                         .put("route_label", diagnostics.routeLabel == null ? "" : diagnostics.routeLabel)
+                        .put("target_url", diagnostics.targetUrl == null ? "" : diagnostics.targetUrl)
                         .put("mime_type", diagnostics.mimeType == null ? "" : diagnostics.mimeType)
                         .put("drm_type", diagnostics.drmType == null ? "" : diagnostics.drmType)
                         .put("video_width", diagnostics.videoWidth)
@@ -7723,23 +8403,109 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isServerTrafficHeartbeat(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {
+        if (isDirectPlaybackHeartbeat(channel, diagnostics)) {
+            return false;
+        }
+        if (isRuntimeManifestOnlyHeartbeat(channel, diagnostics)) {
+            return false;
+        }
         String profile = channel == null || channel.playbackProfile == null ? "" : channel.playbackProfile.trim().toLowerCase(Locale.ROOT);
-        if ("server_live".equals(profile) || "hevc_hls".equals(profile) || "proxy_manifest".equals(profile)) {
+        if ("server_live".equals(profile) || "hevc_hls".equals(profile)) {
             return true;
         }
         String target = diagnostics == null || diagnostics.targetUrl == null ? "" : diagnostics.targetUrl.trim().toLowerCase(Locale.ROOT);
         if (target.isEmpty()) {
             return false;
         }
-        String base = baseUrl == null ? "" : baseUrl.trim().toLowerCase(Locale.ROOT);
-        return target.startsWith("/")
-                || (!base.isEmpty() && target.startsWith(base))
-                || target.contains("fire.tvbep.com")
-                || target.contains("192.168.93.223")
-                || target.contains("/proxy/")
-                || target.contains("/live/")
-                || target.contains("/hls/")
+        if (target.startsWith("/") && isKnownBackendTrafficPath(target)) {
+            return true;
+        }
+        boolean backendHosted = isBackendHostedTarget(target);
+        if (backendHosted && isKnownBackendTrafficPath(target)) {
+            return true;
+        }
+        return target.contains("/proxy/")
                 || target.contains("/recordings/");
+    }
+
+    private boolean isDirectPlaybackHeartbeat(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {
+        if (isRuntimeManifestOnlyHeartbeat(channel, diagnostics)) {
+            return true;
+        }
+        String target = diagnostics == null || diagnostics.targetUrl == null ? "" : diagnostics.targetUrl.trim().toLowerCase(Locale.ROOT);
+        if (!target.isEmpty()
+                && !isBackendHostedTrafficTarget(target)) {
+            return true;
+        }
+        String playbackMode = diagnostics == null || diagnostics.playbackMode == null ? "" : diagnostics.playbackMode.trim().toLowerCase(Locale.ROOT);
+        if ("direct".equals(playbackMode)) {
+            return true;
+        }
+        String route = diagnostics == null || diagnostics.routeLabel == null ? "" : diagnostics.routeLabel.trim().toLowerCase(Locale.ROOT);
+        if (route.startsWith("directo") || "direct".equals(route)) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isRuntimeManifestOnlyHeartbeat(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {
+        if (channel == null || diagnostics == null || diagnostics.targetUrl == null) {
+            return false;
+        }
+        String platform = channel.platformName == null ? "" : channel.platformName.trim().toLowerCase(Locale.ROOT);
+        String filter = channel.vodFilterKey == null ? "" : channel.vodFilterKey.trim().toLowerCase(Locale.ROOT);
+        if (!platform.contains("runtime") && !filter.contains("runtime")) {
+            return false;
+        }
+        String target = diagnostics.targetUrl.trim().toLowerCase(Locale.ROOT);
+        return target.contains("/proxy/manifest/") || target.contains("/api/vod/runtime/stream/");
+    }
+
+    private boolean isBackendHostedTarget(String target) {
+        if (target == null || target.trim().isEmpty()) {
+            return false;
+        }
+        String normalizedTarget = target.trim().toLowerCase(Locale.ROOT);
+        String base = baseUrl == null ? "" : baseUrl.trim().toLowerCase(Locale.ROOT);
+        if (!base.isEmpty() && normalizedTarget.startsWith(base)) {
+            return true;
+        }
+        try {
+            Uri uri = Uri.parse(normalizedTarget);
+            String host = uri == null ? null : uri.getHost();
+            if (host == null) {
+                return false;
+            }
+        return host.contains("fire.tvbep.com")
+                    || host.contains("iptv.bepllorens.com")
+                    || host.contains("192.168.93.223")
+                    || host.contains("192.168.93.16");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean isKnownBackendTrafficPath(String target) {
+        if (target == null || target.trim().isEmpty()) {
+            return false;
+        }
+        String normalizedTarget = target.trim().toLowerCase(Locale.ROOT);
+        return normalizedTarget.contains("/proxy/")
+                || normalizedTarget.contains("/recordings/")
+                || normalizedTarget.contains("/api/remux/")
+                || normalizedTarget.contains("/api/proxy/")
+                || normalizedTarget.contains("/live/");
+    }
+
+    private boolean isBackendHostedTrafficTarget(String target) {
+        if (target == null || target.trim().isEmpty()) {
+            return false;
+        }
+        String normalizedTarget = target.trim().toLowerCase(Locale.ROOT);
+        if (normalizedTarget.startsWith("/")) {
+            return isKnownBackendTrafficPath(normalizedTarget);
+        }
+        return isBackendHostedTarget(normalizedTarget) && isKnownBackendTrafficPath(normalizedTarget);
     }
 
     private String safeHeartbeatText(String value) {
@@ -7753,6 +8519,12 @@ public class MainActivity extends FragmentActivity {
         JSONObject extra = new JSONObject();
         try {
             extra.put("standalone_mode", BuildConfig.STANDALONE_MODE)
+                    .put("device_label", buildOfflineActivationDeviceLabel())
+                    .put("device_name", buildReadableDeviceName())
+                    .put("device_form_factor", detectOfflineDeviceFormFactor())
+                    .put("device_manufacturer", safeDeviceBuildValue(Build.MANUFACTURER))
+                    .put("device_model", safeDeviceBuildValue(Build.MODEL))
+                    .put("device_product", safeDeviceBuildValue(Build.PRODUCT))
                     .put("update_channel", currentUpdateChannel())
                     .put("last_app_update_check_ms", lastAppUpdateCheckMs)
                     .put("last_app_update_error", lastAppUpdateError == null ? "" : lastAppUpdateError)
@@ -7786,6 +8558,66 @@ public class MainActivity extends FragmentActivity {
             Log.d(TAG, "offline status extra build failed", e);
         }
         return extra;
+    }
+
+    private String buildOfflineActivationDeviceLabel() {
+        String deviceName = buildReadableDeviceName();
+        String formFactor = detectOfflineDeviceFormFactor();
+        if (deviceName.isEmpty()) {
+            if ("mobile".equals(formFactor)) {
+                return "Android movil offline";
+            }
+            if ("tablet".equals(formFactor)) {
+                return "Android tablet offline";
+            }
+            return "Android TV offline";
+        }
+        if ("tv".equals(formFactor)) {
+            return deviceName + " offline";
+        }
+        return deviceName + " (" + formFactor + ") offline";
+    }
+
+    private String buildReadableDeviceName() {
+        String manufacturer = safeDeviceBuildValue(Build.MANUFACTURER);
+        String model = safeDeviceBuildValue(Build.MODEL);
+        if (manufacturer.isEmpty()) {
+            return model;
+        }
+        if (model.isEmpty()) {
+            return manufacturer;
+        }
+        String manufacturerLower = manufacturer.toLowerCase(Locale.ROOT);
+        String modelLower = model.toLowerCase(Locale.ROOT);
+        if (modelLower.startsWith(manufacturerLower)) {
+            return model;
+        }
+        return manufacturer + " " + model;
+    }
+
+    private String detectOfflineDeviceFormFactor() {
+        PackageManager packageManager = getPackageManager();
+        if (packageManager != null && packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) {
+            return "tv";
+        }
+        boolean largeScreen = (getResources().getConfiguration().screenLayout
+                & android.content.res.Configuration.SCREENLAYOUT_SIZE_MASK)
+                >= android.content.res.Configuration.SCREENLAYOUT_SIZE_LARGE;
+        if (largeScreen) {
+            return "tablet";
+        }
+        return "mobile";
+    }
+
+    private String safeDeviceBuildValue(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty() || "unknown".equalsIgnoreCase(trimmed)) {
+            return "";
+        }
+        return trimmed;
     }
 
     private String buildOfflineCatalogRefreshDetail(CatalogSnapshotStore.SnapshotStatus before, CatalogSnapshotStore.SnapshotStatus after) {
@@ -7838,13 +8670,10 @@ public class MainActivity extends FragmentActivity {
                 updatedAt,
                 expiresAt
         );
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.offline_activation_ready_title)
-                .setMessage(message)
-                .setPositiveButton(R.string.dialog_close, null)
-                .setNeutralButton(R.string.settings_offline_system_status, (d, which) -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary()))
-                .create();
-        showTvDialog(dialog);
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.settings_offline_system_status), false, () -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary())));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(getString(R.string.offline_activation_ready_title), message, actions, null);
     }
 
     private void repairOfflineCatalog() {
@@ -7935,21 +8764,17 @@ public class MainActivity extends FragmentActivity {
                 status == null || status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
                 reason == null || reason.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : reason.trim()
         );
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.offline_first_run_title)
-                .setMessage(message)
-                .setPositiveButton(R.string.offline_first_run_action_activate, (d, which) -> {
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.offline_first_run_action_activate), false, () -> {
                     offlineFirstRunDialogShowing = false;
                     startOfflineActivationCodeFlow();
-                })
-                .setNeutralButton(R.string.offline_recovery_action_status, (d, which) -> {
+        }));
+        actions.add(new TvMessageActionUiModel(getString(R.string.offline_recovery_action_status), false, () -> {
                     offlineFirstRunDialogShowing = false;
                     showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary());
-                })
-                .setNegativeButton(R.string.dialog_close, (d, which) -> offlineFirstRunDialogShowing = false)
-                .create();
-        dialog.setOnCancelListener(d -> offlineFirstRunDialogShowing = false);
-        showTvDialog(dialog);
+        }));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, () -> offlineFirstRunDialogShowing = false));
+        showTvMessagePanel(getString(R.string.offline_first_run_title), message, actions, () -> offlineFirstRunDialogShowing = false);
     }
 
     private boolean isAuthRelatedError(Throwable error) {
@@ -8099,49 +8924,47 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showOfflineCatalogUrlDialog() {
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint(R.string.offline_catalog_url_hint);
-        input.setText(catalogSnapshotStore == null ? BuildConfig.CATALOG_SNAPSHOT_URL : catalogSnapshotStore.getSourceUrl(BuildConfig.CATALOG_SNAPSHOT_URL));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.offline_catalog_action_set_url)
-                .setView(input)
-                .setPositiveButton(android.R.string.ok, (unused, which) -> {
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.offline_catalog_action_set_url),
+                "",
+                getString(android.R.string.ok),
+                getString(R.string.dialog_cancel),
+                "",
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.offline_catalog_url_hint), catalogSnapshotStore == null ? BuildConfig.CATALOG_SNAPSHOT_URL : catalogSnapshotStore.getSourceUrl(BuildConfig.CATALOG_SNAPSHOT_URL), false, false)),
+                values -> {
                     if (catalogSnapshotStore != null) {
-                        catalogSnapshotStore.setSourceUrl(input.getText() == null ? "" : input.getText().toString());
+                        catalogSnapshotStore.setSourceUrl(values == null || values.isEmpty() ? "" : values.get(0));
                     }
                     showStatus(getString(R.string.offline_catalog_status_url_saved));
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        showTvDialog(dialog);
+                },
+                null,
+                null
+        ));
     }
 
     private void showOfflineCatalogTokenDialog() {
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint(R.string.offline_catalog_token_hint);
         String current = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
-        input.setText(current == null || current.trim().isEmpty() ? "" : current);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.offline_catalog_action_set_token)
-                .setMessage(catalogSnapshotStore == null ? "" : getString(R.string.offline_catalog_device_message, catalogSnapshotStore.getDeviceId()))
-                .setView(input)
-                .setPositiveButton(android.R.string.ok, (unused, which) -> {
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.offline_catalog_action_set_token),
+                catalogSnapshotStore == null ? "" : getString(R.string.offline_catalog_device_message, catalogSnapshotStore.getDeviceId()),
+                getString(android.R.string.ok),
+                getString(R.string.dialog_cancel),
+                getString(R.string.offline_catalog_action_clear_token),
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.offline_catalog_token_hint), current == null || current.trim().isEmpty() ? "" : current, false, false)),
+                values -> {
                     if (catalogSnapshotStore != null) {
-                        catalogSnapshotStore.setAccessToken(input.getText() == null ? "" : input.getText().toString());
+                        catalogSnapshotStore.setAccessToken(values == null || values.isEmpty() ? "" : values.get(0));
                     }
                     showStatus(getString(R.string.offline_catalog_status_token_saved));
-                })
-                .setNeutralButton(R.string.offline_catalog_action_clear_token, (unused, which) -> {
+                },
+                null,
+                () -> {
                     if (catalogSnapshotStore != null) {
                         catalogSnapshotStore.setAccessToken("");
                     }
                     showStatus(getString(R.string.offline_catalog_status_token_cleared));
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        showTvDialog(dialog);
+                }
+        ));
     }
 
     private void clearOfflineCatalog() {
@@ -8161,19 +8984,14 @@ public class MainActivity extends FragmentActivity {
             catalogSnapshotStore.wipeLocalData();
         }
         lastChannelId = "";
-        currentIndex = -1;
-        selectedOverlayIndex = 0;
-        selectedFilterKey = "all";
-        favoritesOnly = false;
+        overlayNavigationState.reset();
         epgFullCatalogLoaded = false;
         epgFullCatalogLoadRequested = false;
         epgFullLoadScheduledForChannelId = "";
         channelOverlayCoordinator.applyLoadedChannels(new CatalogLoadResult(new ArrayList<>(), new ArrayList<>(), "all"), "");
         syncOverlayStateFromCoordinator();
         persistNavigationState();
-        if (channelAdapter != null) {
-            channelAdapter.notifyDataSetChanged();
-        }
+        refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
         clearRuntimeCaches();
@@ -8182,13 +9000,18 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showSettingsDiagnosticsDialog() {
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.settings_section_diagnostics)
-                .setMessage(buildSettingsDiagnosticsMessage())
-                .setNeutralButton(R.string.settings_performance_clear_caches, (dialogInterface, which) -> clearRuntimeCaches())
-                .setPositiveButton(R.string.dialog_close, null)
-                .create();
-        showTvDialog(dialog);
+        showSettingsDiagnosticsDialog(null);
+    }
+
+    private void showSettingsDiagnosticsDialog(Runnable onBack) {
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(onBack == null ? R.string.dialog_close : R.string.dialog_back), false, () -> {
+            if (onBack != null) {
+                uiHandler.post(onBack);
+            }
+        }));
+        actions.add(new TvMessageActionUiModel(getString(R.string.settings_performance_clear_caches), true, this::clearRuntimeCaches));
+        showTvMessagePanel(getString(R.string.settings_section_diagnostics), buildSettingsDiagnosticsMessage(), actions, onBack);
     }
 
     private String buildSettingsDiagnosticsMessage() {
@@ -8201,8 +9024,8 @@ public class MainActivity extends FragmentActivity {
                 BuildConfig.VERSION_NAME,
                 BuildConfig.VERSION_CODE,
                 baseUrl == null ? "" : baseUrl,
-                selectedFilterKey == null ? "all" : selectedFilterKey,
-                favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                overlayNavigationState.selectedFilterKey == null ? "all" : overlayNavigationState.selectedFilterKey,
+                overlayNavigationState.favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false) ? getString(R.string.diagnostics_value_no) : getString(R.string.diagnostics_value_yes),
                 recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 channels.size(),
@@ -8220,19 +9043,23 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showResetSettingsDialog() {
+        showResetSettingsDialog(null);
+    }
+
+    private void showResetSettingsDialog(Runnable onBack) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.settings_reset_search));
-        actions.add(() -> confirmSettingsAction(R.string.settings_reset_search, R.string.settings_confirm_reset_search, this::clearGlobalSearchRecents));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_search, R.string.settings_confirm_reset_search, this::clearGlobalSearchRecents, () -> showResetSettingsDialog(onBack)));
         options.add(getString(R.string.settings_reset_playback));
-        actions.add(() -> confirmSettingsAction(R.string.settings_reset_playback, R.string.settings_confirm_reset_playback, this::resetPlaybackSettings));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_playback, R.string.settings_confirm_reset_playback, this::resetPlaybackSettings, () -> showResetSettingsDialog(onBack)));
         options.add(getString(R.string.settings_reset_startup));
-        actions.add(() -> confirmSettingsAction(R.string.settings_reset_startup, R.string.settings_confirm_reset_startup, this::resetStartupSettings));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_startup, R.string.settings_confirm_reset_startup, this::resetStartupSettings, () -> showResetSettingsDialog(onBack)));
         options.add(getString(R.string.settings_reset_local_data));
-        actions.add(() -> confirmSettingsAction(R.string.settings_reset_local_data, R.string.settings_confirm_reset_local_data, this::resetLocalData));
+        actions.add(() -> confirmSettingsAction(R.string.settings_reset_local_data, R.string.settings_confirm_reset_local_data, this::resetLocalData, () -> showResetSettingsDialog(onBack)));
         options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_reset, getString(R.string.settings_reset_summary)));
-        showTvOptionsDialog(R.string.settings_section_reset, null, options, actions);
+        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_reset, getString(R.string.settings_reset_summary), () -> showResetSettingsDialog(onBack)));
+        showTvOptionsDialog(R.string.settings_section_reset, null, options, actions, onBack);
     }
 
     private void checkAppUpdateOnStartup() {
@@ -8320,6 +9147,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showUpdateChannelDialog() {
+        showUpdateChannelDialog(null);
+    }
+
+    private void showUpdateChannelDialog(Runnable onBack) {
         String[] channels = new String[]{"stable", "beta", "rescue"};
         String[] labels = new String[]{
                 getString(R.string.app_update_channel_stable),
@@ -8334,10 +9165,12 @@ public class MainActivity extends FragmentActivity {
                 break;
             }
         }
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.app_update_channel_title)
-                .setMessage(getString(R.string.app_update_channel_message, currentUpdateChannelLabel()))
-                .setSingleChoiceItems(labels, checked, (d, which) -> {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (int i = 0; i < labels.length; i++) {
+            final int which = i;
+            options.add(i == checked ? getString(R.string.settings_selected_prefix, labels[i]) : labels[i]);
+            actions.add(() -> {
                     String selectedChannel = channels[Math.max(0, Math.min(which, channels.length - 1))];
                     String selectedLabel = getString(updateChannelLabelRes(selectedChannel));
                     if (prefs != null) {
@@ -8350,12 +9183,10 @@ public class MainActivity extends FragmentActivity {
                     showStatus(detail);
                     recordOfflineSyncEvent(getString(R.string.settings_offline_sync_app_update), true, 0L, detail);
                     reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_app_update), true, 0L, detail);
-                    d.dismiss();
                     checkAppUpdate(true);
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        showTvDialog(dialog);
+            });
+        }
+        showTvOptionsDialog(R.string.app_update_channel_title, getString(R.string.app_update_channel_message, currentUpdateChannelLabel()), options, actions, onBack);
     }
 
     private void checkAppUpdateManually() {
@@ -8481,16 +9312,23 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showAppUpdateAvailableDialog(AppUpdateManager.UpdateInfo info) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.app_update_available_title, safeUpdateVersionName(info)))
-                .setMessage(buildAppUpdateMessage(info))
-                .setPositiveButton(R.string.app_update_action_install, (unused, which) -> downloadAndInstallAppUpdate(info));
-        if (info.required) {
-            builder.setNegativeButton(R.string.dialog_close, null);
-        } else {
-            builder.setNegativeButton(R.string.app_update_action_later, null);
-        }
-        showTvDialog(builder.create());
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(
+                getString(R.string.app_update_action_install),
+                false,
+                () -> downloadAndInstallAppUpdate(info)
+        ));
+        actions.add(new TvMessageActionUiModel(
+                getString(info.required ? R.string.dialog_close : R.string.app_update_action_later),
+                false,
+                null
+        ));
+        showTvMessagePanel(
+                getString(R.string.app_update_available_title, safeUpdateVersionName(info)),
+                buildAppUpdateMessage(info),
+                actions,
+                null
+        );
     }
 
     private void downloadAndInstallAppUpdate(AppUpdateManager.UpdateInfo info) {
@@ -8810,26 +9648,42 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showSettingsInfoDialog(int titleResId, String message) {
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(titleResId)
-                .setMessage(message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message)
-                .setPositiveButton(R.string.dialog_close, null)
-                .create();
-        showTvDialog(dialog);
+        showSettingsInfoDialog(titleResId, message, null);
+    }
+
+    private void showSettingsInfoDialog(int titleResId, String message, Runnable onBack) {
+        showTvMessagePanel(
+                getString(titleResId),
+                message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message,
+                java.util.Collections.singletonList(new TvMessageActionUiModel(getString(onBack == null ? R.string.dialog_close : R.string.dialog_back), false, () -> {
+                    if (onBack != null) {
+                        uiHandler.post(onBack);
+                    }
+                })),
+                onBack
+        );
     }
 
     private void confirmSettingsAction(int titleResId, int messageResId, Runnable action) {
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(titleResId)
-                .setMessage(messageResId)
-                .setPositiveButton(android.R.string.ok, (unused, which) -> {
-                    if (action != null) {
-                        action.run();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        showTvDialog(dialog);
+        confirmSettingsAction(titleResId, messageResId, action, null);
+    }
+
+    private void confirmSettingsAction(int titleResId, int messageResId, Runnable action, Runnable onBack) {
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(android.R.string.ok), true, () -> {
+            if (action != null) {
+                action.run();
+            }
+            if (onBack != null) {
+                uiHandler.post(onBack);
+            }
+        }));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, () -> {
+            if (onBack != null) {
+                uiHandler.post(onBack);
+            }
+        }));
+        showTvMessagePanel(getString(titleResId), getString(messageResId), actions, onBack);
     }
 
     private void clearPlaybackModes() {
@@ -8923,10 +9777,7 @@ public class MainActivity extends FragmentActivity {
         if (prefs != null) {
             prefs.edit().remove(PREF_RECORDING_RESUME_POSITIONS).apply();
         }
-        if (recordingsAdapter != null) {
-            recordingsAdapter.notifyDataSetChanged();
-        }
-        updateRecordingsDetailPanel();
+        refreshRecordingsPanelSurface();
         showStatus(getString(R.string.settings_status_recording_progress_cleared));
     }
 
@@ -8947,7 +9798,7 @@ public class MainActivity extends FragmentActivity {
         if (prefs != null) {
             prefs.edit().remove(PREF_FAVORITES).remove(PREF_FAVORITE_ORDER).putBoolean(PREF_FAVORITES_ONLY, false).apply();
         }
-        favoritesOnly = false;
+        overlayNavigationState.favoritesOnly = false;
         if (favoriteOrderStore != null) {
             favoriteOrderStore.load();
         }
@@ -8957,7 +9808,7 @@ public class MainActivity extends FragmentActivity {
             }
         }
         refreshLocalChannelFilters(lastChannelId);
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateQuickAccessButtons();
         updateTouchHomeHub();
         showStatus(getString(R.string.settings_status_favorites_cleared));
@@ -8974,7 +9825,7 @@ public class MainActivity extends FragmentActivity {
             channelProfileStore.load();
         }
         refreshLocalChannelFilters(lastChannelId);
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateFilterText();
         updateTouchHomeHub();
         showStatus(getString(R.string.settings_status_lists_profiles_reset));
@@ -9001,8 +9852,8 @@ public class MainActivity extends FragmentActivity {
                     .apply();
         }
         lastVodId = "";
-        selectedFilterKey = "all";
-        favoritesOnly = false;
+        overlayNavigationState.selectedFilterKey = "all";
+        overlayNavigationState.favoritesOnly = false;
         persistNavigationState();
         updateFilterText();
         updateTouchHomeHub();
@@ -9028,39 +9879,190 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private void showTvDialog(AlertDialog dialog) {
-        if (dialog == null) {
+    private void attachDialogViewTreeOwners(View dialogView) {
+        if (dialogView == null) {
             return;
         }
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
-        dialog.setOnShowListener(d -> {
-            android.widget.ListView listView = dialog.getListView();
-            if (listView != null) {
-                listView.setFocusable(true);
-                listView.setFocusableInTouchMode(true);
-                listView.requestFocus();
-                if (listView.getCount() > 0) {
-                    listView.setSelection(0);
-                }
+        ViewTreeLifecycleOwner.set(dialogView, this);
+        ViewTreeViewModelStoreOwner.set(dialogView, this);
+        ViewTreeSavedStateRegistryOwner.set(dialogView, this);
+    }
+
+    private void attachDialogViewTreeOwnersRecursive(View dialogView) {
+        if (dialogView == null) {
+            return;
+        }
+        attachDialogViewTreeOwners(dialogView);
+        if (dialogView instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) dialogView;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                attachDialogViewTreeOwnersRecursive(group.getChildAt(i));
             }
-        });
-        dialog.show();
+        }
     }
 
     private void showTvOptionsDialog(int titleResId, String message, List<String> options, List<Runnable> actions) {
+        showTvOptionsDialog(titleResId, message, options, actions, null);
+    }
+
+    private void showTvOptionsDialog(String title, String message, List<String> options, List<Runnable> actions) {
+        showTvOptionsDialog(title, message, options, actions, null);
+    }
+
+    private void showTvMessagePanel(String title, String message, List<TvMessageActionUiModel> actions, Runnable onCancel) {
         prepareModalSurface();
-        AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle(titleResId)
-                .setItems(options.toArray(new String[0]), (dialog, which) -> {
-                    if (which >= 0 && which < actions.size()) {
-                        actions.get(which).run();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        List<TvMessageActionUiModel> wrappedActions = new ArrayList<>();
+        if (actions != null) {
+            for (TvMessageActionUiModel action : actions) {
+                if (action == null) {
+                    continue;
+                }
+                wrappedActions.add(new TvMessageActionUiModel(action.label, action.destructive, () -> {
+                    dialog.dismiss();
+                    if (action.onClick != null) {
+                        uiHandler.post(action.onClick);
                     }
-                })
-                .setNegativeButton(R.string.dialog_close, null);
-        if (message != null && !message.trim().isEmpty()) {
-            builder.setMessage(message);
+                }));
+            }
         }
-        showTvDialog(builder.create());
+        if (wrappedActions.isEmpty()) {
+            wrappedActions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, dialog::dismiss));
+        }
+        TvMessagePanelComposeBinder.bind(
+                composeView,
+                new TvMessagePanelUiModel(
+                        title == null || title.trim().isEmpty() ? getString(R.string.app_name) : title,
+                        message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message,
+                        wrappedActions
+                )
+        );
+        dialog.setContentView(composeView);
+        dialog.setOnCancelListener(d -> {
+            if (onCancel != null) {
+                uiHandler.post(onCancel);
+            }
+        });
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
+    }
+
+    private void showTvTextInputPanel(TvTextInputPanelUiModel model) {
+        if (model == null) {
+            return;
+        }
+        prepareModalSurface();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        TvTextInputPanelUiModel wrapped = new TvTextInputPanelUiModel(
+                model.title,
+                model.message,
+                model.positiveLabel,
+                model.negativeLabel,
+                model.neutralLabel,
+                model.fields,
+                values -> {
+                    dialog.dismiss();
+                    if (model.onSubmit != null) {
+                        uiHandler.post(() -> model.onSubmit.submit(values));
+                    }
+                },
+                () -> {
+                    dialog.dismiss();
+                    if (model.onCancel != null) {
+                        uiHandler.post(model.onCancel);
+                    }
+                },
+                () -> {
+                    dialog.dismiss();
+                    if (model.onNeutral != null) {
+                        uiHandler.post(model.onNeutral);
+                    }
+                }
+        );
+        TvTextInputPanelComposeBinder.bind(composeView, wrapped);
+        dialog.setContentView(composeView);
+        dialog.setOnCancelListener(d -> {
+            if (model.onCancel != null) {
+                uiHandler.post(model.onCancel);
+            }
+        });
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
+    }
+
+    private void showTvOptionsDialog(int titleResId, String message, List<String> options, List<Runnable> actions, Runnable onBack) {
+        showTvOptionsDialog(getString(titleResId), message, options, actions, onBack);
+    }
+
+    private void showTvOptionsDialog(String title, String message, List<String> options, List<Runnable> actions, Runnable onBack) {
+        prepareModalSurface();
+        final boolean[] navigationHandled = {false};
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        List<TvOptionsPanelRowUiModel> rows = new ArrayList<>();
+        for (int i = 0; options != null && i < options.size(); i++) {
+            final int index = i;
+            rows.add(new TvOptionsPanelRowUiModel(
+                    options.get(i),
+                    String.valueOf(i + 1),
+                    () -> {
+                        if (index >= 0 && actions != null && index < actions.size()) {
+                            navigationHandled[0] = true;
+                            dialog.dismiss();
+                            uiHandler.post(actions.get(index));
+                        }
+                    }
+            ));
+        }
+        Runnable backAction = () -> {
+            navigationHandled[0] = true;
+            dialog.dismiss();
+            if (onBack != null) {
+                uiHandler.post(onBack);
+            }
+        };
+        TvOptionsPanelComposeBinder.bind(
+                composeView,
+                new TvOptionsPanelUiModel(
+                        title == null || title.trim().isEmpty() ? getString(R.string.app_name) : title,
+                        message,
+                        getString(onBack == null ? R.string.dialog_close : R.string.dialog_back),
+                        rows,
+                        backAction
+                )
+        );
+        dialog.setContentView(composeView);
+        if (onBack != null) {
+            dialog.setOnKeyListener((ignored, keyCode, event) -> {
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP && !navigationHandled[0]) {
+                    backAction.run();
+                    return true;
+                }
+                return false;
+            });
+        }
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
     }
 
     private void maybeShowStartupHub() {
@@ -9144,8 +10146,8 @@ public class MainActivity extends FragmentActivity {
         if (lastVod != null && lastVod.isVod) {
             long resumeMs = getVodResumePosition(lastVod.id);
             options.add(resumeMs > 30_000L
-                    ? getString(R.string.startup_hub_continue_vod_progress, displayName(lastVod), formatDurationShort(resumeMs))
-                    : getString(R.string.startup_hub_continue_vod, displayName(lastVod)));
+                    ? getString(R.string.startup_hub_continue_vod_progress, decorateProtectedItemTitle(lastVod, displayName(lastVod)), formatDurationShort(resumeMs))
+                    : getString(R.string.startup_hub_continue_vod, decorateProtectedItemTitle(lastVod, displayName(lastVod))));
             actions.add(() -> showVodInfoDialog(lastVod));
         }
         RecordingsRepository.RecordingItem resumeRecording = state == null ? null : state.resumeRecording;
@@ -9164,7 +10166,7 @@ public class MainActivity extends FragmentActivity {
             actions.add(() -> applyQuickOverlayTarget("vod"));
         }
         if (shouldShowGenericVodQuickTarget(true)) {
-            options.add(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")));
+            options.add(decorateProtectedLabel(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")), currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod));
             actions.add(() -> applyQuickOverlayTarget("vod-adult"));
         }
         if (!isOfflineRecordingsDisabled()) {
@@ -9181,6 +10183,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::disableStartupHub);
         options.add(getString(R.string.tools_menu_install_status));
         actions.add(this::showInstallStatusDialog);
+        options.add(getString(R.string.offline_catalog_action_refresh));
+        actions.add(this::refreshOfflineCatalogFromSettings);
 
         showTvOptionsDialog(
                 R.string.startup_hub_title,
@@ -9227,12 +10231,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String buildCurrentFilterLabel() {
-        if (favoritesOnly || "favorites".equals(selectedFilterKey)) {
+        if (overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey)) {
             return getString(R.string.touch_home_filter_favorites);
         }
         for (ChannelFilter filter : filters) {
-            if (filter != null && selectedFilterKey != null && selectedFilterKey.equals(filter.key) && filter.label != null && !filter.label.trim().isEmpty()) {
-                return filter.label.trim();
+            if (filter != null && overlayNavigationState.selectedFilterKey != null && overlayNavigationState.selectedFilterKey.equals(filter.key) && filter.label != null && !filter.label.trim().isEmpty()) {
+                return decorateProtectedFilterLabel(filter);
             }
         }
         return getString(R.string.touch_home_filter_all);
@@ -9261,30 +10265,26 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::showGlobalSearchDialog);
         options.add(getString(R.string.tools_section_vod));
         actions.add(this::showVodLibraryDialog);
-        options.add(getString(R.string.tools_section_navigation));
-        actions.add(this::showNavigationToolsDialog);
+        options.add(getString(R.string.tools_section_tv_guide));
+        actions.add(this::showTvAndGuideToolsDialog);
         options.add(getString(R.string.quick_hub_recent));
         actions.add(this::showRecentChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_favorites));
         actions.add(this::showFavoriteChannelsQuickDialog);
         options.add(getString(R.string.quick_hub_lists));
         actions.add(this::showPersonalListsManagerDialog);
+        options.add(getString(R.string.tools_menu_open_parental));
+        actions.add(this::showParentalSettingsDialog);
         if (!isOfflineRecordingsDisabled()) {
             options.add(getString(R.string.quick_hub_recordings));
             actions.add(this::openRecordingsBrowser);
         }
-        options.add(getString(R.string.quick_hub_timeline));
-        actions.add(this::openTimelineGuideAroundSelection);
-        options.add(getString(R.string.quick_hub_epg_search));
-        actions.add(this::showEpgSearchDialog);
-        options.add(getString(R.string.tools_section_playback));
-        actions.add(this::showPlaybackToolsDialog);
         if (prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false)) {
             options.add(getString(R.string.quick_hub_enable_startup));
             actions.add(this::enableStartupHub);
         }
-        options.add(getString(R.string.tools_menu_title_short));
-        actions.add(this::showV12ToolsMenu);
+        options.add(getString(R.string.tools_menu_open_advanced));
+        actions.add(this::showAdvancedToolsMenu);
         showTvOptionsDialog(R.string.title_quick_hub, null, options, actions);
     }
 
@@ -9295,23 +10295,17 @@ public class MainActivity extends FragmentActivity {
     private void showVodSearchDialog(String initialQuery) {
         clearQuickSearchOverlay();
         hideOverlay();
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint(R.string.vod_search_hint);
-        if (initialQuery != null && !initialQuery.trim().isEmpty()) {
-            input.setText(initialQuery.trim());
-            input.setSelectAllOnFocus(true);
-        }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_vod_search)
-                .setView(input)
-                .setPositiveButton(R.string.search_channel_dialog_action, (dialog, which) -> {
-                    String query = input.getText() == null ? "" : input.getText().toString();
-                    showVodSearchResults(query);
-                })
-                .setNeutralButton(R.string.vod_search_all, (dialog, which) -> showVodSearchResults(""))
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.title_vod_search),
+                "",
+                getString(R.string.search_channel_dialog_action),
+                getString(R.string.dialog_cancel),
+                getString(R.string.vod_search_all),
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.vod_search_hint), initialQuery == null ? "" : initialQuery.trim(), false, false)),
+                values -> showVodSearchResults(values == null || values.isEmpty() ? "" : values.get(0)),
+                null,
+                () -> showVodSearchResults("")
+        ));
     }
 
     private void showVodSearchResults(String query) {
@@ -9452,7 +10446,7 @@ public class MainActivity extends FragmentActivity {
         String trimmedQuery = query == null ? "" : query.trim();
         List<ChannelItem> items = new ArrayList<>();
         for (ChannelItem item : allChannels) {
-            if (item == null || !item.isVod || !matchesVodVisualType(item, typeFilter) || !matchesVodVisualPlatform(item, platformFilter) || !matchesVodVisualStatus(item, statusFilter)) {
+            if (item == null || !item.isVod || shouldHideProtectedItem(item) || !matchesVodVisualType(item, typeFilter) || !matchesVodVisualPlatform(item, platformFilter) || !matchesVodVisualStatus(item, statusFilter)) {
                 continue;
             }
             if (!matchesVodSearchQuery(item, trimmedQuery)) {
@@ -9580,7 +10574,7 @@ public class MainActivity extends FragmentActivity {
     private List<ChannelItem> buildAllVodLibraryItems(boolean includeAdult) {
         List<ChannelItem> items = new ArrayList<>();
         for (ChannelItem item : allChannels) {
-            if (item == null || !item.isVod) {
+            if (item == null || !item.isVod || shouldHideProtectedItem(item)) {
                 continue;
             }
             if (!includeAdult && item.isAdultVod) {
@@ -9689,7 +10683,7 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             ChannelItem item = findChannelItemById(recent.channelId);
-            if (item != null && item.isVod) {
+            if (item != null && item.isVod && !shouldHideProtectedItem(item)) {
                 items.add(item);
             }
             if (items.size() >= 80) {
@@ -9702,7 +10696,7 @@ public class MainActivity extends FragmentActivity {
     private List<ChannelItem> buildVodItemsByFilter(String vodFilterKey, boolean includeAdult) {
         List<ChannelItem> items = new ArrayList<>();
         for (ChannelItem item : allChannels) {
-            if (item == null || !item.isVod) {
+            if (item == null || !item.isVod || shouldHideProtectedItem(item)) {
                 continue;
             }
             if (!includeAdult && item.isAdultVod) {
@@ -9724,7 +10718,7 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             ChannelItem item = findChannelItemById(entry.getKey());
-            if (item != null && item.isVod) {
+            if (item != null && item.isVod && !shouldHideProtectedItem(item)) {
                 items.add(item);
             }
         }
@@ -9735,7 +10729,7 @@ public class MainActivity extends FragmentActivity {
     private List<ChannelItem> buildVodNotStartedItems() {
         List<ChannelItem> items = new ArrayList<>();
         for (ChannelItem item : allChannels) {
-            if (item == null || !item.isVod || item.isAdultVod || getVodResumePosition(item.id) > 0L) {
+            if (item == null || !item.isVod || shouldHideProtectedItem(item) || item.isAdultVod || getVodResumePosition(item.id) > 0L) {
                 continue;
             }
             items.add(item);
@@ -9784,11 +10778,11 @@ public class MainActivity extends FragmentActivity {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.vod_action_continue));
-        actions.add(() -> playChannelItemInternal(item, true, getVodResumePosition(item.id)));
+        actions.add(() -> ensureParentalAccessForItem(item, () -> playChannelItemInternal(item, true, getVodResumePosition(item.id))));
         options.add(getString(R.string.vod_action_start_over));
         actions.add(() -> {
             clearVodResumePosition(item.id);
-            playChannelItemInternal(item, true, 0L);
+            ensureParentalAccessForItem(item, () -> playChannelItemInternal(item, true, 0L));
         });
         options.add(getString(R.string.vod_action_clear_progress));
         actions.add(() -> {
@@ -9801,7 +10795,7 @@ public class MainActivity extends FragmentActivity {
     private List<ChannelItem> buildVodSearchResults(String query, boolean includeAdult) {
         List<ChannelItem> results = new ArrayList<>();
         for (ChannelItem item : allChannels) {
-            if (item == null || !item.isVod || (!includeAdult && item.isAdultVod)) {
+            if (item == null || !item.isVod || shouldHideProtectedItem(item) || (!includeAdult && item.isAdultVod)) {
                 continue;
             }
             String haystack = displayName(item) + " " + item.group + " " + item.platformName;
@@ -9824,7 +10818,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.vod_continue_empty));
             return;
         }
-        showVodInfoDialog(item);
+        ensureParentalAccessForItem(item, () -> showVodInfoDialog(item));
     }
 
     private void showPersonalListsManagerDialog() {
@@ -9832,72 +10826,88 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         List<ChannelCollectionStore.ChannelCollection> collections = channelCollectionStore.getCollections();
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
-        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
-        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
-        if (panelTitle != null) {
-            panelTitle.setText(R.string.title_manage_personal_lists);
-            panelTitle.setVisibility(View.VISIBLE);
-        }
-        if (panelSubtitle != null) {
-            panelSubtitle.setText(getString(R.string.personal_list_manager_hint, collections.size()));
-            panelSubtitle.setVisibility(View.VISIBLE);
-        }
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        PersonalListAdapter adapter = new PersonalListAdapter(
-                collections,
-                this::showPersonalListChannelsPanel,
-                this::showPersonalListActionsDialog
+        prepareModalSurface();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        ComposeView personalListComposeView = new ComposeView(this);
+        attachDialogViewTreeOwners(personalListComposeView);
+        PersonalListComposeBinder.bindPanel(
+                personalListComposeView,
+                getString(R.string.title_manage_personal_lists),
+                getString(R.string.personal_list_manager_hint, collections.size()),
+                getString(R.string.personal_list_create),
+                getString(R.string.dialog_close),
+                buildPersonalListManagerUiModel(collections, dialog::dismiss),
+                () -> {
+                    dialog.dismiss();
+                    showCreatePersonalListDialog();
+                },
+                dialog::dismiss
         );
-        recyclerView.setAdapter(adapter);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setPositiveButton(R.string.personal_list_create, (d, which) -> showCreatePersonalListDialog())
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        dialog.setContentView(personalListComposeView);
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
-        recyclerView.post(() -> {
-            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
-            if (layoutManager != null) {
-                View firstItem = layoutManager.findViewByPosition(0);
-                if (firstItem != null) {
-                    firstItem.requestFocus();
-                    return;
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
+    }
+
+    private PersonalListManagerUiModel buildPersonalListManagerUiModel(List<ChannelCollectionStore.ChannelCollection> collections) {
+        return buildPersonalListManagerUiModel(collections, null);
+    }
+
+    private PersonalListManagerUiModel buildPersonalListManagerUiModel(List<ChannelCollectionStore.ChannelCollection> collections, Runnable beforeAction) {
+        List<PersonalListRowUiModel> rows = new ArrayList<>();
+        if (collections != null) {
+            for (ChannelCollectionStore.ChannelCollection collection : collections) {
+                if (collection == null) {
+                    continue;
                 }
+                String badge = String.valueOf(Math.min(99, collection.channelIds.size()));
+                String preview = getString(R.string.personal_list_count, collection.channelIds.size()) + "  ·  " + buildPersonalListPreview(collection);
+                rows.add(new PersonalListRowUiModel(
+                        badge,
+                        collection.label,
+                        preview,
+                        getString(R.string.personal_list_action_badge),
+                        () -> {
+                            if (beforeAction != null) {
+                                beforeAction.run();
+                            }
+                            showPersonalListChannelsPanel(collection);
+                        },
+                        () -> {
+                            if (beforeAction != null) {
+                                beforeAction.run();
+                            }
+                            showPersonalListActionsDialog(collection);
+                        }
+                ));
             }
-            recyclerView.requestFocus();
-        });
+        }
+        return new PersonalListManagerUiModel(rows);
     }
 
     private void showPersonalListActionsDialog(ChannelCollectionStore.ChannelCollection collection) {
         if (collection == null) {
             return;
         }
-        String[] options = new String[]{
-                getString(R.string.personal_list_view_channels),
-                getString(R.string.personal_list_open),
-                getString(R.string.personal_list_rename),
-                getString(R.string.personal_list_delete)
-        };
-        new AlertDialog.Builder(this)
-                .setTitle(collection.label)
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        showPersonalListChannelsPanel(collection);
-                    } else if (which == 1) {
-                        applyPersonalListFilter(collection.key);
-                    } else if (which == 2) {
-                        showRenamePersonalListDialog(collection);
-                    } else if (which == 3) {
-                        channelCollectionStore.deleteCollection(collection.key);
-                        refreshLocalChannelFilters(lastChannelId);
-                        showStatus(getString(R.string.status_personal_list_deleted));
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.personal_list_view_channels));
+        actions.add(() -> showPersonalListChannelsPanel(collection));
+        options.add(getString(R.string.personal_list_open));
+        actions.add(() -> applyPersonalListFilter(collection.key));
+        options.add(getString(R.string.personal_list_rename));
+        actions.add(() -> showRenamePersonalListDialog(collection));
+        options.add(getString(R.string.personal_list_delete));
+        actions.add(() -> {
+            channelCollectionStore.deleteCollection(collection.key);
+            refreshLocalChannelFilters(lastChannelId);
+            showStatus(getString(R.string.status_personal_list_deleted));
+        });
+        showTvOptionsDialog(collection.label, null, options, actions);
     }
 
     private void showCreatePersonalListDialog() {
@@ -9928,24 +10938,24 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showPersonalListNameDialog(String initialValue, PersonalListNameAction action) {
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint(R.string.personal_list_name_hint);
-        input.setText(initialValue == null ? "" : initialValue);
-        input.setSelectAllOnFocus(true);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_manage_personal_lists)
-                .setView(input)
-                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                    String value = input.getText() == null ? "" : input.getText().toString().trim();
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.title_manage_personal_lists),
+                "",
+                getString(android.R.string.ok),
+                getString(R.string.dialog_cancel),
+                "",
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.personal_list_name_hint), initialValue == null ? "" : initialValue, false, false)),
+                values -> {
+                    String value = values == null || values.isEmpty() ? "" : values.get(0).trim();
                     if (value.isEmpty()) {
                         showStatus(getString(R.string.status_personal_list_empty_name));
                         return;
                     }
                     action.apply(value);
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                },
+                null,
+                null
+        ));
     }
 
     private void applyPersonalListFilter(String collectionKey) {
@@ -9958,7 +10968,7 @@ public class MainActivity extends FragmentActivity {
         channelOverlayCoordinator.refreshVisibleChannels(currentId, currentId);
         syncOverlayStateFromCoordinator();
         clearOverlaySearchQuery();
-        channelAdapter.notifyDataSetChanged();
+        refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
         showOverlay();
@@ -9989,80 +10999,61 @@ public class MainActivity extends FragmentActivity {
             touchHomeHub.setVisibility(View.GONE);
         }
         prefetchChannelLogos(items, SEARCH_LOGO_PREFETCH_LIMIT, 42, 42);
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
-        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
-        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
-        if (panelTitle != null) {
-            panelTitle.setText(getString(R.string.personal_list_channels_title, currentCollection.label));
-            panelTitle.setVisibility(View.VISIBLE);
-        }
-        if (panelSubtitle != null) {
-            panelSubtitle.setText(getString(R.string.personal_list_channels_hint, items.size()));
-            panelSubtitle.setVisibility(View.VISIBLE);
-        }
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
-        SearchChannelAdapter adapter = new SearchChannelAdapter(items, item -> {
-            AlertDialog activeDialog = dialogHolder[0];
-            if (activeDialog != null && activeDialog.isShowing()) {
-                activeDialog.dismiss();
+        ComposeView quickChannelListComposeView = new ComposeView(this);
+        attachDialogViewTreeOwners(quickChannelListComposeView);
+        final Dialog[] dialogHolder = new Dialog[1];
+        QuickChannelListComposeBinder.bind(quickChannelListComposeView, buildQuickChannelListUiModel(
+                getString(R.string.personal_list_channels_title, currentCollection.label),
+                getString(R.string.personal_list_channels_hint, items.size()),
+                items,
+                dialogHolder,
+                item ->
+                showPersonalListChannelActionsDialog(currentCollection, item)
+        ), (imageView, item) -> {
+            if (imageView == null || item == null) {
+                return;
             }
-            uiHandler.post(() -> showPersonalListChannelActionsDialog(currentCollection, item));
+            if (item.vod) {
+                bindRecordingPoster(imageView, item.logoUrl);
+            } else {
+                bindChannelLogo(imageView, item.logoUrl, item.channelName, 42, 42);
+            }
         });
-        recyclerView.setAdapter(adapter);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setPositiveButton(R.string.personal_list_open, (d, which) -> applyPersonalListFilter(currentCollection.key))
-                .setNeutralButton(R.string.personal_list_rename, (d, which) -> showRenamePersonalListDialog(currentCollection))
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
+        dialog.setContentView(quickChannelListComposeView);
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
-        recyclerView.post(() -> {
-            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
-            if (layoutManager != null) {
-                View firstItem = layoutManager.findViewByPosition(0);
-                if (firstItem != null) {
-                    firstItem.requestFocus();
-                    return;
-                }
-            }
-            recyclerView.requestFocus();
-        });
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
     }
 
     private void showPersonalListChannelActionsDialog(ChannelCollectionStore.ChannelCollection collection, ChannelItem item) {
         if (collection == null || item == null) {
             return;
         }
-        String[] options = new String[]{
-                getString(R.string.personal_list_channel_action_tune),
-                getString(R.string.personal_list_channel_action_remove),
-                getString(R.string.personal_list_channel_action_profile)
-        };
-        new AlertDialog.Builder(this)
-                .setTitle(displayName(item))
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        tuneQuickAccessChannel(item);
-                    } else if (which == 1) {
-                        if (channelCollectionStore != null) {
-                            channelCollectionStore.setMembership(collection.key, item.id, false);
-                        }
-                        refreshLocalChannelFilters(item.id);
-                        showStatus(getString(R.string.status_personal_list_channel_removed));
-                        ChannelCollectionStore.ChannelCollection refreshed = channelCollectionStore == null ? null : channelCollectionStore.getCollection(collection.key);
-                        if (refreshed != null && !refreshed.channelIds.isEmpty()) {
-                            uiHandler.post(() -> showPersonalListChannelsPanel(refreshed));
-                        }
-                    } else if (which == 2) {
-                        showChannelProfileDialog(item);
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.personal_list_channel_action_tune));
+        actions.add(() -> tuneQuickAccessChannel(item));
+        options.add(getString(R.string.personal_list_channel_action_remove));
+        actions.add(() -> {
+            if (channelCollectionStore != null) {
+                channelCollectionStore.setMembership(collection.key, item.id, false);
+            }
+            refreshLocalChannelFilters(item.id);
+            showStatus(getString(R.string.status_personal_list_channel_removed));
+            ChannelCollectionStore.ChannelCollection refreshed = channelCollectionStore == null ? null : channelCollectionStore.getCollection(collection.key);
+            if (refreshed != null && !refreshed.channelIds.isEmpty()) {
+                uiHandler.post(() -> showPersonalListChannelsPanel(refreshed));
+            }
+        });
+        options.add(getString(R.string.personal_list_channel_action_profile));
+        actions.add(() -> showChannelProfileDialog(item));
+        showTvOptionsDialog(displayName(item), null, options, actions);
     }
 
     private List<ChannelItem> buildPersonalListChannels(ChannelCollectionStore.ChannelCollection collection) {
@@ -10162,74 +11153,33 @@ public class MainActivity extends FragmentActivity {
         hideOverlay();
         hideRecordingsPanel();
         closeMultiView();
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_channel_search, null, false);
-        EditText input = dialogView.findViewById(R.id.channelSearchInput);
-        LinearLayout filterRow = dialogView.findViewById(R.id.globalSearchFilterRow);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.channelSearchResults);
-        input.setHint(R.string.global_search_hint);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        ComposeView searchComposeView = new ComposeView(this);
+        attachDialogViewTreeOwners(searchComposeView);
         globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
 
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
-        GlobalSearchAdapter adapter = new GlobalSearchAdapter(buildGlobalSearchLocalResults("", globalSearchFilter), result -> {
-            if (result == null) {
-                return;
-            }
-            if (result.type == GLOBAL_SEARCH_HISTORY) {
-                input.setText(result.title);
-                input.setSelection(input.getText() == null ? 0 : input.getText().length());
-                return;
-            }
-            String query = input.getText() == null ? "" : input.getText().toString();
-            rememberGlobalSearchQuery(query);
-            if (dialogHolder[0] != null) {
-                dialogHolder[0].dismiss();
-            }
-            handleGlobalSearchResult(result);
-        });
-        recyclerView.setAdapter(adapter);
-        bindGlobalSearchFilterRow(filterRow, () -> updateGlobalSearchResults(adapter, input.getText() == null ? "" : input.getText().toString()));
+        final Dialog[] dialogHolder = new Dialog[1];
+        final String[] queryHolder = new String[]{initialQuery == null ? "" : initialQuery.trim()};
+        renderGlobalSearchResults(searchComposeView, buildGlobalSearchLocalResults(queryHolder[0], globalSearchFilter), dialogHolder, queryHolder);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.title_global_search)
-                .setView(dialogView)
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
-
-        input.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-            }
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                updateGlobalSearchResults(adapter, s == null ? "" : s.toString());
-            }
-
-            @Override
-            public void afterTextChanged(Editable s) {
-            }
-        });
+        dialog.setContentView(searchComposeView);
 
         dialog.setOnShowListener(d -> {
-            input.requestFocus();
-            String initial = initialQuery == null ? "" : initialQuery.trim();
-            if (!initial.isEmpty()) {
-                input.setText(initial);
-                input.setSelection(input.getText() == null ? 0 : input.getText().length());
-            }
-            updateGlobalSearchResults(adapter, initial);
+            searchComposeView.requestFocus();
+            updateGlobalSearchResults(searchComposeView, dialogHolder, queryHolder, queryHolder[0]);
         });
         dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
     }
 
-    private void bindGlobalSearchFilterRow(LinearLayout filterRow, Runnable onChanged) {
-        if (filterRow == null) {
-            return;
-        }
-        filterRow.removeAllViews();
-        int[] filters = new int[]{
+    private List<GlobalSearchFilterUiModel> buildGlobalSearchFilterUiModels(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder) {
+        List<GlobalSearchFilterUiModel> filterModels = new ArrayList<>();
+        int[] filterIds = new int[]{
                 GLOBAL_SEARCH_FILTER_ALL,
                 GLOBAL_SEARCH_FILTER_TV,
                 GLOBAL_SEARCH_FILTER_VOD,
@@ -10237,32 +11187,16 @@ public class MainActivity extends FragmentActivity {
                 GLOBAL_SEARCH_FILTER_EPG,
                 GLOBAL_SEARCH_FILTER_RECORDINGS
         };
-        for (int filter : filters) {
+        for (int filter : filterIds) {
             if (filter == GLOBAL_SEARCH_FILTER_RECORDINGS && isOfflineRecordingsDisabled()) {
                 continue;
             }
-            TextView chip = new TextView(this);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            params.rightMargin = dp(8);
-            chip.setLayoutParams(params);
-            chip.setMinHeight(dp(36));
-            chip.setGravity(Gravity.CENTER);
-            chip.setPadding(dp(14), dp(8), dp(14), dp(8));
-            chip.setText(globalSearchFilterLabel(filter));
-            chip.setTextSize(13f);
-            chip.setTypeface(Typeface.DEFAULT_BOLD);
-            chip.setTextColor(filter == globalSearchFilter ? 0xFFFFFFFF : 0xFFC7D2E2);
-            chip.setBackgroundColor(filter == globalSearchFilter ? 0xFF2A7C86 : 0xFF223249);
-            chip.setFocusable(true);
-            chip.setOnClickListener(v -> {
+            filterModels.add(new GlobalSearchFilterUiModel(globalSearchFilterLabel(filter), filter == globalSearchFilter, () -> {
                 globalSearchFilter = filter;
-                bindGlobalSearchFilterRow(filterRow, onChanged);
-                if (onChanged != null) {
-                    onChanged.run();
-                }
-            });
-            filterRow.addView(chip);
+                updateGlobalSearchResults(composeView, dialogHolder, queryHolder, queryHolder == null ? "" : queryHolder[0]);
+            }));
         }
+        return filterModels;
     }
 
     private String globalSearchFilterLabel(int filter) {
@@ -10282,26 +11216,129 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private void updateGlobalSearchResults(GlobalSearchAdapter adapter, String query) {
-        if (adapter == null) {
+    private void renderGlobalSearchResults(ComposeView composeView, List<GlobalSearchResult> results, Dialog[] dialogHolder, String[] queryHolder) {
+        if (composeView == null) {
             return;
+        }
+        String query = queryHolder == null ? "" : queryHolder[0];
+        GlobalSearchListComposeBinder.bind(composeView, buildGlobalSearchListUiModel(results, dialogHolder, queryHolder, composeView, query), (imageView, item) -> {
+            if (imageView == null || item == null || item.header) {
+                if (imageView != null) {
+                    imageView.setImageDrawable(null);
+                }
+                return;
+            }
+            switch (item.imageKind) {
+                case GlobalSearchRowUiModel.IMAGE_CHANNEL:
+                    bindChannelLogo(imageView, item.imageUrl, item.imageName, 42, 42);
+                    break;
+                case GlobalSearchRowUiModel.IMAGE_PROGRAM:
+                    bindProgramPoster(imageView, item.imageUrl);
+                    break;
+                case GlobalSearchRowUiModel.IMAGE_RECORDING:
+                    bindRecordingPoster(imageView, item.imageUrl);
+                    break;
+                default:
+                    imageView.setImageDrawable(null);
+                    break;
+            }
+        });
+    }
+
+    private GlobalSearchListUiModel buildGlobalSearchListUiModel(List<GlobalSearchResult> results, Dialog[] dialogHolder, String[] queryHolder, ComposeView composeView, String query) {
+        List<GlobalSearchRowUiModel> rows = new ArrayList<>();
+        if (results != null) {
+            for (GlobalSearchResult result : results) {
+                boolean header = result != null && result.type == GLOBAL_SEARCH_HEADER;
+                int imageKind = GlobalSearchRowUiModel.IMAGE_NONE;
+                String imageUrl = "";
+                String imageName = "";
+                if (!header && result != null) {
+                    if (result.channel != null) {
+                        imageKind = GlobalSearchRowUiModel.IMAGE_CHANNEL;
+                        imageUrl = result.channel.logoUrl;
+                        imageName = displayName(result.channel);
+                    } else if (result.epgResult != null) {
+                        imageKind = GlobalSearchRowUiModel.IMAGE_PROGRAM;
+                        EpgRepository.EpgProgram program = result.epgResult.program;
+                        ChannelItem channel = result.epgResult.channel;
+                        imageUrl = program == null || program.icon == null || program.icon.trim().isEmpty()
+                                ? (channel == null ? "" : channel.logoUrl)
+                                : program.icon.trim();
+                        imageName = channel == null ? "" : displayName(channel);
+                    } else if (result.recording != null) {
+                        imageKind = GlobalSearchRowUiModel.IMAGE_RECORDING;
+                        imageUrl = result.recording.poster;
+                        imageName = buildRecordingTitle(result.recording);
+                    }
+                }
+                rows.add(new GlobalSearchRowUiModel(
+                        result == null ? "" : decorateProtectedItemTitle(result.channel, result.title),
+                        header || result == null ? "" : decorateProtectedMeta(result.channel, result.meta),
+                        header || result == null ? "" : buildProtectedTypeBadge(result.channel, result.badge),
+                        header,
+                        imageKind,
+                        imageUrl,
+                        imageName,
+                        header ? null : () -> {
+                            if (result == null) {
+                                return;
+                            }
+                            if (result.type == GLOBAL_SEARCH_HISTORY) {
+                                if (queryHolder != null) {
+                                    queryHolder[0] = result.title;
+                                }
+                                updateGlobalSearchResults(composeView, dialogHolder, queryHolder, result.title);
+                                return;
+                            }
+                            String activeQuery = queryHolder == null ? "" : queryHolder[0];
+                            rememberGlobalSearchQuery(activeQuery);
+                            if (dialogHolder != null && dialogHolder[0] != null) {
+                                dialogHolder[0].dismiss();
+                            }
+                            handleGlobalSearchResult(result);
+                        },
+                        header ? null : () -> {
+                            if (result != null) {
+                                showGlobalSearchActions(result);
+                            }
+                        }
+                ));
+            }
+        }
+        return new GlobalSearchListUiModel(
+                getString(R.string.title_global_search),
+                getString(R.string.global_search_hint),
+                query,
+                buildGlobalSearchFilterUiModels(composeView, dialogHolder, queryHolder),
+                value -> updateGlobalSearchResults(composeView, dialogHolder, queryHolder, value),
+                rows
+        );
+    }
+
+    private void updateGlobalSearchResults(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder, String query) {
+        if (composeView == null) {
+            return;
+        }
+        if (queryHolder != null) {
+            queryHolder[0] = query == null ? "" : query;
         }
         int generation = ++globalSearchGeneration;
         if (pendingGlobalSearchRunnable != null) {
             uiHandler.removeCallbacks(pendingGlobalSearchRunnable);
             pendingGlobalSearchRunnable = null;
         }
-        adapter.submitList(buildGlobalSearchLocalResults(query, globalSearchFilter));
+        renderGlobalSearchResults(composeView, buildGlobalSearchLocalResults(query, globalSearchFilter), dialogHolder, queryHolder);
         String trimmed = query == null ? "" : query.trim();
         if (trimmed.length() < 2) {
             return;
         }
         int requestedFilter = globalSearchFilter;
-        pendingGlobalSearchRunnable = () -> fetchGlobalSearchRemoteResults(adapter, trimmed, generation, requestedFilter);
+        pendingGlobalSearchRunnable = () -> fetchGlobalSearchRemoteResults(composeView, dialogHolder, queryHolder, trimmed, generation, requestedFilter);
         uiHandler.postDelayed(pendingGlobalSearchRunnable, 450L);
     }
 
-    private void fetchGlobalSearchRemoteResults(GlobalSearchAdapter adapter, String query, int generation, int requestedFilter) {
+    private void fetchGlobalSearchRemoteResults(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder, String query, int generation, int requestedFilter) {
         ioExecutor.execute(() -> {
             List<GlobalSearchResult> remoteResults = new ArrayList<>();
             try {
@@ -10329,7 +11366,7 @@ public class MainActivity extends FragmentActivity {
                 }
                 List<GlobalSearchResult> merged = new ArrayList<>(buildGlobalSearchLocalResults(query, requestedFilter));
                 merged.addAll(remoteResults);
-                adapter.submitList(merged);
+                renderGlobalSearchResults(composeView, merged, dialogHolder, queryHolder);
             });
         });
     }
@@ -10394,6 +11431,9 @@ public class MainActivity extends FragmentActivity {
         List<ChannelItem> vodMatches = new ArrayList<>();
         for (ChannelItem item : allChannels) {
             if (item == null) {
+                continue;
+            }
+            if (shouldHideProtectedItem(item)) {
                 continue;
             }
             if (!globalSearchIncludesItem(filter, item)) {
@@ -10544,13 +11584,13 @@ public class MainActivity extends FragmentActivity {
         }
         ChannelItem current = getCurrentPlaybackChannelItem();
         boolean suggestionHeaderAdded = false;
-        if (current != null && globalSearchIncludesItem(filter, current)) {
+        if (current != null && !shouldHideProtectedItem(current) && globalSearchIncludesItem(filter, current)) {
             results.add(globalSearchHeader(getString(R.string.global_search_section_suggestions)));
             suggestionHeaderAdded = true;
             results.add(new GlobalSearchResult(current.isVod ? GLOBAL_SEARCH_VOD : GLOBAL_SEARCH_CHANNEL, displayName(current), current.isVod ? buildVodRowMeta(current) : getString(R.string.quick_hub_continue), current.isVod ? getString(R.string.channel_badge_vod) : getString(R.string.channel_badge_live), current, null, null, ""));
         }
         ChannelItem lastVod = findChannelItemById(lastVodId);
-        if (lastVod != null && lastVod.isVod && globalSearchIncludesItem(filter, lastVod) && (current == null || !lastVod.id.equals(current.id))) {
+        if (lastVod != null && lastVod.isVod && !shouldHideProtectedItem(lastVod) && globalSearchIncludesItem(filter, lastVod) && (current == null || !lastVod.id.equals(current.id))) {
             if (!suggestionHeaderAdded) {
                 results.add(globalSearchHeader(getString(R.string.global_search_section_suggestions)));
                 suggestionHeaderAdded = true;
@@ -10564,6 +11604,9 @@ public class MainActivity extends FragmentActivity {
             for (int i = 0; i < max; i++) {
                 ChannelItem item = recentChannels.get(i);
                 if (item == null) {
+                    continue;
+                }
+                if (shouldHideProtectedItem(item)) {
                     continue;
                 }
                 if (!globalSearchIncludesItem(filter, item)) {
@@ -10622,11 +11665,13 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         if ((result.type == GLOBAL_SEARCH_CHANNEL || result.type == GLOBAL_SEARCH_VOD) && result.channel != null) {
-            if (result.channel.isVod) {
-                showVodInfoDialog(result.channel);
-            } else {
-                tuneChannelById(result.channel.id);
-            }
+            ensureParentalAccessForItem(result.channel, () -> {
+                if (result.channel.isVod) {
+                    showVodInfoDialog(result.channel);
+                } else {
+                    tuneChannelById(result.channel.id);
+                }
+            });
             return;
         }
         if (result.type == GLOBAL_SEARCH_EPG && result.epgResult != null) {
@@ -10709,38 +11754,28 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> showTemporaryPlaybackModeDialog(channel));
         options.add(getString(R.string.tools_menu_playback_diagnostics));
         actions.add(() -> {
-            currentIndex = findChannelIndexById(channel.id);
+            overlayNavigationState.currentIndex = findChannelIndexById(channel.id);
             lastChannelId = channel.id;
             showPlaybackDiagnosticsDialog();
         });
         showTvOptionsDialog(R.string.title_global_search, displayName(channel), options, actions);
     }
 
-    private void filterSearchResults(SearchChannelAdapter adapter, String query) {
-        if (adapter == null) {
-            return;
-        }
-        adapter.submitList(searchChannels(query, 25));
-    }
-
     private void showEpgSearchDialog() {
         clearQuickSearchOverlay();
         hideOverlay();
         hideRecordingsPanel();
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint(R.string.epg_search_hint);
-        input.setSelectAllOnFocus(true);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_epg_search)
-                .setMessage(R.string.epg_search_scanned_hint)
-                .setView(input)
-                .setPositiveButton(R.string.search_channel_dialog_action, (dialog, which) -> {
-                    String query = input.getText() == null ? "" : input.getText().toString();
-                    searchEpgPrograms(query);
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.title_epg_search),
+                getString(R.string.epg_search_scanned_hint),
+                getString(R.string.search_channel_dialog_action),
+                getString(R.string.dialog_cancel),
+                "",
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.epg_search_hint), "", false, false)),
+                values -> searchEpgPrograms(values == null || values.isEmpty() ? "" : values.get(0)),
+                null,
+                null
+        ));
     }
 
     private void searchEpgPrograms(String query) {
@@ -10766,13 +11801,13 @@ public class MainActivity extends FragmentActivity {
         Set<String> seen = new HashSet<>();
         List<ChannelItem> searchScope = new ArrayList<>();
         for (ChannelItem item : channels) {
-            if (item != null && !item.isVod && item.id != null && !item.id.trim().isEmpty()) {
+            if (item != null && !item.isVod && !shouldHideProtectedItem(item) && item.id != null && !item.id.trim().isEmpty()) {
                 searchScope.add(item);
             }
         }
         if (searchScope.isEmpty()) {
             for (ChannelItem item : allChannels) {
-                if (item != null && !item.isVod && item.id != null && !item.id.trim().isEmpty()) {
+                if (item != null && !item.isVod && !shouldHideProtectedItem(item) && item.id != null && !item.id.trim().isEmpty()) {
                     searchScope.add(item);
                 }
             }
@@ -10814,73 +11849,133 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.epg_search_empty));
             return;
         }
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
-        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
-        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
-        if (panelTitle != null) {
-            panelTitle.setText(getString(R.string.epg_search_results_title, query));
-            panelTitle.setVisibility(View.VISIBLE);
-        }
-        if (panelSubtitle != null) {
-            panelSubtitle.setText(getString(R.string.epg_search_results_hint, results.size()));
-            panelSubtitle.setVisibility(View.VISIBLE);
-        }
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
-        EpgSearchResultAdapter adapter = new EpgSearchResultAdapter(results, result -> {
-            AlertDialog activeDialog = dialogHolder[0];
-            if (activeDialog != null && activeDialog.isShowing()) {
-                activeDialog.dismiss();
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        final Dialog[] dialogHolder = new Dialog[1];
+        EpgSearchResultsComposeBinder.bind(composeView, buildEpgSearchResultListUiModel(
+                getString(R.string.epg_search_results_title, query),
+                getString(R.string.epg_search_results_hint, results.size()),
+                results,
+                dialogHolder
+        ), (imageView, item) -> {
+            if (imageView == null || item == null) {
+                return;
             }
-            if (result != null) {
-                uiHandler.post(() -> channelActionsCoordinator.showProgramActionMenu(result.channel, result.program));
-            }
+            bindProgramPoster(imageView, item.imageUrl);
         });
-        recyclerView.setAdapter(adapter);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
+        dialog.setContentView(composeView);
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
-        recyclerView.post(() -> {
-            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
-            if (layoutManager != null) {
-                View firstItem = layoutManager.findViewByPosition(0);
-                if (firstItem != null) {
-                    firstItem.requestFocus();
-                    return;
-                }
-            }
-            recyclerView.requestFocus();
-        });
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
     }
 
     private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
-        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
-        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
-        if (panelTitle != null) {
-            panelTitle.setText(getString(R.string.title_guide, displayName(channel)));
-            panelTitle.setVisibility(View.VISIBLE);
-        }
-        if (panelSubtitle != null) {
-            panelSubtitle.setText(getString(R.string.mini_guide_hint, items == null ? 0 : items.size()));
-            panelSubtitle.setVisibility(View.VISIBLE);
-        }
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(new GuideProgramAdapter(channel, items));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setPositiveButton(R.string.quick_hub_timeline, (d, which) -> openTimelineGuideForChannel(channel))
-                .setNeutralButton(R.string.quick_hub_epg_search, (d, which) -> showEpgSearchDialog())
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        MiniGuideComposeBinder.bind(composeView, buildMiniGuideUiModel(
+                channel,
+                items,
+                getString(R.string.title_guide, displayName(channel)),
+                getString(R.string.mini_guide_hint, items == null ? 0 : items.size())
+        ));
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        dialog.setContentView(composeView);
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
+    }
+
+    private EpgSearchResultListUiModel buildEpgSearchResultListUiModel(List<EpgSearchResult> results, Dialog[] dialogHolder) {
+        return buildEpgSearchResultListUiModel(null, null, results, dialogHolder);
+    }
+
+    private EpgSearchResultListUiModel buildEpgSearchResultListUiModel(String title, String subtitle, List<EpgSearchResult> results, Dialog[] dialogHolder) {
+        List<EpgSearchResultRowUiModel> rows = new ArrayList<>();
+        if (results != null) {
+            for (EpgSearchResult result : results) {
+                if (result == null) {
+                    continue;
+                }
+                ChannelItem channel = result.channel;
+                EpgRepository.EpgProgram program = result.program;
+                String programTitle = program == null || program.title == null || program.title.trim().isEmpty()
+                        ? getString(R.string.label_program_default)
+                        : program.title.trim();
+                String channelName = channel == null ? "" : displayName(channel);
+                String time = program == null ? "" : shortTime(program.startTime) + " - " + shortTime(program.endTime);
+                String meta = (channelName + "  ·  " + time).trim();
+                boolean live = program != null && program.progress >= 0;
+                String badge = getString(live ? R.string.epg_search_badge_live : R.string.epg_search_badge_next);
+                int badgeColor = live ? 0xFF276B49 : 0xFF1E2D3E;
+                String imageUrl = program == null || program.icon == null || program.icon.trim().isEmpty()
+                        ? (channel == null ? "" : channel.logoUrl)
+                        : program.icon.trim();
+                rows.add(new EpgSearchResultRowUiModel(
+                        programTitle,
+                        meta,
+                        badge,
+                        badgeColor,
+                        imageUrl,
+                        () -> {
+                            Dialog activeDialog = dialogHolder == null ? null : dialogHolder[0];
+                            if (activeDialog != null && activeDialog.isShowing()) {
+                                activeDialog.dismiss();
+                            }
+                            uiHandler.post(() -> channelActionsCoordinator.showProgramActionMenu(result.channel, result.program));
+                        }
+                ));
+            }
+        }
+        return new EpgSearchResultListUiModel(title, subtitle, rows);
+    }
+
+    private MiniGuideUiModel buildMiniGuideUiModel(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
+        return buildMiniGuideUiModel(channel, items, null, null);
+    }
+
+    private MiniGuideUiModel buildMiniGuideUiModel(ChannelItem channel, List<EpgRepository.EpgProgram> items, String title, String subtitle) {
+        List<MiniGuideProgramRowUiModel> rows = new ArrayList<>();
+        if (items != null) {
+            for (int i = 0; i < items.size(); i++) {
+                EpgRepository.EpgProgram program = items.get(i);
+                if (program == null) {
+                    continue;
+                }
+                String badge;
+                int badgeColor;
+                if (program.progress >= 0) {
+                    badge = getString(R.string.guide_program_now);
+                    badgeColor = 0xAA266D3E;
+                } else if (i == 1) {
+                    badge = getString(R.string.guide_program_next);
+                    badgeColor = 0xAA405C86;
+                } else {
+                    badge = getString(R.string.guide_program_later);
+                    badgeColor = 0xAA4B5361;
+                }
+                EpgRepository.EpgProgram rowProgram = program;
+                rows.add(new MiniGuideProgramRowUiModel(
+                        shortTime(program.startTime) + " - " + shortTime(program.endTime),
+                        badge,
+                        badgeColor,
+                        program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title,
+                        program.progress >= 0 ? Math.min(100, Math.max(0, program.progress)) : -1,
+                        buildGuideMeta(program),
+                        () -> channelActionsCoordinator.showProgramActionMenu(channel, rowProgram)
+                ));
+            }
+        }
+        return new MiniGuideUiModel(title, subtitle, rows);
     }
 
     private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId, List<RecordingsRepository.RecordingItem> scheduledItems) {
@@ -10900,21 +11995,37 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_timeline_guide, null, false);
-        android.widget.ScrollView timelineVerticalScroll = dialogView.findViewById(R.id.timelineVerticalScroll);
-        TextView timelineNowButton = dialogView.findViewById(R.id.timelineNowButton);
-        TextView timelinePrevButton = dialogView.findViewById(R.id.timelinePrevButton);
-        TextView timelineChannelNextButton = dialogView.findViewById(R.id.timelineChannelNextButton);
-        TextView timelineNextButton = dialogView.findViewById(R.id.timelineNextButton);
-        TextView timelineCloseButton = dialogView.findViewById(R.id.timelineCloseButton);
-        TextView windowText = dialogView.findViewById(R.id.timelineWindowText);
-        final List<TextView> timelineHeaderButtons = java.util.Arrays.asList(timelineNowButton, timelinePrevButton, timelineChannelNextButton, timelineNextButton, timelineCloseButton);
-        LinearLayout headerRow = dialogView.findViewById(R.id.timelineHeaderRow);
-        LinearLayout rowsContainer = dialogView.findViewById(R.id.timelineRowsContainer);
-        ImageView timelineProgramPosterImage = dialogView.findViewById(R.id.timelineProgramPosterImage);
-        TextView timelineProgramTitleText = dialogView.findViewById(R.id.timelineProgramTitleText);
-        TextView timelineProgramMetaText = dialogView.findViewById(R.id.timelineProgramMetaText);
-        TextView timelineProgramDescText = dialogView.findViewById(R.id.timelineProgramDescText);
+        FrameLayout dialogView = new FrameLayout(this);
+        dialogView.setBackgroundColor(0xB0101720);
+        dialogView.setPadding(dp(20), dp(20), dp(20), dp(20));
+        LinearLayout timelinePanel = new LinearLayout(this);
+        timelinePanel.setOrientation(LinearLayout.VERTICAL);
+        timelinePanel.setBackgroundColor(0xE6111822);
+        timelinePanel.setPadding(dp(12), dp(12), dp(12), dp(12));
+        dialogView.addView(timelinePanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ComposeView timelineHeaderComposeView = new ComposeView(this);
+        timelineHeaderComposeView.setFocusable(true);
+        timelineHeaderComposeView.setFocusableInTouchMode(true);
+        timelinePanel.addView(timelineHeaderComposeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ComposeView timelineScaleComposeView = new ComposeView(this);
+        timelineScaleComposeView.setFocusable(false);
+        LinearLayout.LayoutParams scaleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        scaleParams.topMargin = dp(8);
+        timelinePanel.addView(timelineScaleComposeView, scaleParams);
+        android.widget.ScrollView timelineVerticalScroll = new android.widget.ScrollView(this);
+        timelineVerticalScroll.setFillViewport(true);
+        timelineVerticalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout rowsContainer = new LinearLayout(this);
+        rowsContainer.setOrientation(LinearLayout.VERTICAL);
+        timelineVerticalScroll.addView(rowsContainer, new android.widget.ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams timelineScrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        timelineScrollParams.topMargin = dp(6);
+        timelinePanel.addView(timelineVerticalScroll, timelineScrollParams);
+        ComposeView timelineProgramDetailComposeView = new ComposeView(this);
+        timelineProgramDetailComposeView.setFocusable(false);
+        LinearLayout.LayoutParams timelineDetailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        timelineDetailParams.topMargin = dp(8);
+        timelinePanel.addView(timelineProgramDetailComposeView, timelineDetailParams);
         final View[] initialFocus = new View[1];
         final View[] anchorLiveFocus = new View[1];
         final View[] anchorRememberedFocus = new View[1];
@@ -10926,50 +12037,102 @@ public class MainActivity extends FragmentActivity {
         final boolean[] suppressInitialFocusScroll = new boolean[]{true};
         final List<List<View>> focusRows = new ArrayList<>();
         final Map<View, Integer> focusCenters = new HashMap<>();
-        final Runnable clearTimelineProgramDetail = () -> {
-            if (timelineProgramPosterImage != null) {
-                timelineProgramPosterImage.setVisibility(View.GONE);
-                Glide.with(this).clear(timelineProgramPosterImage);
-            }
-            if (timelineProgramTitleText != null) {
-                timelineProgramTitleText.setText(getString(R.string.timeline_no_epg));
-            }
-            if (timelineProgramMetaText != null) {
-                timelineProgramMetaText.setText(getString(R.string.timeline_program_detail_hint));
-            }
-            if (timelineProgramDescText != null) {
-                timelineProgramDescText.setText(getString(R.string.timeline_program_desc_empty));
+        final android.app.Dialog[] timelineDialogRef = new android.app.Dialog[1];
+        final Runnable focusInitialTimelineProgram = () -> {
+            if (initialFocus[0] != null) {
+                initialFocus[0].requestFocus();
             }
         };
-        final java.util.function.Consumer<TextView> styleTimelineHeaderButton = button -> {
-            if (button == null) {
-                return;
-            }
-            button.setFocusable(true);
-            button.setFocusableInTouchMode(true);
-            button.setClickable(true);
-            button.setOnFocusChangeListener((v, hasFocus) -> {
-                v.setScaleX(hasFocus ? 1.08f : 1f);
-                v.setScaleY(hasFocus ? 1.08f : 1f);
-                v.setAlpha(hasFocus ? 1f : 0.9f);
-                v.setBackgroundColor(hasFocus ? 0xFF2F89C5 : 0x264F86A8);
-            });
-        };
-        for (TextView headerButton : timelineHeaderButtons) {
-            styleTimelineHeaderButton.accept(headerButton);
-        }
+        final java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail = model ->
+                TimelineProgramDetailComposeBinder.bind(
+                        timelineProgramDetailComposeView,
+                        model,
+                        (imageView, item) -> {
+                            if (imageView == null || item == null || item.imageUrl == null || item.imageUrl.trim().isEmpty()) {
+                                if (imageView != null) {
+                                    Glide.with(this).clear(imageView);
+                                    imageView.setImageDrawable(null);
+                                }
+                                return;
+                            }
+                            Glide.with(this).load(item.imageUrl.trim()).centerCrop().into(imageView);
+                        }
+                );
+        final Runnable clearTimelineProgramDetail = () -> renderTimelineProgramDetail.accept(new TimelineProgramDetailUiModel(
+                getString(R.string.timeline_no_epg),
+                getString(R.string.timeline_program_detail_hint),
+                getString(R.string.timeline_program_desc_empty),
+                "",
+                "",
+                getString(R.string.timeline_program_action_hint)
+        ));
 
         long windowEndMs = windowStartMs + TIMELINE_WINDOW_MS;
         final long nowMs = System.currentTimeMillis();
         final boolean rememberFocusedCenter = lastTimelineFocusedCenterMinute >= 0 && lastTimelineWindowStartMs == windowStartMs;
         SimpleDateFormat dayFormat = new SimpleDateFormat("EEE d MMM", Locale.getDefault());
         SimpleDateFormat hourFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        windowText.setText(getString(
+        String windowLabel = getString(
                 R.string.timeline_window_label,
                 dayFormat.format(new Date(windowStartMs)),
                 hourFormat.format(new Date(windowStartMs)),
                 hourFormat.format(new Date(windowEndMs))
-        ));
+        );
+        TimelineHeaderComposeBinder.bind(
+                timelineHeaderComposeView,
+                new TimelineHeaderUiModel(
+                        getString(R.string.title_timeline_guide),
+                        windowLabel,
+                        java.util.Arrays.asList(
+                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                        getString(R.string.timeline_now_button),
+                                        () -> {
+                                            if (timelineDialogRef[0] != null) {
+                                                timelineDialogRef[0].dismiss();
+                                            }
+                                            openTimelineGuideNow();
+                                        },
+                                        focusInitialTimelineProgram
+                                ),
+                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                        getString(R.string.timeline_prev_button),
+                                        () -> {
+                                            if (timelineDialogRef[0] != null) {
+                                                timelineDialogRef[0].dismiss();
+                                            }
+                                            int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
+                                            openTimelineGuide(anchorIndex, Math.max(0L, windowStartMs - TIMELINE_SHIFT_MS));
+                                        },
+                                        focusInitialTimelineProgram
+                                ),
+                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                        getString(R.string.timeline_channel_next_button),
+                                        this::openTimelineGuideNextForAnchor,
+                                        focusInitialTimelineProgram
+                                ),
+                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                        getString(R.string.timeline_next_button),
+                                        () -> {
+                                            if (timelineDialogRef[0] != null) {
+                                                timelineDialogRef[0].dismiss();
+                                            }
+                                            int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
+                                            openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
+                                        },
+                                        focusInitialTimelineProgram
+                                ),
+                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                        getString(R.string.dialog_close),
+                                        () -> {
+                                            if (timelineDialogRef[0] != null) {
+                                                timelineDialogRef[0].dismiss();
+                                            }
+                                        },
+                                        focusInitialTimelineProgram
+                                )
+                        )
+                )
+        );
 
         android.util.DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
         int dialogWidthPx = (int) (displayMetrics.widthPixels * 0.98f);
@@ -10982,280 +12145,47 @@ public class MainActivity extends FragmentActivity {
         int headerSlotCount = Math.max(1, totalWindowMinutes / headerSlotMinutes);
         int headerSlotWidth = stripWidth / headerSlotCount;
 
-        TextView spacer = new TextView(this);
-        spacer.setLayoutParams(new LinearLayout.LayoutParams(labelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-        headerRow.addView(spacer);
+        List<TimelineScaleSlotUiModel> scaleSlots = new ArrayList<>();
         for (int i = 0; i < headerSlotCount; i++) {
-            TextView hourLabel = new TextView(this);
-            hourLabel.setLayoutParams(new LinearLayout.LayoutParams(headerSlotWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
             long slotStartMs = windowStartMs + (i * headerSlotMinutes * 60L * 1000L);
-            hourLabel.setText(hourFormat.format(new Date(slotStartMs)));
-            hourLabel.setTextColor(i % 2 == 0 ? 0xFFA7D0FF : 0xFF6F92B8);
-            hourLabel.setTextSize(11f);
-            hourLabel.setPadding(dp(4), dp(4), dp(4), dp(4));
-            headerRow.addView(hourLabel);
+            scaleSlots.add(new TimelineScaleSlotUiModel(
+                    hourFormat.format(new Date(slotStartMs)),
+                    i % 2 == 0 ? 0xFFA7D0FF : 0xFF6F92B8,
+                    headerSlotWidth
+            ));
         }
+        TimelineScaleComposeBinder.bind(
+                timelineScaleComposeView,
+                new TimelineScaleUiModel(labelWidth, scaleSlots)
+        );
 
-        for (TimelineChannelPrograms row : rows) {
-            final int rowIndex = focusRows.size();
-            final List<View> rowFocusables = new ArrayList<>();
-
-            LinearLayout rowLayout = new LinearLayout(this);
-            rowLayout.setOrientation(LinearLayout.HORIZONTAL);
-            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rowParams.topMargin = dp(6);
-            rowLayout.setLayoutParams(rowParams);
-
-            LinearLayout channelLabel = new LinearLayout(this);
-            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(labelWidth, dp(62));
-            channelLabel.setLayoutParams(labelParams);
-            channelLabel.setBackgroundColor(0xFF1A2532);
-            channelLabel.setGravity(Gravity.CENTER_VERTICAL);
-            channelLabel.setOrientation(LinearLayout.HORIZONTAL);
-            channelLabel.setPadding(dp(8), dp(6), dp(8), dp(6));
-
-            ImageView channelLogo = new ImageView(this);
-            LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(26), dp(26));
-            logoParams.rightMargin = dp(8);
-            channelLogo.setLayoutParams(logoParams);
-            channelLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            bindChannelLogo(channelLogo, row.channel.logoUrl, row.channel.name, 26, 26);
-            channelLabel.addView(channelLogo);
-
-            TextView channelNameText = new TextView(this);
-            channelNameText.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            channelNameText.setText(row.channel.name);
-            channelNameText.setTextColor(0xFFFFFFFF);
-            channelNameText.setTextSize(12f);
-            channelNameText.setMaxLines(2);
-            channelLabel.addView(channelNameText);
-            rowLayout.addView(channelLabel);
-
-            LinearLayout strip = new LinearLayout(this);
-            strip.setOrientation(LinearLayout.HORIZONTAL);
-            strip.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            strip.setBackgroundColor(0xFF101820);
-
-            int usedWidth = 0;
-            boolean hasVisibleProgram = false;
-            for (EpgRepository.EpgProgram program : row.programs) {
-                long startMs = parseIsoMillis(program.startTime);
-                long endMs = parseIsoMillis(program.endTime);
-                if (endMs <= windowStartMs || startMs >= windowEndMs || endMs <= startMs) {
-                    continue;
-                }
-                hasVisibleProgram = true;
-                int visibleStartMinutes = (int) Math.max(0L, (Math.max(windowStartMs, startMs) - windowStartMs) / 60000L);
-                int visibleEndMinutes = (int) Math.max(visibleStartMinutes + 1L, (Math.min(windowEndMs, endMs) - windowStartMs) / 60000L);
-                int targetOffsetWidth = Math.round(visibleStartMinutes * minuteWidth);
-                if (targetOffsetWidth > usedWidth) {
-                    View spacerView = new View(this);
-                    spacerView.setLayoutParams(new LinearLayout.LayoutParams(targetOffsetWidth - usedWidth, dp(62)));
-                    strip.addView(spacerView);
-                    usedWidth = targetOffsetWidth;
-                }
-
-                int durationMinutes = Math.max(15, visibleEndMinutes - visibleStartMinutes);
-                int blockWidth = Math.max(dp(72), Math.round(durationMinutes * minuteWidth));
-                final int centerMinute = visibleStartMinutes + (durationMinutes / 2);
-                TextView block = new TextView(this);
-                LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(blockWidth, dp(62));
-                blockParams.rightMargin = dp(2);
-                block.setLayoutParams(blockParams);
-                block.setFocusable(true);
-                block.setFocusableInTouchMode(true);
-                block.setPadding(dp(8), dp(6), dp(8), dp(6));
-                String titleText = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title;
-                boolean scheduled = isProgramScheduled(row.channel, program, scheduledItems);
-                if (scheduled) {
-                    titleText = getString(R.string.timeline_program_scheduled_prefix) + " " + titleText;
-                }
-                block.setText(titleText + "\n" + shortTime(program.startTime) + " - " + shortTime(program.endTime));
-                block.setTextColor(0xFFFFFFFF);
-                block.setTextSize(11f);
-                block.setMaxLines(3);
-                boolean live = program.progress >= 0;
-                applyTimelineBlockState(block, live, scheduled, false);
-                block.setOnFocusChangeListener((v, hasFocus) -> {
-                    applyTimelineBlockState(block, live, scheduled, hasFocus);
-                    if (hasFocus) {
-                        activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
-                        activeTimelineWindowStartMs = windowStartMs;
-                        activeTimelineFocusedCenterMinute = centerMinute;
-                        lastTimelineFocusedCenterMinute = centerMinute;
-                        if (timelineProgramTitleText != null) {
-                            timelineProgramTitleText.setText(program.title == null || program.title.trim().isEmpty()
-                                    ? getString(R.string.label_program_default)
-                                    : program.title);
-                        }
-                        if (timelineProgramMetaText != null) {
-                            String timelineMeta = row.channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
-                            if (live) {
-                                timelineMeta = timelineMeta + "  ·  " + getString(R.string.guide_program_now);
-                            }
-                            if (scheduled) {
-                                timelineMeta = timelineMeta + "  ·  " + getString(R.string.timeline_program_scheduled_short);
-                            }
-                            timelineProgramMetaText.setText(timelineMeta);
-                        }
-                        if (timelineProgramDescText != null) {
-                            String description = program.description == null || program.description.trim().isEmpty()
-                                    ? getString(R.string.timeline_program_desc_empty)
-                                    : program.description.trim();
-                            timelineProgramDescText.setText(description);
-                        }
-                        if (timelineProgramPosterImage != null) {
-                            String posterUrl = program.icon == null || program.icon.trim().isEmpty() ? row.channel.logoUrl : program.icon;
-                            if (posterUrl == null || posterUrl.trim().isEmpty()) {
-                                timelineProgramPosterImage.setVisibility(View.GONE);
-                                Glide.with(this).clear(timelineProgramPosterImage);
-                            } else {
-                                timelineProgramPosterImage.setVisibility(View.VISIBLE);
-                                Glide.with(this).load(posterUrl.trim()).centerCrop().into(timelineProgramPosterImage);
-                            }
-                        }
-                    }
-                    if (hasFocus && !suppressInitialFocusScroll[0]) {
-                        ensureTimelineBlockVisible(timelineVerticalScroll, v);
-                    }
-                });
-                block.setOnKeyListener((v, keyCode, event) -> {
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                        return false;
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                        if (rowIndex == 0 && timelineNowButton != null) {
-                            timelineNowButton.requestFocus();
-                            return true;
-                        }
-                        return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, centerMinute);
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                        return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, centerMinute);
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_BUTTON_START) {
-                        Log.i(TAG, "timeline direct recording action channel=" + (row.channel == null ? "" : row.channel.id)
-                                + " scheduled=" + scheduled
-                                + " program=" + (program.title == null ? "" : program.title));
-                        if (scheduled) {
-                            cancelScheduledProgram(row.channel, program);
-                        } else {
-                            scheduleProgram(row.channel, program);
-                        }
-                        return true;
-                    }
-                    return false;
-                });
-                block.setOnClickListener(v -> {
-                    Log.i(TAG, "timeline program click channel=" + (row.channel == null ? "" : row.channel.id)
-                            + " program=" + (program.title == null ? "" : program.title));
-                    channelActionsCoordinator.showProgramActionMenu(row.channel, program);
-                });
-                focusCenters.put(block, centerMinute);
-                rowFocusables.add(block);
-                boolean anchorMatch = anchorChannelId != null && anchorChannelId.equals(row.channel.id);
-                if (anchorMatch && anchorFirstFocus[0] == null) {
-                    anchorFirstFocus[0] = block;
-                }
-                if (anyFirstFocus[0] == null) {
-                    anyFirstFocus[0] = block;
-                }
-                if (anchorMatch && nowMs >= startMs && nowMs < endMs) {
-                    anchorLiveFocus[0] = block;
-                }
-                if (anchorMatch && rememberFocusedCenter) {
-                    int delta = Math.abs(centerMinute - lastTimelineFocusedCenterMinute);
-                    if (delta < anchorRememberedDelta[0]) {
-                        anchorRememberedDelta[0] = delta;
-                        anchorRememberedFocus[0] = block;
-                    }
-                }
-                strip.addView(block);
-                usedWidth += blockWidth + dp(2);
-            }
-
-            if (!hasVisibleProgram) {
-                TextView empty = new TextView(this);
-                empty.setLayoutParams(new LinearLayout.LayoutParams(stripWidth, dp(62)));
-                empty.setBackgroundColor(0xFF1E2630);
-                empty.setGravity(Gravity.CENTER_VERTICAL);
-                empty.setPadding(dp(10), dp(8), dp(10), dp(8));
-                empty.setText(R.string.timeline_no_epg);
-                empty.setTextColor(0xFFBFD0E6);
-                empty.setFocusable(true);
-                empty.setFocusableInTouchMode(true);
-                empty.setOnFocusChangeListener((v, hasFocus) -> {
-                    v.setAlpha(hasFocus ? 1f : 0.82f);
-                    v.setBackgroundColor(hasFocus ? 0xFF2A3950 : 0xFF1E2630);
-                    if (hasFocus) {
-                        activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
-                        activeTimelineWindowStartMs = windowStartMs;
-                        activeTimelineFocusedCenterMinute = -1;
-                        lastTimelineFocusedCenterMinute = -1;
-                        if (timelineProgramPosterImage != null) {
-                            timelineProgramPosterImage.setVisibility(View.GONE);
-                            Glide.with(this).clear(timelineProgramPosterImage);
-                        }
-                        if (timelineProgramTitleText != null) {
-                            timelineProgramTitleText.setText(row.channel == null ? getString(R.string.timeline_no_epg) : row.channel.name);
-                        }
-                        if (timelineProgramMetaText != null) {
-                            timelineProgramMetaText.setText(getString(R.string.timeline_no_epg));
-                        }
-                        if (timelineProgramDescText != null) {
-                            timelineProgramDescText.setText(getString(R.string.timeline_program_desc_empty));
-                        }
-                    }
-                });
-                empty.setOnKeyListener((v, keyCode, event) -> {
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                        return false;
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                        if (rowIndex == 0 && timelineNowButton != null) {
-                            timelineNowButton.requestFocus();
-                            return true;
-                        }
-                        return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, 0);
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                        return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, 0);
-                    }
-                    return false;
-                });
-                rowFocusables.add(empty);
-                boolean anchorMatch = anchorChannelId != null && row.channel != null && anchorChannelId.equals(row.channel.id);
-                if (anchorMatch && anchorEmptyFocus[0] == null) {
-                    anchorEmptyFocus[0] = empty;
-                }
-                if (anyEmptyFocus[0] == null) {
-                    anyEmptyFocus[0] = empty;
-                }
-                strip.addView(empty);
-            }
-
-            focusRows.add(rowFocusables);
-            rowLayout.addView(strip);
-            rowsContainer.addView(rowLayout);
-        }
-
-        if (anchorLiveFocus[0] != null) {
-            initialFocus[0] = anchorLiveFocus[0];
-        } else if (anchorRememberedFocus[0] != null) {
-            initialFocus[0] = anchorRememberedFocus[0];
-        } else if (anchorFirstFocus[0] != null) {
-            initialFocus[0] = anchorFirstFocus[0];
-        } else if (anchorEmptyFocus[0] != null) {
-            initialFocus[0] = anchorEmptyFocus[0];
-        } else if (anyFirstFocus[0] != null) {
-            initialFocus[0] = anyFirstFocus[0];
-        } else {
-            initialFocus[0] = anyEmptyFocus[0];
-        }
+        ComposeView timelineRowsComposeView = new ComposeView(this);
+        attachDialogViewTreeOwners(timelineRowsComposeView);
+        rowsContainer.removeAllViews();
+        rowsContainer.addView(timelineRowsComposeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TimelineGuideRowsComposeBinder.bind(
+                timelineRowsComposeView,
+                buildTimelineGuideRowsUiModel(
+                        rows,
+                        windowStartMs,
+                        windowEndMs,
+                        minuteWidth,
+                        labelWidth,
+                        stripWidth,
+                        scheduledItems,
+                        anchorChannelId,
+                        rememberFocusedCenter,
+                        renderTimelineProgramDetail
+                ),
+                (imageView, row) -> bindChannelLogo(imageView, row.logoUrl, row.channelName, 26, 26)
+        );
+        initialFocus[0] = timelineRowsComposeView;
 
         clearTimelineProgramDetail.run();
 
+        attachDialogViewTreeOwnersRecursive(dialogView);
         android.app.Dialog timelineDialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        timelineDialogRef[0] = timelineDialog;
         activeTimelineDialog = timelineDialog;
         timelineDialog.setContentView(dialogView);
         timelineDialog.setCancelable(true);
@@ -11268,10 +12198,8 @@ public class MainActivity extends FragmentActivity {
             }
             if (initialFocus[0] != null) {
                 initialFocus[0].requestFocus();
-                initialFocus[0].post(() -> suppressInitialFocusScroll[0] = false);
-            } else {
-                suppressInitialFocusScroll[0] = false;
             }
+            suppressInitialFocusScroll[0] = false;
         });
         timelineDialog.setOnDismissListener(d -> {
             if (!refreshingTimelineDialog) {
@@ -11288,72 +12216,6 @@ public class MainActivity extends FragmentActivity {
             }
             enableImmersiveMode();
         });
-        timelineNowButton.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                return false;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-                return true;
-            }
-            return false;
-        });
-        timelinePrevButton.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                return false;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-                return true;
-            }
-            return false;
-        });
-        timelineChannelNextButton.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                return false;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-                return true;
-            }
-            return false;
-        });
-        timelineNextButton.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                return false;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-                return true;
-            }
-            return false;
-        });
-        timelineCloseButton.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                return false;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-                return true;
-            }
-            return false;
-        });
-        timelineNowButton.setOnClickListener(v -> {
-            timelineDialog.dismiss();
-            openTimelineGuideNow();
-        });
-        timelinePrevButton.setOnClickListener(v -> {
-            timelineDialog.dismiss();
-            int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);
-            openTimelineGuide(anchorIndex, Math.max(0L, windowStartMs - TIMELINE_SHIFT_MS));
-        });
-        timelineChannelNextButton.setOnClickListener(v -> openTimelineGuideNextForAnchor());
-        timelineNextButton.setOnClickListener(v -> {
-            timelineDialog.dismiss();
-            int anchorIndex = selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size() ? selectedOverlayIndex : Math.max(0, currentIndex);
-            openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
-        });
-        timelineCloseButton.setOnClickListener(v -> timelineDialog.dismiss());
         timelineDialog.show();
     }
 
@@ -11447,15 +12309,14 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(new RecordingsAdapter(result));
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_recordings_visual)
-                .setView(dialogView)
-                .setNegativeButton(R.string.dialog_close, null)
-                .show();
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(
+                getString(R.string.title_recordings_visual),
+                getString(R.string.status_recordings_unavailable_offline),
+                actions,
+                null
+        );
     }
 
     private void showRecentChannelsDialog() {
@@ -11511,48 +12372,86 @@ public class MainActivity extends FragmentActivity {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
         prefetchChannelLogos(items, SEARCH_LOGO_PREFETCH_LIMIT, 42, 42);
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_list_panel, null, false);
-        TextView panelTitle = dialogView.findViewById(R.id.dialogPanelTitleText);
-        TextView panelSubtitle = dialogView.findViewById(R.id.dialogPanelSubtitleText);
-        RecyclerView recyclerView = dialogView.findViewById(R.id.dialogRecyclerView);
-        if (panelTitle != null) {
-            panelTitle.setText(title);
-            panelTitle.setVisibility(View.VISIBLE);
-        }
-        if (panelSubtitle != null) {
-            panelSubtitle.setText(getString(R.string.quick_channel_count, items.size()) + "  ·  " + getString(R.string.quick_channel_hint));
-            panelSubtitle.setVisibility(View.VISIBLE);
-        }
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
-        SearchChannelAdapter adapter = new SearchChannelAdapter(items, item -> {
-            AlertDialog activeDialog = dialogHolder[0];
-            if (activeDialog != null && activeDialog.isShowing()) {
-                activeDialog.dismiss();
+        ComposeView quickChannelListComposeView = new ComposeView(this);
+        attachDialogViewTreeOwners(quickChannelListComposeView);
+        final Dialog[] dialogHolder = new Dialog[1];
+        QuickChannelListComposeBinder.bind(quickChannelListComposeView, buildQuickChannelListUiModel(
+                title,
+                getString(R.string.quick_channel_count, items.size()) + "  ·  " + getString(R.string.quick_channel_hint),
+                items,
+                dialogHolder,
+                action
+        ), (imageView, item) -> {
+            if (imageView == null || item == null) {
+                return;
             }
-            if (action != null) {
-                uiHandler.post(() -> action.onChannelChosen(item));
+            if (item.vod) {
+                bindRecordingPoster(imageView, item.logoUrl);
+            } else {
+                bindChannelLogo(imageView, item.logoUrl, item.channelName, 42, 42);
             }
         });
-        recyclerView.setAdapter(adapter);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
+        dialog.setContentView(quickChannelListComposeView);
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
-        recyclerView.post(() -> {
-            RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
-            if (layoutManager != null) {
-                View firstItem = layoutManager.findViewByPosition(0);
-                if (firstItem != null) {
-                    firstItem.requestFocus();
-                    return;
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
+    }
+
+    private QuickChannelListUiModel buildQuickChannelListUiModel(List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
+        return buildQuickChannelListUiModel(null, null, items, dialogHolder, action);
+    }
+
+    private QuickChannelListUiModel buildQuickChannelListUiModel(String title, String subtitle, List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
+        List<QuickChannelRowUiModel> rows = new ArrayList<>();
+        if (items != null) {
+            for (ChannelItem item : items) {
+                if (item == null) {
+                    continue;
                 }
+                String rowTitle = item.favorite ? "★ " + displayName(item) : displayName(item);
+                String primaryMeta = item.isVod ? buildVodRowMeta(item) : (item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group);
+                if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
+                    primaryMeta = getString(R.string.search_channel_action_hint);
+                }
+                String listLabel = buildChannelMembershipLabel(item, 2);
+                if (!listLabel.isEmpty()) {
+                    primaryMeta = listLabel + "  ·  " + primaryMeta;
+                }
+                String typeLabel;
+                if (item.isAdultVod) {
+                    typeLabel = getString(R.string.channel_badge_vod_adult);
+                } else if (item.isVod) {
+                    typeLabel = getString(R.string.channel_badge_vod);
+                } else {
+                    typeLabel = getString(R.string.channel_badge_live);
+                }
+                ChannelItem channelItem = item;
+                rows.add(new QuickChannelRowUiModel(
+                        decorateProtectedItemTitle(item, rowTitle),
+                        decorateProtectedMeta(item, primaryMeta),
+                        buildProtectedTypeBadge(item, typeLabel),
+                        item.logoUrl,
+                        displayName(item),
+                        item.isVod,
+                        () -> {
+                            Dialog activeDialog = dialogHolder == null ? null : dialogHolder[0];
+                            if (activeDialog != null && activeDialog.isShowing()) {
+                                activeDialog.dismiss();
+                            }
+                            if (action != null) {
+                                uiHandler.post(() -> action.onChannelChosen(channelItem));
+                            }
+                        }
+                ));
             }
-            recyclerView.requestFocus();
-        });
+        }
+        return new QuickChannelListUiModel(title, subtitle, rows);
     }
 
     private void tuneQuickAccessChannel(ChannelItem item) {
@@ -11581,7 +12480,7 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             ChannelItem match = byId.get(recent.channelId);
-            if (match != null) {
+            if (match != null && !shouldHideProtectedItem(match)) {
                 recentItems.add(match);
             }
         }
@@ -11603,12 +12502,12 @@ public class MainActivity extends FragmentActivity {
         Set<String> addedIds = new HashSet<>();
         for (String favoriteId : orderedIds) {
             ChannelItem match = byId.get(favoriteId);
-            if (match != null && favoriteChannelIds.contains(favoriteId) && addedIds.add(favoriteId)) {
+            if (match != null && !shouldHideProtectedItem(match) && favoriteChannelIds.contains(favoriteId) && addedIds.add(favoriteId)) {
                 favorites.add(match);
             }
         }
         for (ChannelItem item : allChannels) {
-            if (item != null && item.id != null && favoriteChannelIds.contains(item.id) && addedIds.add(item.id)) {
+            if (item != null && item.id != null && !shouldHideProtectedItem(item) && favoriteChannelIds.contains(item.id) && addedIds.add(item.id)) {
                 favorites.add(item);
             }
         }
@@ -11621,7 +12520,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.touch_previous_unavailable));
             return;
         }
-        String currentId = (currentIndex >= 0 && currentIndex < channels.size()) ? channels.get(currentIndex).id : lastChannelId;
+        String currentId = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex).id : lastChannelId;
         for (RecentChannelsStore.RecentChannelItem item : items) {
             if (item == null || item.channelId == null || item.channelId.trim().isEmpty()) {
                 continue;
@@ -11640,8 +12539,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void tuneChannelById(String channelId) {
-        Log.d(TAG, "tuneChannelById channelId=" + channelId + " currentFilter=" + selectedFilterKey + " favoritesOnly=" + favoritesOnly);
+        Log.d(TAG, "tuneChannelById channelId=" + channelId + " currentFilter=" + overlayNavigationState.selectedFilterKey + " favoritesOnly=" + overlayNavigationState.favoritesOnly);
         if (channelId == null || channelId.trim().isEmpty()) {
+            return;
+        }
+        ChannelItem directItem = findChannelItemById(channelId);
+        if (directItem != null && isProtectedItem(directItem) && isProtectedContentLocked()) {
+            ensureParentalAccessForItem(directItem, () -> tuneChannelById(channelId));
             return;
         }
         int index = findChannelIndexById(channelId);
@@ -11654,22 +12558,21 @@ public class MainActivity extends FragmentActivity {
             channelOverlayCoordinator.refreshVisibleChannels(channelId, channelId);
             syncOverlayStateFromCoordinator();
             clearOverlaySearchQuery();
-            channelAdapter.notifyDataSetChanged();
+            refreshOverlayChannelList();
             updateFilterText();
             updateOverlaySearchState();
             index = findChannelIndexById(channelId);
-            Log.d(TAG, "tuneChannelById afterRefresh index=" + index + " visibleSize=" + channels.size() + " selectedFilter=" + selectedFilterKey + " favoritesOnly=" + favoritesOnly);
+            Log.d(TAG, "tuneChannelById afterRefresh index=" + index + " visibleSize=" + channels.size() + " selectedFilter=" + overlayNavigationState.selectedFilterKey + " favoritesOnly=" + overlayNavigationState.favoritesOnly);
         }
         if (index >= 0) {
             Log.d(TAG, "tuneChannelById finalIndex=" + index + " -> tuneToIndex");
             tuneToIndex(index, true);
         } else {
-            ChannelItem directItem = findChannelItemById(channelId);
             if (directItem != null) {
                 Log.d(TAG, "tuneChannelById directFallback id=" + directItem.id + " name=" + directItem.name);
-                currentIndex = -1;
-                selectedOverlayIndex = -1;
-                channelAdapter.notifyDataSetChanged();
+                overlayNavigationState.currentIndex = -1;
+                overlayNavigationState.selectedOverlayIndex = -1;
+                refreshOverlayChannelList();
                 playChannelItem(directItem, true);
             } else {
                 Log.d(TAG, "tuneChannelById unresolved channelId=" + channelId);
@@ -11688,23 +12591,7 @@ public class MainActivity extends FragmentActivity {
             if (storedError != null) {
                 message = message + "\n\n" + getString(R.string.diagnostics_persistent_error, storedError.shortLabel());
             }
-            new AlertDialog.Builder(this)
-                    .setTitle(R.string.title_playback_diagnostics)
-                    .setMessage(message)
-                    .setPositiveButton(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route, (dialog, which) -> {
-                        if (currentChannel == null) {
-                            retryCurrentPlayback();
-                        } else {
-                            retryCurrentPlaybackWithNextRoute(currentChannel);
-                        }
-                    })
-                    .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_more, (dialog, which) -> {
-                        if (currentChannel != null) {
-                            showPlaybackDiagnosticsActionsDialog(currentChannel);
-                        }
-                    })
-                    .setNegativeButton(R.string.dialog_close, null)
-                    .show();
+            showPlaybackDiagnosticsMessage(message, currentChannel);
             return;
         }
 
@@ -11748,23 +12635,23 @@ public class MainActivity extends FragmentActivity {
         appendDiagnosticLine(message, getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
         appendDiagnosticLine(message, getString(R.string.diagnostics_actions_hint));
 
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_playback_diagnostics)
-                .setMessage(message.toString().trim())
-                .setPositiveButton(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route, (dialog, which) -> {
-                    if (currentChannel == null) {
-                        retryCurrentPlayback();
-                    } else {
-                        retryCurrentPlaybackWithNextRoute(currentChannel);
-                    }
-                })
-                .setNeutralButton(currentChannel == null ? R.string.dialog_close : R.string.diagnostics_action_more, (dialog, which) -> {
-                    if (currentChannel != null) {
-                        showPlaybackDiagnosticsActionsDialog(currentChannel);
-                    }
-                })
-                .setNegativeButton(R.string.dialog_close, null)
-                .show();
+        showPlaybackDiagnosticsMessage(message.toString().trim(), currentChannel);
+    }
+
+    private void showPlaybackDiagnosticsMessage(String message, ChannelItem currentChannel) {
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route), false, () -> {
+            if (currentChannel == null) {
+                retryCurrentPlayback();
+            } else {
+                retryCurrentPlaybackWithNextRoute(currentChannel);
+            }
+        }));
+        if (currentChannel != null) {
+            actions.add(new TvMessageActionUiModel(getString(R.string.diagnostics_action_more), false, () -> showPlaybackDiagnosticsActionsDialog(currentChannel)));
+        }
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(getString(R.string.title_playback_diagnostics), message, actions, null);
     }
 
     private void showPlaybackDiagnosticsActionsDialog(ChannelItem channelItem) {
@@ -11906,18 +12793,16 @@ public class MainActivity extends FragmentActivity {
         for (PlaybackDiagnosticsStore.ErrorRecord record : records) {
             appendDiagnosticLine(message, formatPlaybackDiagnosticsHistoryItem(record));
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.diagnostics_action_history)
-                .setMessage(message.toString())
-                .setPositiveButton(R.string.diagnostics_action_clear_history, (dialog, which) -> {
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.diagnostics_action_clear_history), true, () -> {
                     playbackDiagnosticsStore.clearAll();
                     if (playerController != null) {
                         playerController.clearLastError();
                     }
                     showStatus(getString(R.string.status_diagnostics_history_cleared));
-                })
-                .setNegativeButton(R.string.dialog_close, null)
-                .show();
+        }));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(getString(R.string.diagnostics_action_history), message.toString(), actions, null);
     }
 
     private void clearPlaybackDiagnosticsError(ChannelItem channelItem) {
@@ -11942,7 +12827,7 @@ public class MainActivity extends FragmentActivity {
         if (PlaybackModeStore.MODE_AUTO.equals(mode)) {
             mode = nextPlaybackMode(mode);
         }
-        if (isProxyManifestProfile(channelItem) && PlaybackModeStore.MODE_DIRECT.equals(mode)) {
+        if (!BuildConfig.STANDALONE_MODE && isProxyManifestProfile(channelItem) && PlaybackModeStore.MODE_DIRECT.equals(mode)) {
             mode = PlaybackModeStore.MODE_PROXY;
         }
         setLearnedPlaybackMode(channelItem.id, mode, true);
@@ -12029,63 +12914,16 @@ public class MainActivity extends FragmentActivity {
         if (channel == null) {
             return;
         }
-        prepareModalSurface();
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(16);
-        panel.setPadding(padding, padding, padding, padding);
-        panel.setBackgroundColor(0xF0181E28);
-
-        TextView titleView = new TextView(this);
-        titleView.setText(getString(R.string.vod_recovery_title, displayName(channel)));
-        titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(20f);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        titleView.setMaxLines(2);
-        panel.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView messageView = new TextView(this);
-        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        messageParams.topMargin = dp(8);
         String error = diagnostics == null || diagnostics.lastError == null || diagnostics.lastError.trim().isEmpty()
                 ? getString(R.string.error_unknown_reason)
                 : diagnostics.lastError.trim();
-        messageView.setText(getString(R.string.vod_recovery_message, error));
-        messageView.setTextColor(0xFFD5E6F8);
-        messageView.setTextSize(14f);
-        panel.addView(messageView, messageParams);
-
-        LinearLayout actionsColumn = new LinearLayout(this);
-        actionsColumn.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsParams.topMargin = dp(12);
-        panel.addView(actionsColumn, actionsParams);
-
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
-        List<TextView> actionRows = new ArrayList<>();
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_recovery_retry), () -> {
-            dismissDialog(dialogHolder[0]);
-            playVodItem(channel, true);
-        });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_retry_route), () -> {
-            dismissDialog(dialogHolder[0]);
-            retryCurrentPlaybackWithNextRoute(channel);
-        });
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_action_diagnostics), () -> showVodDiagnosticsDialog(channel));
-        addVodDetailAction(actionsColumn, actionRows, getString(R.string.vod_recovery_library), () -> {
-            dismissDialog(dialogHolder[0]);
-            showVodLibraryDialog();
-        });
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(panel)
-                .setNegativeButton(R.string.dialog_close, null)
-                .create();
-        dialogHolder[0] = dialog;
-        showTvDialog(dialog);
-        if (!actionRows.isEmpty()) {
-            actionRows.get(0).post(() -> actionRows.get(0).requestFocus());
-        }
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.vod_recovery_retry), false, () -> playVodItem(channel, true)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.vod_action_retry_route), false, () -> retryCurrentPlaybackWithNextRoute(channel)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.vod_action_diagnostics), false, () -> showVodDiagnosticsDialog(channel)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.vod_recovery_library), false, this::showVodLibraryDialog));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(getString(R.string.vod_recovery_title, displayName(channel)), getString(R.string.vod_recovery_message, error), actions, null);
     }
 
     private void maybeRepairPlaybackAfterError(PlayerController.PlaybackRequest request) {
@@ -12182,7 +13020,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         ChannelItem channelItem = findChannelItemById(channelId);
-        if (isProxyManifestProfile(channelItem) && PlaybackModeStore.MODE_DIRECT.equals(mode)) {
+        if (!BuildConfig.STANDALONE_MODE && isProxyManifestProfile(channelItem) && PlaybackModeStore.MODE_DIRECT.equals(mode)) {
             mode = PlaybackModeStore.MODE_PROXY;
         }
         learnedPlaybackModesByChannelId.put(channelId, mode);
@@ -12436,36 +13274,21 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showZapBanner(ChannelItem channelItem) {
-        if (zapBanner == null || zapChannelText == null || zapMetaText == null || channelItem == null) {
+        if (zapBanner == null || channelItem == null) {
             return;
         }
+        zapBannerState.show();
         updateZapBannerContent(channelItem);
         zapBanner.setVisibility(View.VISIBLE);
         uiHandler.removeCallbacks(hideZapBannerRunnable);
-        uiHandler.postDelayed(hideZapBannerRunnable, 3600L);
+        uiHandler.postDelayed(hideZapBannerRunnable, 5500L);
     }
 
     private void updateZapBannerContent(ChannelItem channelItem) {
-        if (zapChannelText == null || zapMetaText == null || channelItem == null) {
+        if (zapBanner == null || channelItem == null) {
             return;
         }
-        zapChannelText.setText(displayName(channelItem));
-        zapMetaText.setText(buildZapProgramSummary(channelItem));
-        if (zapQualityText == null) {
-            return;
-        }
-        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
-        String qualityLabel = formatPlaybackQualityCompact(diagnostics);
-        if (!qualityLabel.trim().isEmpty()) {
-            zapQualityText.setVisibility(View.VISIBLE);
-            zapQualityText.setText(getString(R.string.overlay_playback_quality, qualityLabel));
-        } else if (diagnostics != null && diagnostics.playbackState != null && !"IDLE".equalsIgnoreCase(diagnostics.playbackState)) {
-            zapQualityText.setVisibility(View.VISIBLE);
-            zapQualityText.setText(R.string.overlay_playback_quality_detecting);
-        } else {
-            zapQualityText.setVisibility(View.GONE);
-            zapQualityText.setText("");
-        }
+        ZapBannerComposeBinder.bind(zapBanner, buildZapBannerUiModel(channelItem), this::bindChannelLogo);
     }
 
     private String buildGuideMeta(EpgRepository.EpgProgram program) {
@@ -12583,8 +13406,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String getCurrentChannelId() {
-        if (currentIndex >= 0 && currentIndex < channels.size()) {
-            ChannelItem item = channels.get(currentIndex);
+        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            ChannelItem item = channels.get(overlayNavigationState.currentIndex);
             if (item != null && item.id != null && !item.id.trim().isEmpty()) {
                 return item.id;
             }
@@ -12593,12 +13416,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showLeaveRecordingPrompt() {
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.title_recordings_visual)
-                .setMessage("¿Salir de la grabacion y volver al canal anterior?")
-                .setPositiveButton("Salir", (dialog, which) -> exitRecordingToPreviousChannel())
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel("Salir", true, this::exitRecordingToPreviousChannel));
+        actions.add(new TvMessageActionUiModel(getString(android.R.string.cancel), false, null));
+        showTvMessagePanel(getString(R.string.title_recordings_visual), "¿Salir de la grabacion y volver al canal anterior?", actions, null);
     }
 
     private void exitRecordingToPreviousChannel() {
@@ -13012,7 +13833,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         List<ChannelItem> warmList = new ArrayList<>();
-        int start = currentIndex >= 0 ? currentIndex : 0;
+        int start = overlayNavigationState.currentIndex >= 0 ? overlayNavigationState.currentIndex : 0;
         for (int offset = 0; offset < channels.size() && warmList.size() < CHANNEL_LOGO_PREFETCH_LIMIT; offset++) {
             int forward = start + offset;
             if (forward >= 0 && forward < channels.size()) {
@@ -13254,7 +14075,540 @@ public class MainActivity extends FragmentActivity {
         return Math.round(getResources().getDisplayMetrics().density * value);
     }
 
-    private void applyTimelineBlockState(TextView block, boolean live, boolean scheduled, boolean focused) {
+    private void bindTimelineProgramBlock(FrameLayout container, String title, String time, boolean empty) {
+        bindTimelineProgramBlock(container, title, time, empty, "");
+    }
+
+    private void bindTimelineProgramBlock(FrameLayout container, String title, String time, boolean empty, String statusLabel) {
+        if (container == null) {
+            return;
+        }
+        container.removeAllViews();
+        ComposeView composeView = new ComposeView(this);
+        composeView.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        TimelineProgramBlockComposeBinder.bind(
+                composeView,
+                new TimelineProgramBlockUiModel(title, time, empty, statusLabel)
+        );
+        container.addView(composeView);
+    }
+
+    private String buildTimelineProgramTitle(EpgRepository.EpgProgram program) {
+        if (program == null || program.title == null || program.title.trim().isEmpty()) {
+            return getString(R.string.label_program_default);
+        }
+        return program.title.trim();
+    }
+
+    private String buildTimelineProgramBlockTitle(EpgRepository.EpgProgram program, boolean scheduled) {
+        String title = buildTimelineProgramTitle(program);
+        return scheduled ? getString(R.string.timeline_program_scheduled_prefix) + " " + title : title;
+    }
+
+    private String buildTimelineProgramTimeLabel(EpgRepository.EpgProgram program) {
+        if (program == null) {
+            return "";
+        }
+        return shortTime(program.startTime) + " - " + shortTime(program.endTime);
+    }
+
+    private String buildTimelineProgramMeta(ChannelItem channel, EpgRepository.EpgProgram program, boolean live, boolean scheduled) {
+        String channelName = channel == null || channel.name == null ? "" : channel.name;
+        String meta = channelName + "  ·  " + buildTimelineProgramTimeLabel(program);
+        if (live) {
+            meta = meta + "  ·  " + getString(R.string.guide_program_now);
+        }
+        if (scheduled) {
+            meta = meta + "  ·  " + getString(R.string.timeline_program_scheduled_short);
+        }
+        return meta;
+    }
+
+    private String buildTimelineProgramDescription(EpgRepository.EpgProgram program) {
+        if (program == null || program.description == null || program.description.trim().isEmpty()) {
+            return getString(R.string.timeline_program_desc_empty);
+        }
+        return program.description.trim();
+    }
+
+    private String buildTimelineProgramPosterUrl(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if (program != null && program.icon != null && !program.icon.trim().isEmpty()) {
+            return program.icon.trim();
+        }
+        return channel == null ? "" : channel.logoUrl;
+    }
+
+    private TimelineProgramDetailUiModel buildTimelineProgramDetailModel(ChannelItem channel, EpgRepository.EpgProgram program, boolean live, boolean scheduled) {
+        return new TimelineProgramDetailUiModel(
+                buildTimelineProgramTitle(program),
+                buildTimelineProgramMeta(channel, program, live, scheduled),
+                buildTimelineProgramDescription(program),
+                buildTimelineProgramPosterUrl(channel, program),
+                scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
+                getString(R.string.timeline_program_action_hint)
+        );
+    }
+
+    private List<TimelineVisibleBlock> buildTimelineVisibleBlocks(
+            TimelineChannelPrograms row,
+            long windowStartMs,
+            long windowEndMs,
+            float minuteWidth,
+            List<RecordingsRepository.RecordingItem> scheduledItems
+    ) {
+        List<TimelineVisibleBlock> blocks = new ArrayList<>();
+        if (row == null || row.programs == null || row.programs.isEmpty()) {
+            return blocks;
+        }
+        int usedWidth = 0;
+        for (EpgRepository.EpgProgram program : row.programs) {
+            if (program == null) {
+                continue;
+            }
+            long startMs = parseIsoMillis(program.startTime);
+            long endMs = parseIsoMillis(program.endTime);
+            if (endMs <= windowStartMs || startMs >= windowEndMs || endMs <= startMs) {
+                continue;
+            }
+            int visibleStartMinutes = (int) Math.max(0L, (Math.max(windowStartMs, startMs) - windowStartMs) / 60000L);
+            int visibleEndMinutes = (int) Math.max(visibleStartMinutes + 1L, (Math.min(windowEndMs, endMs) - windowStartMs) / 60000L);
+            int targetOffsetWidth = Math.round(visibleStartMinutes * minuteWidth);
+            int spacerWidth = Math.max(0, targetOffsetWidth - usedWidth);
+            int durationMinutes = Math.max(15, visibleEndMinutes - visibleStartMinutes);
+            int blockWidth = Math.max(dp(72), Math.round(durationMinutes * minuteWidth));
+            int centerMinute = visibleStartMinutes + (durationMinutes / 2);
+            boolean scheduled = isProgramScheduled(row.channel, program, scheduledItems);
+            boolean live = program.progress >= 0;
+            boolean activeNow = System.currentTimeMillis() >= startMs && System.currentTimeMillis() < endMs;
+            blocks.add(new TimelineVisibleBlock(program, scheduled, live, activeNow, spacerWidth, blockWidth, centerMinute));
+            usedWidth = targetOffsetWidth + blockWidth + dp(2);
+        }
+        return blocks;
+    }
+
+    private TimelineGuideRowsUiModel buildTimelineGuideRowsUiModel(
+            List<TimelineChannelPrograms> rows,
+            long windowStartMs,
+            long windowEndMs,
+            float minuteWidth,
+            int labelWidth,
+            int stripWidth,
+            List<RecordingsRepository.RecordingItem> scheduledItems,
+            String anchorChannelId,
+            boolean rememberFocusedCenter,
+            java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
+    ) {
+        List<TimelineGuideRowUiModel> outputRows = new ArrayList<>();
+        boolean[] preferredAssigned = new boolean[]{false};
+        if (rows == null) {
+            return new TimelineGuideRowsUiModel(outputRows);
+        }
+        for (TimelineChannelPrograms row : rows) {
+            if (row == null || row.channel == null) {
+                continue;
+            }
+            List<TimelineGuideBlockUiModel> blocks = new ArrayList<>();
+            List<TimelineVisibleBlock> visibleBlocks = buildTimelineVisibleBlocks(row, windowStartMs, windowEndMs, minuteWidth, scheduledItems);
+            if (visibleBlocks.isEmpty()) {
+                boolean preferred = !preferredAssigned[0] && anchorChannelId != null && anchorChannelId.equals(row.channel.id);
+                if (preferred) {
+                    preferredAssigned[0] = true;
+                }
+                blocks.add(new TimelineGuideBlockUiModel(
+                        getString(R.string.timeline_no_epg),
+                        "",
+                        "",
+                        0,
+                        stripWidth,
+                        true,
+                        false,
+                        false,
+                        preferred,
+                        () -> {
+                            activeTimelineAnchorChannelId = row.channel.id;
+                            activeTimelineWindowStartMs = windowStartMs;
+                            activeTimelineFocusedCenterMinute = -1;
+                            lastTimelineFocusedCenterMinute = -1;
+                            renderTimelineProgramDetail.accept(new TimelineProgramDetailUiModel(
+                                    row.channel.name,
+                                    getString(R.string.timeline_no_epg),
+                                    getString(R.string.timeline_program_desc_empty),
+                                    "",
+                                    "",
+                                    getString(R.string.timeline_program_action_hint)
+                            ));
+                        },
+                        null,
+                        null
+                ));
+            } else {
+                int bestRememberedDelta = Integer.MAX_VALUE;
+                TimelineVisibleBlock rememberedCandidate = null;
+                for (TimelineVisibleBlock visibleBlock : visibleBlocks) {
+                    if (anchorChannelId != null && anchorChannelId.equals(row.channel.id) && rememberFocusedCenter) {
+                        int delta = Math.abs(visibleBlock.centerMinute - lastTimelineFocusedCenterMinute);
+                        if (delta < bestRememberedDelta) {
+                            bestRememberedDelta = delta;
+                            rememberedCandidate = visibleBlock;
+                        }
+                    }
+                }
+                for (TimelineVisibleBlock visibleBlock : visibleBlocks) {
+                    EpgRepository.EpgProgram program = visibleBlock.program;
+                    boolean scheduled = visibleBlock.scheduled;
+                    boolean live = visibleBlock.live;
+                    boolean anchorMatch = anchorChannelId != null && anchorChannelId.equals(row.channel.id);
+                    boolean preferred = false;
+                    if (!preferredAssigned[0] && anchorMatch && visibleBlock.activeNow) {
+                        preferred = true;
+                    } else if (!preferredAssigned[0] && anchorMatch && visibleBlock == rememberedCandidate) {
+                        preferred = true;
+                    } else if (!preferredAssigned[0] && anchorMatch) {
+                        preferred = true;
+                    }
+                    if (preferred) {
+                        preferredAssigned[0] = true;
+                    }
+                    final int centerMinute = visibleBlock.centerMinute;
+                    blocks.add(new TimelineGuideBlockUiModel(
+                            buildTimelineProgramBlockTitle(program, scheduled),
+                            buildTimelineProgramTimeLabel(program),
+                            scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
+                            visibleBlock.spacerWidth,
+                            visibleBlock.blockWidth,
+                            false,
+                            live,
+                            scheduled,
+                            preferred,
+                            () -> {
+                                activeTimelineAnchorChannelId = row.channel.id;
+                                activeTimelineWindowStartMs = windowStartMs;
+                                activeTimelineFocusedCenterMinute = centerMinute;
+                                lastTimelineFocusedCenterMinute = centerMinute;
+                                renderTimelineProgramDetail.accept(buildTimelineProgramDetailModel(row.channel, program, live, scheduled));
+                            },
+                            () -> {
+                                Log.i(TAG, "timeline program click channel=" + row.channel.id
+                                        + " program=" + (program.title == null ? "" : program.title));
+                                channelActionsCoordinator.showProgramActionMenu(row.channel, program);
+                            },
+                            () -> {
+                                Log.i(TAG, "timeline direct recording action channel=" + row.channel.id
+                                        + " scheduled=" + scheduled
+                                        + " program=" + (program.title == null ? "" : program.title));
+                                if (scheduled) {
+                                    cancelScheduledProgram(row.channel, program);
+                                } else {
+                                    scheduleProgram(row.channel, program);
+                                }
+                            }
+                    ));
+                }
+            }
+            outputRows.add(new TimelineGuideRowUiModel(row.channel.name, row.channel.logoUrl, labelWidth, blocks));
+        }
+        return new TimelineGuideRowsUiModel(outputRows);
+    }
+
+    private void buildTimelineRow(
+            TimelineChannelPrograms row,
+            LinearLayout rowsContainer,
+            List<List<View>> focusRows,
+            Map<View, Integer> focusCenters,
+            android.widget.ScrollView timelineVerticalScroll,
+            View timelineHeaderFocusTarget,
+            long windowStartMs,
+            long windowEndMs,
+            float minuteWidth,
+            int labelWidth,
+            int stripWidth,
+            List<RecordingsRepository.RecordingItem> scheduledItems,
+            String anchorChannelId,
+            long nowMs,
+            boolean rememberFocusedCenter,
+            int[] anchorRememberedDelta,
+            View[] anchorLiveFocus,
+            View[] anchorRememberedFocus,
+            View[] anchorFirstFocus,
+            View[] anchorEmptyFocus,
+            View[] anyFirstFocus,
+            View[] anyEmptyFocus,
+            boolean[] suppressInitialFocusScroll,
+            java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
+    ) {
+        if (row == null || rowsContainer == null || focusRows == null || focusCenters == null) {
+            return;
+        }
+        final int rowIndex = focusRows.size();
+        final List<View> rowFocusables = new ArrayList<>();
+
+        LinearLayout rowLayout = new LinearLayout(this);
+        rowLayout.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = dp(6);
+        rowLayout.setLayoutParams(rowParams);
+
+        ComposeView channelLabel = new ComposeView(this);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(labelWidth, dp(62));
+        channelLabel.setLayoutParams(labelParams);
+        TimelineChannelLabelComposeBinder.bind(
+                channelLabel,
+                new TimelineChannelLabelUiModel(row.channel.name, row.channel.logoUrl),
+                (imageView, item) -> bindChannelLogo(imageView, item.logoUrl, item.name, 26, 26)
+        );
+        rowLayout.addView(channelLabel);
+
+        LinearLayout strip = new LinearLayout(this);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        strip.setBackgroundColor(0xFF101820);
+
+        boolean hasVisibleProgram = buildTimelineProgramStrip(
+                row,
+                strip,
+                rowIndex,
+                rowFocusables,
+                focusRows,
+                focusCenters,
+                timelineVerticalScroll,
+                timelineHeaderFocusTarget,
+                windowStartMs,
+                windowEndMs,
+                minuteWidth,
+                scheduledItems,
+                anchorChannelId,
+                nowMs,
+                rememberFocusedCenter,
+                anchorRememberedDelta,
+                anchorLiveFocus,
+                anchorRememberedFocus,
+                anchorFirstFocus,
+                anyFirstFocus,
+                suppressInitialFocusScroll,
+                renderTimelineProgramDetail
+        );
+
+        if (!hasVisibleProgram) {
+            buildTimelineEmptyStateBlock(
+                    row,
+                    strip,
+                    stripWidth,
+                    rowIndex,
+                    rowFocusables,
+                    focusRows,
+                    focusCenters,
+                    timelineVerticalScroll,
+                    timelineHeaderFocusTarget,
+                    windowStartMs,
+                    anchorChannelId,
+                    anchorEmptyFocus,
+                    anyEmptyFocus,
+                    renderTimelineProgramDetail
+            );
+        }
+
+        focusRows.add(rowFocusables);
+        rowLayout.addView(strip);
+        rowsContainer.addView(rowLayout);
+    }
+
+    private boolean buildTimelineProgramStrip(
+            TimelineChannelPrograms row,
+            LinearLayout strip,
+            int rowIndex,
+            List<View> rowFocusables,
+            List<List<View>> focusRows,
+            Map<View, Integer> focusCenters,
+            android.widget.ScrollView timelineVerticalScroll,
+            View timelineHeaderFocusTarget,
+            long windowStartMs,
+            long windowEndMs,
+            float minuteWidth,
+            List<RecordingsRepository.RecordingItem> scheduledItems,
+            String anchorChannelId,
+            long nowMs,
+            boolean rememberFocusedCenter,
+            int[] anchorRememberedDelta,
+            View[] anchorLiveFocus,
+            View[] anchorRememberedFocus,
+            View[] anchorFirstFocus,
+            View[] anyFirstFocus,
+            boolean[] suppressInitialFocusScroll,
+            java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
+    ) {
+        List<TimelineVisibleBlock> visibleBlocks = buildTimelineVisibleBlocks(
+                row,
+                windowStartMs,
+                windowEndMs,
+                minuteWidth,
+                scheduledItems
+        );
+        for (TimelineVisibleBlock visibleBlock : visibleBlocks) {
+            if (visibleBlock.spacerWidth > 0) {
+                View spacerView = new View(this);
+                spacerView.setLayoutParams(new LinearLayout.LayoutParams(visibleBlock.spacerWidth, dp(62)));
+                strip.addView(spacerView);
+            }
+
+            EpgRepository.EpgProgram program = visibleBlock.program;
+            boolean scheduled = visibleBlock.scheduled;
+            boolean live = visibleBlock.live;
+            final int centerMinute = visibleBlock.centerMinute;
+            FrameLayout block = new FrameLayout(this);
+            LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(visibleBlock.blockWidth, dp(62));
+            blockParams.rightMargin = dp(2);
+            block.setLayoutParams(blockParams);
+            block.setFocusable(true);
+            block.setFocusableInTouchMode(true);
+            bindTimelineProgramBlock(
+                    block,
+                    buildTimelineProgramBlockTitle(program, scheduled),
+                    buildTimelineProgramTimeLabel(program),
+                    false,
+                    scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : ""
+            );
+            applyTimelineBlockState(block, live, scheduled, false);
+            block.setOnFocusChangeListener((v, hasFocus) -> {
+                applyTimelineBlockState(block, live, scheduled, hasFocus);
+                if (hasFocus) {
+                    activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
+                    activeTimelineWindowStartMs = windowStartMs;
+                    activeTimelineFocusedCenterMinute = centerMinute;
+                    lastTimelineFocusedCenterMinute = centerMinute;
+                    renderTimelineProgramDetail.accept(buildTimelineProgramDetailModel(row.channel, program, live, scheduled));
+                }
+                if (hasFocus && !suppressInitialFocusScroll[0]) {
+                    ensureTimelineBlockVisible(timelineVerticalScroll, v);
+                }
+            });
+            block.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                    return false;
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    if (rowIndex == 0 && timelineHeaderFocusTarget != null) {
+                        timelineHeaderFocusTarget.requestFocus();
+                        return true;
+                    }
+                    return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, centerMinute);
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, centerMinute);
+                }
+                if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_BUTTON_START) {
+                    Log.i(TAG, "timeline direct recording action channel=" + (row.channel == null ? "" : row.channel.id)
+                            + " scheduled=" + scheduled
+                            + " program=" + (program.title == null ? "" : program.title));
+                    if (scheduled) {
+                        cancelScheduledProgram(row.channel, program);
+                    } else {
+                        scheduleProgram(row.channel, program);
+                    }
+                    return true;
+                }
+                return false;
+            });
+            block.setOnClickListener(v -> {
+                Log.i(TAG, "timeline program click channel=" + (row.channel == null ? "" : row.channel.id)
+                        + " program=" + (program.title == null ? "" : program.title));
+                channelActionsCoordinator.showProgramActionMenu(row.channel, program);
+            });
+            focusCenters.put(block, centerMinute);
+            rowFocusables.add(block);
+            boolean anchorMatch = anchorChannelId != null && anchorChannelId.equals(row.channel.id);
+            if (anchorMatch && anchorFirstFocus[0] == null) {
+                anchorFirstFocus[0] = block;
+            }
+            if (anyFirstFocus[0] == null) {
+                anyFirstFocus[0] = block;
+            }
+            if (anchorMatch && visibleBlock.activeNow) {
+                anchorLiveFocus[0] = block;
+            }
+            if (anchorMatch && rememberFocusedCenter) {
+                int delta = Math.abs(centerMinute - lastTimelineFocusedCenterMinute);
+                if (delta < anchorRememberedDelta[0]) {
+                    anchorRememberedDelta[0] = delta;
+                    anchorRememberedFocus[0] = block;
+                }
+            }
+            strip.addView(block);
+        }
+        return !visibleBlocks.isEmpty();
+    }
+
+    private void buildTimelineEmptyStateBlock(
+            TimelineChannelPrograms row,
+            LinearLayout strip,
+            int stripWidth,
+            int rowIndex,
+            List<View> rowFocusables,
+            List<List<View>> focusRows,
+            Map<View, Integer> focusCenters,
+            android.widget.ScrollView timelineVerticalScroll,
+            View timelineHeaderFocusTarget,
+            long windowStartMs,
+            String anchorChannelId,
+            View[] anchorEmptyFocus,
+            View[] anyEmptyFocus,
+            java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
+    ) {
+        FrameLayout empty = new FrameLayout(this);
+        empty.setLayoutParams(new LinearLayout.LayoutParams(stripWidth, dp(62)));
+        empty.setFocusable(true);
+        empty.setFocusableInTouchMode(true);
+        bindTimelineProgramBlock(empty, getString(R.string.timeline_no_epg), "", true);
+        empty.setBackgroundColor(0xFF1E2630);
+        empty.setAlpha(0.82f);
+        empty.setOnFocusChangeListener((v, hasFocus) -> {
+            v.setAlpha(hasFocus ? 1f : 0.82f);
+            v.setBackgroundColor(hasFocus ? 0xFF2A3950 : 0xFF1E2630);
+            if (hasFocus) {
+                activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
+                activeTimelineWindowStartMs = windowStartMs;
+                activeTimelineFocusedCenterMinute = -1;
+                lastTimelineFocusedCenterMinute = -1;
+                renderTimelineProgramDetail.accept(new TimelineProgramDetailUiModel(
+                        row.channel == null ? getString(R.string.timeline_no_epg) : row.channel.name,
+                        getString(R.string.timeline_no_epg),
+                        getString(R.string.timeline_program_desc_empty),
+                        "",
+                        "",
+                        getString(R.string.timeline_program_action_hint)
+                ));
+            }
+        });
+        empty.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                if (rowIndex == 0 && timelineHeaderFocusTarget != null) {
+                    timelineHeaderFocusTarget.requestFocus();
+                    return true;
+                }
+                return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, 0);
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, 0);
+            }
+            return false;
+        });
+        rowFocusables.add(empty);
+        boolean anchorMatch = anchorChannelId != null && row.channel != null && anchorChannelId.equals(row.channel.id);
+        if (anchorMatch && anchorEmptyFocus[0] == null) {
+            anchorEmptyFocus[0] = empty;
+        }
+        if (anyEmptyFocus[0] == null) {
+            anyEmptyFocus[0] = empty;
+        }
+        strip.addView(empty);
+    }
+
+    private void applyTimelineBlockState(View block, boolean live, boolean scheduled, boolean focused) {
         if (block == null) {
             return;
         }
@@ -13345,688 +14699,4 @@ public class MainActivity extends FragmentActivity {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
-    private final class ChannelAdapter extends RecyclerView.Adapter<ChannelAdapter.ChannelVH> {
-        @NonNull
-        @Override
-        public ChannelVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View v = getLayoutInflater().inflate(R.layout.item_channel, parent, false);
-            return new ChannelVH(v);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull ChannelVH holder, int position) {
-            ChannelItem ch = channels.get(position);
-            holder.logo.setTag(null);
-            String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
-            holder.name.setText(buildHighlightedText(displayName(ch), query, ch.favorite));
-            if (ch.isVod) {
-                String vodMeta = buildVodRowMeta(ch);
-                String listLabel = buildChannelMembershipLabel(ch, 2);
-                if (!listLabel.isEmpty()) {
-                    vodMeta = listLabel + "  ·  " + vodMeta;
-                }
-                holder.meta.setText(buildHighlightedText(vodMeta, query, false));
-                holder.typeBadge.setVisibility(View.VISIBLE);
-                holder.typeBadge.setText(ch.isAdultVod ? getString(R.string.channel_badge_vod_adult) : getString(R.string.channel_badge_vod));
-                holder.typeBadge.setTextColor(ch.isAdultVod ? 0xFFFFD6D6 : 0xFFDDE8F6);
-                ViewGroup.LayoutParams plateParams = holder.logoPlate.getLayoutParams();
-                plateParams.width = dp(54);
-                plateParams.height = dp(72);
-                holder.logoPlate.setLayoutParams(plateParams);
-                holder.logoPlate.setPadding(0, 0, 0, 0);
-                bindRecordingPoster(holder.logo, ch.logoUrl);
-            } else {
-                String tag = profileTag(ch);
-                String listLabel = buildChannelMembershipLabel(ch, 2);
-                String metaText = "";
-                if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
-                    metaText = tag.isEmpty() ? ch.nowProgram : tag + "  ·  " + ch.nowProgram;
-                } else if (ch.group != null && !ch.group.trim().isEmpty()) {
-                    metaText = tag.isEmpty() ? ch.group : tag + "  ·  " + ch.group;
-                } else if (!tag.isEmpty()) {
-                    metaText = tag;
-                }
-                if (!listLabel.isEmpty()) {
-                    metaText = metaText.isEmpty() ? listLabel : listLabel + "  ·  " + metaText;
-                }
-                holder.meta.setText(buildHighlightedText(metaText, query, false));
-                holder.typeBadge.setVisibility(View.GONE);
-                ViewGroup.LayoutParams plateParams = holder.logoPlate.getLayoutParams();
-                plateParams.width = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_size);
-                plateParams.height = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_size);
-                holder.logoPlate.setLayoutParams(plateParams);
-                int logoPadding = getResources().getDimensionPixelSize(R.dimen.channel_logo_plate_padding);
-                holder.logoPlate.setPadding(logoPadding, logoPadding, logoPadding, logoPadding);
-                bindChannelLogo(holder.logo, ch.logoUrl, displayName(ch), 38, 38);
-            }
-            if (touchDeviceMode) {
-                holder.favoriteToggle.setVisibility(View.VISIBLE);
-                holder.favoriteToggle.setText(getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off));
-                holder.favoriteToggle.setTextColor(ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF);
-                holder.favoriteToggle.setOnClickListener(v -> {
-                    selectedOverlayIndex = position;
-                    toggleFavoriteSelected();
-                });
-            } else {
-                holder.favoriteToggle.setVisibility(View.GONE);
-                holder.favoriteToggle.setOnClickListener(null);
-            }
-
-            boolean selected = (position == selectedOverlayIndex);
-            boolean tuned = (position == currentIndex);
-
-            if (selected) {
-                holder.card.setBackgroundTintList(ColorStateList.valueOf(0xFF2A7C86));
-            } else if (tuned) {
-                holder.card.setBackgroundTintList(ColorStateList.valueOf(0xCC334457));
-            } else {
-                holder.card.setBackgroundTintList(ColorStateList.valueOf(0xFF202833));
-            }
-
-            holder.itemView.setOnClickListener(v -> {
-                selectedOverlayIndex = position;
-                tuneToIndex(position, true);
-                hideOverlay();
-            });
-        }
-
-        @Override
-        public int getItemCount() {
-            return channels.size();
-        }
-
-        class ChannelVH extends RecyclerView.ViewHolder {
-            View card;
-            TextView name;
-            TextView meta;
-            TextView favoriteToggle;
-            TextView typeBadge;
-            ImageView logo;
-            ViewGroup logoPlate;
-
-            ChannelVH(@NonNull View itemView) {
-                super(itemView);
-                card = itemView.findViewById(R.id.channelCard);
-                name = itemView.findViewById(R.id.channelName);
-                meta = itemView.findViewById(R.id.channelMeta);
-                favoriteToggle = itemView.findViewById(R.id.channelFavoriteToggle);
-                typeBadge = itemView.findViewById(R.id.channelTypeBadge);
-                logo = itemView.findViewById(R.id.channelLogo);
-                logoPlate = itemView.findViewById(R.id.channelLogoPlate);
-            }
-        }
-    }
-
-    private final class PersonalListAdapter extends RecyclerView.Adapter<PersonalListAdapter.PersonalListVH> {
-        interface OnPersonalListChosenListener {
-            void onPersonalListChosen(ChannelCollectionStore.ChannelCollection collection);
-        }
-
-        private final List<ChannelCollectionStore.ChannelCollection> items = new ArrayList<>();
-        private final OnPersonalListChosenListener clickListener;
-        private final OnPersonalListChosenListener actionsListener;
-
-        PersonalListAdapter(List<ChannelCollectionStore.ChannelCollection> initialItems, OnPersonalListChosenListener clickListener, OnPersonalListChosenListener actionsListener) {
-            this.clickListener = clickListener;
-            this.actionsListener = actionsListener;
-            if (initialItems != null) {
-                items.addAll(initialItems);
-            }
-        }
-
-        @NonNull
-        @Override
-        public PersonalListVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = getLayoutInflater().inflate(R.layout.item_personal_list, parent, false);
-            return new PersonalListVH(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull PersonalListVH holder, int position) {
-            ChannelCollectionStore.ChannelCollection collection = items.get(position);
-            holder.badge.setText(String.valueOf(Math.min(99, collection.channelIds.size())));
-            holder.name.setText(collection.label);
-            holder.preview.setText(getString(R.string.personal_list_count, collection.channelIds.size()) + "  ·  " + buildPersonalListPreview(collection));
-            holder.action.setText(R.string.personal_list_action_badge);
-            holder.itemView.setOnClickListener(v -> {
-                if (clickListener != null) {
-                    clickListener.onPersonalListChosen(collection);
-                }
-            });
-            holder.itemView.setOnLongClickListener(v -> {
-                if (actionsListener != null) {
-                    actionsListener.onPersonalListChosen(collection);
-                }
-                return true;
-            });
-        }
-
-        @Override
-        public int getItemCount() {
-            return items.size();
-        }
-
-        final class PersonalListVH extends RecyclerView.ViewHolder {
-            final TextView badge;
-            final TextView name;
-            final TextView preview;
-            final TextView action;
-
-            PersonalListVH(@NonNull View itemView) {
-                super(itemView);
-                badge = itemView.findViewById(R.id.personalListBadgeText);
-                name = itemView.findViewById(R.id.personalListNameText);
-                preview = itemView.findViewById(R.id.personalListPreviewText);
-                action = itemView.findViewById(R.id.personalListActionText);
-            }
-        }
-    }
-
-    private final class GuideProgramAdapter extends RecyclerView.Adapter<GuideProgramAdapter.GuideProgramVH> {
-        private final ChannelItem channel;
-        private final List<EpgRepository.EpgProgram> items;
-
-        GuideProgramAdapter(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
-            this.channel = channel;
-            this.items = items;
-        }
-
-        @NonNull
-        @Override
-        public GuideProgramVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = getLayoutInflater().inflate(R.layout.item_epg_program, parent, false);
-            return new GuideProgramVH(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull GuideProgramVH holder, int position) {
-            EpgRepository.EpgProgram program = items.get(position);
-            holder.time.setText(shortTime(program.startTime) + " - " + shortTime(program.endTime));
-            holder.title.setText(program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title);
-            holder.meta.setText(buildGuideMeta(program));
-            if (program.progress >= 0) {
-                holder.badge.setText(getString(R.string.guide_program_now));
-                holder.badge.setBackgroundColor(0xAA266D3E);
-                holder.progressBar.setVisibility(View.VISIBLE);
-                holder.progressBar.setProgress(Math.min(100, Math.max(0, program.progress)));
-            } else if (position == 1) {
-                holder.badge.setText(getString(R.string.guide_program_next));
-                holder.badge.setBackgroundColor(0xAA405C86);
-                holder.progressBar.setVisibility(View.GONE);
-            } else {
-                holder.badge.setText(getString(R.string.guide_program_later));
-                holder.badge.setBackgroundColor(0xAA4B5361);
-                holder.progressBar.setVisibility(View.GONE);
-            }
-            holder.itemView.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(channel, program));
-        }
-
-        @Override
-        public int getItemCount() {
-            return items.size();
-        }
-
-        final class GuideProgramVH extends RecyclerView.ViewHolder {
-            final TextView time;
-            final TextView badge;
-            final TextView title;
-            final android.widget.ProgressBar progressBar;
-            final TextView meta;
-
-            GuideProgramVH(@NonNull View itemView) {
-                super(itemView);
-                time = itemView.findViewById(R.id.programTimeText);
-                badge = itemView.findViewById(R.id.programBadgeText);
-                title = itemView.findViewById(R.id.programTitleText);
-                progressBar = itemView.findViewById(R.id.programProgressBar);
-                meta = itemView.findViewById(R.id.programMetaText);
-            }
-        }
-    }
-
-    private final class EpgSearchResultAdapter extends RecyclerView.Adapter<EpgSearchResultAdapter.EpgSearchResultVH> {
-        interface OnEpgSearchResultChosenListener {
-            void onEpgSearchResultChosen(EpgSearchResult result);
-        }
-
-        private final List<EpgSearchResult> items = new ArrayList<>();
-        private final OnEpgSearchResultChosenListener listener;
-
-        EpgSearchResultAdapter(List<EpgSearchResult> initialItems, OnEpgSearchResultChosenListener listener) {
-            this.listener = listener;
-            if (initialItems != null) {
-                items.addAll(initialItems);
-            }
-        }
-
-        @NonNull
-        @Override
-        public EpgSearchResultVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = getLayoutInflater().inflate(R.layout.item_epg_search_result, parent, false);
-            return new EpgSearchResultVH(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull EpgSearchResultVH holder, int position) {
-            EpgSearchResult result = items.get(position);
-            ChannelItem channel = result == null ? null : result.channel;
-            EpgRepository.EpgProgram program = result == null ? null : result.program;
-            String title = program == null || program.title == null || program.title.trim().isEmpty()
-                    ? getString(R.string.label_program_default)
-                    : program.title.trim();
-            holder.title.setText(title);
-            String channelName = channel == null ? "" : displayName(channel);
-            String time = program == null ? "" : shortTime(program.startTime) + " - " + shortTime(program.endTime);
-            holder.meta.setText((channelName + "  ·  " + time).trim());
-            boolean live = program != null && program.progress >= 0;
-            holder.badge.setText(live ? R.string.epg_search_badge_live : R.string.epg_search_badge_next);
-            holder.badge.setBackgroundTintList(ColorStateList.valueOf(live ? 0xFF276B49 : 0xFF1E2D3E));
-            String poster = program == null || program.icon == null || program.icon.trim().isEmpty()
-                    ? (channel == null ? "" : channel.logoUrl)
-                    : program.icon.trim();
-            bindProgramPoster(holder.poster, poster);
-            holder.itemView.setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onEpgSearchResultChosen(result);
-                }
-            });
-        }
-
-        @Override
-        public int getItemCount() {
-            return items.size();
-        }
-
-        final class EpgSearchResultVH extends RecyclerView.ViewHolder {
-            final ImageView poster;
-            final TextView title;
-            final TextView meta;
-            final TextView badge;
-
-            EpgSearchResultVH(@NonNull View itemView) {
-                super(itemView);
-                poster = itemView.findViewById(R.id.epgSearchPosterImage);
-                title = itemView.findViewById(R.id.epgSearchTitleText);
-                meta = itemView.findViewById(R.id.epgSearchMetaText);
-                badge = itemView.findViewById(R.id.epgSearchBadgeText);
-            }
-        }
-    }
-
-    private final class RecordingsAdapter extends RecyclerView.Adapter<RecordingsAdapter.RecordingVH> {
-        private final RecordingsRepository.RecordingsResult result;
-
-        RecordingsAdapter(RecordingsRepository.RecordingsResult result) {
-            this.result = result;
-        }
-
-        @NonNull
-        @Override
-        public RecordingVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = getLayoutInflater().inflate(R.layout.item_recording, parent, false);
-            return new RecordingVH(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull RecordingVH holder, int position) {
-            RecordingsRepository.RecordingItem item = result.items.get(position);
-            holder.name.setText(buildRecordingTitle(item));
-            holder.meta.setText(buildRecordingMeta(item));
-            holder.meta.setTextColor(recordingMetaColor(item));
-            holder.status.setText(buildRecordingStatusLabel(item));
-            holder.status.setBackgroundTintList(ColorStateList.valueOf(recordingStatusBadgeColor(item)));
-            bindRecordingPoster(holder.poster, item.poster);
-            boolean selected = position == recordingsController.getSelectedIndex();
-            holder.itemView.setBackgroundColor(selected ? 0xFF80542A : 0xFF2C2419);
-            holder.itemView.setOnClickListener(v -> {
-                recordingsController.selectIndex(position);
-                notifyDataSetChanged();
-                updateRecordingsDetailPanel();
-                playRecording(item, result.basePath);
-            });
-        }
-
-        @Override
-        public int getItemCount() {
-            return result.items.size();
-        }
-
-        final class RecordingVH extends RecyclerView.ViewHolder {
-            final TextView name;
-            final TextView meta;
-            final TextView status;
-            final ImageView poster;
-
-            RecordingVH(@NonNull View itemView) {
-                super(itemView);
-                name = itemView.findViewById(R.id.recordingNameText);
-                meta = itemView.findViewById(R.id.recordingMetaText);
-                status = itemView.findViewById(R.id.recordingStatusBadge);
-                poster = itemView.findViewById(R.id.recordingPosterThumb);
-            }
-        }
-    }
-
-    private final class GlobalSearchAdapter extends RecyclerView.Adapter<GlobalSearchAdapter.GlobalSearchVH> {
-        interface OnGlobalSearchResultChosenListener {
-            void onGlobalSearchResultChosen(GlobalSearchResult result);
-        }
-
-        private final List<GlobalSearchResult> items = new ArrayList<>();
-        private final OnGlobalSearchResultChosenListener listener;
-
-        GlobalSearchAdapter(List<GlobalSearchResult> initialItems, OnGlobalSearchResultChosenListener listener) {
-            this.listener = listener;
-            submitList(initialItems);
-        }
-
-        void submitList(List<GlobalSearchResult> newItems) {
-            items.clear();
-            if (newItems != null) {
-                items.addAll(newItems);
-            }
-            notifyDataSetChanged();
-        }
-
-        @NonNull
-        @Override
-        public GlobalSearchVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = getLayoutInflater().inflate(R.layout.item_search_channel, parent, false);
-            return new GlobalSearchVH(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull GlobalSearchVH holder, int position) {
-            GlobalSearchResult result = items.get(position);
-            boolean header = result != null && result.type == GLOBAL_SEARCH_HEADER;
-            holder.logo.setVisibility(header ? View.GONE : View.VISIBLE);
-            holder.meta.setVisibility(header || result == null || result.meta == null || result.meta.trim().isEmpty() ? View.GONE : View.VISIBLE);
-            holder.type.setVisibility(header || result == null || result.badge == null || result.badge.trim().isEmpty() ? View.GONE : View.VISIBLE);
-            holder.name.setText(result == null ? "" : result.title);
-            holder.name.setTextColor(header ? 0xFF9BD0FF : 0xFFFFFFFF);
-            holder.name.setTextSize(header ? 13f : 18f);
-            holder.name.setTypeface(Typeface.DEFAULT, header ? Typeface.BOLD : Typeface.BOLD);
-            holder.meta.setText(result == null ? "" : result.meta);
-            holder.type.setText(result == null ? "" : result.badge);
-            holder.itemView.setFocusable(!header);
-            holder.itemView.setClickable(!header);
-            holder.itemView.setBackgroundColor(header ? 0x00000000 : 0xFF182638);
-            if (!header && result != null) {
-                bindGlobalSearchImage(holder.logo, result);
-                holder.itemView.setOnClickListener(v -> {
-                    if (listener != null) {
-                        listener.onGlobalSearchResultChosen(result);
-                    }
-                });
-                holder.itemView.setOnLongClickListener(v -> {
-                    showGlobalSearchActions(result);
-                    return true;
-                });
-            } else {
-                holder.itemView.setOnClickListener(null);
-                holder.itemView.setOnLongClickListener(null);
-            }
-        }
-
-        private void bindGlobalSearchImage(ImageView logo, GlobalSearchResult result) {
-            if (result == null || logo == null) {
-                return;
-            }
-            if (result.channel != null) {
-                bindChannelLogo(logo, result.channel.logoUrl, displayName(result.channel), 42, 42);
-                return;
-            }
-            if (result.epgResult != null) {
-                EpgRepository.EpgProgram program = result.epgResult.program;
-                ChannelItem channel = result.epgResult.channel;
-                String poster = program == null || program.icon == null || program.icon.trim().isEmpty()
-                        ? (channel == null ? "" : channel.logoUrl)
-                        : program.icon.trim();
-                bindProgramPoster(logo, poster);
-                return;
-            }
-            if (result.recording != null) {
-                bindRecordingPoster(logo, result.recording.poster);
-                return;
-            }
-            logo.setImageDrawable(null);
-        }
-
-        @Override
-        public int getItemCount() {
-            return items.size();
-        }
-
-        final class GlobalSearchVH extends RecyclerView.ViewHolder {
-            final TextView name;
-            final TextView meta;
-            final TextView type;
-            final ImageView logo;
-
-            GlobalSearchVH(@NonNull View itemView) {
-                super(itemView);
-                name = itemView.findViewById(R.id.searchChannelNameText);
-                meta = itemView.findViewById(R.id.searchChannelMetaText);
-                type = itemView.findViewById(R.id.searchChannelTypeText);
-                logo = itemView.findViewById(R.id.searchChannelLogo);
-            }
-        }
-    }
-
-    private final class SearchChannelAdapter extends RecyclerView.Adapter<SearchChannelAdapter.SearchChannelVH> {
-        interface OnChannelChosenListener {
-            void onChannelChosen(ChannelItem item);
-        }
-
-        private final List<ChannelItem> items = new ArrayList<>();
-        private final OnChannelChosenListener listener;
-
-        SearchChannelAdapter(List<ChannelItem> initialItems, OnChannelChosenListener listener) {
-            this.listener = listener;
-            submitList(initialItems);
-        }
-
-        void submitList(List<ChannelItem> newItems) {
-            items.clear();
-            if (newItems != null) {
-                items.addAll(newItems);
-            }
-            notifyDataSetChanged();
-        }
-
-        @NonNull
-        @Override
-        public SearchChannelVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = getLayoutInflater().inflate(R.layout.item_search_channel, parent, false);
-            return new SearchChannelVH(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull SearchChannelVH holder, int position) {
-            ChannelItem item = items.get(position);
-            holder.name.setText(item.favorite ? "★ " + displayName(item) : displayName(item));
-            String primaryMeta = item.isVod ? buildVodRowMeta(item) : (item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group);
-            if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
-                primaryMeta = getString(R.string.search_channel_action_hint);
-            }
-            String listLabel = buildChannelMembershipLabel(item, 2);
-            if (!listLabel.isEmpty()) {
-                primaryMeta = listLabel + "  ·  " + primaryMeta;
-            }
-            holder.meta.setText(primaryMeta);
-            String typeLabel;
-            if (item.isAdultVod) {
-                typeLabel = getString(R.string.channel_badge_vod_adult);
-            } else if (item.isVod) {
-                typeLabel = getString(R.string.channel_badge_vod);
-            } else {
-                typeLabel = getString(R.string.channel_badge_live);
-            }
-            holder.type.setText(typeLabel);
-            bindChannelLogo(holder.logo, item.logoUrl, displayName(item), 42, 42);
-            holder.itemView.setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onChannelChosen(item);
-                }
-            });
-        }
-
-        @Override
-        public int getItemCount() {
-            return items.size();
-        }
-
-        final class SearchChannelVH extends RecyclerView.ViewHolder {
-            final TextView name;
-            final TextView meta;
-            final TextView type;
-            final ImageView logo;
-
-            SearchChannelVH(@NonNull View itemView) {
-                super(itemView);
-                name = itemView.findViewById(R.id.searchChannelNameText);
-                meta = itemView.findViewById(R.id.searchChannelMetaText);
-                type = itemView.findViewById(R.id.searchChannelTypeText);
-                logo = itemView.findViewById(R.id.searchChannelLogo);
-            }
-        }
-    }
-
-    private final class VodShelfRecyclerView extends RecyclerView {
-        private final List<RecyclerView> shelfRows;
-        private final int rowIndex;
-        private final android.widget.ScrollView scrollView;
-
-        VodShelfRecyclerView(List<RecyclerView> shelfRows, int rowIndex, android.widget.ScrollView scrollView) {
-            super(MainActivity.this);
-            this.shelfRows = shelfRows;
-            this.rowIndex = rowIndex;
-            this.scrollView = scrollView;
-        }
-
-        @Override
-        public boolean dispatchKeyEvent(KeyEvent event) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                int focusedPosition = findFocusedVodShelfPosition(this, findFocus());
-                if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    return focusVodShelfItem(shelfRows, rowIndex + 1, focusedPosition, scrollView);
-                }
-            }
-            return super.dispatchKeyEvent(event);
-        }
-    }
-
-    private final class VodPosterAdapter extends RecyclerView.Adapter<VodPosterAdapter.VodPosterVH> {
-        private final List<ChannelItem> items = new ArrayList<>();
-        private final List<RecyclerView> shelfRows;
-        private final int rowIndex;
-        private final android.widget.ScrollView scrollView;
-
-        VodPosterAdapter(List<ChannelItem> initialItems, List<RecyclerView> shelfRows, int rowIndex, android.widget.ScrollView scrollView) {
-            if (initialItems != null) {
-                items.addAll(initialItems);
-            }
-            this.shelfRows = shelfRows;
-            this.rowIndex = rowIndex;
-            this.scrollView = scrollView;
-        }
-
-        @NonNull
-        @Override
-        public VodPosterVH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = getLayoutInflater().inflate(R.layout.item_vod_poster, parent, false);
-            return new VodPosterVH(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull VodPosterVH holder, int position) {
-            ChannelItem item = items.get(position);
-            holder.title.setText(displayName(item));
-            holder.meta.setText(buildVodPosterMeta(item));
-            long progressMs = getVodResumePosition(item == null ? null : item.id);
-            if (progressMs > 30_000L) {
-                holder.progress.setText(formatDurationShort(progressMs));
-                holder.progress.setVisibility(View.VISIBLE);
-            } else {
-                holder.progress.setVisibility(View.GONE);
-            }
-            bindRecordingPoster(holder.poster, item == null ? "" : item.logoUrl);
-            holder.itemView.setNextFocusUpId(View.NO_ID);
-            holder.itemView.setOnClickListener(v -> showVodInfoDialog(item));
-            holder.itemView.setOnFocusChangeListener((v, hasFocus) -> {
-                if (hasFocus) {
-                    ensureVodVisualItemVisible(scrollView, v);
-                }
-            });
-            holder.itemView.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                    return false;
-                }
-                if (keyCode == KeyEvent.KEYCODE_MENU) {
-                    showVodActionsDialog(item);
-                    return true;
-                }
-                int currentIndex = holder.getBindingAdapterPosition();
-                if (currentIndex == RecyclerView.NO_POSITION) {
-                    return false;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    if (currentIndex > 0) {
-                        return focusVodShelfItem(shelfRows, rowIndex, currentIndex - 1, scrollView);
-                    }
-                    return false;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    if (currentIndex + 1 < getItemCount()) {
-                        return focusVodShelfItem(shelfRows, rowIndex, currentIndex + 1, scrollView);
-                    }
-                    return false;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                    return focusVodShelfItem(shelfRows, rowIndex - 1, currentIndex, scrollView);
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    return focusVodShelfItem(shelfRows, rowIndex + 1, currentIndex, scrollView);
-                }
-                return false;
-            });
-        }
-
-        @Override
-        public int getItemCount() {
-            return items.size();
-        }
-
-        private String buildVodPosterMeta(ChannelItem item) {
-            if (item == null) {
-                return "";
-            }
-            List<String> parts = new ArrayList<>();
-            if (item.vodYear != null && !item.vodYear.trim().isEmpty()) {
-                parts.add(item.vodYear.trim());
-            }
-            if (item.platformName != null && !item.platformName.trim().isEmpty()) {
-                parts.add(item.platformName.trim());
-            }
-            if (parts.isEmpty() && item.group != null && !item.group.trim().isEmpty()) {
-                parts.add(item.group.trim());
-            }
-            return TextUtils.join("  ·  ", parts);
-        }
-
-        final class VodPosterVH extends RecyclerView.ViewHolder {
-            final ImageView poster;
-            final TextView title;
-            final TextView meta;
-            final TextView progress;
-
-            VodPosterVH(@NonNull View itemView) {
-                super(itemView);
-                poster = itemView.findViewById(R.id.vodPosterImage);
-                title = itemView.findViewById(R.id.vodPosterTitleText);
-                meta = itemView.findViewById(R.id.vodPosterMetaText);
-                progress = itemView.findViewById(R.id.vodProgressBadgeText);
-            }
-        }
-    }
 }

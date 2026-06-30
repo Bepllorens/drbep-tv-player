@@ -26,14 +26,16 @@ final class ChannelOverlayCoordinator {
     private final FavoriteOrderStore favoriteOrderStore;
     private final ChannelCollectionStore collectionStore;
     private final ChannelProfileStore profileStore;
+    private final ParentalControlStore parentalControlStore;
 
     private int currentIndex;
     private int selectedOverlayIndex;
     private boolean favoritesOnly;
     private String selectedFilterKey;
     private String searchQuery;
+    private OfflinePermissions offlinePermissions;
 
-    ChannelOverlayCoordinator(List<ChannelItem> channels, List<ChannelItem> allChannels, List<ChannelFilter> filters, Set<String> favoriteChannelIds, FavoriteOrderStore favoriteOrderStore, ChannelCollectionStore collectionStore, ChannelProfileStore profileStore) {
+    ChannelOverlayCoordinator(List<ChannelItem> channels, List<ChannelItem> allChannels, List<ChannelFilter> filters, Set<String> favoriteChannelIds, FavoriteOrderStore favoriteOrderStore, ChannelCollectionStore collectionStore, ChannelProfileStore profileStore, ParentalControlStore parentalControlStore) {
         this.channels = channels;
         this.allChannels = allChannels;
         this.filters = filters;
@@ -41,11 +43,13 @@ final class ChannelOverlayCoordinator {
         this.favoriteOrderStore = favoriteOrderStore;
         this.collectionStore = collectionStore;
         this.profileStore = profileStore;
+        this.parentalControlStore = parentalControlStore;
         this.currentIndex = -1;
         this.selectedOverlayIndex = 0;
         this.favoritesOnly = false;
         this.selectedFilterKey = "all";
         this.searchQuery = "";
+        this.offlinePermissions = new OfflinePermissions();
     }
 
     void syncState(int currentIndex, int selectedOverlayIndex, boolean favoritesOnly, String selectedFilterKey) {
@@ -90,6 +94,7 @@ final class ChannelOverlayCoordinator {
     void applyLoadedChannels(CatalogLoadResult result, String lastChannelId) {
         allChannels.clear();
         allChannels.addAll(result.channels);
+        offlinePermissions = result.offlinePermissions == null ? new OfflinePermissions() : result.offlinePermissions;
 
         filters.clear();
         filters.addAll(result.filters);
@@ -356,12 +361,15 @@ final class ChannelOverlayCoordinator {
         ChannelFilter filter = getSelectedFilter();
         boolean hidden = profileStore != null && profileStore.isHidden(item.id);
         if (filter == null || filter.type == FILTER_ALL) {
-            return !hidden;
+            return !hidden && !item.isVod && !shouldHideProtectedItem(item);
         }
         if (filter.type == FILTER_HIDDEN) {
             return hidden;
         }
         if (hidden) {
+            return false;
+        }
+        if (shouldHideProtectedItem(item)) {
             return false;
         }
         if (filter.type == FILTER_PLATFORM) {
@@ -398,6 +406,9 @@ final class ChannelOverlayCoordinator {
 
     private boolean channelMatchesSearch(ChannelItem item) {
         if (item == null) {
+            return false;
+        }
+        if (shouldHideProtectedItem(item)) {
             return false;
         }
         String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase();
@@ -448,5 +459,14 @@ final class ChannelOverlayCoordinator {
             }
         }
         return -1;
+    }
+
+    private boolean shouldHideProtectedItem(ChannelItem item) {
+        return item != null
+                && offlinePermissions != null
+                && offlinePermissions.isProtectedItem(item)
+                && parentalControlStore != null
+                && parentalControlStore.hasPinConfigured()
+                && !parentalControlStore.isUnlocked();
     }
 }

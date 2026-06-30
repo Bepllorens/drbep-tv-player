@@ -83,6 +83,7 @@ final class HttpClient {
         try {
             conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod(method);
+            conn.setUseCaches(false);
             conn.setConnectTimeout(connectTimeoutMs);
             conn.setReadTimeout(readTimeoutMs);
             if (headers != null) {

@@ -6,7 +6,7 @@
 
     <uses-feature
         android:name="android.software.leanback"
-        android:required="true" />
+        android:required="false" />
 
     <uses-feature
         android:name="android.hardware.touchscreen"
@@ -34,8 +34,12 @@
             android:banner="@drawable/drbep_launcher_banner"
             android:icon="@drawable/drbep_launcher_icon"
             android:label="@string/app_name"
-            android:logo="@drawable/drbep_launcher_banner"
-            android:screenOrientation="sensorLandscape" />
+            android:logo="@drawable/drbep_launcher_banner">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".TvLauncherActivity"
@@ -44,8 +48,7 @@
             android:icon="@drawable/drbep_launcher_icon"
             android:label="@string/app_name"
             android:logo="@drawable/drbep_launcher_banner"
-            android:roundIcon="@drawable/drbep_launcher_icon"
-            android:screenOrientation="sensorLandscape">
+            android:roundIcon="@drawable/drbep_launcher_icon">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

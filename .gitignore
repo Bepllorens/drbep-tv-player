@@ -6,3 +6,6 @@ local.properties
 .DS_Store
 .vscode/
 app/src/main/java/com/drbep/tvplayer/MainActivity.java.remote-backup
+.tmp-remote/
+__pycache__/
+*.pyc

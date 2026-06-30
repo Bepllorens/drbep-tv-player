@@ -56,6 +56,7 @@ public class CatalogRepositoryTest {
                 null
         );
 
+        assertTrue(hasFilter(filters, "all", 0));
         assertTrue(hasFilter(filters, "vod:tivify:general", 3));
         assertTrue(hasFilter(filters, "vod:runtime:movies", 3));
         assertFalse(hasFilter(filters, "vod", 3));
@@ -76,6 +77,63 @@ public class CatalogRepositoryTest {
 
         assertTrue(hasFilter(filters, "favorites", 5));
         assertTrue(hasFilter(filters, "platform:1", 1));
+    }
+
+    @Test
+    public void offlinePermissionsProtectAdultVodAndConfiguredGroups() {
+        OfflinePermissions permissions = new OfflinePermissions();
+        permissions.protectAdultVod = true;
+        permissions.protectedGroupNames.add("adultos");
+        permissions.protectedFilterKeys.add("custom-group:adultos");
+        permissions.protectedChannelIds.add("xxx-1");
+
+        ChannelItem groupProtected = new ChannelItem(
+                "tv-1",
+                "Canal Adultos",
+                "",
+                "",
+                "Adultos",
+                "https://iptv.example.com/live/adultos",
+                "",
+                1,
+                1,
+                false,
+                false,
+                1,
+                "Live Platform",
+                new ArrayList<>(),
+                "",
+                "",
+                "",
+                false
+        );
+        ChannelItem vodProtected = vodItem("Adult Feature", true, "Tivify VOD", "vod:tivify:adult");
+        ChannelItem channelProtected = new ChannelItem(
+                "xxx-1",
+                "Canal X",
+                "",
+                "",
+                "General",
+                "https://iptv.example.com/live/xxx-1",
+                "",
+                2,
+                2,
+                false,
+                false,
+                1,
+                "Live Platform",
+                new ArrayList<>(),
+                "",
+                "",
+                "",
+                false
+        );
+
+        assertTrue(permissions.isProtectedItem(groupProtected));
+        assertTrue(permissions.isProtectedItem(vodProtected));
+        assertTrue(permissions.isProtectedItem(channelProtected));
+        assertTrue(permissions.isProtectedFilter(new ChannelFilter("custom-group:adultos", "Grupo: Adultos", 2, 0, "Adultos")));
+        assertTrue(permissions.isProtectedFilter(new ChannelFilter("vod:tivify:adult", "Tivify Adulto", 4, 0, "")));
     }
 
     private static boolean hasFilter(List<ChannelFilter> filters, String key, int type) {

@@ -42,6 +42,19 @@ public class RemoteInputRouterTest {
     }
 
     @Test
+    public void dpadLeftRightMoveRecordingsHeaderFocus() {
+        FakeHost host = new FakeHost();
+        host.recordingsVisible = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 0, 0));
+        assertEquals("recordings:header:-1", host.lastAction);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0, 0));
+        assertEquals("recordings:header:1", host.lastAction);
+    }
+
+    @Test
     public void confirmOnOverlayTunesSelectionAndHidesOverlay() {
         FakeHost host = new FakeHost();
         host.overlayVisible = true;
@@ -116,6 +129,11 @@ public class RemoteInputRouterTest {
         }
 
         @Override
+        public boolean isZapBannerVisible() {
+            return false;
+        }
+
+        @Override
         public boolean isTvTimeshiftHudActive() {
             return tvTimeshiftHudActive;
         }
@@ -183,6 +201,17 @@ public class RemoteInputRouterTest {
         }
 
         @Override
+        public void moveRecordingsHeaderFocus(int delta) {
+            lastAction = "recordings:header:" + delta;
+        }
+
+        @Override
+        public boolean activateRecordingsHeaderFocus() {
+            lastAction = "recordings:header:activate";
+            return false;
+        }
+
+        @Override
         public void showChannelActionMenu() {
             lastAction = "channel:actions";
         }
@@ -225,6 +254,21 @@ public class RemoteInputRouterTest {
         @Override
         public void hideOverlay() {
             lastAction = "overlay:hide";
+        }
+
+        @Override
+        public void hideZapBanner() {
+            lastAction = "zap:hide";
+        }
+
+        @Override
+        public void moveZapBannerSelection(int delta) {
+            lastAction = "zap:move:" + delta;
+        }
+
+        @Override
+        public void activateZapBannerSelection() {
+            lastAction = "zap:activate";
         }
 
         @Override

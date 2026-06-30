@@ -115,8 +115,12 @@ final class CatalogRepository {
 
             String logo = channel.optString("logo", "").trim();
             String sourceGroup = channel.optString("group", "").trim();
+            String platformName = channel.optString("platform_name", "").trim();
+            boolean plutoChannel = standaloneMode && platformName.toLowerCase(Locale.ROOT).contains("pluto");
             String playbackUrl = standaloneMode
                     ? firstNonEmpty(
+                    plutoChannel ? channel.optString("url", "") : channel.optString("play_url", ""),
+                    plutoChannel ? channel.optString("source_url", "") : "",
                     channel.optString("play_url", ""),
                     channel.optString("stream_url", ""),
                     channel.optString("url", ""),
@@ -133,7 +137,6 @@ final class CatalogRepository {
             }
             String tvgId = channel.optString("tvg_id", "").trim();
             int platformId = (int) channel.optLong("platform_id", 0L);
-            String platformName = channel.optString("platform_name", "").trim();
             String playbackProfile = channel.optString("playback_profile", "").trim();
             int sortOrder = channel.has("sort_order") && !channel.isNull("sort_order")
                     ? channel.optInt("sort_order", Integer.MAX_VALUE)
@@ -473,9 +476,7 @@ final class CatalogRepository {
 
     List<ChannelFilter> buildFiltersFromCatalog(List<ChannelItem> parsed, long activePlatformId, StartupFilterConfig startupConfig, OfflinePermissions offlinePermissions) {
         LinkedHashMap<String, ChannelFilter> byKey = new LinkedHashMap<>();
-        if (!standaloneMode) {
-            byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
-        }
+        byKey.put("all", new ChannelFilter("all", "Todos", FILTER_ALL, 0, ""));
         byKey.put("favorites", new ChannelFilter("favorites", "Favoritos", FILTER_FAVORITES, 0, ""));
 
         Map<Integer, String> platformNames = new LinkedHashMap<>();
@@ -785,7 +786,25 @@ final class CatalogRepository {
                 }
             }
         }
+        permissions.protectAdultVod = payload.optBoolean("parental_vod_adult", false);
+        permissions.protectedFilterKeys.addAll(parseStringArray(payload.optJSONArray("parental_filter_keys")));
+        permissions.protectedChannelIds.addAll(parseStringArray(payload.optJSONArray("parental_channel_ids")));
+        permissions.protectedGroupNames.addAll(parseStringArray(payload.optJSONArray("parental_group_names")));
         return permissions;
+    }
+
+    private static Set<String> parseStringArray(JSONArray values) {
+        Set<String> output = new HashSet<>();
+        if (values == null) {
+            return output;
+        }
+        for (int i = 0; i < values.length(); i++) {
+            String value = safeLower(values.optString(i, ""));
+            if (!value.isEmpty()) {
+                output.add(value);
+            }
+        }
+        return output;
     }
 
     private static boolean isLikelyVod(String externalId, String name, String tvgId, String groupTitle, List<String> customGroups) {
@@ -956,7 +975,11 @@ final class OfflinePermissions {
     boolean canViewRecordings = true;
     boolean canScheduleRecordings = true;
     boolean canDeleteRecordings = false;
+    boolean protectAdultVod = false;
     final Set<Integer> allowedPlatformIds = new HashSet<>();
+    final Set<String> protectedFilterKeys = new HashSet<>();
+    final Set<String> protectedChannelIds = new HashSet<>();
+    final Set<String> protectedGroupNames = new HashSet<>();
 
     boolean allowsLiveChannel(int platformId) {
         if (!liveEnabled) {
@@ -978,6 +1001,61 @@ final class OfflinePermissions {
 
     boolean allowsRuntimeVod() {
         return runtimeEnabled;
+    }
+
+    boolean hasParentalRules() {
+        return protectAdultVod
+                || !protectedFilterKeys.isEmpty()
+                || !protectedChannelIds.isEmpty()
+                || !protectedGroupNames.isEmpty();
+    }
+
+    boolean isProtectedFilter(ChannelFilter filter) {
+        if (filter == null) {
+            return false;
+        }
+        String filterKey = filter.key == null ? "" : filter.key.trim().toLowerCase(Locale.ROOT);
+        if (!filterKey.isEmpty() && protectedFilterKeys.contains(filterKey)) {
+            return true;
+        }
+        if (protectAdultVod && filter.type == 4) {
+            return true;
+        }
+        if (filter.type == 2) {
+            String groupName = filter.groupName == null ? "" : filter.groupName.trim().toLowerCase(Locale.ROOT);
+            return !groupName.isEmpty() && protectedGroupNames.contains(groupName);
+        }
+        return false;
+    }
+
+    boolean isProtectedItem(ChannelItem item) {
+        if (item == null) {
+            return false;
+        }
+        String itemId = item.id == null ? "" : item.id.trim().toLowerCase(Locale.ROOT);
+        if (!itemId.isEmpty() && protectedChannelIds.contains(itemId)) {
+            return true;
+        }
+        if (protectAdultVod && item.isAdultVod) {
+            return true;
+        }
+        if (matchesProtectedGroup(item.group)) {
+            return true;
+        }
+        if (item.customGroups != null) {
+            for (String groupName : item.customGroups) {
+                if (matchesProtectedGroup(groupName)) {
+                    return true;
+                }
+            }
+        }
+        String vodFilterKey = item.vodFilterKey == null ? "" : item.vodFilterKey.trim().toLowerCase(Locale.ROOT);
+        return !vodFilterKey.isEmpty() && protectedFilterKeys.contains(vodFilterKey);
+    }
+
+    private boolean matchesProtectedGroup(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return !normalized.isEmpty() && protectedGroupNames.contains(normalized);
     }
 }
 

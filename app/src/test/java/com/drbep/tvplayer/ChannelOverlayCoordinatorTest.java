@@ -27,7 +27,8 @@ public class ChannelOverlayCoordinatorTest {
                 new HashSet<>(),
                 null,
                 collections,
-                profiles
+                profiles,
+                new ParentalControlStore(null, "test-parental")
         );
 
         coordinator.applyLoadedChannels(new CatalogLoadResult(sampleChannels(), baseFilters(), "all"), "ch-1");
@@ -65,7 +66,8 @@ public class ChannelOverlayCoordinatorTest {
                 new HashSet<>(),
                 null,
                 new ChannelCollectionStore(null, "collections"),
-                profiles
+                profiles,
+                new ParentalControlStore(null, "test-parental")
         );
         coordinator.applyLoadedChannels(new CatalogLoadResult(sampleChannels(), baseFilters(), "all"), "ch-1");
 
@@ -89,7 +91,8 @@ public class ChannelOverlayCoordinatorTest {
                 new HashSet<>(),
                 null,
                 new ChannelCollectionStore(null, "collections"),
-                new ChannelProfileStore(null, "profiles")
+                new ChannelProfileStore(null, "profiles"),
+                new ParentalControlStore(null, "test-parental")
         );
         coordinator.setSelectedFilterKey("favorites");
 
@@ -116,7 +119,8 @@ public class ChannelOverlayCoordinatorTest {
                 new HashSet<>(),
                 null,
                 new ChannelCollectionStore(null, "collections"),
-                new ChannelProfileStore(null, "profiles")
+                new ChannelProfileStore(null, "profiles"),
+                new ParentalControlStore(null, "test-parental")
         );
         coordinator.setSelectedFilterKey("favorites");
 
@@ -139,7 +143,8 @@ public class ChannelOverlayCoordinatorTest {
                 new HashSet<>(),
                 null,
                 new ChannelCollectionStore(null, "collections"),
-                new ChannelProfileStore(null, "profiles")
+                new ChannelProfileStore(null, "profiles"),
+                new ParentalControlStore(null, "test-parental")
         );
 
         List<ChannelItem> channels = new ArrayList<>();
@@ -149,6 +154,38 @@ public class ChannelOverlayCoordinatorTest {
 
         assertEquals("ch-2", visible.get(0).id);
         assertEquals("ch-1", visible.get(1).id);
+    }
+
+    @Test
+    public void lockedProtectedChannelIsHiddenFromVisibleList() {
+        List<ChannelItem> visible = new ArrayList<>();
+        List<ChannelItem> all = new ArrayList<>();
+        List<ChannelFilter> filters = new ArrayList<>();
+        ParentalControlStore parental = new ParentalControlStore(null, "test-parental");
+        parental.setPin("1234");
+
+        ChannelOverlayCoordinator coordinator = new ChannelOverlayCoordinator(
+                visible,
+                all,
+                filters,
+                new HashSet<>(),
+                null,
+                new ChannelCollectionStore(null, "collections"),
+                new ChannelProfileStore(null, "profiles"),
+                parental
+        );
+
+        OfflinePermissions permissions = new OfflinePermissions();
+        permissions.protectedChannelIds.add("ch-2");
+        coordinator.applyLoadedChannels(new CatalogLoadResult(sampleChannels(), baseFilters(), "all", permissions), "ch-1");
+
+        assertEquals(1, visible.size());
+        assertEquals("ch-1", visible.get(0).id);
+
+        parental.unlockSession();
+        coordinator.refreshVisibleChannels("ch-1", "ch-1");
+
+        assertEquals(2, visible.size());
     }
 
     private static boolean hasFilter(List<ChannelFilter> filters, String key) {

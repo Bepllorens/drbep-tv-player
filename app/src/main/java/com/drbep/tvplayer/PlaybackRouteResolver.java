@@ -55,11 +55,13 @@ final class PlaybackRouteResolver {
         String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
         String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
         String playbackProfile = safeLower(request.playbackProfile);
+        boolean standaloneDirectAllowed = shouldPreferDirectInStandalone(request, streamInfo, playbackMode, playbackProfile);
 
         if (request.directPlayback) {
+            String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
             return new Decision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
+                    targetUrl,
+                    resolveMimeType(targetUrl, streamInfo, false),
                     safeLower(request.drmScheme),
                     playbackMode,
                     false,
@@ -70,7 +72,7 @@ final class PlaybackRouteResolver {
         if (useFallback) {
             return new Decision(
                     directUrl,
-                    resolveMimeType(directUrl, streamInfo, directUrl != null && directUrl.contains("/proxy/manifest/")),
+                    resolveMimeTypeForRequest(request, directUrl, streamInfo, directUrl != null && directUrl.contains("/proxy/manifest/")),
                     "",
                     playbackMode,
                     true,
@@ -100,11 +102,13 @@ final class PlaybackRouteResolver {
             );
         }
 
-        if ("proxy_manifest".equals(playbackProfile)) {
+        if ("proxy_manifest".equals(playbackProfile)
+                && !PlaybackModeStore.MODE_DIRECT.equals(playbackMode)
+                && (!BuildConfig.STANDALONE_MODE || PlaybackModeStore.MODE_PROXY.equals(playbackMode))) {
             String proxyUrl = proxyManifestUrl(request.channelId);
             return new Decision(
                     proxyUrl,
-                    resolveMimeType(proxyUrl, streamInfo, true),
+                    resolveMimeTypeForRequest(request, proxyUrl, streamInfo, true),
                     drmType,
                     playbackMode,
                     false,
@@ -112,11 +116,24 @@ final class PlaybackRouteResolver {
             );
         }
 
+        if ("proxy_manifest".equals(playbackProfile) && standaloneDirectAllowed) {
+            String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
+            return new Decision(
+                    targetUrl,
+                    resolveMimeType(targetUrl, streamInfo, false),
+                    drmType,
+                    playbackMode,
+                    false,
+                    true
+            );
+        }
+
         if ("direct".equals(playbackProfile) || PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
             boolean backendLive = isBackendLiveUrl(request.playUrl);
+            String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
             return new Decision(
-                    request.playUrl,
-                    resolveMimeType(request.playUrl, streamInfo, false),
+                    targetUrl,
+                    resolveMimeType(targetUrl, streamInfo, false),
                     backendLive ? "" : drmType,
                     playbackMode,
                     false,
@@ -152,6 +169,17 @@ final class PlaybackRouteResolver {
                         request.hasFallback()
                 );
             }
+            if (standaloneDirectAllowed) {
+                String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
+                return new Decision(
+                        targetUrl,
+                        resolveMimeType(targetUrl, streamInfo, false),
+                        drmType,
+                        playbackMode,
+                        false,
+                        true
+                );
+            }
             return new Decision(
                     proxyManifestUrl(request.channelId),
                     MimeTypes.APPLICATION_MPD,
@@ -159,6 +187,18 @@ final class PlaybackRouteResolver {
                     playbackMode,
                     false,
                     false
+            );
+        }
+
+        if (standaloneDirectAllowed && streamInfo != null && streamInfo.encrypted) {
+            String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
+            return new Decision(
+                    targetUrl,
+                    resolveMimeType(targetUrl, streamInfo, false),
+                    "",
+                    playbackMode,
+                    false,
+                    true
             );
         }
 
@@ -187,7 +227,7 @@ final class PlaybackRouteResolver {
             String proxyUrl = proxyManifestUrl(request.channelId) + (streamInfo != null && streamInfo.encrypted ? "?nodrm=1" : "");
             return new Decision(
                     proxyUrl,
-                    resolveMimeType(proxyUrl, streamInfo, true),
+                    resolveMimeTypeForRequest(request, proxyUrl, streamInfo, true),
                     "",
                     playbackMode,
                     false,
@@ -199,7 +239,7 @@ final class PlaybackRouteResolver {
             String proxyUrl = proxyManifestUrl(request.channelId) + "?nodrm=1";
             return new Decision(
                     proxyUrl,
-                    resolveMimeType(proxyUrl, streamInfo, true),
+                    resolveMimeTypeForRequest(request, proxyUrl, streamInfo, true),
                     "",
                     playbackMode,
                     false,
@@ -229,6 +269,17 @@ final class PlaybackRouteResolver {
                         request.hasFallback()
                 );
             }
+            if (standaloneDirectAllowed && ("dash".equals(streamType) || "hls".equals(streamType))) {
+                String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
+                return new Decision(
+                        targetUrl,
+                        resolveMimeType(targetUrl, streamInfo, false),
+                        "",
+                        playbackMode,
+                        false,
+                        true
+                );
+            }
             if ("dash".equals(streamType) || looksDash) {
                 return new Decision(
                         proxyManifestUrl(request.channelId) + "?nodrm=1",
@@ -240,13 +291,14 @@ final class PlaybackRouteResolver {
                 );
             }
             if ("hls".equals(streamType) && request.hasFallback()) {
+                String targetUrl = standaloneDirectAllowed ? resolveStandaloneDirectUrl(request, streamInfo) : request.fallbackPlayUrl;
                 return new Decision(
-                        request.fallbackPlayUrl,
+                        targetUrl,
                         MimeTypes.APPLICATION_M3U8,
                         "",
                         playbackMode,
                         false,
-                        false
+                        standaloneDirectAllowed && request.hasFallback()
                 );
             }
             return new Decision(
@@ -256,6 +308,17 @@ final class PlaybackRouteResolver {
                     playbackMode,
                     false,
                     request.hasFallback()
+            );
+        }
+
+        if (standaloneDirectAllowed && looksDash) {
+            return new Decision(
+                    request.playUrl,
+                    MimeTypes.APPLICATION_MPD,
+                    "",
+                    playbackMode,
+                    false,
+                    true
             );
         }
 
@@ -314,6 +377,16 @@ final class PlaybackRouteResolver {
         return mimeType;
     }
 
+    private String resolveMimeTypeForRequest(PlayerController.PlaybackRequest request,
+                                             String targetUrl,
+                                             PlayerController.StreamInfo streamInfo,
+                                             boolean defaultDashForProxy) {
+        if (isPlutoRequest(request) && targetUrl != null && targetUrl.contains("/proxy/manifest/")) {
+            return MimeTypes.APPLICATION_M3U8;
+        }
+        return resolveMimeType(targetUrl, streamInfo, defaultDashForProxy);
+    }
+
     private boolean isBackendLiveUrl(String targetUrl) {
         if (targetUrl == null) {
             return false;
@@ -324,6 +397,75 @@ final class PlaybackRouteResolver {
             return true;
         }
         return trimmed.contains("/live/") && trimmed.contains("client=firestick");
+    }
+
+    private boolean shouldPreferDirectInStandalone(PlayerController.PlaybackRequest request,
+                                                   PlayerController.StreamInfo streamInfo,
+                                                   String playbackMode,
+                                                   String playbackProfile) {
+        if (!BuildConfig.STANDALONE_MODE || request == null) {
+            return false;
+        }
+        if (PlaybackModeStore.MODE_PROXY.equals(playbackMode)) {
+            return false;
+        }
+        if ("server_live".equals(playbackProfile) || "hevc_hls".equals(playbackProfile)) {
+            return false;
+        }
+        if (isMovistarDashCompatOnly(request, streamInfo)) {
+            return false;
+        }
+        if (isAdultOrHotText(request.platformName) || isAdultOrHotText(request.channelName)) {
+            return false;
+        }
+        String sourceUrl = streamInfo == null ? "" : safeTrim(streamInfo.sourceUrl);
+        if (!sourceUrl.isEmpty()) {
+            return !isBackendLiveUrl(sourceUrl) && !sourceUrl.contains("runtime-proxy");
+        }
+        return !isBackendLiveUrl(request.playUrl);
+    }
+
+    private String resolveStandaloneDirectUrl(PlayerController.PlaybackRequest request, PlayerController.StreamInfo streamInfo) {
+        String patchedClearKeyManifest = streamInfo == null ? "" : safeTrim(streamInfo.patchedClearKeyManifestDataUri);
+        if (!patchedClearKeyManifest.isEmpty()) {
+            return patchedClearKeyManifest;
+        }
+        String sourceUrl = streamInfo == null ? "" : safeTrim(streamInfo.sourceUrl);
+        if (!sourceUrl.isEmpty() && !sourceUrl.contains("runtime-proxy")) {
+            return sourceUrl;
+        }
+        return request == null ? "" : request.playUrl;
+    }
+
+    private boolean isAdultOrHotText(String value) {
+        String lower = safeLower(value);
+        return lower.contains("adult")
+                || lower.contains("hot")
+                || lower.contains("playboy")
+                || lower.contains("venus")
+                || lower.contains("hustler")
+                || lower.contains("sex");
+    }
+
+    private boolean isPlutoRequest(PlayerController.PlaybackRequest request) {
+        if (request == null) {
+            return false;
+        }
+        String platform = safeLower(request.platformName);
+        return platform.contains("pluto");
+    }
+
+    private boolean isMovistarDashCompatOnly(PlayerController.PlaybackRequest request, PlayerController.StreamInfo streamInfo) {
+        if (request == null) {
+            return false;
+        }
+        String platform = safeLower(request.platformName);
+        if (!platform.contains("movistar") || platform.contains("ism")) {
+            return false;
+        }
+        String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
+        String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
+        return "dash".equals(streamType) && "clearkey".equals(drmType);
     }
 
     private String proxyManifestUrl(String channelId) {
@@ -366,6 +508,10 @@ final class PlaybackRouteResolver {
 
     private static String safeLower(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String safeTrim(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private static boolean looksLikeSmooth(String lowerUrl) {

@@ -8938,6 +8938,25 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showAppUpdateAvailableDialog(AppUpdateManager.UpdateInfo info) {
+        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Actual", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")", ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Disponible", safeUpdateVersionName(info) + " (" + info.versionCode + ")", "ok"));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Canal", info.channel == null || info.channel.trim().isEmpty() ? currentUpdateChannelLabel() : info.channel, ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Instalacion", "Obligatoria", getString(info.required ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no), info.required ? "warn" : ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Instalacion", "APK", info.apkUrl == null || info.apkUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : info.apkUrl, ""));
+        if (info.sha256 != null && !info.sha256.trim().isEmpty()) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("Instalacion", "SHA-256", info.sha256, ""));
+        }
+        List<String> notes = new ArrayList<>();
+        if (info.changelog == null || info.changelog.isEmpty()) {
+            notes.add(getString(R.string.diagnostics_value_unknown));
+        } else {
+            for (String item : info.changelog) {
+                if (item != null && !item.trim().isEmpty()) {
+                    notes.add("• " + item.trim());
+                }
+            }
+        }
         List<TvMessageActionUiModel> actions = new ArrayList<>();
         actions.add(new TvMessageActionUiModel(
                 getString(R.string.app_update_action_install),
@@ -8949,11 +8968,13 @@ public class MainActivity extends FragmentActivity {
                 false,
                 null
         ));
-        showTvMessagePanel(
+        showStructuredStatusPanel(
                 getString(R.string.app_update_available_title, safeUpdateVersionName(info)),
-                buildAppUpdateMessage(info),
-                actions,
-                null
+                getString(R.string.app_update_channel_current, currentUpdateChannelLabel()),
+                getString(R.string.settings_update_state_available_short, safeUpdateVersionName(info), info.versionCode),
+                rows,
+                notes,
+                actions
         );
     }
 
@@ -9567,7 +9588,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private void showPlaybackDiagnosticsPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions) {
+    private void showStructuredStatusPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions) {
         prepareModalSurface();
         Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         ComposeView composeView = new ComposeView(this);
@@ -12098,7 +12119,7 @@ public class MainActivity extends FragmentActivity {
                 message = message + "\n\n" + getString(R.string.diagnostics_persistent_error, storedError.shortLabel());
                 rows.add(new PlaybackDiagnosticsRowUiModel(getString(R.string.title_playback_diagnostics), "Fallo guardado", storedError.shortLabel(), "error"));
             }
-            showPlaybackDiagnosticsPanel(getString(R.string.title_playback_diagnostics), currentChannel == null ? "" : displayName(currentChannel), message, rows, Collections.emptyList(), buildPlaybackDiagnosticsActions(currentChannel));
+            showStructuredStatusPanel(getString(R.string.title_playback_diagnostics), currentChannel == null ? "" : displayName(currentChannel), message, rows, Collections.emptyList(), buildPlaybackDiagnosticsActions(currentChannel));
             return;
         }
 
@@ -12164,7 +12185,7 @@ public class MainActivity extends FragmentActivity {
         notes.add(getString(R.string.diagnostics_recommendation, recommendation));
         notes.add(getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
         notes.add(getString(R.string.diagnostics_actions_hint));
-        showPlaybackDiagnosticsPanel(getString(R.string.title_playback_diagnostics), safeText(diagnostics.channelName), message.toString().trim(), rows, notes, buildPlaybackDiagnosticsActions(currentChannel));
+        showStructuredStatusPanel(getString(R.string.title_playback_diagnostics), safeText(diagnostics.channelName), message.toString().trim(), rows, notes, buildPlaybackDiagnosticsActions(currentChannel));
     }
 
     private List<TvMessageActionUiModel> buildPlaybackDiagnosticsActions(ChannelItem currentChannel) {
@@ -12352,7 +12373,7 @@ public class MainActivity extends FragmentActivity {
                     showStatus(getString(R.string.status_diagnostics_history_cleared));
         }));
         actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
-        showPlaybackDiagnosticsPanel(
+        showStructuredStatusPanel(
                 getString(R.string.diagnostics_action_history),
                 getString(R.string.title_playback_diagnostics),
                 getString(R.string.diagnostics_recent, records.size() + " fallos guardados"),

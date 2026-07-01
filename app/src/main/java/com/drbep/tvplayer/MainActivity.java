@@ -9513,19 +9513,6 @@ public class MainActivity extends FragmentActivity {
         ViewTreeSavedStateRegistryOwner.set(dialogView, this);
     }
 
-    private void attachDialogViewTreeOwnersRecursive(View dialogView) {
-        if (dialogView == null) {
-            return;
-        }
-        attachDialogViewTreeOwners(dialogView);
-        if (dialogView instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) dialogView;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                attachDialogViewTreeOwnersRecursive(group.getChildAt(i));
-            }
-        }
-    }
-
     private void showTvOptionsDialog(int titleResId, String message, List<String> options, List<Runnable> actions) {
         showTvOptionsDialog(titleResId, message, options, actions, null);
     }

@@ -32,6 +32,7 @@ Fecha: 2026-06-30
 - Grabaciones ahora usan una unica superficie Compose para cabecera, detalle y lista.
 - Diagnostico de playback e historial de fallos usan un panel Compose estructurado con secciones, tonos de ruta/error y acciones con foco inicial.
 - El aviso de nueva version reutiliza el panel estructurado Compose para mostrar version actual, objetivo, canal, APK y changelog de forma legible.
+- El diagnostico de actualizacion y la pantalla post-update tambien usan el panel estructurado Compose con ultimo intento, preflight, versiones y changelog.
 
 ## Ultimos arreglos importantes
 

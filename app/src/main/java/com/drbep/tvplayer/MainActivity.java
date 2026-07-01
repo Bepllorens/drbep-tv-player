@@ -8824,7 +8824,38 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showAppUpdateDiagnosticsDialog() {
-        showSettingsInfoDialog(R.string.app_update_action_diagnostics, buildAppUpdateStateSummary());
+        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+        String checked = lastAppUpdateCheckMs <= 0L
+                ? getString(R.string.diagnostics_value_unknown)
+                : formatDateTime(lastAppUpdateCheckMs);
+        rows.add(new PlaybackDiagnosticsRowUiModel("Estado", "Canal", currentUpdateChannelLabel(), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Estado", "Ultima comprobacion", checked, ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Estado", "Version instalada", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")", "ok"));
+        if (lastAppUpdateError != null && !lastAppUpdateError.trim().isEmpty()) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("Estado", "Error", classifyOperationalError(lastAppUpdateError) + ": " + lastAppUpdateError, "error"));
+        } else if (lastKnownAppUpdateInfo != null && lastKnownAppUpdateInfo.isNewerThanCurrent()) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("Estado", "Disponible", safeUpdateVersionName(lastKnownAppUpdateInfo) + " (" + lastKnownAppUpdateInfo.versionCode + ")", "warn"));
+        } else if (lastKnownAppUpdateInfo != null) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("Estado", "Resultado", "Al dia", "ok"));
+        }
+        JSONObject diagnostic = readLastAppUpdateDiagnostic();
+        appendAppUpdateDiagnosticRows(rows, diagnostic);
+        List<String> notes = new ArrayList<>();
+        String summary = buildAppUpdateDiagnosticSummary();
+        if (summary != null && !summary.trim().isEmpty()) {
+            notes.add(summary);
+        }
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.app_update_action_check), false, this::checkAppUpdateManually));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showStructuredStatusPanel(
+                getString(R.string.app_update_action_diagnostics),
+                getString(R.string.app_update_channel_current, currentUpdateChannelLabel()),
+                buildAppUpdateStateSummary(),
+                rows,
+                notes,
+                actions
+        );
     }
 
     private void checkAppUpdate(boolean manual) {
@@ -9059,15 +9090,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String buildAppUpdateDiagnosticSummary() {
-        if (prefs == null) {
-            return "";
-        }
-        String raw = prefs.getString(PREF_APP_UPDATE_DIAGNOSTIC, "");
-        if (raw == null || raw.trim().isEmpty()) {
-            return "";
-        }
         try {
-            JSONObject payload = new JSONObject(raw);
+            JSONObject payload = readLastAppUpdateDiagnostic();
+            if (payload == null) {
+                return "";
+            }
             StringBuilder out = new StringBuilder();
             appendDiagnosticLine(out, getString(
                     R.string.app_update_diagnostic_summary,
@@ -9103,6 +9130,48 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private JSONObject readLastAppUpdateDiagnostic() {
+        if (prefs == null) {
+            return null;
+        }
+        String raw = prefs.getString(PREF_APP_UPDATE_DIAGNOSTIC, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return new JSONObject(raw);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void appendAppUpdateDiagnosticRows(List<PlaybackDiagnosticsRowUiModel> rows, JSONObject payload) {
+        if (rows == null || payload == null) {
+            return;
+        }
+        boolean success = payload.optBoolean("success", false);
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ultimo intento", "Fecha", formatDateTime(payload.optLong("ts", 0L)), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ultimo intento", "Fase", payload.optString("stage", getString(R.string.diagnostics_value_unknown)), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ultimo intento", "Resultado", success ? getString(R.string.settings_offline_sync_ok) : getString(R.string.settings_offline_sync_failed), success ? "ok" : "error"));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ultimo intento", "Duracion", payload.optLong("duration_ms", 0L) + " ms", ""));
+        String detail = payload.optString("detail", "").trim();
+        if (!detail.isEmpty()) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("Ultimo intento", "Detalle", detail, success ? "" : "error"));
+        }
+        int targetVersion = payload.optInt("target_version_code", 0);
+        if (targetVersion > 0) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("Versiones", "Actual", payload.optString("current_version_name", BuildConfig.VERSION_NAME) + " (" + payload.optInt("current_version_code", BuildConfig.VERSION_CODE) + ")", ""));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Versiones", "Objetivo", payload.optString("target_version_name", String.valueOf(targetVersion)) + " (" + targetVersion + ")", ""));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Versiones", "Canal objetivo", payload.optString("target_update_channel", getString(R.string.diagnostics_value_unknown)), ""));
+        }
+        String apkPackage = payload.optString("apk_package", "").trim();
+        if (!apkPackage.isEmpty()) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("APK", "Paquete APK", apkPackage + " (" + payload.optInt("apk_version_code", 0) + ")", ""));
+            rows.add(new PlaybackDiagnosticsRowUiModel("APK", "Instalado", payload.optString("installed_package", getPackageName()) + " (" + payload.optInt("installed_version_code", BuildConfig.VERSION_CODE) + ")", ""));
+            rows.add(new PlaybackDiagnosticsRowUiModel("APK", "Preflight", payload.optBoolean("preflight_ok", false) ? getString(R.string.settings_offline_sync_ok) : getString(R.string.settings_offline_sync_failed), payload.optBoolean("preflight_ok", false) ? "ok" : "error"));
+        }
+    }
+
     private void showPostUpdateNotesIfNeeded() {
         if (prefs == null || appUpdateManager == null) {
             return;
@@ -9117,12 +9186,46 @@ public class MainActivity extends FragmentActivity {
             try {
                 AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, currentUpdateChannel());
                 if (info.versionCode == BuildConfig.VERSION_CODE && !info.changelog.isEmpty()) {
-                    uiHandler.post(() -> showSettingsInfoDialog(R.string.app_update_installed_title, buildAppInstalledMessage(info)));
+                    uiHandler.post(() -> showAppUpdatedPanel(info));
                 }
             } catch (Exception e) {
                 Log.d(TAG, "post-update notes unavailable", e);
             }
         });
+    }
+
+    private void showAppUpdatedPanel(AppUpdateManager.UpdateInfo info) {
+        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Instalada", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")", "ok"));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Canal", currentUpdateChannelLabel(), ""));
+        if (info != null) {
+            rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Publicada", safeUpdateVersionName(info) + " (" + info.versionCode + ")", "ok"));
+            if (info.sha256 != null && !info.sha256.trim().isEmpty()) {
+                rows.add(new PlaybackDiagnosticsRowUiModel("APK", "SHA-256", info.sha256, ""));
+            }
+        }
+        appendAppUpdateDiagnosticRows(rows, readLastAppUpdateDiagnostic());
+        List<String> notes = new ArrayList<>();
+        if (info == null || info.changelog == null || info.changelog.isEmpty()) {
+            notes.add(getString(R.string.diagnostics_value_unknown));
+        } else {
+            for (String item : info.changelog) {
+                if (item != null && !item.trim().isEmpty()) {
+                    notes.add("- " + item.trim());
+                }
+            }
+        }
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.app_update_action_diagnostics), false, this::showAppUpdateDiagnosticsDialog));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showStructuredStatusPanel(
+                getString(R.string.app_update_installed_title),
+                getString(R.string.app_update_channel_current, currentUpdateChannelLabel()),
+                "Actualizado a " + safeUpdateVersionName(info),
+                rows,
+                notes,
+                actions
+        );
     }
 
     private void markPostUpdateHealthPending(int previousVersionCode) {
@@ -9253,21 +9356,6 @@ public class MainActivity extends FragmentActivity {
         } catch (Exception e) {
             Log.d(TAG, "unfinished app update diagnostic ignored", e);
         }
-    }
-
-    private String buildAppUpdateMessage(AppUpdateManager.UpdateInfo info) {
-        return getString(
-                R.string.app_update_available_message,
-                BuildConfig.VERSION_NAME,
-                BuildConfig.VERSION_CODE,
-                safeUpdateVersionName(info),
-                info.versionCode,
-                buildChangelogText(info)
-        );
-    }
-
-    private String buildAppInstalledMessage(AppUpdateManager.UpdateInfo info) {
-        return getString(R.string.app_update_installed_message, safeUpdateVersionName(info), buildChangelogText(info));
     }
 
     private String buildChangelogText(AppUpdateManager.UpdateInfo info) {

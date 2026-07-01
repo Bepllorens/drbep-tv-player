@@ -17,7 +17,6 @@ import android.util.LruCache;
 import android.util.Log;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
-import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -2692,50 +2691,6 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private Dialog showCenteredTvPanelDialog(View contentView, Runnable onDismiss) {
-        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
-        root.setBackgroundColor(0xCC000000);
-        android.widget.FrameLayout.LayoutParams contentParams = new android.widget.FrameLayout.LayoutParams(
-                resolveCenteredDialogWidth(),
-                resolveCenteredDialogHeight(),
-                Gravity.CENTER
-        );
-        root.addView(contentView, contentParams);
-
-        Dialog dialog = new Dialog(this);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(root);
-        dialog.setOnDismissListener(d -> {
-            if (onDismiss != null) {
-                onDismiss.run();
-            }
-            enableImmersiveMode();
-        });
-        dialog.show();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
-        return dialog;
-    }
-
-    private int resolveCenteredDialogWidth() {
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        if (screenWidth <= dp(720)) {
-            return Math.max(dp(280), screenWidth - dp(24));
-        }
-        return ViewGroup.LayoutParams.WRAP_CONTENT;
-    }
-
-    private int resolveCenteredDialogHeight() {
-        int screenHeight = getResources().getDisplayMetrics().heightPixels;
-        if (screenHeight <= dp(900)) {
-            return Math.max(dp(320), screenHeight - dp(40));
-        }
-        return ViewGroup.LayoutParams.WRAP_CONTENT;
-    }
-
     private String buildVodProgressLabel(ChannelItem channel, long resumeMs) {
         String progress = getString(R.string.vod_resume_meta, formatDurationShort(resumeMs));
         if (channel != null && channel.vodDurationSeconds > 0L) {
@@ -2744,139 +2699,6 @@ public class MainActivity extends FragmentActivity {
             return getString(R.string.vod_resume_meta_percent, formatDurationShort(resumeMs), percent);
         }
         return progress;
-    }
-
-    private Drawable makeRoundedBackground(int fillColor, int strokeColor, int strokeWidth, int radius) {
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.RECTANGLE);
-        background.setCornerRadius(radius);
-        background.setColor(fillColor);
-        background.setStroke(strokeWidth, strokeColor);
-        return background;
-    }
-
-    private boolean isCompactModalLayout() {
-        return getResources().getDisplayMetrics().widthPixels <= dp(720);
-    }
-
-    private void addVodDetailPrimaryAction(LinearLayout parent, List<View> actionRows, String label, Runnable action) {
-        if (parent == null || label == null) {
-            return;
-        }
-        boolean compactModal = isCompactModalLayout();
-        ComposeView row = new ComposeView(this);
-        row.setTag(label);
-        row.setFocusable(true);
-        row.setFocusableInTouchMode(true);
-        row.setClickable(true);
-        VodActionComposeBinder.bind(row, new VodActionUiModel(label, true, false));
-        row.setOnClickListener(v -> {
-            if (action != null) {
-                action.run();
-            }
-        });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, compactModal ? dp(48) : dp(54), 1f);
-        if (actionRows != null && !actionRows.isEmpty()) {
-            params.setMarginStart(compactModal ? dp(6) : dp(8));
-        }
-        parent.addView(row, params);
-        if (actionRows != null) {
-            actionRows.add(row);
-        }
-    }
-
-    private void addVodDetailAction(LinearLayout parent, List<View> actionRows, String label, Runnable action) {
-        if (parent == null || label == null) {
-            return;
-        }
-        boolean compactModal = isCompactModalLayout();
-        ComposeView row = new ComposeView(this);
-        row.setTag(label);
-        row.setFocusable(true);
-        row.setFocusableInTouchMode(true);
-        row.setClickable(true);
-        VodActionComposeBinder.bind(row, new VodActionUiModel(label, false, false));
-        row.setOnClickListener(v -> {
-            if (action != null) {
-                action.run();
-            }
-        });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, compactModal ? dp(42) : dp(48));
-        params.topMargin = actionRows == null || actionRows.isEmpty() ? 0 : (compactModal ? dp(6) : dp(8));
-        parent.addView(row, params);
-        if (actionRows != null) {
-            actionRows.add(row);
-        }
-    }
-
-    private void wireVodDetailActions(List<View> primaryActions, List<View> secondaryActions, android.widget.ScrollView scrollView) {
-        if (primaryActions != null) {
-            for (int i = 0; i < primaryActions.size(); i++) {
-                final int index = i;
-                View action = primaryActions.get(i);
-                action.setOnFocusChangeListener((v, hasFocus) -> {
-                    if (action instanceof ComposeView) {
-                        VodActionComposeBinder.bind((ComposeView) action, new VodActionUiModel(actionLabel(action), true, hasFocus));
-                    }
-                    if (hasFocus) {
-                        ensureVodVisualItemVisible(scrollView, action);
-                    }
-                });
-                action.setOnKeyListener((v, keyCode, event) -> {
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                        return false;
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && index > 0) {
-                        return primaryActions.get(index - 1).requestFocus();
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && index + 1 < primaryActions.size()) {
-                        return primaryActions.get(index + 1).requestFocus();
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && secondaryActions != null && !secondaryActions.isEmpty()) {
-                        return secondaryActions.get(Math.min(index, secondaryActions.size() - 1)).requestFocus();
-                    }
-                    return false;
-                });
-            }
-        }
-        if (secondaryActions != null) {
-            for (int i = 0; i < secondaryActions.size(); i++) {
-                final int index = i;
-                View action = secondaryActions.get(i);
-                action.setOnFocusChangeListener((v, hasFocus) -> {
-                    if (action instanceof ComposeView) {
-                        VodActionComposeBinder.bind((ComposeView) action, new VodActionUiModel(actionLabel(action), false, hasFocus));
-                    } else {
-                        action.setSelected(hasFocus);
-                    }
-                    if (hasFocus) {
-                        ensureVodVisualItemVisible(scrollView, action);
-                    }
-                });
-                action.setOnKeyListener((v, keyCode, event) -> {
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                        return false;
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                        if (index == 0 && primaryActions != null && !primaryActions.isEmpty()) {
-                            return primaryActions.get(0).requestFocus();
-                        }
-                        if (index > 0) {
-                            return secondaryActions.get(index - 1).requestFocus();
-                        }
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index + 1 < secondaryActions.size()) {
-                        return secondaryActions.get(index + 1).requestFocus();
-                    }
-                    return false;
-                });
-            }
-        }
-    }
-
-    private String actionLabel(View action) {
-        Object tag = action == null ? null : action.getTag();
-        return tag == null ? "" : String.valueOf(tag);
     }
 
     private void showVodActionsDialog(ChannelItem channel) {
@@ -2952,38 +2774,6 @@ public class MainActivity extends FragmentActivity {
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setDimAmount(0f);
-        }
-    }
-
-    private void wireVodActionRows(List<View> actionRows, android.widget.ScrollView scrollView) {
-        if (actionRows == null) {
-            return;
-        }
-        for (int i = 0; i < actionRows.size(); i++) {
-            final int index = i;
-            View action = actionRows.get(i);
-            action.setOnFocusChangeListener((v, hasFocus) -> {
-                if (action instanceof ComposeView) {
-                    VodActionComposeBinder.bind((ComposeView) action, new VodActionUiModel(actionLabel(action), false, hasFocus));
-                } else {
-                    action.setSelected(hasFocus);
-                }
-                if (hasFocus) {
-                    ensureVodVisualItemVisible(scrollView, action);
-                }
-            });
-            action.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                    return false;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && index > 0) {
-                    return actionRows.get(index - 1).requestFocus();
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index + 1 < actionRows.size()) {
-                    return actionRows.get(index + 1).requestFocus();
-                }
-                return false;
-            });
         }
     }
 

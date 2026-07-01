@@ -3058,61 +3058,47 @@ public class MainActivity extends FragmentActivity {
         if (channel == null || program == null) {
             return;
         }
-        LinearLayout container = new LinearLayout(this);
-        container.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(18);
-        container.setPadding(padding, padding, padding, padding);
-
-        ImageView posterView = new ImageView(this);
-        LinearLayout.LayoutParams posterParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(220));
-        posterView.setLayoutParams(posterParams);
-        posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        container.addView(posterView);
-        bindProgramPoster(posterView, program.icon);
-
-        TextView titleView = new TextView(this);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleParams.topMargin = dp(14);
-        titleView.setLayoutParams(titleParams);
-        titleView.setText(program.title == null || program.title.trim().isEmpty() ? channel.name : program.title);
-        titleView.setTextColor(0xFFFFFFFF);
-        titleView.setTextSize(20f);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        container.addView(titleView);
-
-        TextView metaView = new TextView(this);
-        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        metaParams.topMargin = dp(8);
-        metaView.setLayoutParams(metaParams);
-        metaView.setText(channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime));
-        metaView.setTextColor(0xFF9BD0FF);
-        metaView.setTextSize(14f);
-        container.addView(metaView);
-
-        TextView descView = new TextView(this);
-        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        descParams.topMargin = dp(12);
-        descView.setLayoutParams(descParams);
+        String title = program.title == null || program.title.trim().isEmpty() ? channel.name : program.title;
         String description = program.description == null || program.description.trim().isEmpty()
                 ? getString(R.string.timeline_program_desc_empty)
                 : program.description.trim();
-        descView.setText(description);
-        descView.setTextColor(0xFFD5E6F8);
-        descView.setTextSize(15f);
-        container.addView(descView);
-
-        String title = program.title == null || program.title.trim().isEmpty() ? channel.name : program.title;
+        String imageUrl = program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon.trim();
+        String meta = channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         List<TvMessageActionUiModel> actions = new ArrayList<>();
         if (!isOfflineRecordingsDisabled()) {
-            actions.add(new TvMessageActionUiModel(getString(R.string.menu_record), false, () -> scheduleProgram(channel, program)));
+            actions.add(new TvMessageActionUiModel(getString(R.string.menu_record), false, () -> {
+                dialog.dismiss();
+                scheduleProgram(channel, program);
+            }));
         }
-        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
-        showTvMessagePanel(
-                getString(R.string.title_touch_program_info),
-                title + "\n" + channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime) + "\n\n" + description,
-                actions,
-                () -> Glide.with(this).clear(posterView)
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, dialog::dismiss));
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        ProgramInfoPanelComposeBinder.bind(
+                composeView,
+                new ProgramInfoPanelUiModel(
+                        getString(R.string.title_touch_program_info),
+                        new TimelineProgramDetailUiModel(
+                                title,
+                                meta,
+                                description,
+                                imageUrl,
+                                program.progress >= 0 ? getString(R.string.guide_program_now) : "",
+                                getString(R.string.timeline_program_action_hint)
+                        ),
+                        actions
+                ),
+                (imageView, item) -> bindProgramPoster(imageView, item == null ? "" : item.imageUrl)
         );
+        dialog.setContentView(composeView);
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
     }
 
     private void createScheduleFromEndpoint(ChannelItem ch, boolean next) {

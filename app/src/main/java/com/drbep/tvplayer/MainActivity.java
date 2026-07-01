@@ -27,7 +27,6 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -2423,84 +2422,45 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
-        FrameLayout dialogView = new FrameLayout(this);
-        dialogView.setBackgroundColor(0xB0101720);
-        int outerPadding = getResources().getDimensionPixelSize(R.dimen.visual_epg_outer_padding);
-        dialogView.setPadding(outerPadding, outerPadding, outerPadding, outerPadding);
-        LinearLayout visualPanel = new LinearLayout(this);
-        visualPanel.setOrientation(LinearLayout.VERTICAL);
-        visualPanel.setBackgroundColor(0xE6111822);
-        int innerPadding = getResources().getDimensionPixelSize(R.dimen.visual_epg_inner_padding);
-        visualPanel.setPadding(innerPadding, innerPadding, innerPadding, innerPadding);
-        dialogView.addView(visualPanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        ComposeView visualEpgHeaderComposeView = new ComposeView(this);
-        visualEpgHeaderComposeView.setFocusable(true);
-        visualEpgHeaderComposeView.setFocusableInTouchMode(true);
-        visualPanel.addView(visualEpgHeaderComposeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        ComposeView visualEpgSectionsComposeView = new ComposeView(this);
-        visualEpgSectionsComposeView.setFocusable(true);
-        visualEpgSectionsComposeView.setFocusableInTouchMode(true);
-        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        scrollParams.topMargin = dp(8);
-        visualPanel.addView(visualEpgSectionsComposeView, scrollParams);
-        ComposeView visualEpgProgramDetailComposeView = new ComposeView(this);
-        visualEpgProgramDetailComposeView.setFocusable(false);
-        visualEpgProgramDetailComposeView.setFocusableInTouchMode(false);
-        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        detailParams.topMargin = dp(8);
-        visualPanel.addView(visualEpgProgramDetailComposeView, detailParams);
+        ComposeView visualEpgPanelComposeView = new ComposeView(this);
+        visualEpgPanelComposeView.setFocusable(true);
+        visualEpgPanelComposeView.setFocusableInTouchMode(true);
         final android.app.Dialog[] visualEpgDialogRef = new android.app.Dialog[1];
         final Runnable focusInitialVisualEpgCard = () -> {
-            visualEpgSectionsComposeView.requestFocus();
+            visualEpgPanelComposeView.requestFocus();
         };
         final java.util.function.Consumer<TimelineProgramDetailUiModel> renderVisualEpgDetail = model ->
-                TimelineProgramDetailComposeBinder.bind(
-                        visualEpgProgramDetailComposeView,
-                        model,
-                        (imageView, item) -> {
-                            if (imageView == null || item == null || item.imageUrl == null || item.imageUrl.trim().isEmpty()) {
-                                if (imageView != null) {
-                                    Glide.with(this).clear(imageView);
-                                    imageView.setImageDrawable(null);
-                                }
-                                return;
-                            }
-                            Glide.with(this).load(item.imageUrl.trim()).fitCenter().into(imageView);
-                        }
-                );
+                VisualEpgPanelComposeBinder.updateDetail(visualEpgPanelComposeView, model);
         int totalItems = 0;
         for (VisualEpgSection section : sections) {
             totalItems += section.entries.size();
         }
         activeProgramScheduledItems = scheduledItems == null ? new ArrayList<>() : new ArrayList<>(scheduledItems);
-        VisualEpgHeaderComposeBinder.bind(
-                visualEpgHeaderComposeView,
-                new VisualEpgHeaderUiModel(
-                        getString(R.string.title_visual_epg),
-                        getString(R.string.visual_epg_subtitle, platformLabel, totalItems),
-                        Arrays.asList(
-                                new VisualEpgHeaderUiModel.VisualEpgHeaderActionUiModel(getString(R.string.recording_action_refresh), () -> {
-                                    if (visualEpgDialogRef[0] != null) {
-                                        visualEpgDialogRef[0].dismiss();
-                                    }
-                                    openVisualEpgAroundSelection();
-                                }, focusInitialVisualEpgCard),
-                                new VisualEpgHeaderUiModel.VisualEpgHeaderActionUiModel(getString(R.string.dialog_close), () -> {
-                                    if (visualEpgDialogRef[0] != null) {
-                                        visualEpgDialogRef[0].dismiss();
-                                    }
-                                }, focusInitialVisualEpgCard)
-                        )
+        VisualEpgHeaderUiModel visualEpgHeaderModel = new VisualEpgHeaderUiModel(
+                getString(R.string.title_visual_epg),
+                getString(R.string.visual_epg_subtitle, platformLabel, totalItems),
+                Arrays.asList(
+                        new VisualEpgHeaderUiModel.VisualEpgHeaderActionUiModel(getString(R.string.recording_action_refresh), () -> {
+                            if (visualEpgDialogRef[0] != null) {
+                                visualEpgDialogRef[0].dismiss();
+                            }
+                            openVisualEpgAroundSelection();
+                        }, focusInitialVisualEpgCard),
+                        new VisualEpgHeaderUiModel.VisualEpgHeaderActionUiModel(getString(R.string.dialog_close), () -> {
+                            if (visualEpgDialogRef[0] != null) {
+                                visualEpgDialogRef[0].dismiss();
+                            }
+                        }, focusInitialVisualEpgCard)
                 )
         );
-        renderVisualEpgDetail.accept(new TimelineProgramDetailUiModel(
+        TimelineProgramDetailUiModel initialVisualEpgDetail = new TimelineProgramDetailUiModel(
                 getString(R.string.title_visual_epg),
                 getString(R.string.visual_epg_detail_hint),
                 getString(R.string.timeline_program_desc_empty),
                 "",
                 "",
                 getString(R.string.timeline_program_action_hint)
-        ));
+        );
         List<VisualEpgSectionUiModel> sectionModels = new ArrayList<>();
         final boolean[] preferredAssigned = new boolean[]{false};
         for (VisualEpgSection section : sections) {
@@ -2553,24 +2513,37 @@ public class MainActivity extends FragmentActivity {
             }
             sectionModels.add(new VisualEpgSectionUiModel(section.title, entryModels));
         }
-        VisualEpgSectionsComposeBinder.bind(
-                visualEpgSectionsComposeView,
-                sectionModels,
-                (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
+        attachDialogViewTreeOwners(visualEpgPanelComposeView);
+        VisualEpgPanelComposeBinder.bind(
+                visualEpgPanelComposeView,
+                new VisualEpgPanelUiModel(visualEpgHeaderModel, sectionModels, initialVisualEpgDetail),
+                (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl),
+                (imageView, item) -> {
+                    if (imageView == null || item == null || item.imageUrl == null || item.imageUrl.trim().isEmpty()) {
+                        if (imageView != null) {
+                            Glide.with(this).clear(imageView);
+                            imageView.setImageDrawable(null);
+                        }
+                        return;
+                    }
+                    Glide.with(this).load(item.imageUrl.trim()).fitCenter().into(imageView);
+                }
         );
 
-        attachDialogViewTreeOwnersRecursive(dialogView);
         android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         visualEpgDialogRef[0] = dialog;
-        dialog.setContentView(dialogView);
+        dialog.setContentView(visualEpgPanelComposeView);
         dialog.setCancelable(true);
         dialog.setOnShowListener(d -> {
             if (dialog.getWindow() != null) {
                 dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             }
-            visualEpgSectionsComposeView.requestFocus();
+            visualEpgPanelComposeView.requestFocus();
         });
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> {
+            VisualEpgPanelComposeBinder.clear(visualEpgPanelComposeView);
+            enableImmersiveMode();
+        });
         dialog.show();
     }
 
@@ -6584,44 +6557,6 @@ public class MainActivity extends FragmentActivity {
         if (dialog != null && dialog.isShowing()) {
             dialog.dismiss();
         }
-    }
-
-    private boolean isFocusInsideView(View container) {
-        return isFocusInsideView(container, getCurrentFocus());
-    }
-
-    private boolean isFocusInsideView(View container, View focused) {
-        if (container == null) {
-            return false;
-        }
-        while (focused != null) {
-            if (focused == container) {
-                return true;
-            }
-            Object parent = focused.getParent();
-            focused = parent instanceof View ? (View) parent : null;
-        }
-        return false;
-    }
-
-    private void ensureVodVisualItemVisible(android.widget.ScrollView scrollView, View target) {
-        if (scrollView == null || target == null) {
-            return;
-        }
-        scrollView.post(() -> {
-            Rect rect = new Rect();
-            target.getDrawingRect(rect);
-            scrollView.offsetDescendantRectToMyCoords(target, rect);
-            int viewportTop = scrollView.getScrollY();
-            int viewportBottom = viewportTop + scrollView.getHeight();
-            int topPadding = dp(56);
-            int bottomPadding = dp(44);
-            if (rect.top < viewportTop + topPadding) {
-                scrollView.smoothScrollTo(0, Math.max(0, rect.top - topPadding));
-            } else if (rect.bottom > viewportBottom - bottomPadding) {
-                scrollView.smoothScrollTo(0, Math.max(0, rect.bottom - scrollView.getHeight() + bottomPadding));
-            }
-        });
     }
 
     private void showListsToolsDialog() {

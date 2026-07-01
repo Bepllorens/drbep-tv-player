@@ -46,7 +46,7 @@ object VisualEpgHeaderComposeBinder {
 }
 
 @Composable
-private fun VisualEpgHeader(model: VisualEpgHeaderUiModel) {
+internal fun VisualEpgHeader(model: VisualEpgHeaderUiModel) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     Row(
         modifier = Modifier

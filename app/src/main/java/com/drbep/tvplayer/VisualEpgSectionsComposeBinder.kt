@@ -60,9 +60,13 @@ object VisualEpgSectionsComposeBinder {
 }
 
 @Composable
-private fun VisualEpgSections(sections: List<VisualEpgSectionUiModel>, imageBinder: VisualEpgCardImageBinder) {
+internal fun VisualEpgSections(
+    sections: List<VisualEpgSectionUiModel>,
+    imageBinder: VisualEpgCardImageBinder,
+    modifier: Modifier = Modifier
+) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 8.dp)
     ) {
         sections.forEachIndexed { sectionIndex, section ->

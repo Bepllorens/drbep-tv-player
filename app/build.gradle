@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 176
-        versionName "2.0.176-beta-live-ready-overlay"
+        versionCode 177
+        versionName "2.0.177-beta-compose-structured-panels"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

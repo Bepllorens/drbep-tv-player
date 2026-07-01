@@ -4,8 +4,8 @@ Fecha: 2026-06-30
 
 ## Version actual
 
-- Canal beta publicado: `2.0.176-beta-live-ready-overlay`
-- `versionCode`: `176`
+- Canal beta publicado: `2.0.177-beta-compose-structured-panels`
+- `versionCode`: `177`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo de prueba principal: Fire Stick `192.168.93.16:5555`
 

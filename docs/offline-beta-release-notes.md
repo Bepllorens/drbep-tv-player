@@ -4,7 +4,7 @@ Notas acumuladas para promocionar la app offline de beta a stable.
 
 ## Pendiente de promocionar a stable
 
-Rango actual: `2.0.176-beta-live-ready-overlay`.
+Rango actual: `2.0.177-beta-compose-structured-panels`.
 
 ### Navegacion y catalogo
 
@@ -15,7 +15,8 @@ Rango actual: `2.0.176-beta-live-ready-overlay`.
 ### Actualizaciones
 
 - El instalador de actualizaciones usa `ACTION_INSTALL_PACKAGE` como ruta principal en Fire OS.
-- La beta publicada actualmente es `2.0.176-beta-live-ready-overlay` (`versionCode 176`).
+- La beta publicada actualmente es `2.0.177-beta-compose-structured-panels` (`versionCode 177`).
+- Los diagnosticos de playback, historial de fallos, actualizaciones y resumenes de ajustes/sistema/catalogo usan paneles Compose estructurados.
 - Movistar ISM y Orange dejan de mostrar el aviso superior `VOD listo` al zapear canales live directos.
 - En grabaciones programadas, la app descarta registros cerrados (`completed`, `failed`, `stopped`, `canceled`) y programaciones vencidas para no mostrar entradas antiguas borradas/obsoletas del dashboard.
 - Las consultas de grabaciones usan cache-buster y cabeceras `no-cache`, de modo que `Refrescar` fuerza una lectura fresca del backend.

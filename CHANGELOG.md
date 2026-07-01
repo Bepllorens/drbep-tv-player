@@ -1,3 +1,8 @@
+## 2.0.177-beta-compose-structured-panels
+- Offline beta: diagnostico de playback e historial de fallos pasan a paneles Compose estructurados con secciones, estados de ruta/error y acciones con foco inicial.
+- Offline beta: los avisos de actualizacion, diagnostico de actualizacion y pantalla post-update muestran version, canal, APK, preflight y changelog en formato estructurado.
+- Offline beta: los resumenes de ajustes/sistema/catalogo/familia se convierten automaticamente en filas Compose cuando vienen como `Clave: valor`, manteniendo fallback para texto libre.
+
 ## 2.0.176-beta-live-ready-overlay
 - Offline beta: los canales live con reproduccion directa, como Movistar ISM u Orange, dejan de mostrar el aviso superior `VOD listo` al terminar de preparar el zapping.
 - Offline beta: la peticion interna de reproduccion separa ahora `VOD` de `directPlayback`, evitando confundir canales directos con contenido bajo demanda.

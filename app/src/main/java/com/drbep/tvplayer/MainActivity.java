@@ -9387,16 +9387,78 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showSettingsInfoDialog(int titleResId, String message, Runnable onBack) {
-        showTvMessagePanel(
-                getString(titleResId),
-                message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message,
-                java.util.Collections.singletonList(new TvMessageActionUiModel(getString(onBack == null ? R.string.dialog_close : R.string.dialog_back), false, () -> {
+        String title = getString(titleResId);
+        String cleanMessage = message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message.trim();
+        List<String> notes = new ArrayList<>();
+        List<PlaybackDiagnosticsRowUiModel> rows = buildSettingsInfoRows(title, cleanMessage, notes);
+        List<TvMessageActionUiModel> actions = java.util.Collections.singletonList(new TvMessageActionUiModel(getString(onBack == null ? R.string.dialog_close : R.string.dialog_back), false, () -> {
                     if (onBack != null) {
                         uiHandler.post(onBack);
                     }
-                })),
-                onBack
-        );
+                }));
+        if (!rows.isEmpty()) {
+            showStructuredStatusPanel(
+                    title,
+                    "",
+                    notes.isEmpty() ? "" : notes.get(0),
+                    rows,
+                    notes.size() <= 1 ? Collections.emptyList() : notes.subList(1, notes.size()),
+                    actions,
+                    onBack
+            );
+            return;
+        }
+        showTvMessagePanel(title, cleanMessage, actions, onBack);
+    }
+
+    private List<PlaybackDiagnosticsRowUiModel> buildSettingsInfoRows(String section, String message, List<String> notes) {
+        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+        if (message == null || message.trim().isEmpty()) {
+            return rows;
+        }
+        String[] lines = message.trim().split("\\n+");
+        for (String line : lines) {
+            appendSettingsInfoLine(rows, notes, section, line);
+        }
+        if (rows.size() < 2) {
+            rows.clear();
+        }
+        return rows;
+    }
+
+    private void appendSettingsInfoLine(List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, String section, String line) {
+        if (line == null || line.trim().isEmpty()) {
+            return;
+        }
+        String[] chunks = line.trim().split("\\s+·\\s+");
+        boolean parsedAny = false;
+        for (String chunk : chunks) {
+            String clean = chunk == null ? "" : chunk.trim();
+            int colon = clean.indexOf(':');
+            if (colon > 0 && colon < clean.length() - 1) {
+                String label = clean.substring(0, colon).trim();
+                String value = clean.substring(colon + 1).trim();
+                rows.add(new PlaybackDiagnosticsRowUiModel(section, label, value, settingsInfoTone(label, value)));
+                parsedAny = true;
+            }
+        }
+        if (!parsedAny && notes != null) {
+            notes.add(line.trim());
+        }
+    }
+
+    private String settingsInfoTone(String label, String value) {
+        String normalized = safeLower(label + " " + value);
+        if (normalized.contains("error") || normalized.contains("fall") || normalized.contains("failed")) {
+            return "error";
+        }
+        if (normalized.contains("warning") || normalized.contains("pendiente") || normalized.contains("caduca")) {
+            return "warn";
+        }
+        if (normalized.contains(" ok") || normalized.endsWith("ok") || normalized.contains(" si") || normalized.contains(" disponible")) {
+            return "ok";
+        }
+        return "";
     }
 
     private void confirmSettingsAction(int titleResId, int messageResId, Runnable action) {
@@ -9677,6 +9739,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showStructuredStatusPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions) {
+        showStructuredStatusPanel(title, subtitle, summary, rows, notes, actions, null);
+    }
+
+    private void showStructuredStatusPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions, Runnable onCancel) {
         prepareModalSurface();
         Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         ComposeView composeView = new ComposeView(this);
@@ -9710,6 +9776,11 @@ public class MainActivity extends FragmentActivity {
                 )
         );
         dialog.setContentView(composeView);
+        dialog.setOnCancelListener(d -> {
+            if (onCancel != null) {
+                uiHandler.post(onCancel);
+            }
+        });
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
         Window window = dialog.getWindow();

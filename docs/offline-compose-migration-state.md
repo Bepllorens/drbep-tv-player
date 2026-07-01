@@ -33,6 +33,7 @@ Fecha: 2026-06-30
 - Diagnostico de playback e historial de fallos usan un panel Compose estructurado con secciones, tonos de ruta/error y acciones con foco inicial.
 - El aviso de nueva version reutiliza el panel estructurado Compose para mostrar version actual, objetivo, canal, APK y changelog de forma legible.
 - El diagnostico de actualizacion y la pantalla post-update tambien usan el panel estructurado Compose con ultimo intento, preflight, versiones y changelog.
+- Los resumentes de ajustes/sistema/catalogo/familia pasan automaticamente a filas Compose cuando el texto viene en formato `Clave: valor`, conservando fallback de texto libre.
 
 ## Ultimos arreglos importantes
 

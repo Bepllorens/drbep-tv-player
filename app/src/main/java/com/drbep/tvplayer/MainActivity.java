@@ -9567,6 +9567,49 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void showPlaybackDiagnosticsPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions) {
+        prepareModalSurface();
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        List<TvMessageActionUiModel> wrappedActions = new ArrayList<>();
+        if (actions != null) {
+            for (TvMessageActionUiModel action : actions) {
+                if (action == null) {
+                    continue;
+                }
+                wrappedActions.add(new TvMessageActionUiModel(action.label, action.destructive, () -> {
+                    dialog.dismiss();
+                    if (action.onClick != null) {
+                        uiHandler.post(action.onClick);
+                    }
+                }));
+            }
+        }
+        if (wrappedActions.isEmpty()) {
+            wrappedActions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, dialog::dismiss));
+        }
+        PlaybackDiagnosticsPanelComposeBinder.bind(
+                composeView,
+                new PlaybackDiagnosticsPanelUiModel(
+                        title == null || title.trim().isEmpty() ? getString(R.string.title_playback_diagnostics) : title,
+                        subtitle == null ? "" : subtitle,
+                        summary == null ? "" : summary,
+                        rows == null ? Collections.emptyList() : rows,
+                        notes == null ? Collections.emptyList() : notes,
+                        wrappedActions
+                )
+        );
+        dialog.setContentView(composeView);
+        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setDimAmount(0f);
+        }
+    }
+
     private void showTvTextInputPanel(TvTextInputPanelUiModel model) {
         if (model == null) {
             return;
@@ -12049,57 +12092,82 @@ public class MainActivity extends FragmentActivity {
                 : playbackDiagnosticsStore.getLastError(currentChannel.id);
         if (diagnostics == null || (diagnostics.channelName == null || diagnostics.channelName.trim().isEmpty()) && (diagnostics.targetUrl == null || diagnostics.targetUrl.trim().isEmpty())) {
             String message = getString(R.string.diagnostics_none);
+            List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+            rows.add(new PlaybackDiagnosticsRowUiModel(getString(R.string.title_playback_diagnostics), "Estado", message, "warn"));
             if (storedError != null) {
                 message = message + "\n\n" + getString(R.string.diagnostics_persistent_error, storedError.shortLabel());
+                rows.add(new PlaybackDiagnosticsRowUiModel(getString(R.string.title_playback_diagnostics), "Fallo guardado", storedError.shortLabel(), "error"));
             }
-            showPlaybackDiagnosticsMessage(message, currentChannel);
+            showPlaybackDiagnosticsPanel(getString(R.string.title_playback_diagnostics), currentChannel == null ? "" : displayName(currentChannel), message, rows, Collections.emptyList(), buildPlaybackDiagnosticsActions(currentChannel));
             return;
         }
 
         StringBuilder message = new StringBuilder();
+        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
         appendDiagnosticLine(message, getString(R.string.diagnostics_channel, safeText(diagnostics.channelName)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Canal", safeText(diagnostics.channelName), ""));
         appendDiagnosticLine(message, getString(R.string.diagnostics_state, safeText(diagnostics.playbackState)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Estado", safeText(diagnostics.playbackState), ""));
         appendDiagnosticLine(message, getString(R.string.diagnostics_route, safeText(diagnostics.routeLabel)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "Ruta activa", safeText(diagnostics.routeLabel), routeDiagnosticTone(diagnostics.routeLabel)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_target, safeText(diagnostics.targetUrl)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "URL efectiva", safeText(diagnostics.targetUrl), ""));
         appendDiagnosticLine(message, getString(R.string.diagnostics_mime, fallbackUnknown(diagnostics.mimeType)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "Mime", fallbackUnknown(diagnostics.mimeType), ""));
         if (diagnostics.hasVideoQuality()) {
             appendDiagnosticLine(message, getString(R.string.diagnostics_video_quality, formatPlaybackQuality(diagnostics)));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Calidad", "Video", formatPlaybackQuality(diagnostics), "ok"));
         }
         appendDiagnosticLine(message, getString(R.string.diagnostics_drm, fallbackUnknown(diagnostics.drmType)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("DRM", "DRM", fallbackUnknown(diagnostics.drmType), diagnostics.encrypted ? "warn" : ""));
         appendDiagnosticLine(message, getString(R.string.diagnostics_playback_mode, formatPlaybackModeLabel(diagnostics.playbackMode)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("DRM", "Modo canal", formatPlaybackModeLabel(diagnostics.playbackMode), ""));
         appendDiagnosticLine(message, getString(R.string.diagnostics_encrypted, getString(diagnostics.encrypted ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("DRM", "Encrypted", getString(diagnostics.encrypted ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no), diagnostics.encrypted ? "warn" : "ok"));
         appendDiagnosticLine(message, getString(R.string.diagnostics_fallback, getString(diagnostics.usingFallback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("DRM", "Compat fallback", getString(diagnostics.usingFallback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no), diagnostics.usingFallback ? "warn" : ""));
         String diagnosticErrorText = "";
         if (diagnostics.lastError != null && !diagnostics.lastError.trim().isEmpty()) {
             diagnosticErrorText = diagnostics.lastError;
             appendDiagnosticLine(message, getString(R.string.diagnostics_last_error, diagnostics.lastError));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Error", "Ultimo error", diagnostics.lastError, "error"));
         }
         if (storedError != null) {
             if (diagnosticErrorText.trim().isEmpty()) {
                 diagnosticErrorText = storedError.message;
             }
             appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_error, storedError.shortLabel()));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Error", "Fallo guardado", storedError.shortLabel(), "error"));
             if (!storedError.routeLabel.isEmpty()) {
                 appendDiagnosticLine(message, getString(R.string.diagnostics_persistent_route, storedError.routeLabel));
+                rows.add(new PlaybackDiagnosticsRowUiModel("Error", "Ruta del fallo", storedError.routeLabel, "warn"));
             }
         }
         if (!diagnosticErrorText.trim().isEmpty()) {
             appendDiagnosticLine(message, getString(R.string.diagnostics_error_type, classifyOperationalError(diagnosticErrorText)));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Error", "Tipo", classifyOperationalError(diagnosticErrorText), "warn"));
         }
-        appendDiagnosticLine(message, getString(R.string.diagnostics_recommendation, buildPlaybackDiagnosticsRecommendation(diagnostics, storedError)));
+        String recommendation = buildPlaybackDiagnosticsRecommendation(diagnostics, storedError);
+        appendDiagnosticLine(message, getString(R.string.diagnostics_recommendation, recommendation));
         if (currentChannel != null && temporaryPlaybackModesByChannelId.containsKey(currentChannel.id)) {
             appendDiagnosticLine(message, getString(R.string.diagnostics_temporary_mode, formatPlaybackModeLabel(temporaryPlaybackModesByChannelId.get(currentChannel.id))));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Preferencias", "Modo temporal", formatPlaybackModeLabel(temporaryPlaybackModesByChannelId.get(currentChannel.id)), "warn"));
         }
         if (currentChannel != null && learnedPlaybackModesByChannelId.containsKey(currentChannel.id)) {
             appendDiagnosticLine(message, getString(R.string.diagnostics_learned_mode, formatPlaybackModeLabel(learnedPlaybackModesByChannelId.get(currentChannel.id))));
+            rows.add(new PlaybackDiagnosticsRowUiModel("Preferencias", "Ruta aprendida", formatPlaybackModeLabel(learnedPlaybackModesByChannelId.get(currentChannel.id)), "ok"));
         }
         appendDiagnosticLine(message, getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
         appendDiagnosticLine(message, getString(R.string.diagnostics_actions_hint));
 
-        showPlaybackDiagnosticsMessage(message.toString().trim(), currentChannel);
+        List<String> notes = new ArrayList<>();
+        notes.add(getString(R.string.diagnostics_recommendation, recommendation));
+        notes.add(getString(R.string.diagnostics_recent, buildRecentDiagnosticsSummary()));
+        notes.add(getString(R.string.diagnostics_actions_hint));
+        showPlaybackDiagnosticsPanel(getString(R.string.title_playback_diagnostics), safeText(diagnostics.channelName), message.toString().trim(), rows, notes, buildPlaybackDiagnosticsActions(currentChannel));
     }
 
-    private void showPlaybackDiagnosticsMessage(String message, ChannelItem currentChannel) {
+    private List<TvMessageActionUiModel> buildPlaybackDiagnosticsActions(ChannelItem currentChannel) {
         List<TvMessageActionUiModel> actions = new ArrayList<>();
         actions.add(new TvMessageActionUiModel(getString(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route), false, () -> {
             if (currentChannel == null) {
@@ -12112,7 +12180,18 @@ public class MainActivity extends FragmentActivity {
             actions.add(new TvMessageActionUiModel(getString(R.string.diagnostics_action_more), false, () -> showPlaybackDiagnosticsActionsDialog(currentChannel)));
         }
         actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
-        showTvMessagePanel(getString(R.string.title_playback_diagnostics), message, actions, null);
+        return actions;
+    }
+
+    private String routeDiagnosticTone(String routeLabel) {
+        String normalized = safeLower(routeLabel);
+        if (normalized.contains("directo")) {
+            return "ok";
+        }
+        if (normalized.contains("proxy") || normalized.contains("compat")) {
+            return "warn";
+        }
+        return "";
     }
 
     private void showPlaybackDiagnosticsActionsDialog(ChannelItem channelItem) {
@@ -12250,9 +12329,19 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.diagnostics_history_empty));
             return;
         }
-        StringBuilder message = new StringBuilder();
+        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+        List<String> notes = new ArrayList<>();
+        int index = 1;
         for (PlaybackDiagnosticsStore.ErrorRecord record : records) {
-            appendDiagnosticLine(message, formatPlaybackDiagnosticsHistoryItem(record));
+            String section = record == null ? getString(R.string.diagnostics_action_history) : record.shortLabel();
+            rows.add(new PlaybackDiagnosticsRowUiModel(section, "Canal", record == null ? "" : fallbackUnknown(record.channelName), ""));
+            rows.add(new PlaybackDiagnosticsRowUiModel(section, "Ruta", record == null ? "" : fallbackUnknown(record.routeLabel), record == null ? "" : routeDiagnosticTone(record.routeLabel)));
+            rows.add(new PlaybackDiagnosticsRowUiModel(section, "Modo", record == null ? "" : formatPlaybackModeLabel(record.playbackMode), ""));
+            rows.add(new PlaybackDiagnosticsRowUiModel(section, "Error", record == null ? "" : fallbackUnknown(record.message), "error"));
+            if (index <= 3 && record != null) {
+                notes.add(index + ". " + formatPlaybackDiagnosticsHistoryItem(record));
+            }
+            index++;
         }
         List<TvMessageActionUiModel> actions = new ArrayList<>();
         actions.add(new TvMessageActionUiModel(getString(R.string.diagnostics_action_clear_history), true, () -> {
@@ -12263,7 +12352,14 @@ public class MainActivity extends FragmentActivity {
                     showStatus(getString(R.string.status_diagnostics_history_cleared));
         }));
         actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
-        showTvMessagePanel(getString(R.string.diagnostics_action_history), message.toString(), actions, null);
+        showPlaybackDiagnosticsPanel(
+                getString(R.string.diagnostics_action_history),
+                getString(R.string.title_playback_diagnostics),
+                getString(R.string.diagnostics_recent, records.size() + " fallos guardados"),
+                rows,
+                notes,
+                actions
+        );
     }
 
     private void clearPlaybackDiagnosticsError(ChannelItem channelItem) {

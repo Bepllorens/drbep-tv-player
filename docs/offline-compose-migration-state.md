@@ -30,6 +30,7 @@ Fecha: 2026-06-30
 - EPG visual y VOD visual/detail/action panels migrados.
 - Multiview conserva reproductores nativos, con header y overlays de tile en Compose.
 - Grabaciones ahora usan una unica superficie Compose para cabecera, detalle y lista.
+- Diagnostico de playback e historial de fallos usan un panel Compose estructurado con secciones, tonos de ruta/error y acciones con foco inicial.
 
 ## Ultimos arreglos importantes
 
@@ -42,6 +43,7 @@ Fecha: 2026-06-30
 ## Pendiente sugerido al retomar
 
 - Revisar restos de XML/layouts legacy que aun esten vivos y decidir si migrarlos o dejarlos como contenedores nativos.
+- Probar en Fire Stick y tablet el nuevo panel de diagnostico playback, especialmente foco de botones y lectura de URLs largas.
 - Afinar UX de grabaciones si queremos filtros tipo dashboard (`Grabando`, `Fallidas`, `Completadas`, etc.) en vez de solo `Completadas/Programadas`.
 - Probar v174 en telefono Android y Fire Stick real con actualizacion desde app, no solo instalacion ADB.
 - Revisar warnings conocidos de Glide/imagenes para reducir ruido en logs, aunque no son crash.

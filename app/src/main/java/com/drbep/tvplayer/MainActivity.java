@@ -11685,77 +11685,23 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
-        FrameLayout dialogView = new FrameLayout(this);
-        dialogView.setBackgroundColor(0xB0101720);
-        dialogView.setPadding(dp(20), dp(20), dp(20), dp(20));
-        LinearLayout timelinePanel = new LinearLayout(this);
-        timelinePanel.setOrientation(LinearLayout.VERTICAL);
-        timelinePanel.setBackgroundColor(0xE6111822);
-        timelinePanel.setPadding(dp(12), dp(12), dp(12), dp(12));
-        dialogView.addView(timelinePanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        ComposeView timelineHeaderComposeView = new ComposeView(this);
-        timelineHeaderComposeView.setFocusable(true);
-        timelineHeaderComposeView.setFocusableInTouchMode(true);
-        timelinePanel.addView(timelineHeaderComposeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        ComposeView timelineScaleComposeView = new ComposeView(this);
-        timelineScaleComposeView.setFocusable(false);
-        LinearLayout.LayoutParams scaleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        scaleParams.topMargin = dp(8);
-        timelinePanel.addView(timelineScaleComposeView, scaleParams);
-        android.widget.ScrollView timelineVerticalScroll = new android.widget.ScrollView(this);
-        timelineVerticalScroll.setFillViewport(true);
-        timelineVerticalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        LinearLayout rowsContainer = new LinearLayout(this);
-        rowsContainer.setOrientation(LinearLayout.VERTICAL);
-        timelineVerticalScroll.addView(rowsContainer, new android.widget.ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams timelineScrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        timelineScrollParams.topMargin = dp(6);
-        timelinePanel.addView(timelineVerticalScroll, timelineScrollParams);
-        ComposeView timelineProgramDetailComposeView = new ComposeView(this);
-        timelineProgramDetailComposeView.setFocusable(false);
-        LinearLayout.LayoutParams timelineDetailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        timelineDetailParams.topMargin = dp(8);
-        timelinePanel.addView(timelineProgramDetailComposeView, timelineDetailParams);
-        final View[] initialFocus = new View[1];
-        final View[] anchorLiveFocus = new View[1];
-        final View[] anchorRememberedFocus = new View[1];
-        final View[] anchorFirstFocus = new View[1];
-        final View[] anchorEmptyFocus = new View[1];
-        final View[] anyFirstFocus = new View[1];
-        final View[] anyEmptyFocus = new View[1];
-        final int[] anchorRememberedDelta = new int[]{Integer.MAX_VALUE};
-        final boolean[] suppressInitialFocusScroll = new boolean[]{true};
-        final List<List<View>> focusRows = new ArrayList<>();
-        final Map<View, Integer> focusCenters = new HashMap<>();
+        ComposeView timelinePanelComposeView = new ComposeView(this);
+        timelinePanelComposeView.setFocusable(true);
+        timelinePanelComposeView.setFocusableInTouchMode(true);
         final android.app.Dialog[] timelineDialogRef = new android.app.Dialog[1];
         final Runnable focusInitialTimelineProgram = () -> {
-            if (initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-            }
+            timelinePanelComposeView.requestFocus();
         };
         final java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail = model ->
-                TimelineProgramDetailComposeBinder.bind(
-                        timelineProgramDetailComposeView,
-                        model,
-                        (imageView, item) -> {
-                            if (imageView == null || item == null || item.imageUrl == null || item.imageUrl.trim().isEmpty()) {
-                                if (imageView != null) {
-                                    Glide.with(this).clear(imageView);
-                                    imageView.setImageDrawable(null);
-                                }
-                                return;
-                            }
-                            Glide.with(this).load(item.imageUrl.trim()).centerCrop().into(imageView);
-                        }
-                );
-        final Runnable clearTimelineProgramDetail = () -> renderTimelineProgramDetail.accept(new TimelineProgramDetailUiModel(
+                TimelineGuidePanelComposeBinder.updateDetail(timelinePanelComposeView, model);
+        TimelineProgramDetailUiModel initialTimelineDetail = new TimelineProgramDetailUiModel(
                 getString(R.string.timeline_no_epg),
                 getString(R.string.timeline_program_detail_hint),
                 getString(R.string.timeline_program_desc_empty),
                 "",
                 "",
                 getString(R.string.timeline_program_action_hint)
-        ));
+        );
 
         long windowEndMs = windowStartMs + TIMELINE_WINDOW_MS;
         final long nowMs = System.currentTimeMillis();
@@ -11768,58 +11714,55 @@ public class MainActivity extends FragmentActivity {
                 hourFormat.format(new Date(windowStartMs)),
                 hourFormat.format(new Date(windowEndMs))
         );
-        TimelineHeaderComposeBinder.bind(
-                timelineHeaderComposeView,
-                new TimelineHeaderUiModel(
-                        getString(R.string.title_timeline_guide),
-                        windowLabel,
-                        java.util.Arrays.asList(
-                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                        getString(R.string.timeline_now_button),
-                                        () -> {
-                                            if (timelineDialogRef[0] != null) {
-                                                timelineDialogRef[0].dismiss();
-                                            }
-                                            openTimelineGuideNow();
-                                        },
-                                        focusInitialTimelineProgram
-                                ),
-                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                        getString(R.string.timeline_prev_button),
-                                        () -> {
-                                            if (timelineDialogRef[0] != null) {
-                                                timelineDialogRef[0].dismiss();
-                                            }
-                                            int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
-                                            openTimelineGuide(anchorIndex, Math.max(0L, windowStartMs - TIMELINE_SHIFT_MS));
-                                        },
-                                        focusInitialTimelineProgram
-                                ),
-                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                        getString(R.string.timeline_channel_next_button),
-                                        this::openTimelineGuideNextForAnchor,
-                                        focusInitialTimelineProgram
-                                ),
-                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                        getString(R.string.timeline_next_button),
-                                        () -> {
-                                            if (timelineDialogRef[0] != null) {
-                                                timelineDialogRef[0].dismiss();
-                                            }
-                                            int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
-                                            openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
-                                        },
-                                        focusInitialTimelineProgram
-                                ),
-                                new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                        getString(R.string.dialog_close),
-                                        () -> {
-                                            if (timelineDialogRef[0] != null) {
-                                                timelineDialogRef[0].dismiss();
-                                            }
-                                        },
-                                        focusInitialTimelineProgram
-                                )
+        TimelineHeaderUiModel timelineHeaderModel = new TimelineHeaderUiModel(
+                getString(R.string.title_timeline_guide),
+                windowLabel,
+                java.util.Arrays.asList(
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                getString(R.string.timeline_now_button),
+                                () -> {
+                                    if (timelineDialogRef[0] != null) {
+                                        timelineDialogRef[0].dismiss();
+                                    }
+                                    openTimelineGuideNow();
+                                },
+                                focusInitialTimelineProgram
+                        ),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                getString(R.string.timeline_prev_button),
+                                () -> {
+                                    if (timelineDialogRef[0] != null) {
+                                        timelineDialogRef[0].dismiss();
+                                    }
+                                    int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
+                                    openTimelineGuide(anchorIndex, Math.max(0L, windowStartMs - TIMELINE_SHIFT_MS));
+                                },
+                                focusInitialTimelineProgram
+                        ),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                getString(R.string.timeline_channel_next_button),
+                                this::openTimelineGuideNextForAnchor,
+                                focusInitialTimelineProgram
+                        ),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                getString(R.string.timeline_next_button),
+                                () -> {
+                                    if (timelineDialogRef[0] != null) {
+                                        timelineDialogRef[0].dismiss();
+                                    }
+                                    int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
+                                    openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
+                                },
+                                focusInitialTimelineProgram
+                        ),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
+                                getString(R.string.dialog_close),
+                                () -> {
+                                    if (timelineDialogRef[0] != null) {
+                                        timelineDialogRef[0].dismiss();
+                                    }
+                                },
+                                focusInitialTimelineProgram
                         )
                 )
         );
@@ -11844,54 +11787,48 @@ public class MainActivity extends FragmentActivity {
                     headerSlotWidth
             ));
         }
-        TimelineScaleComposeBinder.bind(
-                timelineScaleComposeView,
-                new TimelineScaleUiModel(labelWidth, scaleSlots)
+        TimelineScaleUiModel timelineScaleModel = new TimelineScaleUiModel(labelWidth, scaleSlots);
+        TimelineGuideRowsUiModel timelineRowsModel = buildTimelineGuideRowsUiModel(
+                rows,
+                windowStartMs,
+                windowEndMs,
+                minuteWidth,
+                labelWidth,
+                stripWidth,
+                scheduledItems,
+                anchorChannelId,
+                rememberFocusedCenter,
+                renderTimelineProgramDetail
         );
-
-        ComposeView timelineRowsComposeView = new ComposeView(this);
-        attachDialogViewTreeOwners(timelineRowsComposeView);
-        rowsContainer.removeAllViews();
-        rowsContainer.addView(timelineRowsComposeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        TimelineGuideRowsComposeBinder.bind(
-                timelineRowsComposeView,
-                buildTimelineGuideRowsUiModel(
-                        rows,
-                        windowStartMs,
-                        windowEndMs,
-                        minuteWidth,
-                        labelWidth,
-                        stripWidth,
-                        scheduledItems,
-                        anchorChannelId,
-                        rememberFocusedCenter,
-                        renderTimelineProgramDetail
-                ),
-                (imageView, row) -> bindChannelLogo(imageView, row.logoUrl, row.channelName, 26, 26)
+        attachDialogViewTreeOwners(timelinePanelComposeView);
+        TimelineGuidePanelComposeBinder.bind(
+                timelinePanelComposeView,
+                new TimelineGuidePanelUiModel(timelineHeaderModel, timelineScaleModel, timelineRowsModel, initialTimelineDetail),
+                (imageView, row) -> bindChannelLogo(imageView, row.logoUrl, row.channelName, 26, 26),
+                (imageView, item) -> {
+                    if (imageView == null || item == null || item.imageUrl == null || item.imageUrl.trim().isEmpty()) {
+                        if (imageView != null) {
+                            Glide.with(this).clear(imageView);
+                            imageView.setImageDrawable(null);
+                        }
+                        return;
+                    }
+                    Glide.with(this).load(item.imageUrl.trim()).centerCrop().into(imageView);
+                }
         );
-        initialFocus[0] = timelineRowsComposeView;
-
-        clearTimelineProgramDetail.run();
-
-        attachDialogViewTreeOwnersRecursive(dialogView);
         android.app.Dialog timelineDialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         timelineDialogRef[0] = timelineDialog;
         activeTimelineDialog = timelineDialog;
-        timelineDialog.setContentView(dialogView);
+        timelineDialog.setContentView(timelinePanelComposeView);
         timelineDialog.setCancelable(true);
         timelineDialog.setOnShowListener(d -> {
             if (timelineDialog.getWindow() != null) {
                 timelineDialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             }
-            if (timelineVerticalScroll != null) {
-                timelineVerticalScroll.post(() -> timelineVerticalScroll.scrollTo(0, 0));
-            }
-            if (initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-            }
-            suppressInitialFocusScroll[0] = false;
+            timelinePanelComposeView.requestFocus();
         });
         timelineDialog.setOnDismissListener(d -> {
+            TimelineGuidePanelComposeBinder.clear(timelinePanelComposeView);
             if (!refreshingTimelineDialog) {
                 lastTimelineAnchorChannelId = activeTimelineAnchorChannelId;
                 lastTimelineWindowStartMs = activeTimelineWindowStartMs;
@@ -11907,57 +11844,6 @@ public class MainActivity extends FragmentActivity {
             enableImmersiveMode();
         });
         timelineDialog.show();
-    }
-
-    private boolean moveTimelineFocus(android.widget.ScrollView timelineVerticalScroll, List<List<View>> focusRows, Map<View, Integer> focusCenters, int fromRowIndex, int direction, int preferredCenterMinute) {
-        int rowIndex = fromRowIndex + direction;
-        while (rowIndex >= 0 && rowIndex < focusRows.size()) {
-            List<View> targetRow = focusRows.get(rowIndex);
-            if (targetRow != null && !targetRow.isEmpty()) {
-                View best = null;
-                int bestDistance = Integer.MAX_VALUE;
-                for (View candidate : targetRow) {
-                    if (candidate == null) {
-                        continue;
-                    }
-                    Integer centerMinute = focusCenters.get(candidate);
-                    int distance = centerMinute == null ? Integer.MAX_VALUE : Math.abs(centerMinute - preferredCenterMinute);
-                    if (best == null || distance < bestDistance) {
-                        best = candidate;
-                        bestDistance = distance;
-                    }
-                }
-                if (best != null) {
-                    if (!best.requestFocus()) {
-                        return false;
-                    }
-                    ensureTimelineBlockVisible(timelineVerticalScroll, best);
-                    return true;
-                }
-            }
-            rowIndex += direction;
-        }
-        return false;
-    }
-
-    private void ensureTimelineBlockVisible(android.widget.ScrollView timelineVerticalScroll, View target) {
-        if (timelineVerticalScroll == null || target == null) {
-            return;
-        }
-        timelineVerticalScroll.post(() -> {
-            Rect rect = new Rect();
-            target.getDrawingRect(rect);
-            timelineVerticalScroll.offsetDescendantRectToMyCoords(target, rect);
-            int viewportTop = timelineVerticalScroll.getScrollY();
-            int viewportBottom = viewportTop + timelineVerticalScroll.getHeight();
-            int topPadding = dp(18);
-            int bottomPadding = dp(18);
-            if (rect.top < viewportTop + topPadding) {
-                timelineVerticalScroll.smoothScrollTo(0, Math.max(0, rect.top - topPadding));
-            } else if (rect.bottom > viewportBottom - bottomPadding) {
-                timelineVerticalScroll.smoothScrollTo(0, Math.max(0, rect.bottom - timelineVerticalScroll.getHeight() + bottomPadding));
-            }
-        });
     }
 
     private void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {
@@ -13727,27 +13613,6 @@ public class MainActivity extends FragmentActivity {
         return Math.round(getResources().getDisplayMetrics().density * value);
     }
 
-    private void bindTimelineProgramBlock(FrameLayout container, String title, String time, boolean empty) {
-        bindTimelineProgramBlock(container, title, time, empty, "");
-    }
-
-    private void bindTimelineProgramBlock(FrameLayout container, String title, String time, boolean empty, String statusLabel) {
-        if (container == null) {
-            return;
-        }
-        container.removeAllViews();
-        ComposeView composeView = new ComposeView(this);
-        composeView.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-        TimelineProgramBlockComposeBinder.bind(
-                composeView,
-                new TimelineProgramBlockUiModel(title, time, empty, statusLabel)
-        );
-        container.addView(composeView);
-    }
-
     private String buildTimelineProgramTitle(EpgRepository.EpgProgram program) {
         if (program == null || program.title == null || program.title.trim().isEmpty()) {
             return getString(R.string.label_program_default);
@@ -13963,326 +13828,6 @@ public class MainActivity extends FragmentActivity {
             outputRows.add(new TimelineGuideRowUiModel(row.channel.name, row.channel.logoUrl, labelWidth, blocks));
         }
         return new TimelineGuideRowsUiModel(outputRows);
-    }
-
-    private void buildTimelineRow(
-            TimelineChannelPrograms row,
-            LinearLayout rowsContainer,
-            List<List<View>> focusRows,
-            Map<View, Integer> focusCenters,
-            android.widget.ScrollView timelineVerticalScroll,
-            View timelineHeaderFocusTarget,
-            long windowStartMs,
-            long windowEndMs,
-            float minuteWidth,
-            int labelWidth,
-            int stripWidth,
-            List<RecordingsRepository.RecordingItem> scheduledItems,
-            String anchorChannelId,
-            long nowMs,
-            boolean rememberFocusedCenter,
-            int[] anchorRememberedDelta,
-            View[] anchorLiveFocus,
-            View[] anchorRememberedFocus,
-            View[] anchorFirstFocus,
-            View[] anchorEmptyFocus,
-            View[] anyFirstFocus,
-            View[] anyEmptyFocus,
-            boolean[] suppressInitialFocusScroll,
-            java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
-    ) {
-        if (row == null || rowsContainer == null || focusRows == null || focusCenters == null) {
-            return;
-        }
-        final int rowIndex = focusRows.size();
-        final List<View> rowFocusables = new ArrayList<>();
-
-        LinearLayout rowLayout = new LinearLayout(this);
-        rowLayout.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowParams.topMargin = dp(6);
-        rowLayout.setLayoutParams(rowParams);
-
-        ComposeView channelLabel = new ComposeView(this);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(labelWidth, dp(62));
-        channelLabel.setLayoutParams(labelParams);
-        TimelineChannelLabelComposeBinder.bind(
-                channelLabel,
-                new TimelineChannelLabelUiModel(row.channel.name, row.channel.logoUrl),
-                (imageView, item) -> bindChannelLogo(imageView, item.logoUrl, item.name, 26, 26)
-        );
-        rowLayout.addView(channelLabel);
-
-        LinearLayout strip = new LinearLayout(this);
-        strip.setOrientation(LinearLayout.HORIZONTAL);
-        strip.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        strip.setBackgroundColor(0xFF101820);
-
-        boolean hasVisibleProgram = buildTimelineProgramStrip(
-                row,
-                strip,
-                rowIndex,
-                rowFocusables,
-                focusRows,
-                focusCenters,
-                timelineVerticalScroll,
-                timelineHeaderFocusTarget,
-                windowStartMs,
-                windowEndMs,
-                minuteWidth,
-                scheduledItems,
-                anchorChannelId,
-                nowMs,
-                rememberFocusedCenter,
-                anchorRememberedDelta,
-                anchorLiveFocus,
-                anchorRememberedFocus,
-                anchorFirstFocus,
-                anyFirstFocus,
-                suppressInitialFocusScroll,
-                renderTimelineProgramDetail
-        );
-
-        if (!hasVisibleProgram) {
-            buildTimelineEmptyStateBlock(
-                    row,
-                    strip,
-                    stripWidth,
-                    rowIndex,
-                    rowFocusables,
-                    focusRows,
-                    focusCenters,
-                    timelineVerticalScroll,
-                    timelineHeaderFocusTarget,
-                    windowStartMs,
-                    anchorChannelId,
-                    anchorEmptyFocus,
-                    anyEmptyFocus,
-                    renderTimelineProgramDetail
-            );
-        }
-
-        focusRows.add(rowFocusables);
-        rowLayout.addView(strip);
-        rowsContainer.addView(rowLayout);
-    }
-
-    private boolean buildTimelineProgramStrip(
-            TimelineChannelPrograms row,
-            LinearLayout strip,
-            int rowIndex,
-            List<View> rowFocusables,
-            List<List<View>> focusRows,
-            Map<View, Integer> focusCenters,
-            android.widget.ScrollView timelineVerticalScroll,
-            View timelineHeaderFocusTarget,
-            long windowStartMs,
-            long windowEndMs,
-            float minuteWidth,
-            List<RecordingsRepository.RecordingItem> scheduledItems,
-            String anchorChannelId,
-            long nowMs,
-            boolean rememberFocusedCenter,
-            int[] anchorRememberedDelta,
-            View[] anchorLiveFocus,
-            View[] anchorRememberedFocus,
-            View[] anchorFirstFocus,
-            View[] anyFirstFocus,
-            boolean[] suppressInitialFocusScroll,
-            java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
-    ) {
-        List<TimelineVisibleBlock> visibleBlocks = buildTimelineVisibleBlocks(
-                row,
-                windowStartMs,
-                windowEndMs,
-                minuteWidth,
-                scheduledItems
-        );
-        for (TimelineVisibleBlock visibleBlock : visibleBlocks) {
-            if (visibleBlock.spacerWidth > 0) {
-                View spacerView = new View(this);
-                spacerView.setLayoutParams(new LinearLayout.LayoutParams(visibleBlock.spacerWidth, dp(62)));
-                strip.addView(spacerView);
-            }
-
-            EpgRepository.EpgProgram program = visibleBlock.program;
-            boolean scheduled = visibleBlock.scheduled;
-            boolean live = visibleBlock.live;
-            final int centerMinute = visibleBlock.centerMinute;
-            FrameLayout block = new FrameLayout(this);
-            LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(visibleBlock.blockWidth, dp(62));
-            blockParams.rightMargin = dp(2);
-            block.setLayoutParams(blockParams);
-            block.setFocusable(true);
-            block.setFocusableInTouchMode(true);
-            bindTimelineProgramBlock(
-                    block,
-                    buildTimelineProgramBlockTitle(program, scheduled),
-                    buildTimelineProgramTimeLabel(program),
-                    false,
-                    scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : ""
-            );
-            applyTimelineBlockState(block, live, scheduled, false);
-            block.setOnFocusChangeListener((v, hasFocus) -> {
-                applyTimelineBlockState(block, live, scheduled, hasFocus);
-                if (hasFocus) {
-                    activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
-                    activeTimelineWindowStartMs = windowStartMs;
-                    activeTimelineFocusedCenterMinute = centerMinute;
-                    lastTimelineFocusedCenterMinute = centerMinute;
-                    renderTimelineProgramDetail.accept(buildTimelineProgramDetailModel(row.channel, program, live, scheduled));
-                }
-                if (hasFocus && !suppressInitialFocusScroll[0]) {
-                    ensureTimelineBlockVisible(timelineVerticalScroll, v);
-                }
-            });
-            block.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                    return false;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                    if (rowIndex == 0 && timelineHeaderFocusTarget != null) {
-                        timelineHeaderFocusTarget.requestFocus();
-                        return true;
-                    }
-                    return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, centerMinute);
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, centerMinute);
-                }
-                if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_BUTTON_START) {
-                    Log.i(TAG, "timeline direct recording action channel=" + (row.channel == null ? "" : row.channel.id)
-                            + " scheduled=" + scheduled
-                            + " program=" + (program.title == null ? "" : program.title));
-                    if (scheduled) {
-                        cancelScheduledProgram(row.channel, program);
-                    } else {
-                        scheduleProgram(row.channel, program);
-                    }
-                    return true;
-                }
-                return false;
-            });
-            block.setOnClickListener(v -> {
-                Log.i(TAG, "timeline program click channel=" + (row.channel == null ? "" : row.channel.id)
-                        + " program=" + (program.title == null ? "" : program.title));
-                channelActionsCoordinator.showProgramActionMenu(row.channel, program);
-            });
-            focusCenters.put(block, centerMinute);
-            rowFocusables.add(block);
-            boolean anchorMatch = anchorChannelId != null && anchorChannelId.equals(row.channel.id);
-            if (anchorMatch && anchorFirstFocus[0] == null) {
-                anchorFirstFocus[0] = block;
-            }
-            if (anyFirstFocus[0] == null) {
-                anyFirstFocus[0] = block;
-            }
-            if (anchorMatch && visibleBlock.activeNow) {
-                anchorLiveFocus[0] = block;
-            }
-            if (anchorMatch && rememberFocusedCenter) {
-                int delta = Math.abs(centerMinute - lastTimelineFocusedCenterMinute);
-                if (delta < anchorRememberedDelta[0]) {
-                    anchorRememberedDelta[0] = delta;
-                    anchorRememberedFocus[0] = block;
-                }
-            }
-            strip.addView(block);
-        }
-        return !visibleBlocks.isEmpty();
-    }
-
-    private void buildTimelineEmptyStateBlock(
-            TimelineChannelPrograms row,
-            LinearLayout strip,
-            int stripWidth,
-            int rowIndex,
-            List<View> rowFocusables,
-            List<List<View>> focusRows,
-            Map<View, Integer> focusCenters,
-            android.widget.ScrollView timelineVerticalScroll,
-            View timelineHeaderFocusTarget,
-            long windowStartMs,
-            String anchorChannelId,
-            View[] anchorEmptyFocus,
-            View[] anyEmptyFocus,
-            java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
-    ) {
-        FrameLayout empty = new FrameLayout(this);
-        empty.setLayoutParams(new LinearLayout.LayoutParams(stripWidth, dp(62)));
-        empty.setFocusable(true);
-        empty.setFocusableInTouchMode(true);
-        bindTimelineProgramBlock(empty, getString(R.string.timeline_no_epg), "", true);
-        empty.setBackgroundColor(0xFF1E2630);
-        empty.setAlpha(0.82f);
-        empty.setOnFocusChangeListener((v, hasFocus) -> {
-            v.setAlpha(hasFocus ? 1f : 0.82f);
-            v.setBackgroundColor(hasFocus ? 0xFF2A3950 : 0xFF1E2630);
-            if (hasFocus) {
-                activeTimelineAnchorChannelId = row.channel == null ? activeTimelineAnchorChannelId : row.channel.id;
-                activeTimelineWindowStartMs = windowStartMs;
-                activeTimelineFocusedCenterMinute = -1;
-                lastTimelineFocusedCenterMinute = -1;
-                renderTimelineProgramDetail.accept(new TimelineProgramDetailUiModel(
-                        row.channel == null ? getString(R.string.timeline_no_epg) : row.channel.name,
-                        getString(R.string.timeline_no_epg),
-                        getString(R.string.timeline_program_desc_empty),
-                        "",
-                        "",
-                        getString(R.string.timeline_program_action_hint)
-                ));
-            }
-        });
-        empty.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                return false;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                if (rowIndex == 0 && timelineHeaderFocusTarget != null) {
-                    timelineHeaderFocusTarget.requestFocus();
-                    return true;
-                }
-                return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, -1, 0);
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                return moveTimelineFocus(timelineVerticalScroll, focusRows, focusCenters, rowIndex, 1, 0);
-            }
-            return false;
-        });
-        rowFocusables.add(empty);
-        boolean anchorMatch = anchorChannelId != null && row.channel != null && anchorChannelId.equals(row.channel.id);
-        if (anchorMatch && anchorEmptyFocus[0] == null) {
-            anchorEmptyFocus[0] = empty;
-        }
-        if (anyEmptyFocus[0] == null) {
-            anyEmptyFocus[0] = empty;
-        }
-        strip.addView(empty);
-    }
-
-    private void applyTimelineBlockState(View block, boolean live, boolean scheduled, boolean focused) {
-        if (block == null) {
-            return;
-        }
-        int bgColor;
-        if (focused) {
-            if (scheduled) {
-                bgColor = 0xFF9A6A1F;
-            } else {
-                bgColor = live ? 0xFF49A06E : 0xFF4A6F98;
-            }
-            block.setScaleX(1.03f);
-            block.setScaleY(1.03f);
-        } else {
-            if (scheduled) {
-                bgColor = 0xFF6E4A16;
-            } else {
-                bgColor = live ? 0xFF276B49 : 0xFF2B4056;
-            }
-            block.setScaleX(1.0f);
-            block.setScaleY(1.0f);
-        }
-        block.setBackgroundColor(bgColor);
     }
 
     private String buildVodRowMeta(ChannelItem channel) {

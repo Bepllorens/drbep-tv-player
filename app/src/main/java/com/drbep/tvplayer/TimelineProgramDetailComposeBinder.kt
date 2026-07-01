@@ -42,7 +42,7 @@ object TimelineProgramDetailComposeBinder {
 }
 
 @Composable
-private fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imageBinder: TimelineProgramDetailImageBinder) {
+internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imageBinder: TimelineProgramDetailImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     Row(
         modifier = Modifier

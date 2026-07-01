@@ -29,7 +29,7 @@ object TimelineScaleComposeBinder {
 }
 
 @Composable
-private fun TimelineScaleRow(model: TimelineScaleUiModel) {
+internal fun TimelineScaleRow(model: TimelineScaleUiModel) {
     val density = LocalDensity.current
     fun pxToDp(px: Int): Dp = with(density) { px.toDp() }
 

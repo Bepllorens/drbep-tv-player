@@ -46,7 +46,7 @@ object TimelineHeaderComposeBinder {
 }
 
 @Composable
-private fun TimelineHeader(model: TimelineHeaderUiModel) {
+internal fun TimelineHeader(model: TimelineHeaderUiModel) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     Row(
         modifier = Modifier

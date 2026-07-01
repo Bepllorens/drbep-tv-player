@@ -59,7 +59,7 @@ object TimelineGuideRowsComposeBinder {
 }
 
 @Composable
-private fun TimelineGuideRows(model: TimelineGuideRowsUiModel, imageBinder: TimelineGuideChannelImageBinder) {
+internal fun TimelineGuideRows(model: TimelineGuideRowsUiModel, imageBinder: TimelineGuideChannelImageBinder) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)

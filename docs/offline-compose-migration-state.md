@@ -4,8 +4,8 @@ Fecha: 2026-06-30
 
 ## Version actual
 
-- Canal beta publicado: `2.0.169-beta-recordings-live-schedule`
-- `versionCode`: `174`
+- Canal beta publicado: `2.0.176-beta-live-ready-overlay`
+- `versionCode`: `176`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo de prueba principal: Fire Stick `192.168.93.16:5555`
 
@@ -17,6 +17,7 @@ Fecha: 2026-06-30
 - `La 1 UHD` reproduce usando manifest DASH local parcheado para ClearKey/2160p.
 - El panel de grabaciones navega con mando entre `Completadas`, `Programadas` y `Refrescar`.
 - `Programadas` ya filtra registros cerrados o vencidos y `Refrescar` fuerza lectura no-cache del backend.
+- Movistar ISM y Orange ya no muestran el aviso superior `VOD listo` al zapear canales live directos.
 
 ## Migracion Compose completada o avanzada
 

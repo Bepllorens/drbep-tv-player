@@ -4,7 +4,7 @@ Notas acumuladas para promocionar la app offline de beta a stable.
 
 ## Pendiente de promocionar a stable
 
-Rango actual: `2.0.169-beta-recordings-live-schedule`.
+Rango actual: `2.0.176-beta-live-ready-overlay`.
 
 ### Navegacion y catalogo
 
@@ -15,7 +15,8 @@ Rango actual: `2.0.169-beta-recordings-live-schedule`.
 ### Actualizaciones
 
 - El instalador de actualizaciones usa `ACTION_INSTALL_PACKAGE` como ruta principal en Fire OS.
-- La beta publicada actualmente es `2.0.169-beta-recordings-live-schedule` (`versionCode 174`).
+- La beta publicada actualmente es `2.0.176-beta-live-ready-overlay` (`versionCode 176`).
+- Movistar ISM y Orange dejan de mostrar el aviso superior `VOD listo` al zapear canales live directos.
 - En grabaciones programadas, la app descarta registros cerrados (`completed`, `failed`, `stopped`, `canceled`) y programaciones vencidas para no mostrar entradas antiguas borradas/obsoletas del dashboard.
 - Las consultas de grabaciones usan cache-buster y cabeceras `no-cache`, de modo que `Refrescar` fuerza una lectura fresca del backend.
 - En grabaciones, izquierda/derecha se gestionan desde el router del mando y mueven un foco superior propio entre `Completadas`, `Programadas` y `Refrescar`, evitando que izquierda cierre el panel o que derecha quede bloqueada.

@@ -1,3 +1,7 @@
+## 2.0.176-beta-live-ready-overlay
+- Offline beta: los canales live con reproduccion directa, como Movistar ISM u Orange, dejan de mostrar el aviso superior `VOD listo` al terminar de preparar el zapping.
+- Offline beta: la peticion interna de reproduccion separa ahora `VOD` de `directPlayback`, evitando confundir canales directos con contenido bajo demanda.
+
 ## 2.0.141-beta-la1uhd-template-escape
 - Offline beta: el MPD local de `La 1 UHD` escapa el `$` de la ruta `LIVE$CUP...` al absolutizar segmentos, evitando que ExoPlayer lo confunda con una variable DASH invalida.
 

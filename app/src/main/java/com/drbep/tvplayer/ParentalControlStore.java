@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.util.Base64;
 
 final class ParentalControlStore {
     private static final long DEFAULT_UNLOCK_DURATION_MS = 15L * 60L * 1000L;
@@ -128,20 +127,30 @@ final class ParentalControlStore {
     private static String generateSalt() {
         byte[] salt = new byte[16];
         new SecureRandom().nextBytes(salt);
-        return Base64.getEncoder().withoutPadding().encodeToString(salt);
+        return bytesToHex(salt);
     }
 
     private static String sha256Hex(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            StringBuilder out = new StringBuilder(bytes.length * 2);
-            for (byte current : bytes) {
-                out.append(String.format("%02x", current));
-            }
-            return out.toString();
+            return bytesToHex(bytes);
         } catch (Exception e) {
             throw new IllegalStateException("sha-256 unavailable", e);
         }
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "";
+        }
+        char[] out = new char[bytes.length * 2];
+        final char[] alphabet = "0123456789abcdef".toCharArray();
+        for (int i = 0; i < bytes.length; i++) {
+            int value = bytes[i] & 0xff;
+            out[i * 2] = alphabet[value >>> 4];
+            out[i * 2 + 1] = alphabet[value & 0x0f];
+        }
+        return new String(out);
     }
 }

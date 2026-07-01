@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 174
-        versionName "2.0.169-beta-recordings-live-schedule"
+        versionCode 175
+        versionName "2.0.175-beta-parental-pin-crashfix"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

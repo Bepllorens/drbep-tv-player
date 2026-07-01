@@ -2438,30 +2438,21 @@ public class MainActivity extends FragmentActivity {
         visualEpgHeaderComposeView.setFocusable(true);
         visualEpgHeaderComposeView.setFocusableInTouchMode(true);
         visualPanel.addView(visualEpgHeaderComposeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        android.widget.ScrollView verticalScroll = new android.widget.ScrollView(this);
-        verticalScroll.setFillViewport(true);
-        verticalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        LinearLayout sectionsContainer = new LinearLayout(this);
-        sectionsContainer.setOrientation(LinearLayout.VERTICAL);
-        verticalScroll.addView(sectionsContainer, new android.widget.ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ComposeView visualEpgSectionsComposeView = new ComposeView(this);
+        visualEpgSectionsComposeView.setFocusable(true);
+        visualEpgSectionsComposeView.setFocusableInTouchMode(true);
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         scrollParams.topMargin = dp(8);
-        visualPanel.addView(verticalScroll, scrollParams);
+        visualPanel.addView(visualEpgSectionsComposeView, scrollParams);
         ComposeView visualEpgProgramDetailComposeView = new ComposeView(this);
         visualEpgProgramDetailComposeView.setFocusable(false);
         visualEpgProgramDetailComposeView.setFocusableInTouchMode(false);
         LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         detailParams.topMargin = dp(8);
         visualPanel.addView(visualEpgProgramDetailComposeView, detailParams);
-        final View[] initialFocus = new View[1];
-        final List<List<View>> focusRows = new ArrayList<>();
-        final Map<View, Integer> focusCenters = new HashMap<>();
-        final Map<View, View> focusAnchors = new HashMap<>();
         final android.app.Dialog[] visualEpgDialogRef = new android.app.Dialog[1];
         final Runnable focusInitialVisualEpgCard = () -> {
-            if (initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-            }
+            visualEpgSectionsComposeView.requestFocus();
         };
         final java.util.function.Consumer<TimelineProgramDetailUiModel> renderVisualEpgDetail = model ->
                 TimelineProgramDetailComposeBinder.bind(
@@ -2478,8 +2469,6 @@ public class MainActivity extends FragmentActivity {
                             Glide.with(this).load(item.imageUrl.trim()).fitCenter().into(imageView);
                         }
                 );
-        boolean compactModal = getResources().getDisplayMetrics().widthPixels <= dp(720);
-
         int totalItems = 0;
         for (VisualEpgSection section : sections) {
             totalItems += section.entries.size();
@@ -2513,75 +2502,31 @@ public class MainActivity extends FragmentActivity {
                 "",
                 getString(R.string.timeline_program_action_hint)
         ));
-        sectionsContainer.removeAllViews();
-
-        int cardWidth = compactModal ? dp(136) : dp(164);
-        int cardHeight = compactModal ? dp(182) : dp(208);
-        int cardGap = compactModal ? dp(8) : dp(10);
-
+        List<VisualEpgSectionUiModel> sectionModels = new ArrayList<>();
+        final boolean[] preferredAssigned = new boolean[]{false};
         for (VisualEpgSection section : sections) {
             if (section.entries == null || section.entries.isEmpty()) {
                 continue;
             }
-            final int rowIndex = focusRows.size();
-            final List<View> rowFocusables = new ArrayList<>();
-
-            ComposeView sectionTitle = new ComposeView(this);
-            sectionTitle.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            sectionTitle.setFocusable(false);
-            sectionTitle.setFocusableInTouchMode(false);
-            VisualEpgSectionTitleComposeBinder.bind(sectionTitle, section.title, rowIndex == 0);
-            sectionsContainer.addView(sectionTitle);
-
-            android.widget.HorizontalScrollView horizontalScroll = new android.widget.HorizontalScrollView(this);
-            horizontalScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            horizontalScroll.setHorizontalScrollBarEnabled(false);
-            horizontalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-            horizontalScroll.setFocusable(false);
-            horizontalScroll.setFocusableInTouchMode(false);
-
-            LinearLayout row = new LinearLayout(this);
-            row.setFocusable(false);
-            row.setFocusableInTouchMode(false);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            horizontalScroll.addView(row);
-            sectionsContainer.addView(horizontalScroll);
-
+            List<VisualEpgEntryUiModel> entryModels = new ArrayList<>();
             for (VisualEpgEntry entry : section.entries) {
                 ChannelItem channel = entry.channel;
                 EpgRepository.EpgProgram program = entry.program;
                 boolean scheduled = isProgramScheduled(channel, program, scheduledItems);
                 boolean live = program.progress >= 0;
-
-                ComposeView card = new ComposeView(this);
-                card.setFocusable(true);
-                card.setFocusableInTouchMode(true);
-                card.setClickable(true);
-                LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(cardWidth, cardHeight);
-                cardParams.rightMargin = cardGap;
-                card.setLayoutParams(cardParams);
                 String heroPoster = program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon.trim();
                 String cardTitle = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title.trim();
                 String cardTime = shortTime(program.startTime) + " - " + shortTime(program.endTime);
                 String cardBadge = scheduled ? getString(R.string.timeline_program_scheduled_short) : (live ? getString(R.string.guide_program_now) : channel.name);
-                Runnable applyState = () -> {
-                    VisualEpgCardComposeBinder.bind(
-                            card,
-                            new VisualEpgCardUiModel(cardTitle, cardTime, cardBadge, heroPoster, scheduled, card.hasFocus()),
-                            (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
-                    );
-                };
-                applyState.run();
-
-                final int itemIndex = rowFocusables.size();
-                final int focusCenter = itemIndex * (cardWidth + cardGap) + (cardWidth / 2);
-                card.setTag(focusCenter);
-                card.setOnFocusChangeListener((v, hasFocus) -> {
-                    applyState.run();
-                    if (!hasFocus) {
-                        return;
-                    }
+                boolean preferredVisualCard = lastVisualEpgChannelId != null && lastVisualEpgChannelId.equals(channel.id)
+                        && lastVisualEpgProgramStartTime != null && lastVisualEpgProgramStartTime.equals(program.startTime);
+                boolean preferredAnchorCard = anchorChannelId != null && anchorChannelId.equals(channel.id);
+                boolean preferred = false;
+                if (!preferredAssigned[0] && (preferredVisualCard || preferredAnchorCard || sectionModels.isEmpty() && entryModels.isEmpty())) {
+                    preferred = true;
+                    preferredAssigned[0] = true;
+                }
+                Runnable onFocus = () -> {
                     lastVisualEpgChannelId = channel == null ? lastVisualEpgChannelId : channel.id;
                     lastVisualEpgProgramStartTime = program == null ? lastVisualEpgProgramStartTime : program.startTime;
                     String detailMeta = channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
@@ -2599,50 +2544,21 @@ public class MainActivity extends FragmentActivity {
                             scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
                             getString(R.string.timeline_program_action_hint)
                     ));
-                    horizontalScroll.post(() -> horizontalScroll.smoothScrollTo(Math.max(0, card.getLeft() - (compactModal ? dp(16) : dp(24))), 0));
-                    if (verticalScroll != null) {
-                        View anchor = focusAnchors.get(card);
-                        verticalScroll.postDelayed(() -> scrollVisualEpgSectionIntoPlace(verticalScroll, anchor != null ? anchor : card), 24L);
-                    }
-                });
-                card.setOnKeyListener((v, keyCode, event) -> {
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) {
-                        return false;
-                    }
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                        if (itemIndex > 0) {
-                            rowFocusables.get(itemIndex - 1).requestFocus();
-                            return true;
-                        }
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                        if (itemIndex + 1 < rowFocusables.size()) {
-                            rowFocusables.get(itemIndex + 1).requestFocus();
-                            return true;
-                        }
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                        return moveVisualEpgFocus(focusRows, rowIndex, -1, focusCenter);
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                        return moveVisualEpgFocus(focusRows, rowIndex, 1, focusCenter);
-                    }
-                    return false;
-                });
-                card.setOnClickListener(v -> channelActionsCoordinator.showProgramActionMenu(channel, program));
-                rowFocusables.add(card);
-                focusCenters.put(card, focusCenter);
-                focusAnchors.put(card, sectionTitle);
-                boolean preferredVisualCard = lastVisualEpgChannelId != null && lastVisualEpgChannelId.equals(channel.id)
-                        && lastVisualEpgProgramStartTime != null && lastVisualEpgProgramStartTime.equals(program.startTime);
-                if (preferredVisualCard) {
-                    initialFocus[0] = card;
-                } else if (anchorChannelId != null && anchorChannelId.equals(channel.id) && initialFocus[0] == null) {
-                    initialFocus[0] = card;
-                } else if (initialFocus[0] == null) {
-                    initialFocus[0] = card;
-                }
-                row.addView(card);
+                };
+                entryModels.add(new VisualEpgEntryUiModel(
+                        new VisualEpgCardUiModel(cardTitle, cardTime, cardBadge, heroPoster, scheduled, false),
+                        preferred,
+                        onFocus,
+                        () -> channelActionsCoordinator.showProgramActionMenu(channel, program)
+                ));
             }
-            focusRows.add(rowFocusables);
+            sectionModels.add(new VisualEpgSectionUiModel(section.title, entryModels));
         }
+        VisualEpgSectionsComposeBinder.bind(
+                visualEpgSectionsComposeView,
+                sectionModels,
+                (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
+        );
 
         attachDialogViewTreeOwnersRecursive(dialogView);
         android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
@@ -2653,9 +2569,7 @@ public class MainActivity extends FragmentActivity {
             if (dialog.getWindow() != null) {
                 dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             }
-            if (initialFocus[0] != null) {
-                initialFocus[0].requestFocus();
-            }
+            visualEpgSectionsComposeView.requestFocus();
         });
         dialog.setOnDismissListener(d -> enableImmersiveMode());
         dialog.show();
@@ -12219,33 +12133,6 @@ public class MainActivity extends FragmentActivity {
         timelineDialog.show();
     }
 
-    private boolean moveVisualEpgFocus(List<List<View>> focusRows, int fromRowIndex, int direction, int preferredCenterMinute) {
-        int rowIndex = fromRowIndex + direction;
-        while (rowIndex >= 0 && rowIndex < focusRows.size()) {
-            List<View> targetRow = focusRows.get(rowIndex);
-            if (targetRow != null && !targetRow.isEmpty()) {
-                View best = null;
-                int bestDistance = Integer.MAX_VALUE;
-                for (View candidate : targetRow) {
-                    if (candidate == null) continue;
-                    Object tag = candidate.getTag();
-                    int center = preferredCenterMinute;
-                    if (tag instanceof Integer) {
-                        center = (Integer) tag;
-                    }
-                    int distance = Math.abs(center - preferredCenterMinute);
-                    if (best == null || distance < bestDistance) {
-                        best = candidate;
-                        bestDistance = distance;
-                    }
-                }
-                return best != null && best.requestFocus();
-            }
-            rowIndex += direction;
-        }
-        return false;
-    }
-
     private boolean moveTimelineFocus(android.widget.ScrollView timelineVerticalScroll, List<List<View>> focusRows, Map<View, Integer> focusCenters, int fromRowIndex, int direction, int preferredCenterMinute) {
         int rowIndex = fromRowIndex + direction;
         while (rowIndex >= 0 && rowIndex < focusRows.size()) {
@@ -12275,17 +12162,6 @@ public class MainActivity extends FragmentActivity {
             rowIndex += direction;
         }
         return false;
-    }
-
-    private void scrollVisualEpgSectionIntoPlace(android.widget.ScrollView verticalScroll, View target) {
-        if (verticalScroll == null || target == null) {
-            return;
-        }
-        Rect rect = new Rect();
-        target.getDrawingRect(rect);
-        verticalScroll.offsetDescendantRectToMyCoords(target, rect);
-        int desiredTop = Math.max(0, rect.top - dp(4));
-        verticalScroll.scrollTo(0, desiredTop);
     }
 
     private void ensureTimelineBlockVisible(android.widget.ScrollView timelineVerticalScroll, View target) {

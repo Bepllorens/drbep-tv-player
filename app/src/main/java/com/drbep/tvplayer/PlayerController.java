@@ -109,13 +109,18 @@ final class PlayerController {
         final String drmScheme;
         final String drmLicenseUrl;
         final boolean directPlayback;
+        final boolean vod;
         final String playbackProfile;
 
         PlaybackRequest(String channelId, String channelName, String platformName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback) {
-            this(channelId, channelName, platformName, playUrl, fallbackPlayUrl, playbackMode, drmScheme, drmLicenseUrl, directPlayback, "");
+            this(channelId, channelName, platformName, playUrl, fallbackPlayUrl, playbackMode, drmScheme, drmLicenseUrl, directPlayback, false, "");
         }
 
         PlaybackRequest(String channelId, String channelName, String platformName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback, String playbackProfile) {
+            this(channelId, channelName, platformName, playUrl, fallbackPlayUrl, playbackMode, drmScheme, drmLicenseUrl, directPlayback, false, playbackProfile);
+        }
+
+        PlaybackRequest(String channelId, String channelName, String platformName, String playUrl, String fallbackPlayUrl, String playbackMode, String drmScheme, String drmLicenseUrl, boolean directPlayback, boolean vod, String playbackProfile) {
             this.channelId = channelId;
             this.channelName = channelName;
             this.platformName = platformName == null ? "" : platformName.trim();
@@ -125,6 +130,7 @@ final class PlayerController {
             this.drmScheme = drmScheme == null ? "" : drmScheme.trim();
             this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
             this.directPlayback = directPlayback;
+            this.vod = vod;
             this.playbackProfile = playbackProfile == null ? "" : playbackProfile.trim().toLowerCase(Locale.ROOT);
         }
 
@@ -378,12 +384,8 @@ final class PlayerController {
                         Log.d(TAG, "forced live edge on ready for channel=" + describeRequest(currentRequest));
                     }
                     host.hideError();
-                    if (currentRequest != null && currentRequest.directPlayback) {
+                    if (currentRequest != null && currentRequest.vod) {
                         host.showStatus(context.getString(R.string.vod_status_ready, currentRequest.channelName));
-                    } else {
-                        host.showStatus(currentRequest != null && currentRequest.channelName != null && !currentRequest.channelName.trim().isEmpty()
-                                ? currentRequest.channelName
-                                : context.getString(R.string.status_ready));
                     }
                     maybeShowHdrBadge();
                     host.onPlaybackReady(currentRequest);
@@ -886,6 +888,7 @@ final class PlayerController {
                 request.drmScheme,
                 request.drmLicenseUrl,
                 request.directPlayback,
+                request.vod,
                 request.playbackProfile
         );
     }

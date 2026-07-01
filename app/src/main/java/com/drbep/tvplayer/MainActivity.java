@@ -4649,6 +4649,7 @@ public class MainActivity extends FragmentActivity {
                 channelItem.drmScheme,
                 channelItem.drmLicenseUrl,
                 channelItem.directPlayback,
+                channelItem.isVod,
                 channelItem.playbackProfile
         );
     }

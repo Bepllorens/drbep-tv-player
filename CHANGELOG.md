@@ -1,3 +1,10 @@
+## 2.0.184-beta-orange-fastzap
+- Offline beta: Orange fuerza la pista de video soportada de mayor calidad cuando Media3 expone varias variantes, evitando quedarse en perfiles inferiores si el dispositivo puede con la senal.
+- Offline beta: el zapping reduce buffers iniciales y evita resolver rutas no directas antes de preparar el player, recortando esperas en Fire TV sin cambiar los fallbacks de compatibilidad.
+- Offline beta: se eliminan avisos superiores ruidosos durante `buffering`, `ready`, rutas directas, Widevine y zapping para que el HUD inferior sea la referencia visual principal.
+- Offline beta: los filtros internos tipo `Todos`/`all` dejan de aparecer como destino de navegacion cuando hay filtros reales de plataforma/grupo.
+- Offline beta: los paneles VOD, EPG visual y detalles de programa conservan mejor el retorno al menu/panel anterior al cerrar o al pasar por desbloqueo parental.
+
 ## 2.0.177-beta-compose-structured-panels
 - Offline beta: diagnostico de playback e historial de fallos pasan a paneles Compose estructurados con secciones, estados de ruta/error y acciones con foco inicial.
 - Offline beta: los avisos de actualizacion, diagnostico de actualizacion y pantalla post-update muestran version, canal, APK, preflight y changelog en formato estructurado.

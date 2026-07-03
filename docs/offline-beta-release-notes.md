@@ -4,7 +4,7 @@ Notas acumuladas para promocionar la app offline de beta a stable.
 
 ## Pendiente de promocionar a stable
 
-Rango actual: `2.0.177-beta-compose-structured-panels`.
+Rango actual: `2.0.184-beta-orange-fastzap`.
 
 ### Navegacion y catalogo
 
@@ -15,7 +15,12 @@ Rango actual: `2.0.177-beta-compose-structured-panels`.
 ### Actualizaciones
 
 - El instalador de actualizaciones usa `ACTION_INSTALL_PACKAGE` como ruta principal en Fire OS.
-- La beta publicada actualmente es `2.0.177-beta-compose-structured-panels` (`versionCode 177`).
+- La beta preparada actualmente es `2.0.184-beta-orange-fastzap` (`versionCode 184`).
+- Orange fuerza la pista de video soportada de mayor calidad cuando Media3 expone varias variantes, evitando quedarse en perfiles inferiores si el dispositivo puede con la senal.
+- El zapping reduce buffers iniciales y evita resolver rutas no directas antes de preparar el player, recortando esperas en Fire TV sin cambiar los fallbacks de compatibilidad.
+- Se eliminan avisos superiores ruidosos durante `buffering`, `ready`, rutas directas, Widevine y zapping para que el HUD inferior sea la referencia visual principal.
+- Los filtros internos tipo `Todos`/`all` dejan de aparecer como destino de navegacion cuando hay filtros reales de plataforma/grupo.
+- Los paneles VOD, EPG visual y detalles de programa conservan mejor el retorno al menu/panel anterior al cerrar o al pasar por desbloqueo parental.
 - Los diagnosticos de playback, historial de fallos, actualizaciones y resumenes de ajustes/sistema/catalogo usan paneles Compose estructurados.
 - Movistar ISM y Orange dejan de mostrar el aviso superior `VOD listo` al zapear canales live directos.
 - En grabaciones programadas, la app descarta registros cerrados (`completed`, `failed`, `stopped`, `canceled`) y programaciones vencidas para no mostrar entradas antiguas borradas/obsoletas del dashboard.
@@ -171,4 +176,4 @@ Rango actual: `2.0.177-beta-compose-structured-panels`.
 - Confirmar que al abrir un bouquet o canal protegido se pide el PIN y el desbloqueo dura unos minutos.
 - Confirmar que el nuevo menu principal deja a mano `Guia`, `Grabaciones`, `VOD`, `Buscar y recientes` y `Control parental`.
 - Confirmar que `Ajustes avanzados` sigue dando acceso a playback, multiview, diagnostico e instalacion.
-- Confirmar que la actualizacion beta instala correctamente y reporta version `100`.
+- Confirmar que la actualizacion beta instala correctamente y reporta version `184`.

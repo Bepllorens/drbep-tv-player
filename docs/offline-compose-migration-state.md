@@ -1,11 +1,11 @@
 # Offline App Compose Migration State
 
-Fecha: 2026-06-30
+Fecha: 2026-07-03
 
 ## Version actual
 
-- Canal beta publicado: `2.0.177-beta-compose-structured-panels`
-- `versionCode`: `177`
+- Canal beta publicado: `2.0.184-beta-orange-fastzap`
+- `versionCode`: `184`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo de prueba principal: Fire Stick `192.168.93.16:5555`
 
@@ -42,18 +42,22 @@ Fecha: 2026-06-30
 - `RecordingsRepository` filtra programadas vivas por estado y descarta programaciones con `end_time` vencido.
 - `HttpClient` desactiva cache de `HttpURLConnection`.
 - Se elimino XML legacy de varios dialogos/listas ya reemplazados por Compose.
+- Orange fuerza la pista de video soportada de mayor calidad y usa buffers mas cortos para acelerar el zapping.
+- El player deja de mostrar avisos superiores durante `buffering`, `ready`, Widevine y rutas directas para evitar ruido visual.
+- Los filtros internos `all`/`Todos` se ocultan en navegacion cuando existen filtros visibles de plataforma o grupo.
+- Los paneles VOD/EPG/programa conservan mejor el retorno al panel anterior al cerrar o al pasar por control parental.
 
 ## Pendiente sugerido al retomar
 
 - Revisar restos de XML/layouts legacy que aun esten vivos y decidir si migrarlos o dejarlos como contenedores nativos.
-- Probar en Fire Stick y tablet el nuevo panel de diagnostico playback, especialmente foco de botones y lectura de URLs largas.
+- Probar `2.0.184-beta-orange-fastzap` desde el actualizador de la app, no solo por ADB.
+- Probar en Fire Stick y tablet el panel de diagnostico playback, especialmente foco de botones y lectura de URLs largas.
 - Afinar UX de grabaciones si queremos filtros tipo dashboard (`Grabando`, `Fallidas`, `Completadas`, etc.) en vez de solo `Completadas/Programadas`.
-- Probar v174 en telefono Android y Fire Stick real con actualizacion desde app, no solo instalacion ADB.
 - Revisar warnings conocidos de Glide/imagenes para reducir ruido en logs, aunque no son crash.
 
 ## Verificacion reciente
 
-- `./gradlew :app:testDebugUnitTest :app:assembleDebug` OK.
-- `scripts/publish_offline_update.sh --channel beta` OK para v174.
+- `./gradlew :app:testDebugUnitTest :app:assembleDebug` OK en la tanda Compose previa.
+- `scripts/publish_offline_update.sh --channel beta` OK para v184.
 - Instalacion ADB en `.16` OK.
 - Arranque en `.16` sin `FATAL EXCEPTION`.

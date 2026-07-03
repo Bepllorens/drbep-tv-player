@@ -352,6 +352,9 @@ public class MainActivity extends FragmentActivity {
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
     private Runnable pendingGlobalSearchRunnable;
+    private boolean modalTransitionInProgress;
+    private Runnable modalReturnAction;
+    private boolean playbackHiddenBehindModal;
     private int pendingRecordingsListScrollIndex = -1;
 
     private static final class TimelineChannelPrograms {
@@ -1712,7 +1715,6 @@ public class MainActivity extends FragmentActivity {
             if (prefs != null) {
                 prefs.edit().putString(PREF_LAST_VOD_ID, ch.id).apply();
             }
-            showStatus(getString(R.string.vod_status_preparing, displayName(ch)));
         }
         playerController.resetFallbackState();
         updateTimeshiftBar();
@@ -1720,7 +1722,6 @@ public class MainActivity extends FragmentActivity {
         PlayerController.PlaybackRequest playbackRequest = toPlaybackRequest(ch);
         boolean resolveBeforePlayback = shouldResolveStreamInfoBeforePlayback(ch, playbackRequest);
         if (resolveBeforePlayback) {
-            showStatus(getString(R.string.status_buffering));
             playerController.playChannelAfterResolvingStreamInfo(playbackRequest, autoPlay, streamInfoByChannelId, resumePositionMs);
         } else {
             playerController.playChannel(playbackRequest, autoPlay, cachedStreamInfo, resumePositionMs);
@@ -1731,11 +1732,6 @@ public class MainActivity extends FragmentActivity {
         scheduleLearnCurrentPlaybackRoute(ch.id, playbackRequest == null ? PlaybackModeStore.MODE_AUTO : playbackRequest.playbackMode);
 
         hideError();
-        if (ch.isVod) {
-            showStatus(getString(R.string.vod_status_preparing, displayName(ch)));
-        } else {
-            showStatus(displayName(ch));
-        }
         updateOverlayPanel();
         showZapBanner(ch);
         startPlaybackHeartbeat(ch);
@@ -1752,12 +1748,7 @@ public class MainActivity extends FragmentActivity {
         if (request.directPlayback) {
             return shouldResolveDirectDrmBeforePlayback(channel, request);
         }
-        String platform = safeLower(channel.platformName);
-        String playUrl = safeLower(request.playUrl);
-        if (platform.contains("pluto") && playUrl.contains(".m3u8") && !isBackendHostedTarget(playUrl)) {
-            return false;
-        }
-        return true;
+        return false;
     }
 
     private boolean shouldResolveDirectDrmBeforePlayback(ChannelItem channel, PlayerController.PlaybackRequest request) {
@@ -2542,9 +2533,10 @@ public class MainActivity extends FragmentActivity {
         });
         dialog.setOnDismissListener(d -> {
             VisualEpgPanelComposeBinder.clear(visualEpgPanelComposeView);
-            enableImmersiveMode();
+            handleModalDismissed();
         });
         dialog.show();
+        handleModalShown();
     }
 
     private void openCurrentProgramInfoFromTouch() {
@@ -2583,11 +2575,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodInfoDialog(ChannelItem channel) {
+        showVodInfoDialog(channel, null);
+    }
+
+    private void showVodInfoDialog(ChannelItem channel, Runnable onBack) {
         if (channel == null) {
             return;
         }
         if (isProtectedItem(channel) && isProtectedContentLocked()) {
-            ensureParentalAccessForItem(channel, () -> showVodInfoDialog(channel));
+            ensureParentalAccessForItem(channel, () -> showVodInfoDialog(channel, onBack));
             return;
         }
         rememberCurrentVodPosition();
@@ -2621,11 +2617,7 @@ public class MainActivity extends FragmentActivity {
         }
         List<VodPanelActionUiModel> secondaryActions = new ArrayList<>();
         secondaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_more_vod), false, () -> {
-            Dialog activeDialog = dialogHolder[0];
-            if (activeDialog != null && activeDialog.isShowing()) {
-                activeDialog.dismiss();
-            }
-            showVodActionsDialog(channel);
+            dismissModalForNextAction(dialogHolder[0], () -> showVodActionsDialog(channel, () -> showVodInfoDialog(channel, onBack)));
         }));
         secondaryActions.add(new VodPanelActionUiModel(getString(favoriteChannelIds.contains(channel.id) ? R.string.vod_action_remove_favorite : R.string.vod_action_add_favorite), false, () -> toggleFavoriteForChannel(channel)));
         if (resumeMs > 30_000L) {
@@ -2655,8 +2647,14 @@ public class MainActivity extends FragmentActivity {
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
         dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnCancelListener(d -> {
+            if (onBack != null) {
+                modalReturnAction = onBack;
+            }
+        });
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -2675,6 +2673,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodActionsDialog(ChannelItem channel) {
+        showVodActionsDialog(channel, null);
+    }
+
+    private void showVodActionsDialog(ChannelItem channel, Runnable onBack) {
         if (channel == null) {
             return;
         }
@@ -2741,8 +2743,14 @@ public class MainActivity extends FragmentActivity {
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
         dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnCancelListener(d -> {
+            if (onBack != null) {
+                modalReturnAction = onBack;
+            }
+        });
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -2855,8 +2863,9 @@ public class MainActivity extends FragmentActivity {
                 (imageView, item) -> bindProgramPoster(imageView, item == null ? "" : item.imageUrl)
         );
         dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -3493,8 +3502,12 @@ public class MainActivity extends FragmentActivity {
         List<ChannelFilter> selectableFilters = new ArrayList<>();
         List<String> labels = new ArrayList<>();
         int checkedIndex = -1;
+        boolean hasUserVisibleFilters = hasUserVisibleOverlayFilters();
         for (ChannelFilter filter : filters) {
             if (filter == null || filter.key == null || filter.key.trim().isEmpty()) {
+                continue;
+            }
+            if (hasUserVisibleFilters && !isUserVisibleOverlayFilter(filter)) {
                 continue;
             }
             selectableFilters.add(filter);
@@ -3561,14 +3574,39 @@ public class MainActivity extends FragmentActivity {
                 break;
             }
         }
-        int next = currentFilterIndex + delta;
-        if (next < 0) {
-            next = filters.size() - 1;
+        boolean hasUserVisibleFilters = hasUserVisibleOverlayFilters();
+        int next = currentFilterIndex;
+        for (int attempts = 0; attempts < filters.size(); attempts++) {
+            next += delta;
+            if (next < 0) {
+                next = filters.size() - 1;
+            }
+            if (next >= filters.size()) {
+                next = 0;
+            }
+            ChannelFilter candidate = filters.get(next);
+            if (!hasUserVisibleFilters || isUserVisibleOverlayFilter(candidate)) {
+                return candidate;
+            }
         }
-        if (next >= filters.size()) {
-            next = 0;
+        return filters.get(currentFilterIndex);
+    }
+
+    private boolean hasUserVisibleOverlayFilters() {
+        for (ChannelFilter filter : filters) {
+            if (isUserVisibleOverlayFilter(filter)) {
+                return true;
+            }
         }
-        return filters.get(next);
+        return false;
+    }
+
+    private boolean isUserVisibleOverlayFilter(ChannelFilter filter) {
+        return filter != null
+                && filter.key != null
+                && !filter.key.trim().isEmpty()
+                && !"all".equals(filter.key)
+                && filter.type != FILTER_ALL;
     }
 
     private void updateFilterText() {
@@ -5000,11 +5038,6 @@ public class MainActivity extends FragmentActivity {
 
     private String findPreferredTvFilterKey() {
         for (ChannelFilter filter : filters) {
-            if (filter != null && "all".equals(filter.key)) {
-                return filter.key;
-            }
-        }
-        for (ChannelFilter filter : filters) {
             if (filter != null && filter.type == 1) {
                 return filter.key;
             }
@@ -5211,7 +5244,7 @@ public class MainActivity extends FragmentActivity {
                     badge,
                     badgeVisible,
                     badgeTextColor,
-                    touchDeviceMode,
+                    touchDeviceMode || ch.favorite,
                     ch.favorite,
                     getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off),
                     ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF,
@@ -5947,6 +5980,10 @@ public class MainActivity extends FragmentActivity {
 
     private String overlayContextLabel(ChannelItem channel) {
         ChannelFilter filter = selectedOverlayFilter();
+        if ((overlayNavigationState != null && overlayNavigationState.favoritesOnly)
+                || (filter != null && "favorites".equals(filter.key))) {
+            return getString(R.string.touch_home_filter_favorites);
+        }
         if (filter != null && filter.type == FILTER_CUSTOM_GROUP && filter.groupName != null && !filter.groupName.trim().isEmpty()) {
             return filter.groupName.trim();
         }
@@ -6204,7 +6241,7 @@ public class MainActivity extends FragmentActivity {
             actions.add(() -> showRecordingsSimpleToolsDialog(this::showSimpleOfflineToolsMenu));
         }
         options.add(getString(R.string.tools_section_vod));
-        actions.add(this::showVodLibraryDialog);
+        actions.add(() -> showVodLibraryDialog(this::showSimpleOfflineToolsMenu));
         options.add(getString(R.string.offline_catalog_action_refresh));
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.tools_section_search_recents));
@@ -6362,14 +6399,26 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodLibraryDialog() {
-        showVodVisualLibraryDialog();
+        showVodLibraryDialog(null);
+    }
+
+    private void showVodLibraryDialog(Runnable onBack) {
+        showVodVisualLibraryDialog(onBack);
     }
 
     private void showVodVisualLibraryDialog() {
-        showVodVisualLibraryDialog(VodVisualTypeFilter.GENERAL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, "");
+        showVodVisualLibraryDialog(null);
+    }
+
+    private void showVodVisualLibraryDialog(Runnable onBack) {
+        showVodVisualLibraryDialog(VodVisualTypeFilter.GENERAL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, "", onBack);
     }
 
     private void showVodLibraryMenuDialog() {
+        showVodLibraryMenuDialog(null);
+    }
+
+    private void showVodLibraryMenuDialog(Runnable onBack) {
         rememberCurrentVodPosition();
         List<ChannelItem> continueItems = buildVodContinueItems();
         List<ChannelItem> recentItems = buildRecentVodItems();
@@ -6381,33 +6430,34 @@ public class MainActivity extends FragmentActivity {
         List<ChannelItem> allVodItems = buildAllVodLibraryItems(false);
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        Runnable returnToThisMenu = () -> showVodLibraryMenuDialog(onBack);
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_continue, continueItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_continue, continueItems, true));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_continue, continueItems, true, returnToThisMenu));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_recent, recentItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_recent, recentItems, false));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_recent, recentItems, false, returnToThisMenu));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_tivify, tivifyItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify, tivifyItems, false));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_tivify, tivifyItems, false, returnToThisMenu));
         options.add(decorateProtectedLabel(buildVodLibraryOptionLabel(R.string.vod_library_tivify_adult, tivifyAdultItems), currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod));
-        actions.add(() -> ensureParentalAccessForFilterKey("vod:tivify:adult", () -> showVodLibraryList(R.string.vod_library_tivify_adult, tivifyAdultItems, false)));
+        actions.add(() -> ensureParentalAccessForFilterKey("vod:tivify:adult", () -> showVodLibraryList(R.string.vod_library_tivify_adult, tivifyAdultItems, false, returnToThisMenu)));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_runtime, runtimeItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_runtime, runtimeItems, false));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_runtime, runtimeItems, false, returnToThisMenu));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_with_progress, progressItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_with_progress, progressItems, true));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_with_progress, progressItems, true, returnToThisMenu));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_not_started, notStartedItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_not_started, notStartedItems, false));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_not_started, notStartedItems, false, returnToThisMenu));
         options.add(getString(R.string.vod_library_categories));
-        actions.add(this::showVodCategoriesDialog);
+        actions.add(() -> showVodCategoriesDialog(returnToThisMenu));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_all_alpha, allVodItems));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_all_alpha, buildVodSortedItems(VodSortMode.ALPHA), false));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_all_alpha, buildVodSortedItems(VodSortMode.ALPHA), false, returnToThisMenu));
         options.add(getString(R.string.vod_library_sort_year));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_sort_year, buildVodSortedItems(VodSortMode.YEAR_DESC), false));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_sort_year, buildVodSortedItems(VodSortMode.YEAR_DESC), false, returnToThisMenu));
         options.add(getString(R.string.vod_library_sort_duration));
-        actions.add(() -> showVodLibraryList(R.string.vod_library_sort_duration, buildVodSortedItems(VodSortMode.DURATION_DESC), false));
+        actions.add(() -> showVodLibraryList(R.string.vod_library_sort_duration, buildVodSortedItems(VodSortMode.DURATION_DESC), false, returnToThisMenu));
         options.add(getString(R.string.quick_hub_search_vod));
-        actions.add(this::showVodSearchDialog);
+        actions.add(() -> showVodSearchDialog("", returnToThisMenu));
         options.add(buildVodLibraryOptionLabel(R.string.vod_library_manage_progress, progressItems));
-        actions.add(this::showVodProgressManagerDialog);
-        showTvOptionsDialog(R.string.tools_section_vod, null, options, actions);
+        actions.add(() -> showVodProgressManagerDialog(returnToThisMenu));
+        showTvOptionsDialog(R.string.tools_section_vod, null, options, actions, onBack);
     }
 
     private void showVodVisualLibraryDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
@@ -6415,6 +6465,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodVisualLibraryDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String searchQuery) {
+        showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, searchQuery, null);
+    }
+
+    private void showVodVisualLibraryDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String searchQuery, Runnable onBack) {
         rememberCurrentVodPosition();
         prepareModalSurface();
         final Dialog[] dialogHolder = new Dialog[1];
@@ -6426,14 +6480,20 @@ public class MainActivity extends FragmentActivity {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         VodVisualPanelComposeBinder.bind(
                 composeView,
-                buildVodVisualPanelModel(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, dialogHolder),
+                buildVodVisualPanelModel(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, dialogHolder, onBack),
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
         dialog.setContentView(composeView);
+        dialog.setOnCancelListener(d -> {
+            if (onBack != null) {
+                modalReturnAction = onBack;
+            }
+        });
         dialog.setOnDismissListener(d -> {
-            enableImmersiveMode();
+            handleModalDismissed();
         });
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -6441,67 +6501,58 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private VodVisualPanelUiModel buildVodVisualPanelModel(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String trimmedSearchQuery, Dialog[] dialogHolder) {
+    private VodVisualPanelUiModel buildVodVisualPanelModel(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String trimmedSearchQuery, Dialog[] dialogHolder, Runnable onBack) {
         boolean searchMode = trimmedSearchQuery != null && !trimmedSearchQuery.trim().isEmpty();
         List<VodVisualActionUiModel> actions = new ArrayList<>();
         if (searchMode) {
             actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_edit_search), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(() -> showVodSearchDialog(trimmedSearchQuery));
+                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog(trimmedSearchQuery));
             }));
         }
         actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_type, typeFilter.label), true, () -> {
             VodVisualTypeFilter nextType = typeFilter.next();
             if (nextType == VodVisualTypeFilter.ADULT && currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod && isProtectedContentLocked()) {
                 ensureParentalAccessForFilterKey("vod:tivify:adult", () -> {
-                    dismissVodVisualDialog(dialogHolder[0]);
-                    uiHandler.post(() -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
+                    dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, onBack));
                 });
                 return;
             }
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
+            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, onBack));
         }));
         actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> {
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter, trimmedSearchQuery));
+            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter, trimmedSearchQuery, onBack));
         }));
         actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_status, statusFilter.label), true, () -> {
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter, trimmedSearchQuery));
+            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter, trimmedSearchQuery, onBack));
         }));
         actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_sort, sortFilter.label), true, () -> {
-            dismissVodVisualDialog(dialogHolder[0]);
-            uiHandler.post(() -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next(), trimmedSearchQuery));
+            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next(), trimmedSearchQuery, onBack));
         }));
         if (searchMode) {
             actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_clear_search), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(this::showVodVisualLibraryDialog);
+                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(onBack));
             }));
         } else {
             actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_search), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(this::showVodSearchDialog);
+                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog("", () -> showVodVisualLibraryDialog(onBack)));
             }));
             actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_list_view), false, () -> {
-                dismissVodVisualDialog(dialogHolder[0]);
-                uiHandler.post(this::showVodLibraryMenuDialog);
+                dismissModalForNextAction(dialogHolder[0], () -> showVodLibraryMenuDialog(() -> showVodVisualLibraryDialog(onBack)));
             }));
         }
 
         List<VodVisualSectionUiModel> sections = new ArrayList<>();
         if (searchMode) {
-            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery));
+            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery), dialogHolder, onBack);
         } else if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_continue), buildVodContinueItems());
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_recent), buildRecentVodItems());
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false));
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false));
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_with_progress), buildVodProgressItems());
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA));
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_continue), buildVodContinueItems(), dialogHolder, onBack);
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_recent), buildRecentVodItems(), dialogHolder, onBack);
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), dialogHolder, onBack);
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), dialogHolder, onBack);
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_with_progress), buildVodProgressItems(), dialogHolder, onBack);
+            addVodVisualSectionModel(sections, getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), dialogHolder, onBack);
         } else {
-            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter));
+            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), dialogHolder, onBack);
         }
         return new VodVisualPanelUiModel(
                 searchMode ? getString(R.string.vod_search_results_title, trimmedSearchQuery) : getString(R.string.tools_section_vod),
@@ -6513,7 +6564,7 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
-    private void addVodVisualSectionModel(List<VodVisualSectionUiModel> sections, String title, List<ChannelItem> items) {
+    private void addVodVisualSectionModel(List<VodVisualSectionUiModel> sections, String title, List<ChannelItem> items, Dialog[] dialogHolder, Runnable onBack) {
         if (sections == null || items == null || items.isEmpty()) {
             return;
         }
@@ -6528,8 +6579,8 @@ public class MainActivity extends FragmentActivity {
                     decorateProtectedMeta(item, buildVodPosterMeta(item)),
                     progressMs > 30_000L ? formatDurationShort(progressMs) : "",
                     item.logoUrl,
-                    () -> showVodInfoDialog(item),
-                    () -> showVodActionsDialog(item)
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> showVodInfoDialog(item, () -> showVodVisualLibraryDialog(onBack))),
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> showVodActionsDialog(item, () -> showVodVisualLibraryDialog(onBack)))
             ));
         }
         if (!mapped.isEmpty()) {
@@ -7514,9 +7565,10 @@ public class MainActivity extends FragmentActivity {
         dialog.setContentView(composeView);
         dialog.setOnDismissListener(unused -> {
             active[0] = false;
-            enableImmersiveMode();
+            handleModalDismissed();
         });
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -7698,7 +7750,8 @@ public class MainActivity extends FragmentActivity {
         }
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         CatalogSnapshotStore.SnapshotStatus statusBeforeRefresh = status;
-        if (!status.hasAccessToken || status.sourceUrl.trim().isEmpty()) {
+        String sourceUrl = status == null || status.sourceUrl == null ? "" : status.sourceUrl.trim();
+        if (status == null || !status.hasAccessToken || sourceUrl.isEmpty()) {
             reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), false, 0L, getString(R.string.settings_offline_next_sync_blocked));
             if (manual) {
                 showOfflineCatalogRecoveryDialogIfNeeded(new IllegalStateException(getString(R.string.settings_offline_next_sync_blocked)));
@@ -9666,7 +9719,8 @@ public class MainActivity extends FragmentActivity {
 
     private void prepareModalSurface() {
         clearQuickSearchOverlay();
-        hideOverlay();
+        hidePlaybackBehindModal();
+        showModalBackdrop();
         hideRecordingsPanel();
         if (touchHomeHub != null) {
             touchHomeHub.setVisibility(View.GONE);
@@ -9674,6 +9728,100 @@ public class MainActivity extends FragmentActivity {
         if (timeshiftBarContainer != null) {
             timeshiftBarContainer.setVisibility(View.GONE);
         }
+    }
+
+    private void showModalBackdrop() {
+        uiHandler.removeCallbacks(hideOverlayRunnable);
+        if (!isOverlayVisible()) {
+            updateOverlayPanel();
+            updateOverlaySearchState();
+            channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, 0L);
+        }
+    }
+
+    private void hidePlaybackBehindModal() {
+        if (playbackHiddenBehindModal) {
+            return;
+        }
+        playbackHiddenBehindModal = true;
+        if (playerView != null) {
+            playerView.setAlpha(0f);
+        }
+        if (multiViewContainer != null) {
+            multiViewContainer.setAlpha(0f);
+        }
+    }
+
+    private void restorePlaybackAfterModal() {
+        if (!playbackHiddenBehindModal) {
+            return;
+        }
+        playbackHiddenBehindModal = false;
+        if (playerView != null) {
+            playerView.setAlpha(1f);
+        }
+        if (multiViewContainer != null) {
+            multiViewContainer.setAlpha(1f);
+        }
+    }
+
+    private void beginModalTransition(Runnable nextAction) {
+        modalTransitionInProgress = true;
+        modalReturnAction = nextAction;
+    }
+
+    private void finishModalTransitionWithoutChild() {
+        if (!modalTransitionInProgress) {
+            return;
+        }
+        modalTransitionInProgress = false;
+        modalReturnAction = null;
+        restorePlaybackAfterModal();
+        hideOverlay();
+    }
+
+    private void finishModalTransitionAfterDelay() {
+        uiHandler.postDelayed(this::finishModalTransitionWithoutChild, 250L);
+    }
+
+    private void dismissModalForNextAction(Dialog dialog, Runnable nextAction) {
+        beginModalTransition(null);
+        if (nextAction != null) {
+            uiHandler.post(() -> {
+                nextAction.run();
+                uiHandler.postDelayed(() -> {
+                    modalTransitionInProgress = true;
+                    if (dialog != null) {
+                        dialog.dismiss();
+                    }
+                    finishModalTransitionAfterDelay();
+                }, 80L);
+            });
+            return;
+        }
+        if (dialog != null) {
+            dialog.dismiss();
+        }
+        finishModalTransitionAfterDelay();
+    }
+
+    private void handleModalShown() {
+        modalTransitionInProgress = false;
+    }
+
+    private void handleModalDismissed() {
+        enableImmersiveMode();
+        if (modalTransitionInProgress) {
+            return;
+        }
+        if (modalReturnAction != null) {
+            Runnable returnAction = modalReturnAction;
+            modalReturnAction = null;
+            uiHandler.post(returnAction);
+            return;
+        }
+        restorePlaybackAfterModal();
+        hideOverlay();
     }
 
     private void attachDialogViewTreeOwners(View dialogView) {
@@ -9705,10 +9853,7 @@ public class MainActivity extends FragmentActivity {
                     continue;
                 }
                 wrappedActions.add(new TvMessageActionUiModel(action.label, action.destructive, () -> {
-                    dialog.dismiss();
-                    if (action.onClick != null) {
-                        uiHandler.post(action.onClick);
-                    }
+                    dismissModalForNextAction(dialog, action.onClick);
                 }));
             }
         }
@@ -9726,11 +9871,14 @@ public class MainActivity extends FragmentActivity {
         dialog.setContentView(composeView);
         dialog.setOnCancelListener(d -> {
             if (onCancel != null) {
+                beginModalTransition(null);
                 uiHandler.post(onCancel);
+                finishModalTransitionAfterDelay();
             }
         });
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -9754,10 +9902,7 @@ public class MainActivity extends FragmentActivity {
                     continue;
                 }
                 wrappedActions.add(new TvMessageActionUiModel(action.label, action.destructive, () -> {
-                    dialog.dismiss();
-                    if (action.onClick != null) {
-                        uiHandler.post(action.onClick);
-                    }
+                    dismissModalForNextAction(dialog, action.onClick);
                 }));
             }
         }
@@ -9778,11 +9923,14 @@ public class MainActivity extends FragmentActivity {
         dialog.setContentView(composeView);
         dialog.setOnCancelListener(d -> {
             if (onCancel != null) {
+                beginModalTransition(null);
                 uiHandler.post(onCancel);
+                finishModalTransitionAfterDelay();
             }
         });
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -9806,33 +9954,27 @@ public class MainActivity extends FragmentActivity {
                 model.neutralLabel,
                 model.fields,
                 values -> {
-                    dialog.dismiss();
-                    if (model.onSubmit != null) {
-                        uiHandler.post(() -> model.onSubmit.submit(values));
-                    }
+                    dismissModalForNextAction(dialog, model.onSubmit == null ? null : () -> model.onSubmit.submit(values));
                 },
                 () -> {
-                    dialog.dismiss();
-                    if (model.onCancel != null) {
-                        uiHandler.post(model.onCancel);
-                    }
+                    dismissModalForNextAction(dialog, model.onCancel);
                 },
                 () -> {
-                    dialog.dismiss();
-                    if (model.onNeutral != null) {
-                        uiHandler.post(model.onNeutral);
-                    }
+                    dismissModalForNextAction(dialog, model.onNeutral);
                 }
         );
         TvTextInputPanelComposeBinder.bind(composeView, wrapped);
         dialog.setContentView(composeView);
         dialog.setOnCancelListener(d -> {
             if (model.onCancel != null) {
+                beginModalTransition(null);
                 uiHandler.post(model.onCancel);
+                finishModalTransitionAfterDelay();
             }
         });
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -9859,18 +10001,14 @@ public class MainActivity extends FragmentActivity {
                     () -> {
                         if (index >= 0 && actions != null && index < actions.size()) {
                             navigationHandled[0] = true;
-                            dialog.dismiss();
-                            uiHandler.post(actions.get(index));
+                            dismissModalForNextAction(dialog, actions.get(index));
                         }
                     }
             ));
         }
         Runnable backAction = () -> {
             navigationHandled[0] = true;
-            dialog.dismiss();
-            if (onBack != null) {
-                uiHandler.post(onBack);
-            }
+            dismissModalForNextAction(dialog, onBack);
         };
         TvOptionsPanelComposeBinder.bind(
                 composeView,
@@ -9892,8 +10030,9 @@ public class MainActivity extends FragmentActivity {
                 return false;
             });
         }
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -9999,11 +10138,11 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> applyQuickOverlayTarget("tv"));
         if (shouldShowGenericVodQuickTarget(false)) {
             options.add(getString(R.string.touch_home_button_vod, countItemsForQuickTarget("vod")));
-            actions.add(() -> applyQuickOverlayTarget("vod"));
+            actions.add(() -> showVodLibraryDialog(() -> showStartupHubDialog(state)));
         }
         if (shouldShowGenericVodQuickTarget(true)) {
             options.add(decorateProtectedLabel(getString(R.string.touch_home_button_adult, countItemsForQuickTarget("vod-adult")), currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod));
-            actions.add(() -> applyQuickOverlayTarget("vod-adult"));
+            actions.add(() -> ensureParentalAccessForFilterKey("vod:tivify:adult", () -> showVodVisualLibraryDialog(VodVisualTypeFilter.ADULT, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, "", () -> showStartupHubDialog(state))));
         }
         if (!isOfflineRecordingsDisabled()) {
             options.add(getString(R.string.quick_hub_recordings));
@@ -10100,7 +10239,7 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.quick_hub_global_search));
         actions.add(this::showGlobalSearchDialog);
         options.add(getString(R.string.tools_section_vod));
-        actions.add(this::showVodLibraryDialog);
+        actions.add(() -> showVodLibraryDialog(this::showQuickHubDialog));
         options.add(getString(R.string.tools_section_tv_guide));
         actions.add(this::showTvAndGuideToolsDialog);
         options.add(getString(R.string.quick_hub_recent));
@@ -10129,6 +10268,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodSearchDialog(String initialQuery) {
+        showVodSearchDialog(initialQuery, null);
+    }
+
+    private void showVodSearchDialog(String initialQuery, Runnable onBack) {
         clearQuickSearchOverlay();
         hideOverlay();
         showTvTextInputPanel(new TvTextInputPanelUiModel(
@@ -10138,30 +10281,40 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.dialog_cancel),
                 getString(R.string.vod_search_all),
                 java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.vod_search_hint), initialQuery == null ? "" : initialQuery.trim(), false, false)),
-                values -> showVodSearchResults(values == null || values.isEmpty() ? "" : values.get(0)),
-                null,
-                () -> showVodSearchResults("")
+                values -> showVodSearchResults(values == null || values.isEmpty() ? "" : values.get(0), onBack),
+                onBack,
+                () -> showVodSearchResults("", onBack)
         ));
     }
 
     private void showVodSearchResults(String query) {
+        showVodSearchResults(query, null);
+    }
+
+    private void showVodSearchResults(String query, Runnable onBack) {
         String trimmed = query == null ? "" : query.trim();
         if (trimmed.isEmpty()) {
-            showVodVisualLibraryDialog();
+            showVodVisualLibraryDialog(onBack);
             return;
         }
-        showVodVisualLibraryDialog(VodVisualTypeFilter.ALL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, trimmed);
+        showVodVisualLibraryDialog(VodVisualTypeFilter.ALL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, trimmed, onBack);
     }
 
     private void showVodLibraryList(int titleResId, List<ChannelItem> items, boolean progressFirst) {
+        showVodLibraryList(titleResId, items, progressFirst, null);
+    }
+
+    private void showVodLibraryList(int titleResId, List<ChannelItem> items, boolean progressFirst, Runnable onBack) {
         if (progressFirst) {
             sortVodLibraryItems(items);
         }
+        Runnable returnToList = () -> showVodLibraryList(titleResId, items, false, onBack);
         showQuickChannelListDialog(
                 getString(titleResId),
                 items,
                 getString(R.string.vod_library_empty),
-                item -> showVodInfoDialog(item)
+                item -> showVodInfoDialog(item, returnToList),
+                onBack
         );
     }
 
@@ -10456,6 +10609,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodCategoriesDialog() {
+        showVodCategoriesDialog(null);
+    }
+
+    private void showVodCategoriesDialog(Runnable onBack) {
         LinkedHashMap<String, List<ChannelItem>> categories = new LinkedHashMap<>();
         for (ChannelItem item : buildAllVodLibraryItems(false)) {
             String category = item.group == null || item.group.trim().isEmpty() ? getString(R.string.vod_library_uncategorized) : item.group.trim();
@@ -10484,9 +10641,17 @@ public class MainActivity extends FragmentActivity {
             List<ChannelItem> categoryItems = new ArrayList<>(entry.getValue());
             sortVodLibraryItems(categoryItems);
             options.add(entry.getKey() + " (" + categoryItems.size() + ")");
-            actions.add(() -> showQuickChannelListDialog(entry.getKey(), categoryItems, getString(R.string.vod_library_empty), this::showVodInfoDialog));
+            String categoryTitle = entry.getKey();
+            Runnable returnToCategories = () -> showVodCategoriesDialog(onBack);
+            actions.add(() -> showQuickChannelListDialog(
+                    categoryTitle,
+                    categoryItems,
+                    getString(R.string.vod_library_empty),
+                    item -> showVodInfoDialog(item, () -> showQuickChannelListDialog(categoryTitle, categoryItems, getString(R.string.vod_library_empty), selected -> showVodInfoDialog(selected), returnToCategories)),
+                    returnToCategories
+            ));
         }
-        showTvOptionsDialog(R.string.vod_library_categories, null, options, actions);
+        showTvOptionsDialog(R.string.vod_library_categories, null, options, actions, onBack);
     }
 
     private List<ChannelItem> buildVodContinueItems() {
@@ -10599,15 +10764,24 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodProgressManagerDialog() {
+        showVodProgressManagerDialog(null);
+    }
+
+    private void showVodProgressManagerDialog(Runnable onBack) {
         showQuickChannelListDialog(
                 getString(R.string.vod_library_manage_progress),
                 buildVodProgressItems(),
                 getString(R.string.vod_continue_empty),
-                this::showVodProgressActionsDialog
+                item -> showVodProgressActionsDialog(item, () -> showVodProgressManagerDialog(onBack)),
+                onBack
         );
     }
 
     private void showVodProgressActionsDialog(ChannelItem item) {
+        showVodProgressActionsDialog(item, null);
+    }
+
+    private void showVodProgressActionsDialog(ChannelItem item, Runnable onBack) {
         if (item == null) {
             return;
         }
@@ -10625,7 +10799,7 @@ public class MainActivity extends FragmentActivity {
             clearVodResumePosition(item.id);
             showStatus(getString(R.string.vod_status_progress_cleared));
         });
-        showTvOptionsDialog(R.string.vod_library_manage_progress, displayName(item), options, actions);
+        showTvOptionsDialog(R.string.vod_library_manage_progress, displayName(item), options, actions, onBack);
     }
 
     private List<ChannelItem> buildVodSearchResults(String query, boolean includeAdult) {
@@ -10680,8 +10854,9 @@ public class MainActivity extends FragmentActivity {
                 dialog::dismiss
         );
         dialog.setContentView(personalListComposeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -10825,14 +11000,9 @@ public class MainActivity extends FragmentActivity {
             showPersonalListActionsDialog(currentCollection);
             return;
         }
-        clearQuickSearchOverlay();
-        hideOverlay();
-        hideRecordingsPanel();
+        prepareModalSurface();
         if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
-        }
-        if (touchHomeHub != null) {
-            touchHomeHub.setVisibility(View.GONE);
         }
         prefetchChannelLogos(items, SEARCH_LOGO_PREFETCH_LIMIT, 42, 42);
         ComposeView quickChannelListComposeView = new ComposeView(this);
@@ -10858,8 +11028,9 @@ public class MainActivity extends FragmentActivity {
         Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
         dialog.setContentView(quickChannelListComposeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -10985,9 +11156,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showGlobalSearchDialog(String initialQuery) {
-        clearQuickSearchOverlay();
-        hideOverlay();
-        hideRecordingsPanel();
+        prepareModalSurface();
         closeMultiView();
         ComposeView searchComposeView = new ComposeView(this);
         attachDialogViewTreeOwners(searchComposeView);
@@ -11005,7 +11174,9 @@ public class MainActivity extends FragmentActivity {
             searchComposeView.requestFocus();
             updateGlobalSearchResults(searchComposeView, dialogHolder, queryHolder, queryHolder[0]);
         });
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -11685,6 +11856,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.epg_search_empty));
             return;
         }
+        prepareModalSurface();
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         final Dialog[] dialogHolder = new Dialog[1];
@@ -11702,8 +11874,9 @@ public class MainActivity extends FragmentActivity {
         Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
         dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -11712,6 +11885,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
+        prepareModalSurface();
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         MiniGuideComposeBinder.bind(composeView, buildMiniGuideUiModel(
@@ -11722,8 +11896,9 @@ public class MainActivity extends FragmentActivity {
         ));
         Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -11987,9 +12162,10 @@ public class MainActivity extends FragmentActivity {
                 activeTimelineWindowStartMs = 0L;
                 activeTimelineFocusedCenterMinute = -1;
             }
-            enableImmersiveMode();
+            handleModalDismissed();
         });
         timelineDialog.show();
+        handleModalShown();
     }
 
     private void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {
@@ -12037,23 +12213,19 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showQuickChannelListDialog(String title, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action) {
+        showQuickChannelListDialog(title, items, emptyMessage, action, null);
+    }
+
+    private void showQuickChannelListDialog(String title, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action, Runnable onBack) {
         if (items == null || items.isEmpty()) {
             showStatus(emptyMessage == null || emptyMessage.trim().isEmpty()
                     ? getString(R.string.overlay_no_results)
                     : emptyMessage);
             return;
         }
-        clearQuickSearchOverlay();
-        hideOverlay();
-        hideRecordingsPanel();
+        prepareModalSurface();
         if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
-        }
-        if (touchHomeHub != null) {
-            touchHomeHub.setVisibility(View.GONE);
-        }
-        if (timeshiftBarContainer != null) {
-            timeshiftBarContainer.setVisibility(View.GONE);
         }
         prefetchChannelLogos(items, SEARCH_LOGO_PREFETCH_LIMIT, 42, 42);
         ComposeView quickChannelListComposeView = new ComposeView(this);
@@ -12078,8 +12250,14 @@ public class MainActivity extends FragmentActivity {
         Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialogHolder[0] = dialog;
         dialog.setContentView(quickChannelListComposeView);
-        dialog.setOnDismissListener(d -> enableImmersiveMode());
+        dialog.setOnCancelListener(d -> {
+            if (onBack != null) {
+                modalReturnAction = onBack;
+            }
+        });
+        dialog.setOnDismissListener(d -> handleModalDismissed());
         dialog.show();
+        handleModalShown();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -12125,11 +12303,10 @@ public class MainActivity extends FragmentActivity {
                         item.isVod,
                         () -> {
                             Dialog activeDialog = dialogHolder == null ? null : dialogHolder[0];
-                            if (activeDialog != null && activeDialog.isShowing()) {
-                                activeDialog.dismiss();
-                            }
                             if (action != null) {
-                                uiHandler.post(() -> action.onChannelChosen(channelItem));
+                                dismissModalForNextAction(activeDialog, () -> action.onChannelChosen(channelItem));
+                            } else if (activeDialog != null && activeDialog.isShowing()) {
+                                activeDialog.dismiss();
                             }
                         }
                 ));

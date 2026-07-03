@@ -153,12 +153,20 @@ final class ChannelOverlayCoordinator {
             currentFilterIndex = 0;
         }
 
-        int next = currentFilterIndex + delta;
-        if (next < 0) {
-            next = filters.size() - 1;
-        }
-        if (next >= filters.size()) {
-            next = 0;
+        boolean hasUserVisibleFilters = hasUserVisibleFilters();
+        int next = currentFilterIndex;
+        for (int attempts = 0; attempts < filters.size(); attempts++) {
+            next += delta;
+            if (next < 0) {
+                next = filters.size() - 1;
+            }
+            if (next >= filters.size()) {
+                next = 0;
+            }
+            ChannelFilter candidate = filters.get(next);
+            if (!hasUserVisibleFilters || isUserVisibleFilter(candidate)) {
+                break;
+            }
         }
 
         selectedFilterKey = filters.get(next).key;
@@ -167,6 +175,23 @@ final class ChannelOverlayCoordinator {
         String keepSelectedID = (selectedOverlayIndex >= 0 && selectedOverlayIndex < channels.size()) ? channels.get(selectedOverlayIndex).id : keepCurrentID;
         rebuildVisibleChannels(keepCurrentID, keepSelectedID);
         return getSelectedFilter();
+    }
+
+    private boolean hasUserVisibleFilters() {
+        for (ChannelFilter filter : filters) {
+            if (isUserVisibleFilter(filter)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isUserVisibleFilter(ChannelFilter filter) {
+        return filter != null
+                && filter.key != null
+                && !filter.key.trim().isEmpty()
+                && !"all".equals(filter.key)
+                && filter.type != FILTER_ALL;
     }
 
     boolean toggleFavoriteSelected() {

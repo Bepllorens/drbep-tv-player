@@ -278,6 +278,7 @@ final class PlayerController {
     private String lastPlaybackQualityKey;
     private boolean pendingAutoRecoveryReadyReport;
     private String pendingAutoRecoveryReason;
+    private String forcedHighestVideoTrackKey;
     private boolean firstFrameRenderedForCurrentItem;
     private final Runnable firstFrameRecoveryRunnable;
     private final Runnable forceLiveEdgeRunnable = () -> {
@@ -318,7 +319,7 @@ final class PlayerController {
         player = new ExoPlayer.Builder(context)
                 .setTrackSelector(trackSelector)
                 .setLoadControl(new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(20_000, 75_000, 4_000, 20_000)
+                .setBufferDurationsMs(12_000, 45_000, 900, 2_500)
                         .build())
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)
                         .setDrmSessionManagerProvider(createDrmSessionManagerProvider()))
@@ -360,20 +361,7 @@ final class PlayerController {
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " playWhenReady=" + (player != null && player.getPlayWhenReady()));
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
-                if (playbackState == Player.STATE_BUFFERING) {
-                    if (currentRequest != null && currentRequest.directPlayback) {
-                        String mimeType = currentPlaybackDecision == null ? "" : currentPlaybackDecision.mimeType;
-                        if (mimeType != null && mimeType.toLowerCase(java.util.Locale.ROOT).contains("mpegurl")) {
-                            host.showStatus(context.getString(R.string.vod_status_detecting_hls));
-                        } else if (mimeType != null && mimeType.toLowerCase(java.util.Locale.ROOT).contains("mpd")) {
-                            host.showStatus(context.getString(R.string.vod_status_detecting_dash));
-                        } else {
-                            host.showStatus(context.getString(R.string.vod_status_detecting_stream));
-                        }
-                    } else {
-                        host.showStatus(context.getString(R.string.status_buffering));
-                    }
-                } else if (playbackState == Player.STATE_READY) {
+                if (playbackState == Player.STATE_READY) {
                     updateSelectedPlaybackFormats();
                     if (forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
                         player.seekToDefaultPosition();
@@ -384,9 +372,6 @@ final class PlayerController {
                         Log.d(TAG, "forced live edge on ready for channel=" + describeRequest(currentRequest));
                     }
                     host.hideError();
-                    if (currentRequest != null && currentRequest.vod) {
-                        host.showStatus(context.getString(R.string.vod_status_ready, currentRequest.channelName));
-                    }
                     maybeShowHdrBadge();
                     host.onPlaybackReady(currentRequest);
                     if (shouldRecoverWhenReadyHasNoFirstFrame(currentRequest, currentPlaybackDecision)) {
@@ -423,6 +408,7 @@ final class PlayerController {
 
             @Override
             public void onTracksChanged(@NonNull Tracks tracks) {
+                maybeForceHighestOrangeVideoTrack(tracks);
                 updateSelectedPlaybackFormats();
             }
         });
@@ -476,6 +462,64 @@ final class PlayerController {
             }
         }
         notifyPlaybackQualityChangedIfNeeded();
+    }
+
+    private void maybeForceHighestOrangeVideoTrack(@NonNull Tracks tracks) {
+        if (trackSelector == null || currentRequest == null || !isOrangePlayback(currentRequest, currentPlaybackDecision) || usingVideoCompatibilityCap) {
+            return;
+        }
+        Tracks.Group bestGroup = null;
+        int bestTrackIndex = -1;
+        Format bestFormat = null;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group == null || group.getType() != C.TRACK_TYPE_VIDEO) {
+                continue;
+            }
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSupported(i)) {
+                    continue;
+                }
+                Format format = group.getTrackFormat(i);
+                if (format == null) {
+                    continue;
+                }
+                if (bestFormat == null || compareVideoQuality(format, bestFormat) > 0) {
+                    bestFormat = format;
+                    bestGroup = group;
+                    bestTrackIndex = i;
+                }
+            }
+        }
+        if (bestGroup == null || bestTrackIndex < 0 || bestFormat == null) {
+            return;
+        }
+        String key = safeString(currentRequest.channelId) + "|"
+                + bestFormat.width + "x" + bestFormat.height + "|"
+                + bestFormat.bitrate + "|"
+                + safeString(bestFormat.id);
+        if (key.equals(forcedHighestVideoTrackKey)) {
+            return;
+        }
+        forcedHighestVideoTrackKey = key;
+        Log.w(TAG, "forcing highest Orange video track channel=" + describeRequest(currentRequest)
+                + " track=" + key
+                + " decision=" + describeDecision(currentPlaybackDecision));
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .clearVideoSizeConstraints()
+                .setForceHighestSupportedBitrate(true)
+                .setOverrideForType(new TrackSelectionOverride(bestGroup.getMediaTrackGroup(), bestTrackIndex)));
+    }
+
+    private static int compareVideoQuality(Format left, Format right) {
+        int leftPixels = Math.max(0, left.width) * Math.max(0, left.height);
+        int rightPixels = Math.max(0, right.width) * Math.max(0, right.height);
+        if (leftPixels != rightPixels) {
+            return Integer.compare(leftPixels, rightPixels);
+        }
+        if (left.bitrate != right.bitrate) {
+            return Integer.compare(left.bitrate, right.bitrate);
+        }
+        return Float.compare(left.frameRate, right.frameRate);
     }
 
     private void notifyPlaybackQualityChangedIfNeeded() {
@@ -736,7 +780,6 @@ final class PlayerController {
                 attemptedRecoveryRoutes.add(recoveryKey);
                 Log.w(TAG, "retrying playback after behind live window channel=" + describeRequest(request)
                         + " decision=" + describeDecision(decision));
-                host.showStatus(context.getString(R.string.status_buffering));
                 markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_route, formatPlaybackModeLabel(decision.playbackMode)));
                 playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo);
                 return true;
@@ -1032,9 +1075,6 @@ final class PlayerController {
                         + " previousDecision=" + describeDecision(currentPlaybackDecision)
                         + " resolvedDecision=" + describeDecision(resolvedDecision));
                 playChannelInternal(request, autoPlay, false, resolved, resumePositionMs);
-                if ("widevine".equals(safeLower(resolved.drmType))) {
-                    host.showStatus(context.getString(R.string.status_channel_widevine, request.channelName));
-                }
             });
         });
     }
@@ -1068,9 +1108,6 @@ final class PlayerController {
                     return;
                 }
                 playChannelInternal(request, autoPlay, false, resolved, resumePositionMs);
-                if (resolved != null && "widevine".equals(safeLower(resolved.drmType))) {
-                    host.showStatus(context.getString(R.string.status_channel_widevine, request.channelName));
-                }
             });
         });
     }
@@ -1240,6 +1277,7 @@ final class PlayerController {
         usingPlaybackFallback = useFallback;
         if (!isSameChannel(request, previousRequest)) {
             usingVideoCompatibilityCap = false;
+            forcedHighestVideoTrackKey = "";
             clearPlaybackQuality();
         }
         firstFrameRenderedForCurrentItem = false;
@@ -1319,20 +1357,6 @@ final class PlayerController {
         player.prepare();
         player.setPlayWhenReady(autoPlay);
 
-        if (request.directPlayback) {
-            String platform = request.platformName == null ? "" : request.platformName.toLowerCase(java.util.Locale.ROOT);
-            if (platform.contains("runtime")) {
-                host.showStatus(context.getString(R.string.vod_status_opening_runtime));
-            } else if (platform.contains("tivify")) {
-                host.showStatus(context.getString(R.string.vod_status_opening_tivify));
-            } else {
-                host.showStatus(context.getString(R.string.vod_status_preparing, request.channelName));
-            }
-        } else {
-            host.showStatus(useFallback
-                    ? context.getString(R.string.status_channel_compat, request.channelName)
-                    : request.channelName);
-        }
     }
 
     private String resolveWidevineLicenseUrl(PlaybackRequest request) {
@@ -1355,17 +1379,28 @@ final class PlayerController {
         if (trackSelector == null) {
             return;
         }
-        boolean capForCompatibility = usingVideoCompatibilityCap || isKnownClearKeyDecoderSensitiveChannel(request, decision);
+        boolean capForCompatibility = usingVideoCompatibilityCap;
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .setForceHighestSupportedBitrate(true);
         if (capForCompatibility) {
             builder.setMaxVideoSize(1280, 720);
+            forcedHighestVideoTrackKey = "";
             Log.i(TAG, "using 720p video compatibility cap channel=" + describeRequest(request)
                     + " decision=" + describeDecision(decision));
         } else {
             builder.clearVideoSizeConstraints();
         }
         trackSelector.setParameters(builder);
+    }
+
+    private boolean isOrangePlayback(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
+        String platform = request == null ? "" : safeLower(request.platformName);
+        String playUrl = request == null ? "" : safeLower(request.playUrl);
+        String targetUrl = decision == null ? "" : safeLower(decision.targetUrl);
+        return platform.contains("orange")
+                || playUrl.contains("/orange/")
+                || targetUrl.contains("/orange/");
     }
 
     List<AudioTrackOption> getAudioTrackOptions() {

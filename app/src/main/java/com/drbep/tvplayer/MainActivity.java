@@ -1748,7 +1748,21 @@ public class MainActivity extends FragmentActivity {
         if (request.directPlayback) {
             return shouldResolveDirectDrmBeforePlayback(channel, request);
         }
+        if (isOrangePlaybackRequest(channel, request)) {
+            return true;
+        }
         return false;
+    }
+
+    private boolean isOrangePlaybackRequest(ChannelItem channel, PlayerController.PlaybackRequest request) {
+        String platform = channel == null ? "" : safeLower(channel.platformName);
+        String group = channel == null ? "" : safeLower(channel.group);
+        String playUrl = request == null ? "" : safeLower(request.playUrl);
+        String fallbackUrl = request == null ? "" : safeLower(request.fallbackPlayUrl);
+        return platform.contains("orange")
+                || group.contains("orange")
+                || playUrl.contains("/orange/")
+                || fallbackUrl.contains("/orange/");
     }
 
     private boolean shouldResolveDirectDrmBeforePlayback(ChannelItem channel, PlayerController.PlaybackRequest request) {

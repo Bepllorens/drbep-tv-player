@@ -8,6 +8,7 @@ import android.media.DeniedByServerException;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Base64;
 import android.util.Log;
 
@@ -278,8 +279,9 @@ final class PlayerController {
     private String lastPlaybackQualityKey;
     private boolean pendingAutoRecoveryReadyReport;
     private String pendingAutoRecoveryReason;
-    private String forcedHighestVideoTrackKey;
     private boolean firstFrameRenderedForCurrentItem;
+    private long currentPrepareStartedMs;
+    private long currentReadyElapsedMs;
     private final Runnable firstFrameRecoveryRunnable;
     private final Runnable forceLiveEdgeRunnable = () -> {
         if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
@@ -356,12 +358,15 @@ final class PlayerController {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 lastPlaybackState = playbackStateToString(playbackState);
+                long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
                 Log.w(TAG, "playbackState=" + playbackStateToString(playbackState)
                         + " channel=" + describeRequest(currentRequest)
                         + " decision=" + describeDecision(currentPlaybackDecision)
-                        + " playWhenReady=" + (player != null && player.getPlayWhenReady()));
+                        + " playWhenReady=" + (player != null && player.getPlayWhenReady())
+                        + " elapsedMs=" + elapsedMs);
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 if (playbackState == Player.STATE_READY) {
+                    currentReadyElapsedMs = elapsedMs;
                     updateSelectedPlaybackFormats();
                     if (forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
                         player.seekToDefaultPosition();
@@ -390,8 +395,11 @@ final class PlayerController {
                 PlaybackRequest request = currentRequest;
                 firstFrameRenderedForCurrentItem = true;
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
+                long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
                 Log.w(TAG, "firstFrame channel=" + describeRequest(request)
-                        + " decision=" + describeDecision(currentPlaybackDecision));
+                        + " decision=" + describeDecision(currentPlaybackDecision)
+                        + " readyElapsedMs=" + currentReadyElapsedMs
+                        + " firstFrameElapsedMs=" + elapsedMs);
                 host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
             }
 
@@ -408,7 +416,6 @@ final class PlayerController {
 
             @Override
             public void onTracksChanged(@NonNull Tracks tracks) {
-                maybeForceHighestOrangeVideoTrack(tracks);
                 updateSelectedPlaybackFormats();
             }
         });
@@ -462,64 +469,6 @@ final class PlayerController {
             }
         }
         notifyPlaybackQualityChangedIfNeeded();
-    }
-
-    private void maybeForceHighestOrangeVideoTrack(@NonNull Tracks tracks) {
-        if (trackSelector == null || currentRequest == null || !isOrangePlayback(currentRequest, currentPlaybackDecision) || usingVideoCompatibilityCap) {
-            return;
-        }
-        Tracks.Group bestGroup = null;
-        int bestTrackIndex = -1;
-        Format bestFormat = null;
-        for (Tracks.Group group : tracks.getGroups()) {
-            if (group == null || group.getType() != C.TRACK_TYPE_VIDEO) {
-                continue;
-            }
-            for (int i = 0; i < group.length; i++) {
-                if (!group.isTrackSupported(i)) {
-                    continue;
-                }
-                Format format = group.getTrackFormat(i);
-                if (format == null) {
-                    continue;
-                }
-                if (bestFormat == null || compareVideoQuality(format, bestFormat) > 0) {
-                    bestFormat = format;
-                    bestGroup = group;
-                    bestTrackIndex = i;
-                }
-            }
-        }
-        if (bestGroup == null || bestTrackIndex < 0 || bestFormat == null) {
-            return;
-        }
-        String key = safeString(currentRequest.channelId) + "|"
-                + bestFormat.width + "x" + bestFormat.height + "|"
-                + bestFormat.bitrate + "|"
-                + safeString(bestFormat.id);
-        if (key.equals(forcedHighestVideoTrackKey)) {
-            return;
-        }
-        forcedHighestVideoTrackKey = key;
-        Log.w(TAG, "forcing highest Orange video track channel=" + describeRequest(currentRequest)
-                + " track=" + key
-                + " decision=" + describeDecision(currentPlaybackDecision));
-        trackSelector.setParameters(trackSelector.buildUponParameters()
-                .clearVideoSizeConstraints()
-                .setForceHighestSupportedBitrate(true)
-                .setOverrideForType(new TrackSelectionOverride(bestGroup.getMediaTrackGroup(), bestTrackIndex)));
-    }
-
-    private static int compareVideoQuality(Format left, Format right) {
-        int leftPixels = Math.max(0, left.width) * Math.max(0, left.height);
-        int rightPixels = Math.max(0, right.width) * Math.max(0, right.height);
-        if (leftPixels != rightPixels) {
-            return Integer.compare(leftPixels, rightPixels);
-        }
-        if (left.bitrate != right.bitrate) {
-            return Integer.compare(left.bitrate, right.bitrate);
-        }
-        return Float.compare(left.frameRate, right.frameRate);
     }
 
     private void notifyPlaybackQualityChangedIfNeeded() {
@@ -1277,7 +1226,6 @@ final class PlayerController {
         usingPlaybackFallback = useFallback;
         if (!isSameChannel(request, previousRequest)) {
             usingVideoCompatibilityCap = false;
-            forcedHighestVideoTrackKey = "";
             clearPlaybackQuality();
         }
         firstFrameRenderedForCurrentItem = false;
@@ -1350,6 +1298,8 @@ final class PlayerController {
             + " decision=" + describeDecision(decision)
             + " streamInfo=" + describeStreamInfo(streamInfo)
             + " resumeMs=" + resumePositionMs);
+        currentPrepareStartedMs = SystemClock.elapsedRealtime();
+        currentReadyElapsedMs = -1L;
         player.setMediaItem(builder.build());
         if (resumePositionMs > 0L) {
             player.seekTo(resumePositionMs);
@@ -1385,7 +1335,6 @@ final class PlayerController {
                 .setForceHighestSupportedBitrate(true);
         if (capForCompatibility) {
             builder.setMaxVideoSize(1280, 720);
-            forcedHighestVideoTrackKey = "";
             Log.i(TAG, "using 720p video compatibility cap channel=" + describeRequest(request)
                     + " decision=" + describeDecision(decision));
         } else {

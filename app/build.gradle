@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 184
-        versionName "2.0.184-beta-orange-fastzap"
+        versionCode 185
+        versionName "2.0.185-beta-orange-startup-fix"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

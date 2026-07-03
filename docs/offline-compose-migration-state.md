@@ -4,8 +4,8 @@ Fecha: 2026-07-03
 
 ## Version actual
 
-- Canal beta publicado: `2.0.184-beta-orange-fastzap`
-- `versionCode`: `184`
+- Canal beta publicado: `2.0.185-beta-orange-startup-fix`
+- `versionCode`: `185`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo de prueba principal: Fire Stick `192.168.93.16:5555`
 
@@ -46,11 +46,13 @@ Fecha: 2026-07-03
 - El player deja de mostrar avisos superiores durante `buffering`, `ready`, Widevine y rutas directas para evitar ruido visual.
 - Los filtros internos `all`/`Todos` se ocultan en navegacion cuando existen filtros visibles de plataforma o grupo.
 - Los paneles VOD/EPG/programa conservan mejor el retorno al panel anterior al cerrar o al pasar por control parental.
+- Orange vuelve a preparar una sola ruta resuelta desde el inicio y evita el override manual tardio de pista maxima, reduciendo riesgo de pantalla negra durante el arranque.
+- Los logs de playback incluyen tiempos hasta `READY` y primer frame para diagnosticar zapping lento.
 
 ## Pendiente sugerido al retomar
 
 - Revisar restos de XML/layouts legacy que aun esten vivos y decidir si migrarlos o dejarlos como contenedores nativos.
-- Probar `2.0.184-beta-orange-fastzap` desde el actualizador de la app, no solo por ADB.
+- Probar `2.0.185-beta-orange-startup-fix` desde el actualizador de la app, no solo por ADB.
 - Probar en Fire Stick y tablet el panel de diagnostico playback, especialmente foco de botones y lectura de URLs largas.
 - Afinar UX de grabaciones si queremos filtros tipo dashboard (`Grabando`, `Fallidas`, `Completadas`, etc.) en vez de solo `Completadas/Programadas`.
 - Revisar warnings conocidos de Glide/imagenes para reducir ruido en logs, aunque no son crash.
@@ -59,5 +61,6 @@ Fecha: 2026-07-03
 
 - `./gradlew :app:testDebugUnitTest :app:assembleDebug` OK en la tanda Compose previa.
 - `scripts/publish_offline_update.sh --channel beta` OK para v184.
+- `./gradlew :app:assembleDebug` OK para v185.
 - Instalacion ADB en `.16` OK.
 - Arranque en `.16` sin `FATAL EXCEPTION`.

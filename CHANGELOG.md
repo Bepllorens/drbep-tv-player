@@ -1,3 +1,8 @@
+## 2.0.185-beta-orange-startup-fix
+- Offline beta: Orange resuelve `StreamInfo` antes de preparar el player para evitar el doble arranque/replay que podia dejar pantalla negra o hacer el zapping mucho mas lento.
+- Offline beta: se retira el override manual tardio de pista maxima en Orange; el selector sigue prefiriendo la mejor calidad soportada, pero sin forzar un cambio de track despues de arrancar.
+- Offline beta: los logs de reproduccion incluyen tiempos hasta `READY` y primer frame para diagnosticar si el retraso viene de manifest, licencia, decoder o render.
+
 ## 2.0.184-beta-orange-fastzap
 - Offline beta: Orange fuerza la pista de video soportada de mayor calidad cuando Media3 expone varias variantes, evitando quedarse en perfiles inferiores si el dispositivo puede con la senal.
 - Offline beta: el zapping reduce buffers iniciales y evita resolver rutas no directas antes de preparar el player, recortando esperas en Fire TV sin cambiar los fallbacks de compatibilidad.

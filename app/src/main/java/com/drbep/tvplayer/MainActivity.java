@@ -1073,156 +1073,119 @@ public class MainActivity extends FragmentActivity {
     }
 
     private TouchControlsBarUiModel buildTouchControlsBarUiModel() {
-        ChannelItem current = getCurrentPlaybackChannelItem();
-        boolean vod = current != null && current.isVod;
-        List<ZapActionItem> actions = new ArrayList<>();
-        actions.add(new ZapActionItem(
-                getString(R.string.touch_button_list),
-                true,
-                false,
-                isOverlayVisible(),
-                () -> {
-                    showTouchControlsTemporarily();
-                    if (isOverlayVisible()) {
-                        hideOverlay();
-                    } else {
-                        showOverlay();
-                    }
+        return TouchControlsUiFactory.build(new TouchControlsUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String currentFilterLabel() {
+                return buildTouchHomeFilterLabel();
+            }
+
+            @Override
+            public ChannelItem currentChannel() {
+                return getCurrentPlaybackChannelItem();
+            }
+
+            @Override
+            public boolean isOverlayVisible() {
+                return MainActivity.this.isOverlayVisible();
+            }
+
+            @Override
+            public boolean isTabletOrientationLocked() {
+                return tabletOrientationLocked;
+            }
+
+            @Override
+            public void keepVisible() {
+                showTouchControlsTemporarily();
+            }
+
+            @Override
+            public void hideOverlay() {
+                MainActivity.this.hideOverlay();
+            }
+
+            @Override
+            public void showOverlay() {
+                MainActivity.this.showOverlay();
+            }
+
+            @Override
+            public void showFilterPicker() {
+                showFilterPickerDialog();
+            }
+
+            @Override
+            public void showVodLibrary() {
+                showVodLibraryDialog();
+            }
+
+            @Override
+            public void openTimelineGuide() {
+                openTimelineGuideAroundSelection();
+            }
+
+            @Override
+            public void showVodInfo(ChannelItem item) {
+                showVodInfoDialog(item);
+            }
+
+            @Override
+            public void tunePreviousChannel() {
+                MainActivity.this.tunePreviousChannel();
+            }
+
+            @Override
+            public void openProgramInfo() {
+                openCurrentProgramInfoFromTouch();
+            }
+
+            @Override
+            public void showPlaybackDiagnostics() {
+                showPlaybackDiagnosticsDialog();
+            }
+
+            @Override
+            public void openRecordings() {
+                openRecordingsBrowser();
+            }
+
+            @Override
+            public void showToolsMenu() {
+                showV12ToolsMenu();
+            }
+
+            @Override
+            public void toggleTabletOrientationLock() {
+                MainActivity.this.toggleTabletOrientationLock();
+            }
+
+            @Override
+            public boolean seekBack() {
+                return playerController != null && playerController.seekTimeshiftBack();
+            }
+
+            @Override
+            public boolean seekForward() {
+                return playerController != null && playerController.seekTimeshiftForward();
+            }
+
+            @Override
+            public void showSeekUnavailable() {
+                showStatus(getString(R.string.status_touch_seek_unavailable));
+            }
+
+            @Override
+            public void togglePlayback() {
+                if (playerController != null) {
+                    playerController.togglePlayback();
                 }
-        ));
-        actions.add(new ZapActionItem(
-                getString(R.string.touch_button_platform),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    showFilterPickerDialog();
-                }
-        ));
-        actions.add(new ZapActionItem(
-                getString(vod ? R.string.touch_button_vod_library : R.string.touch_button_guide),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    if (vod) {
-                        showVodLibraryDialog();
-                    } else {
-                        openTimelineGuideAroundSelection();
-                    }
-                }
-        ));
-        actions.add(new ZapActionItem(
-                getString(vod ? R.string.touch_button_vod_detail : R.string.touch_button_previous),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    if (vod && current != null) {
-                        showVodInfoDialog(current);
-                    } else {
-                        tunePreviousChannel();
-                    }
-                }
-        ));
-        actions.add(new ZapActionItem(
-                getString(vod ? R.string.touch_button_vod_detail : R.string.touch_button_info),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    openCurrentProgramInfoFromTouch();
-                },
-                () -> {
-                    showTouchControlsTemporarily();
-                    showPlaybackDiagnosticsDialog();
-                }
-        ));
-        if (vod) {
-            actions.add(new ZapActionItem(
-                    getString(R.string.touch_button_vod_library),
-                    true,
-                    false,
-                    false,
-                    () -> {
-                        showTouchControlsTemporarily();
-                        showVodLibraryDialog();
-                    }
-            ));
-        }
-        actions.add(new ZapActionItem(
-                getString(R.string.touch_button_recordings),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    openRecordingsBrowser();
-                },
-                () -> {
-                    showTouchControlsTemporarily();
-                    showV12ToolsMenu();
-                }
-        ));
-        actions.add(new ZapActionItem(
-                getString(tabletOrientationLocked ? R.string.touch_button_rotate_locked : R.string.touch_button_rotate_free),
-                true,
-                false,
-                tabletOrientationLocked,
-                () -> {
-                    showTouchControlsTemporarily();
-                    toggleTabletOrientationLock();
-                }
-        ));
-        actions.add(new ZapActionItem(
-                getString(R.string.touch_button_rewind),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    if (playerController == null || !playerController.seekTimeshiftBack()) {
-                        showStatus(getString(R.string.status_touch_seek_unavailable));
-                    }
-                }
-        ));
-        actions.add(new ZapActionItem(
-                getString(R.string.touch_button_play_pause),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    if (playerController != null) {
-                        playerController.togglePlayback();
-                    }
-                }
-        ));
-        actions.add(new ZapActionItem(
-                getString(R.string.touch_button_forward),
-                true,
-                false,
-                false,
-                () -> {
-                    showTouchControlsTemporarily();
-                    if (playerController == null || !playerController.seekTimeshiftForward()) {
-                        showStatus(getString(R.string.status_touch_seek_unavailable));
-                    }
-                }
-        ));
-        return new TouchControlsBarUiModel(
-                getString(R.string.filter_navigation_hint),
-                buildTouchHomeFilterLabel(),
-                () -> {
-                    showTouchControlsTemporarily();
-                    showFilterPickerDialog();
-                },
-                actions
-        );
+            }
+        });
     }
 
     private String formatPlaybackPreviewLabel(PlayerController.PlaybackSeekState state, long targetMs) {

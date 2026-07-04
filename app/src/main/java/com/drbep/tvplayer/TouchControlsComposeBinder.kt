@@ -2,23 +2,29 @@ package com.drbep.tvplayer
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -35,11 +41,14 @@ object TouchControlsComposeBinder {
 
 @Composable
 private fun TouchControlsBar(model: TouchControlsBarUiModel) {
-    Box(
+    Column(
         modifier = Modifier
-            .background(Color(0xAA11161D), RoundedCornerShape(22.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .background(Color(0xD411161D), RoundedCornerShape(22.dp))
+            .padding(horizontal = 8.dp, vertical = 7.dp)
     ) {
+        if (model.contextTitle.isNotBlank() || model.contextSubtitle.isNotBlank()) {
+            TouchContextHeader(model)
+        }
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -47,6 +56,61 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel) {
             model.actions.forEach { item ->
                 TouchControlChip(item)
             }
+        }
+    }
+}
+
+@Composable
+private fun TouchContextHeader(model: TouchControlsBarUiModel) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .background(Color(0xB51B2A38), RoundedCornerShape(16.dp))
+            .clickable(enabled = model.onContextClick != null) { model.onContextClick?.run() }
+            .tvButtonSemantics(model.onContextClick != null)
+            .padding(horizontal = 11.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            BasicText(
+                text = model.contextTitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(
+                    color = Color(0xFF9BD0FF),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black
+                )
+            )
+            if (model.contextSubtitle.isNotBlank()) {
+                BasicText(
+                    text = model.contextSubtitle,
+                    modifier = Modifier.padding(top = 2.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+        }
+        if (model.onContextClick != null) {
+            Spacer(modifier = Modifier.width(10.dp))
+            BasicText(
+                text = stringResource(id = R.string.touch_context_change),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .background(Color(0xFF2D6EA3), RoundedCornerShape(999.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                style = TextStyle(
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black
+                )
+            )
         }
     }
 }

@@ -1214,7 +1214,15 @@ public class MainActivity extends FragmentActivity {
                     }
                 }
         ));
-        return new TouchControlsBarUiModel(actions);
+        return new TouchControlsBarUiModel(
+                getString(R.string.filter_navigation_hint),
+                buildTouchHomeFilterLabel(),
+                () -> {
+                    showTouchControlsTemporarily();
+                    showFilterPickerDialog();
+                },
+                actions
+        );
     }
 
     private String formatPlaybackPreviewLabel(PlayerController.PlaybackSeekState state, long targetMs) {

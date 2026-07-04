@@ -1,3 +1,8 @@
+## 2.0.189-beta-compose-factory-dialogs
+- Offline beta: busqueda global, resultados EPG, mini guia y banner inferior de zapping separan la construccion de modelos UI en factories dedicadas.
+- Offline beta: se introduce un host comun para dialogos Compose fullscreen y se aplica a VOD, EPG visual, timeline, busqueda, listas, activacion offline y paneles de diagnostico/mensaje.
+- Offline beta: la barra tactil en movil/tablet ajusta los chips con ancho minimo y texto centrado para reducir cortes y saltos visuales.
+
 ## 2.0.188-stable-compose-base
 - Offline stable: se consolida como base estable la tanda probada de tablet/movil, HUD tactil, multiview, Orange, catalogo offline y paneles Compose.
 - Offline stable: incluye el cambio de plataforma/grupo en tablet con sintonizacion automatica del primer canal visible.

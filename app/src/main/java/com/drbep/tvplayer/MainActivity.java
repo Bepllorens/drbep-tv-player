@@ -409,7 +409,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private static final class EpgSearchResult {
+    static final class EpgSearchResult {
         final ChannelItem channel;
         final EpgRepository.EpgProgram program;
 
@@ -419,7 +419,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private static final class GlobalSearchResult {
+    static final class GlobalSearchResult {
         final int type;
         final String title;
         final String meta;
@@ -2506,22 +2506,14 @@ public class MainActivity extends FragmentActivity {
                 }
         );
 
-        android.app.Dialog dialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        visualEpgDialogRef[0] = dialog;
-        dialog.setContentView(visualEpgPanelComposeView);
-        dialog.setCancelable(true);
-        dialog.setOnShowListener(d -> {
-            if (dialog.getWindow() != null) {
-                dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            }
-            visualEpgPanelComposeView.requestFocus();
-        });
-        dialog.setOnDismissListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, visualEpgPanelComposeView, () -> {
             VisualEpgPanelComposeBinder.clear(visualEpgPanelComposeView);
             handleModalDismissed();
         });
-        dialog.show();
+        visualEpgDialogRef[0] = dialog;
+        dialog.setCancelable(true);
         handleModalShown();
+        visualEpgPanelComposeView.requestFocus();
     }
 
     private void openCurrentProgramInfoFromTouch() {
@@ -2611,8 +2603,6 @@ public class MainActivity extends FragmentActivity {
                 showStatus(getString(R.string.vod_status_progress_cleared));
             }));
         }
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        dialogHolder[0] = dialog;
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         VodDetailPanelComposeBinder.bind(
@@ -2631,20 +2621,13 @@ public class MainActivity extends FragmentActivity {
                 ),
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
-        dialog.setContentView(composeView);
-        dialog.setOnCancelListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onBack != null) {
                 modalReturnAction = onBack;
             }
-        });
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private String buildVodProgressLabel(ChannelItem channel, long resumeMs) {
@@ -2707,8 +2690,6 @@ public class MainActivity extends FragmentActivity {
             clearVodResumePosition(channel.id);
             showStatus(getString(R.string.vod_status_progress_cleared));
         }));
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        dialogHolder[0] = dialog;
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         VodDetailPanelComposeBinder.bind(
@@ -2727,20 +2708,13 @@ public class MainActivity extends FragmentActivity {
                 ),
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
-        dialog.setContentView(composeView);
-        dialog.setOnCancelListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onBack != null) {
                 modalReturnAction = onBack;
             }
-        });
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void dismissDialog(Dialog dialog) {
@@ -2820,15 +2794,21 @@ public class MainActivity extends FragmentActivity {
                 : program.description.trim();
         String imageUrl = program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon.trim();
         String meta = channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        final Dialog[] dialogHolder = new Dialog[1];
         List<TvMessageActionUiModel> actions = new ArrayList<>();
         if (!isOfflineRecordingsDisabled()) {
             actions.add(new TvMessageActionUiModel(getString(R.string.menu_record), false, () -> {
-                dialog.dismiss();
+                if (dialogHolder[0] != null) {
+                    dialogHolder[0].dismiss();
+                }
                 scheduleProgram(channel, program);
             }));
         }
-        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, dialog::dismiss));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, () -> {
+            if (dialogHolder[0] != null) {
+                dialogHolder[0].dismiss();
+            }
+        }));
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         ProgramInfoPanelComposeBinder.bind(
@@ -2847,15 +2827,9 @@ public class MainActivity extends FragmentActivity {
                 ),
                 (imageView, item) -> bindProgramPoster(imageView, item == null ? "" : item.imageUrl)
         );
-        dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void createScheduleFromEndpoint(ChannelItem ch, boolean next) {
@@ -6216,49 +6190,58 @@ public class MainActivity extends FragmentActivity {
     private ZapBannerUiModel buildZapBannerUiModel(ChannelItem channelItem) {
         updateZapActionButtons(channelItem);
         EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channelItem.id);
-        EpgRepository.EpgProgram currentProgram = pair == null ? null : pair.current;
-        EpgRepository.EpgProgram nextProgram = pair == null ? null : pair.next;
-
-        String currentTitle = currentProgram != null && currentProgram.title != null && !currentProgram.title.trim().isEmpty()
-                ? currentProgram.title.trim()
-                : (channelItem.nowProgram == null ? "" : channelItem.nowProgram.trim());
-        String nextTitle = nextProgram != null && nextProgram.title != null && !nextProgram.title.trim().isEmpty()
-                ? nextProgram.title.trim()
-                : (channelItem.nextProgram == null ? "" : channelItem.nextProgram.trim());
-
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
-        String qualityLabel = formatPlaybackQualityCompact(diagnostics);
-        boolean qualityVisible = !qualityLabel.trim().isEmpty()
-                || (diagnostics != null && diagnostics.playbackState != null && !"IDLE".equalsIgnoreCase(diagnostics.playbackState));
-        String qualityText = !qualityLabel.trim().isEmpty()
-                ? getString(R.string.overlay_playback_quality, qualityLabel)
-                : getString(R.string.overlay_playback_quality_detecting);
+        return ZapBannerUiFactory.build(channelItem, pair, diagnostics, zapActionItems, new ZapBannerUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
 
-        int progress = currentProgram == null ? 0 : Math.max(0, Math.min(100, currentProgram.progress));
-        boolean progressVisible = currentProgram != null && currentProgram.progress >= 0;
-        long endMs = currentProgram == null ? 0L : parseIsoMillis(currentProgram.endTime);
-        long nowMs = System.currentTimeMillis();
-        String remainingText = (progressVisible && endMs > nowMs)
-                ? getString(R.string.zap_banner_remaining, formatDurationShort(endMs - nowMs))
-                : "";
-        String endTimeText = currentProgram == null ? "" : shortTime(currentProgram.endTime);
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
 
-        return new ZapBannerUiModel(
-                channelItem.logoUrl,
-                buildZapChannelBadge(channelItem),
-                displayName(channelItem),
-                qualityText,
-                qualityVisible,
-                currentTitle.isEmpty() ? getString(R.string.zap_banner_epg_missing) : currentTitle,
-                buildZapProgramMeta(channelItem, currentProgram),
-                nextTitle.isEmpty() ? "" : getString(R.string.zap_banner_next_prefix) + ": " + nextTitle,
-                !nextTitle.isEmpty(),
-                remainingText,
-                progress,
-                progressVisible,
-                endTimeText,
-                zapActionItems
-        );
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public String channelBadge(ChannelItem item) {
+                return buildZapChannelBadge(item);
+            }
+
+            @Override
+            public String programMeta(ChannelItem item, EpgRepository.EpgProgram program) {
+                return buildZapProgramMeta(item, program);
+            }
+
+            @Override
+            public String playbackQuality(PlayerController.PlaybackDiagnostics playbackDiagnostics) {
+                return formatPlaybackQualityCompact(playbackDiagnostics);
+            }
+
+            @Override
+            public String durationShort(long durationMs) {
+                return formatDurationShort(durationMs);
+            }
+
+            @Override
+            public String shortTime(String isoTime) {
+                return MainActivity.this.shortTime(isoTime);
+            }
+
+            @Override
+            public long parseIsoMillis(String isoTime) {
+                return MainActivity.this.parseIsoMillis(isoTime);
+            }
+
+            @Override
+            public long nowMs() {
+                return System.currentTimeMillis();
+            }
+        });
     }
 
     private ZapActionItem buildZapActionItem(int labelRes, boolean enabled, boolean highlighted, boolean selected, Runnable action) {
@@ -6586,30 +6569,20 @@ public class MainActivity extends FragmentActivity {
         String trimmedSearchQuery = searchQuery == null ? "" : searchQuery.trim();
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        dialogHolder[0] = dialog;
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         VodVisualPanelComposeBinder.bind(
                 composeView,
                 buildVodVisualPanelModel(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, dialogHolder, onBack),
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
-        dialog.setContentView(composeView);
-        dialog.setOnCancelListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onBack != null) {
                 modalReturnAction = onBack;
             }
-        });
-        dialog.setOnDismissListener(d -> {
+        }, () -> {
             handleModalDismissed();
         });
-        dialog.show();
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private VodVisualPanelUiModel buildVodVisualPanelModel(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String trimmedSearchQuery, Dialog[] dialogHolder, Runnable onBack) {
@@ -7660,11 +7633,15 @@ public class MainActivity extends FragmentActivity {
         final boolean[] active = {true};
         final int[] attempts = {0};
         prepareModalSurface();
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         List<TvMessageActionUiModel> actions = new ArrayList<>();
-        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, dialog::dismiss));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, () -> {
+            if (dialogHolder[0] != null) {
+                dialogHolder[0].dismiss();
+            }
+        }));
         TvMessagePanelComposeBinder.bind(
                 composeView,
                 new TvMessagePanelUiModel(
@@ -7673,18 +7650,12 @@ public class MainActivity extends FragmentActivity {
                         actions
                 )
         );
-        dialog.setContentView(composeView);
-        dialog.setOnDismissListener(unused -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             active[0] = false;
             handleModalDismissed();
         });
-        dialog.show();
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
         pollOfflineActivationCode(code, active, attempts, dialog);
     }
 
@@ -9954,7 +9925,7 @@ public class MainActivity extends FragmentActivity {
 
     private void showTvMessagePanel(String title, String message, List<TvMessageActionUiModel> actions, Runnable onCancel) {
         prepareModalSurface();
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         List<TvMessageActionUiModel> wrappedActions = new ArrayList<>();
@@ -9964,12 +9935,16 @@ public class MainActivity extends FragmentActivity {
                     continue;
                 }
                 wrappedActions.add(new TvMessageActionUiModel(action.label, action.destructive, () -> {
-                    dismissModalForNextAction(dialog, action.onClick);
+                    dismissModalForNextAction(dialogHolder[0], action.onClick);
                 }));
             }
         }
         if (wrappedActions.isEmpty()) {
-            wrappedActions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, dialog::dismiss));
+            wrappedActions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, () -> {
+                if (dialogHolder[0] != null) {
+                    dialogHolder[0].dismiss();
+                }
+            }));
         }
         TvMessagePanelComposeBinder.bind(
                 composeView,
@@ -9979,22 +9954,15 @@ public class MainActivity extends FragmentActivity {
                         wrappedActions
                 )
         );
-        dialog.setContentView(composeView);
-        dialog.setOnCancelListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onCancel != null) {
                 beginModalTransition(null);
                 uiHandler.post(onCancel);
                 finishModalTransitionAfterDelay();
             }
-        });
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void showStructuredStatusPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions) {
@@ -10003,7 +9971,7 @@ public class MainActivity extends FragmentActivity {
 
     private void showStructuredStatusPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions, Runnable onCancel) {
         prepareModalSurface();
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         List<TvMessageActionUiModel> wrappedActions = new ArrayList<>();
@@ -10013,12 +9981,16 @@ public class MainActivity extends FragmentActivity {
                     continue;
                 }
                 wrappedActions.add(new TvMessageActionUiModel(action.label, action.destructive, () -> {
-                    dismissModalForNextAction(dialog, action.onClick);
+                    dismissModalForNextAction(dialogHolder[0], action.onClick);
                 }));
             }
         }
         if (wrappedActions.isEmpty()) {
-            wrappedActions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, dialog::dismiss));
+            wrappedActions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, () -> {
+                if (dialogHolder[0] != null) {
+                    dialogHolder[0].dismiss();
+                }
+            }));
         }
         PlaybackDiagnosticsPanelComposeBinder.bind(
                 composeView,
@@ -10031,22 +10003,15 @@ public class MainActivity extends FragmentActivity {
                         wrappedActions
                 )
         );
-        dialog.setContentView(composeView);
-        dialog.setOnCancelListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onCancel != null) {
                 beginModalTransition(null);
                 uiHandler.post(onCancel);
                 finishModalTransitionAfterDelay();
             }
-        });
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void showTvTextInputPanel(TvTextInputPanelUiModel model) {
@@ -10948,7 +10913,7 @@ public class MainActivity extends FragmentActivity {
         }
         List<ChannelCollectionStore.ChannelCollection> collections = channelCollectionStore.getCollections();
         prepareModalSurface();
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        final Dialog[] dialogHolder = new Dialog[1];
         ComposeView personalListComposeView = new ComposeView(this);
         attachDialogViewTreeOwners(personalListComposeView);
         PersonalListComposeBinder.bindPanel(
@@ -10957,22 +10922,26 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.personal_list_manager_hint, collections.size()),
                 getString(R.string.personal_list_create),
                 getString(R.string.dialog_close),
-                buildPersonalListManagerUiModel(collections, dialog::dismiss),
+                buildPersonalListManagerUiModel(collections, () -> {
+                    if (dialogHolder[0] != null) {
+                        dialogHolder[0].dismiss();
+                    }
+                }),
                 () -> {
-                    dialog.dismiss();
+                    if (dialogHolder[0] != null) {
+                        dialogHolder[0].dismiss();
+                    }
                     showCreatePersonalListDialog();
                 },
-                dialog::dismiss
+                () -> {
+                    if (dialogHolder[0] != null) {
+                        dialogHolder[0].dismiss();
+                    }
+                }
         );
-        dialog.setContentView(personalListComposeView);
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, personalListComposeView, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private PersonalListManagerUiModel buildPersonalListManagerUiModel(List<ChannelCollectionStore.ChannelCollection> collections) {
@@ -11136,17 +11105,9 @@ public class MainActivity extends FragmentActivity {
                 bindChannelLogo(imageView, item.logoUrl, item.channelName, 42, 42);
             }
         });
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, quickChannelListComposeView, this::handleModalDismissed);
         dialogHolder[0] = dialog;
-        dialog.setContentView(quickChannelListComposeView);
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void showPersonalListChannelActionsDialog(ChannelCollectionStore.ChannelCollection collection, ChannelItem item) {
@@ -11277,44 +11238,12 @@ public class MainActivity extends FragmentActivity {
         final String[] queryHolder = new String[]{initialQuery == null ? "" : initialQuery.trim()};
         renderGlobalSearchResults(searchComposeView, buildGlobalSearchLocalResults(queryHolder[0], globalSearchFilter), dialogHolder, queryHolder);
 
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, searchComposeView, this::handleModalDismissed);
         dialogHolder[0] = dialog;
-        dialog.setContentView(searchComposeView);
 
-        dialog.setOnShowListener(d -> {
-            searchComposeView.requestFocus();
-            updateGlobalSearchResults(searchComposeView, dialogHolder, queryHolder, queryHolder[0]);
-        });
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
-    }
-
-    private List<GlobalSearchFilterUiModel> buildGlobalSearchFilterUiModels(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder) {
-        List<GlobalSearchFilterUiModel> filterModels = new ArrayList<>();
-        int[] filterIds = new int[]{
-                GLOBAL_SEARCH_FILTER_ALL,
-                GLOBAL_SEARCH_FILTER_TV,
-                GLOBAL_SEARCH_FILTER_VOD,
-                GLOBAL_SEARCH_FILTER_FAVORITES,
-                GLOBAL_SEARCH_FILTER_EPG,
-                GLOBAL_SEARCH_FILTER_RECORDINGS
-        };
-        for (int filter : filterIds) {
-            if (filter == GLOBAL_SEARCH_FILTER_RECORDINGS && isOfflineRecordingsDisabled()) {
-                continue;
-            }
-            filterModels.add(new GlobalSearchFilterUiModel(globalSearchFilterLabel(filter), filter == globalSearchFilter, () -> {
-                globalSearchFilter = filter;
-                updateGlobalSearchResults(composeView, dialogHolder, queryHolder, queryHolder == null ? "" : queryHolder[0]);
-            }));
-        }
-        return filterModels;
+        searchComposeView.requestFocus();
+        updateGlobalSearchResults(searchComposeView, dialogHolder, queryHolder, queryHolder[0]);
     }
 
     private String globalSearchFilterLabel(int filter) {
@@ -11364,74 +11293,106 @@ public class MainActivity extends FragmentActivity {
     }
 
     private GlobalSearchListUiModel buildGlobalSearchListUiModel(List<GlobalSearchResult> results, Dialog[] dialogHolder, String[] queryHolder, ComposeView composeView, String query) {
-        List<GlobalSearchRowUiModel> rows = new ArrayList<>();
-        if (results != null) {
-            for (GlobalSearchResult result : results) {
-                boolean header = result != null && result.type == GLOBAL_SEARCH_HEADER;
-                int imageKind = GlobalSearchRowUiModel.IMAGE_NONE;
-                String imageUrl = "";
-                String imageName = "";
-                if (!header && result != null) {
-                    if (result.channel != null) {
-                        imageKind = GlobalSearchRowUiModel.IMAGE_CHANNEL;
-                        imageUrl = result.channel.logoUrl;
-                        imageName = displayName(result.channel);
-                    } else if (result.epgResult != null) {
-                        imageKind = GlobalSearchRowUiModel.IMAGE_PROGRAM;
-                        EpgRepository.EpgProgram program = result.epgResult.program;
-                        ChannelItem channel = result.epgResult.channel;
-                        imageUrl = program == null || program.icon == null || program.icon.trim().isEmpty()
-                                ? (channel == null ? "" : channel.logoUrl)
-                                : program.icon.trim();
-                        imageName = channel == null ? "" : displayName(channel);
-                    } else if (result.recording != null) {
-                        imageKind = GlobalSearchRowUiModel.IMAGE_RECORDING;
-                        imageUrl = result.recording.poster;
-                        imageName = buildRecordingTitle(result.recording);
-                    }
-                }
-                rows.add(new GlobalSearchRowUiModel(
-                        result == null ? "" : decorateProtectedItemTitle(result.channel, result.title),
-                        header || result == null ? "" : decorateProtectedMeta(result.channel, result.meta),
-                        header || result == null ? "" : buildProtectedTypeBadge(result.channel, result.badge),
-                        header,
-                        imageKind,
-                        imageUrl,
-                        imageName,
-                        header ? null : () -> {
-                            if (result == null) {
-                                return;
-                            }
-                            if (result.type == GLOBAL_SEARCH_HISTORY) {
-                                if (queryHolder != null) {
-                                    queryHolder[0] = result.title;
-                                }
-                                updateGlobalSearchResults(composeView, dialogHolder, queryHolder, result.title);
-                                return;
-                            }
-                            String activeQuery = queryHolder == null ? "" : queryHolder[0];
-                            rememberGlobalSearchQuery(activeQuery);
-                            if (dialogHolder != null && dialogHolder[0] != null) {
-                                dialogHolder[0].dismiss();
-                            }
-                            handleGlobalSearchResult(result);
-                        },
-                        header ? null : () -> {
-                            if (result != null) {
-                                showGlobalSearchActions(result);
-                            }
-                        }
-                ));
+        return GlobalSearchUiFactory.build(query, results, new GlobalSearchUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
             }
-        }
-        return new GlobalSearchListUiModel(
-                getString(R.string.title_global_search),
-                getString(R.string.global_search_hint),
-                query,
-                buildGlobalSearchFilterUiModels(composeView, dialogHolder, queryHolder),
-                value -> updateGlobalSearchResults(composeView, dialogHolder, queryHolder, value),
-                rows
-        );
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public String recordingTitle(RecordingsRepository.RecordingItem item) {
+                return buildRecordingTitle(item);
+            }
+
+            @Override
+            public String protectedTitle(ChannelItem item, String title) {
+                return decorateProtectedItemTitle(item, title);
+            }
+
+            @Override
+            public String protectedMeta(ChannelItem item, String meta) {
+                return decorateProtectedMeta(item, meta);
+            }
+
+            @Override
+            public String protectedBadge(ChannelItem item, String fallback) {
+                return buildProtectedTypeBadge(item, fallback);
+            }
+
+            @Override
+            public String filterLabel(int filter) {
+                return globalSearchFilterLabel(filter);
+            }
+
+            @Override
+            public int[] filters() {
+                return new int[]{
+                        GLOBAL_SEARCH_FILTER_ALL,
+                        GLOBAL_SEARCH_FILTER_TV,
+                        GLOBAL_SEARCH_FILTER_VOD,
+                        GLOBAL_SEARCH_FILTER_FAVORITES,
+                        GLOBAL_SEARCH_FILTER_EPG,
+                        GLOBAL_SEARCH_FILTER_RECORDINGS
+                };
+            }
+
+            @Override
+            public int currentFilter() {
+                return globalSearchFilter;
+            }
+
+            @Override
+            public boolean recordingsDisabled() {
+                return isOfflineRecordingsDisabled();
+            }
+
+            @Override
+            public boolean isHeader(GlobalSearchResult result) {
+                return result != null && result.type == GLOBAL_SEARCH_HEADER;
+            }
+
+            @Override
+            public boolean isHistory(GlobalSearchResult result) {
+                return result != null && result.type == GLOBAL_SEARCH_HISTORY;
+            }
+
+            @Override
+            public void applyFilter(int filter) {
+                globalSearchFilter = filter;
+                updateGlobalSearchResults(composeView, dialogHolder, queryHolder, queryHolder == null ? "" : queryHolder[0]);
+            }
+
+            @Override
+            public void applyQuery(String query) {
+                if (queryHolder != null) {
+                    queryHolder[0] = query;
+                }
+                updateGlobalSearchResults(composeView, dialogHolder, queryHolder, query);
+            }
+
+            @Override
+            public void rememberQuery(String query) {
+                rememberGlobalSearchQuery(query);
+            }
+
+            @Override
+            public void openResult(GlobalSearchResult result) {
+                if (dialogHolder != null && dialogHolder[0] != null) {
+                    dialogHolder[0].dismiss();
+                }
+                handleGlobalSearchResult(result);
+            }
+
+            @Override
+            public void openActions(GlobalSearchResult result) {
+                showGlobalSearchActions(result);
+            }
+        });
     }
 
     private void updateGlobalSearchResults(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder, String query) {
@@ -11982,17 +11943,9 @@ public class MainActivity extends FragmentActivity {
             }
             bindProgramPoster(imageView, item.imageUrl);
         });
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, this::handleModalDismissed);
         dialogHolder[0] = dialog;
-        dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void showMiniGuideDialog(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
@@ -12005,16 +11958,8 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.title_guide, displayName(channel)),
                 getString(R.string.mini_guide_hint, items == null ? 0 : items.size())
         ));
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        dialog.setContentView(composeView);
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        ComposeDialogHost.showFullscreen(this, composeView, this::handleModalDismissed);
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private EpgSearchResultListUiModel buildEpgSearchResultListUiModel(List<EpgSearchResult> results, Dialog[] dialogHolder) {
@@ -12022,43 +11967,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private EpgSearchResultListUiModel buildEpgSearchResultListUiModel(String title, String subtitle, List<EpgSearchResult> results, Dialog[] dialogHolder) {
-        List<EpgSearchResultRowUiModel> rows = new ArrayList<>();
-        if (results != null) {
-            for (EpgSearchResult result : results) {
-                if (result == null) {
-                    continue;
-                }
-                ChannelItem channel = result.channel;
-                EpgRepository.EpgProgram program = result.program;
-                String programTitle = program == null || program.title == null || program.title.trim().isEmpty()
-                        ? getString(R.string.label_program_default)
-                        : program.title.trim();
-                String channelName = channel == null ? "" : displayName(channel);
-                String time = program == null ? "" : shortTime(program.startTime) + " - " + shortTime(program.endTime);
-                String meta = (channelName + "  ·  " + time).trim();
-                boolean live = program != null && program.progress >= 0;
-                String badge = getString(live ? R.string.epg_search_badge_live : R.string.epg_search_badge_next);
-                int badgeColor = live ? 0xFF276B49 : 0xFF1E2D3E;
-                String imageUrl = program == null || program.icon == null || program.icon.trim().isEmpty()
-                        ? (channel == null ? "" : channel.logoUrl)
-                        : program.icon.trim();
-                rows.add(new EpgSearchResultRowUiModel(
-                        programTitle,
-                        meta,
-                        badge,
-                        badgeColor,
-                        imageUrl,
-                        () -> {
-                            Dialog activeDialog = dialogHolder == null ? null : dialogHolder[0];
-                            if (activeDialog != null && activeDialog.isShowing()) {
-                                activeDialog.dismiss();
-                            }
-                            uiHandler.post(() -> channelActionsCoordinator.showProgramActionMenu(result.channel, result.program));
-                        }
-                ));
-            }
-        }
-        return new EpgSearchResultListUiModel(title, subtitle, rows);
+        return EpgGuideUiFactory.buildSearchResults(title, subtitle, results, buildEpgGuideUiHost(dialogHolder));
     }
 
     private MiniGuideUiModel buildMiniGuideUiModel(ChannelItem channel, List<EpgRepository.EpgProgram> items) {
@@ -12066,38 +11975,40 @@ public class MainActivity extends FragmentActivity {
     }
 
     private MiniGuideUiModel buildMiniGuideUiModel(ChannelItem channel, List<EpgRepository.EpgProgram> items, String title, String subtitle) {
-        List<MiniGuideProgramRowUiModel> rows = new ArrayList<>();
-        if (items != null) {
-            for (int i = 0; i < items.size(); i++) {
-                EpgRepository.EpgProgram program = items.get(i);
-                if (program == null) {
-                    continue;
-                }
-                String badge;
-                int badgeColor;
-                if (program.progress >= 0) {
-                    badge = getString(R.string.guide_program_now);
-                    badgeColor = 0xAA266D3E;
-                } else if (i == 1) {
-                    badge = getString(R.string.guide_program_next);
-                    badgeColor = 0xAA405C86;
-                } else {
-                    badge = getString(R.string.guide_program_later);
-                    badgeColor = 0xAA4B5361;
-                }
-                EpgRepository.EpgProgram rowProgram = program;
-                rows.add(new MiniGuideProgramRowUiModel(
-                        shortTime(program.startTime) + " - " + shortTime(program.endTime),
-                        badge,
-                        badgeColor,
-                        program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title,
-                        program.progress >= 0 ? Math.min(100, Math.max(0, program.progress)) : -1,
-                        buildGuideMeta(program),
-                        () -> channelActionsCoordinator.showProgramActionMenu(channel, rowProgram)
-                ));
+        return EpgGuideUiFactory.buildMiniGuide(channel, items, title, subtitle, buildEpgGuideUiHost(null));
+    }
+
+    private EpgGuideUiFactory.Host buildEpgGuideUiHost(Dialog[] dialogHolder) {
+        return new EpgGuideUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
             }
-        }
-        return new MiniGuideUiModel(title, subtitle, rows);
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public String shortTime(String isoTime) {
+                return MainActivity.this.shortTime(isoTime);
+            }
+
+            @Override
+            public String guideMeta(EpgRepository.EpgProgram program) {
+                return buildGuideMeta(program);
+            }
+
+            @Override
+            public void openProgramActions(ChannelItem channel, EpgRepository.EpgProgram program) {
+                Dialog activeDialog = dialogHolder == null ? null : dialogHolder[0];
+                if (activeDialog != null && activeDialog.isShowing()) {
+                    activeDialog.dismiss();
+                }
+                uiHandler.post(() -> channelActionsCoordinator.showProgramActionMenu(channel, program));
+            }
+        };
     }
 
     private void showTimelineGuideDialog(List<TimelineChannelPrograms> rows, long windowStartMs, String anchorChannelId, List<RecordingsRepository.RecordingItem> scheduledItems) {
@@ -12248,18 +12159,7 @@ public class MainActivity extends FragmentActivity {
                     Glide.with(this).load(item.imageUrl.trim()).centerCrop().into(imageView);
                 }
         );
-        android.app.Dialog timelineDialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        timelineDialogRef[0] = timelineDialog;
-        activeTimelineDialog = timelineDialog;
-        timelineDialog.setContentView(timelinePanelComposeView);
-        timelineDialog.setCancelable(true);
-        timelineDialog.setOnShowListener(d -> {
-            if (timelineDialog.getWindow() != null) {
-                timelineDialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            }
-            timelinePanelComposeView.requestFocus();
-        });
-        timelineDialog.setOnDismissListener(d -> {
+        Dialog timelineDialog = ComposeDialogHost.showFullscreen(this, timelinePanelComposeView, () -> {
             TimelineGuidePanelComposeBinder.clear(timelinePanelComposeView);
             if (!refreshingTimelineDialog) {
                 lastTimelineAnchorChannelId = activeTimelineAnchorChannelId;
@@ -12275,8 +12175,11 @@ public class MainActivity extends FragmentActivity {
             }
             handleModalDismissed();
         });
-        timelineDialog.show();
+        timelineDialogRef[0] = timelineDialog;
+        activeTimelineDialog = timelineDialog;
+        timelineDialog.setCancelable(true);
         handleModalShown();
+        timelinePanelComposeView.requestFocus();
     }
 
     private void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {
@@ -12358,22 +12261,13 @@ public class MainActivity extends FragmentActivity {
                 bindChannelLogo(imageView, item.logoUrl, item.channelName, 42, 42);
             }
         });
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        dialogHolder[0] = dialog;
-        dialog.setContentView(quickChannelListComposeView);
-        dialog.setOnCancelListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, quickChannelListComposeView, () -> {
             if (onBack != null) {
                 modalReturnAction = onBack;
             }
-        });
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {

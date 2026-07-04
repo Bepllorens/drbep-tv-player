@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 187
-        versionName "2.0.187-beta-compose-recordings-polish"
+        versionCode 188
+        versionName "2.0.188-stable-compose-base"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

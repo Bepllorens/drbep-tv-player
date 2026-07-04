@@ -1,3 +1,8 @@
+## 2.0.188-stable-compose-base
+- Offline stable: se consolida como base estable la tanda probada de tablet/movil, HUD tactil, multiview, Orange, catalogo offline y paneles Compose.
+- Offline stable: incluye el cambio de plataforma/grupo en tablet con sintonizacion automatica del primer canal visible.
+- Offline stable: mantiene la separacion progresiva de modelos UI fuera de `MainActivity` para seguir el desarrollo en beta desde esta base.
+
 ## 2.0.187-beta-compose-recordings-polish
 - Offline beta: el cambio de plataforma/grupo en tablet sintoniza automaticamente el primer canal visible cuando el canal actual no pertenece al nuevo filtro.
 - Offline beta: la barra tactil muestra mejor el contexto activo de plataforma/grupo y el multiview mejora sus etiquetas de ventana y audio activo.

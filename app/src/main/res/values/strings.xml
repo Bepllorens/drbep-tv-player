@@ -575,6 +575,10 @@
     <string name="multiview_hint_tv">Flechas = mover · OK = audio/full · MENU = cambiar canal</string>
     <string name="multiview_select_channel_title">Elegir canal para ventana</string>
     <string name="multiview_close">Cerrar</string>
+    <string name="multiview_slot_label">Ventana %1$d</string>
+    <string name="multiview_active_audio">Audio activo</string>
+    <string name="multiview_tile_hint_tv">OK: ampliar · MENU: cambiar</string>
+    <string name="multiview_tile_hint_touch">Toca: audio · Mantener: cambiar</string>
     <string name="multiview_open_preset_title">Abrir preset multiview</string>
     <string name="multiview_save_preset_title">Guardar preset multiview</string>
     <string name="multiview_preset_label">Preset %1$d (%2$d canales)</string>

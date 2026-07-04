@@ -36,7 +36,9 @@ object MultiViewHeaderComposeBinder {
 @Composable
 private fun MultiViewHeader(model: MultiViewHeaderUiModel) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvPanelBackHandler(model.onCloseClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {

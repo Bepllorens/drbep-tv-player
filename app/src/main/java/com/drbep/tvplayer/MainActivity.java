@@ -5907,6 +5907,9 @@ public class MainActivity extends FragmentActivity {
                     multiOverlayViews[i],
                     new MultiViewTileOverlayUiModel(
                             item == null ? "" : item.name,
+                            getString(R.string.multiview_slot_label, i + 1),
+                            getString(R.string.multiview_active_audio),
+                            touchDeviceMode ? getString(R.string.multiview_tile_hint_touch) : getString(R.string.multiview_tile_hint_tv),
                             hasChannel,
                             i == multiViewActiveIndex && hasChannel,
                             false,

@@ -5251,92 +5251,110 @@ public class MainActivity extends FragmentActivity {
     }
 
     private OverlayChannelListUiModel buildOverlayChannelListUiModel() {
-        List<OverlayChannelRowUiModel> items = new ArrayList<>();
-        String query = channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
-        for (int position = 0; position < channels.size(); position++) {
-            ChannelItem ch = channels.get(position);
-            if (ch == null) {
-                continue;
+        return OverlayChannelListUiFactory.build(new OverlayChannelListUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
             }
-            String name = decorateProtectedItemTitle(ch, displayName(ch));
-            String metaText;
-            String badge = "";
-            boolean badgeVisible = false;
-            int badgeTextColor = 0xFFDDE8F6;
-            if (ch.isVod) {
-                metaText = decorateProtectedMeta(ch, buildVodRowMeta(ch));
-                String listLabel = buildChannelMembershipLabel(ch, 2);
-                if (!listLabel.isEmpty()) {
-                    metaText = listLabel + "  ·  " + metaText;
-                }
-                badge = buildProtectedTypeBadge(ch, ch.isAdultVod ? getString(R.string.channel_badge_vod_adult) : getString(R.string.channel_badge_vod));
-                badgeVisible = true;
-                badgeTextColor = isProtectedItem(ch) ? 0xFFFFE08A : (ch.isAdultVod ? 0xFFFFD6D6 : 0xFFDDE8F6);
-            } else {
-                String tag = profileTag(ch);
-                String listLabel = buildChannelMembershipLabel(ch, 2);
-                metaText = "";
-                if (ch.nowProgram != null && !ch.nowProgram.trim().isEmpty()) {
-                    metaText = tag.isEmpty() ? ch.nowProgram : tag + "  ·  " + ch.nowProgram;
-                } else if (ch.group != null && !ch.group.trim().isEmpty()) {
-                    metaText = tag.isEmpty() ? ch.group : tag + "  ·  " + ch.group;
-                } else if (!tag.isEmpty()) {
-                    metaText = tag;
-                }
-                if (!listLabel.isEmpty()) {
-                    metaText = metaText.isEmpty() ? listLabel : listLabel + "  ·  " + metaText;
-                }
-                metaText = decorateProtectedMeta(ch, metaText);
-                if (isProtectedItem(ch)) {
-                    badge = getString(R.string.parental_lock_pin_badge);
-                    badgeVisible = true;
-                    badgeTextColor = 0xFFFFE08A;
-                }
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
             }
-            final int rowPosition = position;
-            items.add(new OverlayChannelRowUiModel(
-                    ch.logoUrl,
-                    name,
-                    metaText,
-                    badge,
-                    badgeVisible,
-                    badgeTextColor,
-                    touchDeviceMode || ch.favorite,
-                    ch.favorite,
-                    getString(ch.favorite ? R.string.overlay_favorite_toggle_on : R.string.overlay_favorite_toggle_off),
-                    ch.favorite ? 0xFFFFD54F : 0xFFFFFFFF,
-                    rowPosition == overlayNavigationState.selectedOverlayIndex,
-                    rowPosition == overlayNavigationState.currentIndex,
-                    ch.isVod,
-                    query,
-                    () -> {
-                        overlayNavigationState.selectedOverlayIndex = rowPosition;
-                        tuneToIndex(rowPosition, true);
-                        hideOverlay();
-                    },
-                    touchDeviceMode ? () -> {
-                        overlayNavigationState.selectedOverlayIndex = rowPosition;
-                        toggleFavoriteSelected();
-                    } : null
-            ));
-        }
-        boolean hasQuery = query != null && !query.trim().isEmpty();
-        String emptyMessage = hasQuery
-                ? getString(R.string.overlay_no_results_search, query.trim())
-                : getString(R.string.overlay_no_results);
-        return new OverlayChannelListUiModel(
-                items,
-                pendingOverlayListScrollIndex,
-                overlayListScrollRequestToken,
-                getString(R.string.overlay_section_list),
-                "",
-                "",
-                emptyMessage,
-                null,
-                null,
-                () -> moveOverlaySelection(-1),
-                () -> moveOverlaySelection(1)
-        );
+
+            @Override
+            public String searchQuery() {
+                return channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
+            }
+
+            @Override
+            public List<ChannelItem> channels() {
+                return channels;
+            }
+
+            @Override
+            public boolean touchMode() {
+                return touchDeviceMode;
+            }
+
+            @Override
+            public int selectedIndex() {
+                return overlayNavigationState.selectedOverlayIndex;
+            }
+
+            @Override
+            public int currentIndex() {
+                return overlayNavigationState.currentIndex;
+            }
+
+            @Override
+            public int scrollToIndex() {
+                return pendingOverlayListScrollIndex;
+            }
+
+            @Override
+            public int scrollRequestToken() {
+                return overlayListScrollRequestToken;
+            }
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public String decorateProtectedTitle(ChannelItem item, String title) {
+                return decorateProtectedItemTitle(item, title);
+            }
+
+            @Override
+            public String decorateProtectedMeta(ChannelItem item, String meta) {
+                return MainActivity.this.decorateProtectedMeta(item, meta);
+            }
+
+            @Override
+            public String vodMeta(ChannelItem item) {
+                return buildVodRowMeta(item);
+            }
+
+            @Override
+            public String membershipLabel(ChannelItem item, int maxLabels) {
+                return buildChannelMembershipLabel(item, maxLabels);
+            }
+
+            @Override
+            public String protectedTypeBadge(ChannelItem item, String fallback) {
+                return buildProtectedTypeBadge(item, fallback);
+            }
+
+            @Override
+            public boolean isProtected(ChannelItem item) {
+                return isProtectedItem(item);
+            }
+
+            @Override
+            public String profileTag(ChannelItem item) {
+                return MainActivity.this.profileTag(item);
+            }
+
+            @Override
+            public void selectAndTune(int position) {
+                overlayNavigationState.selectedOverlayIndex = position;
+                tuneToIndex(position, true);
+                hideOverlay();
+            }
+
+            @Override
+            public void selectAndToggleFavorite(int position) {
+                overlayNavigationState.selectedOverlayIndex = position;
+                toggleFavoriteSelected();
+            }
+
+            @Override
+            public void moveSelection(int delta) {
+                moveOverlaySelection(delta);
+            }
+        });
     }
 
     private void refreshOverlayChannelList() {

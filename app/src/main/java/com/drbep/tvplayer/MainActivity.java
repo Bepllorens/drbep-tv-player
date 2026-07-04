@@ -5097,85 +5097,157 @@ public class MainActivity extends FragmentActivity {
     }
 
     private OverlayControlsUiModel buildOverlayControlsModel(boolean tvActive, boolean vodActive, boolean adultActive) {
-        List<ZapActionItem> filterActions = new ArrayList<>();
-        filterActions.add(new ZapActionItem(getString(R.string.filter_prev_button), true, false, false, () -> {
-            showTouchControlsTemporarily();
-            cycleFilter(-1);
-        }));
-        filterActions.add(new ZapActionItem(currentOverlayFilterLabel(), true, false, false, () -> {
-            showTouchControlsTemporarily();
-            cycleFilter(1);
-        }, () -> {
-            showTouchControlsTemporarily();
-            cycleFilter(-1);
-        }));
-        filterActions.add(new ZapActionItem(getString(R.string.filter_search_button), true, false, false, () -> {
-            showTouchControlsTemporarily();
-            focusOverlaySearchInput();
-        }));
-        filterActions.add(new ZapActionItem(getString(R.string.filter_next_button), true, false, false, () -> {
-            showTouchControlsTemporarily();
-            cycleFilter(1);
-        }));
+        return OverlayControlsUiFactory.build(new OverlayControlsUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
 
-        List<ZapActionItem> primaryActions = new ArrayList<>();
-        primaryActions.add(new ZapActionItem(formatOverlayCountLabel(R.string.overlay_quick_tv, countItemsForQuickTarget("tv")), true, false, tvActive, () -> applyQuickOverlayTarget("tv")));
-        if (shouldShowGenericVodQuickTarget(false)) {
-            primaryActions.add(new ZapActionItem(formatOverlayCountLabel(R.string.overlay_quick_vod, countItemsForQuickTarget("vod")), true, false, vodActive, () -> applyQuickOverlayTarget("vod")));
-        }
-        if (shouldShowGenericVodQuickTarget(true)) {
-            primaryActions.add(new ZapActionItem(
-                    decorateProtectedLabel(formatOverlayCountLabel(R.string.overlay_quick_adult, countItemsForQuickTarget("vod-adult")), currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod),
-                    true,
-                    currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod,
-                    adultActive,
-                    () -> applyQuickOverlayTarget("vod-adult")
-            ));
-        }
-        if (!isOfflineRecordingsDisabled()) {
-            primaryActions.add(new ZapActionItem(getString(R.string.overlay_quick_grab), true, false, isRecordingsPanelVisible(), () -> {
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public String quickCountLabel(int labelRes, int count) {
+                return formatOverlayCountLabel(labelRes, count);
+            }
+
+            @Override
+            public String currentFilterLabel() {
+                return currentOverlayFilterLabel();
+            }
+
+            @Override
+            public String searchQuery() {
+                return channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery();
+            }
+
+            @Override
+            public int searchFocusRequestToken() {
+                return overlaySearchFocusRequestToken;
+            }
+
+            @Override
+            public int searchClearFocusRequestToken() {
+                return overlaySearchClearFocusRequestToken;
+            }
+
+            @Override
+            public boolean tvActive() {
+                return tvActive;
+            }
+
+            @Override
+            public boolean vodActive() {
+                return vodActive;
+            }
+
+            @Override
+            public boolean adultActive() {
+                return adultActive;
+            }
+
+            @Override
+            public boolean showVodTarget() {
+                return shouldShowGenericVodQuickTarget(false);
+            }
+
+            @Override
+            public boolean showAdultTarget() {
+                return shouldShowGenericVodQuickTarget(true);
+            }
+
+            @Override
+            public boolean adultTargetProtected() {
+                return currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod;
+            }
+
+            @Override
+            public boolean recordingsEnabled() {
+                return !isOfflineRecordingsDisabled();
+            }
+
+            @Override
+            public boolean recordingsVisible() {
+                return isRecordingsPanelVisible();
+            }
+
+            @Override
+            public boolean favoritesSelected() {
+                return overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey);
+            }
+
+            @Override
+            public int countForTarget(String targetKey) {
+                return countItemsForQuickTarget(targetKey);
+            }
+
+            @Override
+            public int recentCount() {
+                return buildRecentQuickChannels().size();
+            }
+
+            @Override
+            public int favoriteCount() {
+                return buildFavoriteQuickChannels().size();
+            }
+
+            @Override
+            public void keepVisible() {
                 showTouchControlsTemporarily();
+            }
+
+            @Override
+            public void cycleFilter(int delta) {
+                MainActivity.this.cycleFilter(delta);
+            }
+
+            @Override
+            public void focusSearch() {
+                focusOverlaySearchInput();
+            }
+
+            @Override
+            public void applyQuickTarget(String targetKey) {
+                applyQuickOverlayTarget(targetKey);
+            }
+
+            @Override
+            public void openRecordings() {
                 openRecordingsBrowser();
-            }));
-        }
+            }
 
-        int favoriteCount = buildFavoriteQuickChannels().size();
-        List<ZapActionItem> secondaryActions = new ArrayList<>();
-        secondaryActions.add(new ZapActionItem(getString(R.string.overlay_recent_button_count, buildRecentQuickChannels().size()), true, false, false, () -> {
-            showTouchControlsTemporarily();
-            showRecentChannelsQuickDialog();
-        }));
-        secondaryActions.add(new ZapActionItem(
-                getString(overlayNavigationState.favoritesOnly ? R.string.overlay_favorites_button_on_count : R.string.overlay_favorites_button_off_count, favoriteCount),
-                true,
-                false,
-                overlayNavigationState.favoritesOnly || "favorites".equals(overlayNavigationState.selectedFilterKey),
-                () -> {
-                    showTouchControlsTemporarily();
-                    showFavoriteChannelsQuickDialog();
-                },
-                () -> {
-                    showTouchControlsTemporarily();
-                    toggleFavoritesOnlyMode();
-                }
-        ));
+            @Override
+            public void openRecentChannels() {
+                showRecentChannelsQuickDialog();
+            }
 
-        return new OverlayControlsUiModel(
-                getString(R.string.filter_navigation_hint),
-                currentOverlayFilterLabel(),
-                getString(R.string.overlay_search_hint),
-                channelOverlayCoordinator == null ? "" : channelOverlayCoordinator.getSearchQuery(),
-                overlaySearchFocusRequestToken,
-                overlaySearchClearFocusRequestToken,
-                this::applyOverlaySearchQuery,
-                () -> {
-                    showTouchControlsTemporarily();
-                    uiHandler.removeCallbacks(hideOverlayRunnable);
-                },
-                filterActions,
-                primaryActions,
-                secondaryActions
-        );
+            @Override
+            public void openFavoriteChannels() {
+                showFavoriteChannelsQuickDialog();
+            }
+
+            @Override
+            public void toggleFavoritesOnly() {
+                toggleFavoritesOnlyMode();
+            }
+
+            @Override
+            public void applySearchQuery(String query) {
+                applyOverlaySearchQuery(query);
+            }
+
+            @Override
+            public void onSearchFocused() {
+                uiHandler.removeCallbacks(hideOverlayRunnable);
+            }
+
+            @Override
+            public String decorateProtectedLabel(String label, boolean locked) {
+                return MainActivity.this.decorateProtectedLabel(label, locked);
+            }
+        });
     }
 
     private OverlayChannelListUiModel buildOverlayChannelListUiModel() {

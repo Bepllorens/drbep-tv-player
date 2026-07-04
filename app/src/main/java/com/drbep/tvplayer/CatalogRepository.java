@@ -25,6 +25,8 @@ final class CatalogRepository {
     private static final int FILTER_VOD = 3;
     private static final int FILTER_VOD_ADULT = 4;
     private static final int FILTER_FAVORITES = 5;
+    private static final int MAX_CATALOG_TEXT_FIELD_CHARS = 8192;
+    private static final int MAX_CATALOG_URL_FIELD_CHARS = 8192;
 
     private final String baseUrl;
     private final HttpClient httpClient;
@@ -100,7 +102,7 @@ final class CatalogRepository {
                 continue;
             }
 
-            String id = channel.optString("id", "").trim();
+            String id = safeCatalogText(channel.optString("id", ""));
             if (id.isEmpty() || "null".equalsIgnoreCase(id)) {
                 long numericId = channel.optLong("id", 0L);
                 if (numericId > 0L) {
@@ -108,23 +110,23 @@ final class CatalogRepository {
                 }
             }
 
-            String name = channel.optString("name", "Canal").trim();
+            String name = safeCatalogText(channel.optString("name", "Canal"));
             if ("0".equals(id) || id.isEmpty() || name.isEmpty()) {
                 continue;
             }
 
-            String logo = channel.optString("logo", "").trim();
-            String sourceGroup = channel.optString("group", "").trim();
-            String platformName = channel.optString("platform_name", "").trim();
+            String logo = safeCatalogUrl(channel.optString("logo", ""));
+            String sourceGroup = safeCatalogText(channel.optString("group", ""));
+            String platformName = safeCatalogText(channel.optString("platform_name", ""));
             boolean plutoChannel = standaloneMode && platformName.toLowerCase(Locale.ROOT).contains("pluto");
             String playbackUrl = standaloneMode
                     ? firstNonEmpty(
-                    plutoChannel ? channel.optString("url", "") : channel.optString("play_url", ""),
-                    plutoChannel ? channel.optString("source_url", "") : "",
-                    channel.optString("play_url", ""),
-                    channel.optString("stream_url", ""),
-                    channel.optString("url", ""),
-                    channel.optString("source_url", "")
+                    plutoChannel ? safeCatalogUrl(channel.optString("url", "")) : safeCatalogUrl(channel.optString("play_url", "")),
+                    plutoChannel ? safeCatalogUrl(channel.optString("source_url", "")) : "",
+                    safeCatalogUrl(channel.optString("play_url", "")),
+                    safeCatalogUrl(channel.optString("stream_url", "")),
+                    safeCatalogUrl(channel.optString("url", "")),
+                    safeCatalogUrl(channel.optString("source_url", ""))
             )
                     : baseUrl + "/live/" + id;
             if (standaloneMode) {
@@ -135,9 +137,9 @@ final class CatalogRepository {
             if (standaloneMode && channel.has("direct_playback")) {
                 directPlayback = channel.optBoolean("direct_playback", directPlayback);
             }
-            String tvgId = channel.optString("tvg_id", "").trim();
+            String tvgId = safeCatalogText(channel.optString("tvg_id", ""));
             int platformId = (int) channel.optLong("platform_id", 0L);
-            String playbackProfile = channel.optString("playback_profile", "").trim();
+            String playbackProfile = safeCatalogText(channel.optString("playback_profile", ""));
             int sortOrder = channel.has("sort_order") && !channel.isNull("sort_order")
                     ? channel.optInt("sort_order", Integer.MAX_VALUE)
                     : Integer.MAX_VALUE;
@@ -149,7 +151,7 @@ final class CatalogRepository {
             JSONArray groupsArray = channel.optJSONArray("custom_groups");
             if (groupsArray != null) {
                 for (int j = 0; j < groupsArray.length(); j++) {
-                    String groupName = groupsArray.optString(j, "").trim();
+                    String groupName = safeCatalogText(groupsArray.optString(j, ""));
                     if (!groupName.isEmpty()) {
                         customGroups.add(groupName);
                     }
@@ -175,8 +177,8 @@ final class CatalogRepository {
                     platformId,
                     platformName,
                     customGroups,
-                    firstNonEmpty(channel.optString("drm_scheme", ""), channel.optString("drm_type", "")),
-                    firstNonEmpty(channel.optString("drm_license_url", ""), channel.optString("license_url", ""), buildClearKeyDataLicenseUrl(channel.optJSONObject("clearkey"))),
+                    firstNonEmpty(safeCatalogText(channel.optString("drm_scheme", "")), safeCatalogText(channel.optString("drm_type", ""))),
+                    firstNonEmpty(safeCatalogUrl(channel.optString("drm_license_url", "")), safeCatalogUrl(channel.optString("license_url", "")), buildClearKeyDataLicenseUrl(channel.optJSONObject("clearkey"))),
                     "",
                     directPlayback,
                     playbackProfile
@@ -187,8 +189,9 @@ final class CatalogRepository {
                 while (keys.hasNext()) {
                     String groupName = keys.next();
                     int order = groupOrder.optInt(groupName, 0);
-                    if (groupName != null && !groupName.trim().isEmpty() && order > 0) {
-                        item.groupOrder.put(groupName.trim().toLowerCase(Locale.ROOT), order);
+                    groupName = safeCatalogText(groupName);
+                    if (!groupName.isEmpty() && order > 0) {
+                        item.groupOrder.put(groupName.toLowerCase(Locale.ROOT), order);
                     }
                 }
             }
@@ -258,11 +261,11 @@ final class CatalogRepository {
                 continue;
             }
 
-            String id = channel.optString("id", "").trim();
-            String name = channel.optString("name", "Canal").trim();
-            String logo = channel.optString("logo", "").trim();
-            String playUrl = channel.optString("play_url", "").trim();
-            String sourceGroup = channel.optString("group", "").trim();
+            String id = safeCatalogText(channel.optString("id", ""));
+            String name = safeCatalogText(channel.optString("name", "Canal"));
+            String logo = safeCatalogUrl(channel.optString("logo", ""));
+            String playUrl = safeCatalogUrl(channel.optString("play_url", ""));
+            String sourceGroup = safeCatalogText(channel.optString("group", ""));
             if (id.isEmpty() || playUrl.isEmpty()) {
                 continue;
             }
@@ -275,7 +278,7 @@ final class CatalogRepository {
             parsed.add(new ChannelItem(
                     id,
                     name,
-                    channel.optString("tvg_id", "").trim(),
+                    safeCatalogText(channel.optString("tvg_id", "")),
                     logo,
                     sourceGroup,
                     playUrl,
@@ -354,25 +357,25 @@ final class CatalogRepository {
                 continue;
             }
             String selectedUrl = firstNonEmpty(
-                    row.optString("selected_url", ""),
-                    row.optString("dash_url", ""),
-                    row.optString("hls_url", ""),
-                    row.optString("play_url", ""),
-                    row.optString("url", ""),
-                    row.optString("stream_url", "")
+                    safeCatalogUrl(row.optString("selected_url", "")),
+                    safeCatalogUrl(row.optString("dash_url", "")),
+                    safeCatalogUrl(row.optString("hls_url", "")),
+                    safeCatalogUrl(row.optString("play_url", "")),
+                    safeCatalogUrl(row.optString("url", "")),
+                    safeCatalogUrl(row.optString("stream_url", ""))
             );
             if (selectedUrl.isEmpty()) {
                 continue;
             }
-            String title = row.optString("title", "VOD").trim();
+            String title = safeCatalogText(row.optString("title", "VOD"));
             if (title.isEmpty()) {
                 title = "VOD";
             }
-            String logo = row.optString("poster", "").trim();
-            String group = firstNonEmpty(row.optString("group", ""), row.optString("carousel", ""), adult ? "VOD Adulto" : "VOD");
-            String description = row.optString("description", "").trim();
-            String year = row.optString("year", "").trim();
-            long durationSeconds = parseLongSafe(firstNonEmpty(row.optString("duration", ""), row.optString("duration_seconds", "")));
+            String logo = safeCatalogUrl(row.optString("poster", ""));
+            String group = firstNonEmpty(safeCatalogText(row.optString("group", "")), safeCatalogText(row.optString("carousel", "")), adult ? "VOD Adulto" : "VOD");
+            String description = safeCatalogText(row.optString("description", ""));
+            String year = safeCatalogText(row.optString("year", ""));
+            long durationSeconds = parseLongSafe(firstNonEmpty(safeCatalogText(row.optString("duration", "")), safeCatalogText(row.optString("duration_seconds", ""))));
             boolean hasKeys = row.optBoolean("has_keys", false);
             JSONObject clearKeys = row.optJSONObject("clear_keys");
             if (!hasKeys && clearKeys != null && clearKeys.length() > 0) {
@@ -395,7 +398,7 @@ final class CatalogRepository {
                     "Tivify VOD",
                     new ArrayList<>(),
                     hasKeys ? "clearkey" : "",
-                    hasKeys ? firstNonEmpty(row.optString("license_url", ""), buildClearKeyDataLicenseUrl(clearKeys), standaloneMode ? "" : buildVodLicenseUrl(selectedUrl)) : "",
+                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), buildClearKeyDataLicenseUrl(clearKeys), standaloneMode ? "" : buildVodLicenseUrl(selectedUrl)) : "",
                     adult ? "vod:tivify:adult" : "vod:tivify:general",
                     true,
                     description,
@@ -431,22 +434,22 @@ final class CatalogRepository {
                 continue;
             }
             String selectedUrl = firstNonEmpty(
-                    row.optString("playback_endpoint", ""),
-                    row.optString("stream_url", "")
+                    safeCatalogUrl(row.optString("playback_endpoint", "")),
+                    safeCatalogUrl(row.optString("stream_url", ""))
             );
             if (selectedUrl.isEmpty()) {
                 continue;
             }
             selectedUrl = absolutizeUrl(selectedUrl);
-            String title = row.optString("title", "Runtime VOD").trim();
+            String title = safeCatalogText(row.optString("title", "Runtime VOD"));
             if (title.isEmpty()) {
                 title = "Runtime VOD";
             }
-            String logo = row.optString("poster", "").trim();
-            String group = firstNonEmpty(row.optString("categories", ""), row.optString("kind", ""), platformName);
-            String description = row.optString("description", "").trim();
-            String year = row.optString("year", "").trim();
-            long durationSeconds = parseLongSafe(firstNonEmpty(row.optString("duration", ""), row.optString("duration_seconds", "")));
+            String logo = safeCatalogUrl(row.optString("poster", ""));
+            String group = firstNonEmpty(safeCatalogText(row.optString("categories", "")), safeCatalogText(row.optString("kind", "")), platformName);
+            String description = safeCatalogText(row.optString("description", ""));
+            String year = safeCatalogText(row.optString("year", ""));
+            long durationSeconds = parseLongSafe(firstNonEmpty(safeCatalogText(row.optString("duration", "")), safeCatalogText(row.optString("duration_seconds", ""))));
 
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, false),
@@ -490,18 +493,19 @@ final class CatalogRepository {
             } else if (item.isVod) {
                 hasVod = true;
             }
-            if (item.isVod && item.vodFilterKey != null && !item.vodFilterKey.trim().isEmpty() && !vodFilterLabels.containsKey(item.vodFilterKey)) {
-                vodFilterLabels.put(item.vodFilterKey, buildVodFilterLabel(item.vodFilterKey, item.platformName, item.isAdultVod));
+            String vodFilterKey = safeCatalogText(item.vodFilterKey);
+            if (item.isVod && !vodFilterKey.isEmpty() && !vodFilterLabels.containsKey(vodFilterKey)) {
+                vodFilterLabels.put(vodFilterKey, buildVodFilterLabel(vodFilterKey, item.platformName, item.isAdultVod));
             }
             if (item.platformId > 0 && !platformNames.containsKey(item.platformId)) {
-                String platformName = item.platformName == null ? "" : item.platformName.trim();
+                String platformName = safeCatalogText(item.platformName);
                 if (platformName.isEmpty()) {
                     platformName = "ID " + item.platformId;
                 }
                 platformNames.put(item.platformId, platformName);
             }
             for (String groupName : item.customGroups) {
-                String trimmed = groupName == null ? "" : groupName.trim();
+                String trimmed = safeCatalogText(groupName);
                 if (!trimmed.isEmpty()) {
                     customGroupNames.add(trimmed);
                 }
@@ -585,22 +589,20 @@ final class CatalogRepository {
     }
 
     private String buildFallbackPlayUrl(String id) {
-        if (id == null || id.trim().isEmpty()) {
+        String safeId = safeCatalogText(id);
+        if (safeId.isEmpty()) {
             return "";
         }
         try {
-            Long.parseLong(id.trim());
-            return baseUrl + "/proxy/manifest/" + id.trim();
+            Long.parseLong(safeId);
+            return baseUrl + "/proxy/manifest/" + safeId;
         } catch (Exception ignored) {
             return "";
         }
     }
 
     private String absolutizeUrl(String url) {
-        if (url == null) {
-            return "";
-        }
-        String trimmed = url.trim();
+        String trimmed = safeCatalogUrl(url);
         if (trimmed.startsWith("/")) {
             return baseUrl + trimmed;
         }
@@ -617,7 +619,7 @@ final class CatalogRepository {
         if ("vod:runtime:movies".equals(key)) {
             return "Runtime Peliculas";
         }
-        String fallback = platformName == null ? "" : platformName.trim();
+        String fallback = safeCatalogText(platformName);
         if (!fallback.isEmpty()) {
             return fallback;
         }
@@ -663,10 +665,7 @@ final class CatalogRepository {
     }
 
     private static String encodeHexAsBase64Url(String hex) {
-        if (hex == null) {
-            return "";
-        }
-        String normalized = hex.trim();
+        String normalized = safeCatalogText(hex);
         if (normalized.isEmpty() || normalized.length() % 2 != 0) {
             return "";
         }
@@ -692,29 +691,48 @@ final class CatalogRepository {
             return "";
         }
         for (String value : values) {
-            if (value != null) {
-                String trimmed = value.trim();
-                if (!trimmed.isEmpty()) {
-                    return trimmed;
-                }
+            String trimmed = safeCatalogText(value);
+            if (!trimmed.isEmpty()) {
+                return trimmed;
             }
         }
         return "";
     }
 
     private static long parseLongSafe(String value) {
-        if (value == null || value.trim().isEmpty()) {
+        String trimmed = safeCatalogText(value);
+        if (trimmed.isEmpty()) {
             return 0L;
         }
         try {
-            return Long.parseLong(value.trim());
+            return Long.parseLong(trimmed);
         } catch (Exception e) {
             return 0L;
         }
     }
 
     private static String sanitizeFilterKey(String value) {
-        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return safeCatalogText(value).toLowerCase(Locale.ROOT);
+    }
+
+    private static String safeCatalogText(String value) {
+        return safeTrimBounded(value, MAX_CATALOG_TEXT_FIELD_CHARS);
+    }
+
+    private static String safeCatalogUrl(String value) {
+        return safeTrimBounded(value, MAX_CATALOG_URL_FIELD_CHARS);
+    }
+
+    private static String safeTrimBounded(String value, int maxChars) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        // Avoid String.trim() on malformed catalog fields containing huge JSON
+        // fragments; trim copies the whole string and can OOM on Fire TV.
+        if (value.length() > maxChars) {
+            return "";
+        }
+        return value.trim();
     }
 
     private static StartupFilterConfig parseStartupFilterConfig(JSONObject payload) {
@@ -873,7 +891,7 @@ final class CatalogRepository {
     }
 
     private static String safeLower(String value) {
-        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return safeCatalogText(value).toLowerCase(Locale.ROOT);
     }
 }
 
@@ -918,31 +936,46 @@ final class ChannelItem {
     }
 
     ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback, String vodDescription, String vodYear, long vodDurationSeconds, String playbackProfile) {
-        this.id = id;
-        this.name = name;
-        this.tvgId = tvgId == null ? "" : tvgId.trim();
-        this.logoUrl = logoUrl;
-        this.group = group;
-        this.playUrl = playUrl;
-        this.fallbackPlayUrl = fallbackPlayUrl;
+        this.id = safeText(id);
+        this.name = safeText(name);
+        this.tvgId = safeText(tvgId);
+        this.logoUrl = safeUrl(logoUrl);
+        this.group = safeText(group);
+        this.playUrl = safeUrl(playUrl);
+        this.fallbackPlayUrl = safeUrl(fallbackPlayUrl);
         this.originalOrder = originalOrder;
         this.dashboardOrder = dashboardOrder;
         this.isVod = isVod;
         this.isAdultVod = isAdultVod;
         this.platformId = platformId;
-        this.platformName = platformName;
+        this.platformName = safeText(platformName);
         this.customGroups = customGroups;
         this.groupOrder = new LinkedHashMap<>();
-        this.drmScheme = drmScheme == null ? "" : drmScheme.trim();
-        this.drmLicenseUrl = drmLicenseUrl == null ? "" : drmLicenseUrl.trim();
-        this.vodFilterKey = vodFilterKey == null ? "" : vodFilterKey.trim().toLowerCase(Locale.ROOT);
+        this.drmScheme = safeText(drmScheme);
+        this.drmLicenseUrl = safeUrl(drmLicenseUrl);
+        this.vodFilterKey = safeText(vodFilterKey).toLowerCase(Locale.ROOT);
         this.directPlayback = directPlayback;
-        this.playbackProfile = playbackProfile == null ? "" : playbackProfile.trim().toLowerCase(Locale.ROOT);
-        this.vodDescription = vodDescription == null ? "" : vodDescription.trim();
-        this.vodYear = vodYear == null ? "" : vodYear.trim();
+        this.playbackProfile = safeText(playbackProfile).toLowerCase(Locale.ROOT);
+        this.vodDescription = safeText(vodDescription);
+        this.vodYear = safeText(vodYear);
         this.vodDurationSeconds = Math.max(0L, vodDurationSeconds);
         this.nowProgram = "";
         this.nextProgram = "";
+    }
+
+    private static String safeText(String value) {
+        return safeTrimBounded(value, 8192);
+    }
+
+    private static String safeUrl(String value) {
+        return safeTrimBounded(value, 8192);
+    }
+
+    private static String safeTrimBounded(String value, int maxChars) {
+        if (value == null || value.isEmpty() || value.length() > maxChars) {
+            return "";
+        }
+        return value.trim();
     }
 }
 
@@ -1014,7 +1047,7 @@ final class OfflinePermissions {
         if (filter == null) {
             return false;
         }
-        String filterKey = filter.key == null ? "" : filter.key.trim().toLowerCase(Locale.ROOT);
+        String filterKey = normalizeSafe(filter.key);
         if (!filterKey.isEmpty() && protectedFilterKeys.contains(filterKey)) {
             return true;
         }
@@ -1022,7 +1055,7 @@ final class OfflinePermissions {
             return true;
         }
         if (filter.type == 2) {
-            String groupName = filter.groupName == null ? "" : filter.groupName.trim().toLowerCase(Locale.ROOT);
+            String groupName = normalizeSafe(filter.groupName);
             return !groupName.isEmpty() && protectedGroupNames.contains(groupName);
         }
         return false;
@@ -1032,7 +1065,7 @@ final class OfflinePermissions {
         if (item == null) {
             return false;
         }
-        String itemId = item.id == null ? "" : item.id.trim().toLowerCase(Locale.ROOT);
+        String itemId = normalizeSafe(item.id);
         if (!itemId.isEmpty() && protectedChannelIds.contains(itemId)) {
             return true;
         }
@@ -1049,13 +1082,20 @@ final class OfflinePermissions {
                 }
             }
         }
-        String vodFilterKey = item.vodFilterKey == null ? "" : item.vodFilterKey.trim().toLowerCase(Locale.ROOT);
+        String vodFilterKey = normalizeSafe(item.vodFilterKey);
         return !vodFilterKey.isEmpty() && protectedFilterKeys.contains(vodFilterKey);
     }
 
     private boolean matchesProtectedGroup(String value) {
-        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        String normalized = normalizeSafe(value);
         return !normalized.isEmpty() && protectedGroupNames.contains(normalized);
+    }
+
+    private static String normalizeSafe(String value) {
+        if (value == null || value.isEmpty() || value.length() > 8192) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
     }
 }
 

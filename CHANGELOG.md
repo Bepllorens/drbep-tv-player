@@ -1,3 +1,7 @@
+## 2.0.186-beta-catalog-oom-guard
+- Offline beta: se evita un cierre por falta de memoria al actualizar catalogos con campos URL/texto anormalmente grandes, descartandolos antes de normalizar el snapshot.
+- Offline beta: se blindan IDs, grupos, filtros VOD y reglas parentales para que un campo corrupto del catalogo no pueda tumbar el arranque de Fire TV.
+
 ## 2.0.185-beta-orange-startup-fix
 - Offline beta: Orange resuelve `StreamInfo` antes de preparar el player para evitar el doble arranque/replay que podia dejar pantalla negra o hacer el zapping mucho mas lento.
 - Offline beta: se retira el override manual tardio de pista maxima en Orange; el selector sigue prefiriendo la mejor calidad soportada, pero sin forzar un cambio de track despues de arrancar.

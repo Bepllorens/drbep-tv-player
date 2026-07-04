@@ -1,3 +1,8 @@
+## 2.0.191-beta-compose-timeline-timeshift
+- Offline beta: la guia timeline separa la construccion de filas y bloques en una factory dedicada, conservando foco, acciones y grabacion directa.
+- Offline beta: el HUD de timeshift separa el modelo y callbacks de seek/live en una factory dedicada.
+- Offline beta: se avanza en la reduccion de logica UI dentro de `MainActivity` sin cambiar comportamiento visible.
+
 ## 2.0.190-beta-compose-dialog-core
 - Offline beta: los paneles nucleares de opciones e introduccion de texto pasan tambien por el host comun de dialogos Compose fullscreen.
 - Offline beta: desaparecen los dialogos fullscreen legacy manuales de `MainActivity`, dejando una ruta comun para foco, cancelacion y cierre modal.

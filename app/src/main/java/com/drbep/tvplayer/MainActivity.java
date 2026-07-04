@@ -357,7 +357,7 @@ public class MainActivity extends FragmentActivity {
     private boolean playbackHiddenBehindModal;
     private int pendingRecordingsListScrollIndex = -1;
 
-    private static final class TimelineChannelPrograms {
+    static final class TimelineChannelPrograms {
         final ChannelItem channel;
         final List<EpgRepository.EpgProgram> programs;
 
@@ -367,7 +367,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private static final class TimelineVisibleBlock {
+    static final class TimelineVisibleBlock {
         final EpgRepository.EpgProgram program;
         final boolean scheduled;
         final boolean live;
@@ -1015,37 +1015,54 @@ public class MainActivity extends FragmentActivity {
     }
 
     private TimeshiftBarUiModel buildTimeshiftBarUiModel(PlayerController.PlaybackSeekState state) {
-        long range = Math.max(1L, state.endMs - state.startMs);
-        int progress = (int) Math.max(0L, Math.min(1000L, Math.round(((state.currentMs - state.startMs) * 1000f) / range)));
-        return new TimeshiftBarUiModel(
-                buildPlaybackSeekLabel(state),
-                progress,
-                state.liveCapable,
-                () -> {
-                    showTouchControlsTemporarily();
-                    if (playerController == null || !playerController.resumeTimeshiftLive()) {
-                        showStatus(getString(R.string.timeshift_status_unavailable));
-                    }
-                    updateTimeshiftBar();
-                },
-                () -> {
-                    timeshiftSeekUserDragging = true;
-                    showTouchControlsTemporarily();
-                },
-                previewProgress -> {
-                    long previewTarget = state.startMs + Math.round((previewProgress / 1000f) * range);
-                    return formatPlaybackPreviewLabel(state, previewTarget);
-                },
-                commitProgress -> {
-                    if (playerController != null) {
-                        long target = state.startMs + Math.round((commitProgress / 1000f) * range);
-                        playerController.seekTimeshiftTo(target);
-                    }
-                    timeshiftSeekUserDragging = false;
-                    updateTimeshiftBar();
-                    scheduleTouchControlsAutoHide();
+        return TimeshiftUiFactory.build(state, new TimeshiftUiFactory.Host() {
+            @Override
+            public String statusLabel(PlayerController.PlaybackSeekState playbackSeekState) {
+                return buildPlaybackSeekLabel(playbackSeekState);
+            }
+
+            @Override
+            public String previewLabel(PlayerController.PlaybackSeekState playbackSeekState, long previewTargetMs) {
+                return formatPlaybackPreviewLabel(playbackSeekState, previewTargetMs);
+            }
+
+            @Override
+            public void showControls() {
+                showTouchControlsTemporarily();
+            }
+
+            @Override
+            public boolean resumeLive() {
+                return playerController != null && playerController.resumeTimeshiftLive();
+            }
+
+            @Override
+            public void showUnavailable() {
+                showStatus(getString(R.string.timeshift_status_unavailable));
+            }
+
+            @Override
+            public void update() {
+                updateTimeshiftBar();
+            }
+
+            @Override
+            public void markDragging(boolean dragging) {
+                timeshiftSeekUserDragging = dragging;
+            }
+
+            @Override
+            public void seekTo(long targetMs) {
+                if (playerController != null) {
+                    playerController.seekTimeshiftTo(targetMs);
                 }
-        );
+            }
+
+            @Override
+            public void scheduleAutoHide() {
+                scheduleTouchControlsAutoHide();
+            }
+        });
     }
 
     private String buildPlaybackSeekLabel(PlayerController.PlaybackSeekState state) {
@@ -14093,116 +14110,86 @@ public class MainActivity extends FragmentActivity {
             boolean rememberFocusedCenter,
             java.util.function.Consumer<TimelineProgramDetailUiModel> renderTimelineProgramDetail
     ) {
-        List<TimelineGuideRowUiModel> outputRows = new ArrayList<>();
-        boolean[] preferredAssigned = new boolean[]{false};
-        if (rows == null) {
-            return new TimelineGuideRowsUiModel(outputRows);
-        }
-        for (TimelineChannelPrograms row : rows) {
-            if (row == null || row.channel == null) {
-                continue;
-            }
-            List<TimelineGuideBlockUiModel> blocks = new ArrayList<>();
-            List<TimelineVisibleBlock> visibleBlocks = buildTimelineVisibleBlocks(row, windowStartMs, windowEndMs, minuteWidth, scheduledItems);
-            if (visibleBlocks.isEmpty()) {
-                boolean preferred = !preferredAssigned[0] && anchorChannelId != null && anchorChannelId.equals(row.channel.id);
-                if (preferred) {
-                    preferredAssigned[0] = true;
-                }
-                blocks.add(new TimelineGuideBlockUiModel(
-                        getString(R.string.timeline_no_epg),
-                        "",
-                        "",
-                        0,
-                        stripWidth,
-                        true,
-                        false,
-                        false,
-                        preferred,
-                        () -> {
-                            activeTimelineAnchorChannelId = row.channel.id;
-                            activeTimelineWindowStartMs = windowStartMs;
-                            activeTimelineFocusedCenterMinute = -1;
-                            lastTimelineFocusedCenterMinute = -1;
-                            renderTimelineProgramDetail.accept(new TimelineProgramDetailUiModel(
-                                    row.channel.name,
-                                    getString(R.string.timeline_no_epg),
-                                    getString(R.string.timeline_program_desc_empty),
-                                    "",
-                                    "",
-                                    getString(R.string.timeline_program_action_hint)
-                            ));
-                        },
-                        null,
-                        null
-                ));
-            } else {
-                int bestRememberedDelta = Integer.MAX_VALUE;
-                TimelineVisibleBlock rememberedCandidate = null;
-                for (TimelineVisibleBlock visibleBlock : visibleBlocks) {
-                    if (anchorChannelId != null && anchorChannelId.equals(row.channel.id) && rememberFocusedCenter) {
-                        int delta = Math.abs(visibleBlock.centerMinute - lastTimelineFocusedCenterMinute);
-                        if (delta < bestRememberedDelta) {
-                            bestRememberedDelta = delta;
-                            rememberedCandidate = visibleBlock;
+        return TimelineGuideUiFactory.buildRows(
+                rows,
+                windowStartMs,
+                labelWidth,
+                stripWidth,
+                anchorChannelId,
+                rememberFocusedCenter,
+                lastTimelineFocusedCenterMinute,
+                renderTimelineProgramDetail,
+                new TimelineGuideUiFactory.Host() {
+                    @Override
+                    public String text(int resId) {
+                        return getString(resId);
+                    }
+
+                    @Override
+                    public List<TimelineVisibleBlock> visibleBlocks(TimelineChannelPrograms row) {
+                        return buildTimelineVisibleBlocks(row, windowStartMs, windowEndMs, minuteWidth, scheduledItems);
+                    }
+
+                    @Override
+                    public String programBlockTitle(EpgRepository.EpgProgram program, boolean scheduled) {
+                        return buildTimelineProgramBlockTitle(program, scheduled);
+                    }
+
+                    @Override
+                    public String programTimeLabel(EpgRepository.EpgProgram program) {
+                        return buildTimelineProgramTimeLabel(program);
+                    }
+
+                    @Override
+                    public TimelineProgramDetailUiModel programDetail(ChannelItem channel, EpgRepository.EpgProgram program, boolean live, boolean scheduled) {
+                        return buildTimelineProgramDetailModel(channel, program, live, scheduled);
+                    }
+
+                    @Override
+                    public void focusEmpty(ChannelItem channel, long focusedWindowStartMs, java.util.function.Consumer<TimelineProgramDetailUiModel> renderDetail) {
+                        activeTimelineAnchorChannelId = channel.id;
+                        activeTimelineWindowStartMs = focusedWindowStartMs;
+                        activeTimelineFocusedCenterMinute = -1;
+                        lastTimelineFocusedCenterMinute = -1;
+                        renderDetail.accept(new TimelineProgramDetailUiModel(
+                                channel.name,
+                                getString(R.string.timeline_no_epg),
+                                getString(R.string.timeline_program_desc_empty),
+                                "",
+                                "",
+                                getString(R.string.timeline_program_action_hint)
+                        ));
+                    }
+
+                    @Override
+                    public void focusProgram(ChannelItem channel, long focusedWindowStartMs, int centerMinute, TimelineProgramDetailUiModel detail, java.util.function.Consumer<TimelineProgramDetailUiModel> renderDetail) {
+                        activeTimelineAnchorChannelId = channel.id;
+                        activeTimelineWindowStartMs = focusedWindowStartMs;
+                        activeTimelineFocusedCenterMinute = centerMinute;
+                        lastTimelineFocusedCenterMinute = centerMinute;
+                        renderDetail.accept(detail);
+                    }
+
+                    @Override
+                    public void openProgramActions(ChannelItem channel, EpgRepository.EpgProgram program) {
+                        Log.i(TAG, "timeline program click channel=" + channel.id
+                                + " program=" + (program.title == null ? "" : program.title));
+                        channelActionsCoordinator.showProgramActionMenu(channel, program);
+                    }
+
+                    @Override
+                    public void toggleRecording(ChannelItem channel, EpgRepository.EpgProgram program, boolean scheduled) {
+                        Log.i(TAG, "timeline direct recording action channel=" + channel.id
+                                + " scheduled=" + scheduled
+                                + " program=" + (program.title == null ? "" : program.title));
+                        if (scheduled) {
+                            cancelScheduledProgram(channel, program);
+                        } else {
+                            scheduleProgram(channel, program);
                         }
                     }
                 }
-                for (TimelineVisibleBlock visibleBlock : visibleBlocks) {
-                    EpgRepository.EpgProgram program = visibleBlock.program;
-                    boolean scheduled = visibleBlock.scheduled;
-                    boolean live = visibleBlock.live;
-                    boolean anchorMatch = anchorChannelId != null && anchorChannelId.equals(row.channel.id);
-                    boolean preferred = false;
-                    if (!preferredAssigned[0] && anchorMatch && visibleBlock.activeNow) {
-                        preferred = true;
-                    } else if (!preferredAssigned[0] && anchorMatch && visibleBlock == rememberedCandidate) {
-                        preferred = true;
-                    } else if (!preferredAssigned[0] && anchorMatch) {
-                        preferred = true;
-                    }
-                    if (preferred) {
-                        preferredAssigned[0] = true;
-                    }
-                    final int centerMinute = visibleBlock.centerMinute;
-                    blocks.add(new TimelineGuideBlockUiModel(
-                            buildTimelineProgramBlockTitle(program, scheduled),
-                            buildTimelineProgramTimeLabel(program),
-                            scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
-                            visibleBlock.spacerWidth,
-                            visibleBlock.blockWidth,
-                            false,
-                            live,
-                            scheduled,
-                            preferred,
-                            () -> {
-                                activeTimelineAnchorChannelId = row.channel.id;
-                                activeTimelineWindowStartMs = windowStartMs;
-                                activeTimelineFocusedCenterMinute = centerMinute;
-                                lastTimelineFocusedCenterMinute = centerMinute;
-                                renderTimelineProgramDetail.accept(buildTimelineProgramDetailModel(row.channel, program, live, scheduled));
-                            },
-                            () -> {
-                                Log.i(TAG, "timeline program click channel=" + row.channel.id
-                                        + " program=" + (program.title == null ? "" : program.title));
-                                channelActionsCoordinator.showProgramActionMenu(row.channel, program);
-                            },
-                            () -> {
-                                Log.i(TAG, "timeline direct recording action channel=" + row.channel.id
-                                        + " scheduled=" + scheduled
-                                        + " program=" + (program.title == null ? "" : program.title));
-                                if (scheduled) {
-                                    cancelScheduledProgram(row.channel, program);
-                                } else {
-                                    scheduleProgram(row.channel, program);
-                                }
-                            }
-                    ));
-                }
-            }
-            outputRows.add(new TimelineGuideRowUiModel(row.channel.name, row.channel.logoUrl, labelWidth, blocks));
-        }
-        return new TimelineGuideRowsUiModel(outputRows);
+        );
     }
 
     private String buildVodRowMeta(ChannelItem channel) {

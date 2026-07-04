@@ -3540,6 +3540,8 @@ public class MainActivity extends FragmentActivity {
         updateOverlaySearchState();
         if (channels.isEmpty()) {
             showStatus(getString(R.string.status_no_channels_for_filter));
+        } else if (overlayNavigationState.currentIndex < 0) {
+            tuneToIndex(overlayNavigationState.selectedOverlayIndex >= 0 ? overlayNavigationState.selectedOverlayIndex : 0, true);
         } else if (overlayNavigationState.selectedOverlayIndex >= 0) {
             scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         }
@@ -5017,6 +5019,9 @@ public class MainActivity extends FragmentActivity {
             refreshOverlayChannelList();
             updateFilterText();
             updateOverlaySearchState();
+            if (!channels.isEmpty() && overlayNavigationState.currentIndex < 0) {
+                tuneToIndex(overlayNavigationState.selectedOverlayIndex >= 0 ? overlayNavigationState.selectedOverlayIndex : 0, true);
+            }
             showOverlay();
         });
     }

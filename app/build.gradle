@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 186
-        versionName "2.0.186-beta-catalog-oom-guard"
+        versionCode 187
+        versionName "2.0.187-beta-compose-recordings-polish"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

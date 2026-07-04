@@ -4025,86 +4025,114 @@ public class MainActivity extends FragmentActivity {
         }
         RecordingsSurfaceComposeBinder.bind(
                 recordingsPanel,
-                new RecordingsSurfaceUiModel(buildRecordingsPanelUiModel(), buildRecordingListUiModel()),
+                buildRecordingsSurfaceUiModel(),
                 this::bindRecordingPoster
         );
         pendingRecordingsListScrollIndex = -1;
     }
 
-    private RecordingsPanelUiModel buildRecordingsPanelUiModel() {
-        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
-        boolean scheduledMode = recordingsController.isScheduledMode();
-        String sectionTitle = getString(scheduledMode ? R.string.title_recordings_scheduled : R.string.title_recordings_completed);
-        String summary = buildRecordingsSummary(result);
-        String hint = buildRecordingsHint();
-        String detailTitle = getString(R.string.recordings_detail_empty);
-        String detailMeta = "";
-        int detailMetaColor = 0xFFF2D5AF;
-        String detailPath = "";
-        boolean detailPathVisible = false;
-        String detailAction = getString(scheduledMode ? R.string.recordings_panel_action_hint_scheduled : R.string.recordings_panel_action_hint);
-        String posterUrl = "";
+    private RecordingsSurfaceUiModel buildRecordingsSurfaceUiModel() {
+        return RecordingsUiFactory.build(new RecordingsUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
 
-        if (result != null && !result.items.isEmpty()) {
-            RecordingsRepository.RecordingItem item = recordingsController.getSelectedItem();
-            if (item != null) {
-                detailTitle = buildRecordingTitle(item);
-                detailMeta = buildRecordingMeta(item);
-                detailMetaColor = recordingMetaColor(item);
-                if (item.playable) {
-                    detailPathVisible = true;
-                    detailPath = getString(R.string.recordings_path, item.path == null ? "" : item.path);
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public String summary(RecordingsRepository.RecordingsResult result) {
+                return buildRecordingsSummary(result);
+            }
+
+            @Override
+            public String hint() {
+                return buildRecordingsHint();
+            }
+
+            @Override
+            public String title(RecordingsRepository.RecordingItem item) {
+                return buildRecordingTitle(item);
+            }
+
+            @Override
+            public String meta(RecordingsRepository.RecordingItem item) {
+                return buildRecordingMeta(item);
+            }
+
+            @Override
+            public int metaColor(RecordingsRepository.RecordingItem item) {
+                return recordingMetaColor(item);
+            }
+
+            @Override
+            public String statusLabel(RecordingsRepository.RecordingItem item) {
+                return buildRecordingStatusLabel(item);
+            }
+
+            @Override
+            public int statusBadgeColor(RecordingsRepository.RecordingItem item) {
+                return recordingStatusBadgeColor(item);
+            }
+
+            @Override
+            public RecordingsRepository.RecordingsResult currentResult() {
+                return recordingsController.getCurrentResult();
+            }
+
+            @Override
+            public RecordingsRepository.RecordingItem selectedItem() {
+                return recordingsController.getSelectedItem();
+            }
+
+            @Override
+            public int selectedIndex() {
+                return recordingsController.getSelectedIndex();
+            }
+
+            @Override
+            public boolean scheduledMode() {
+                return recordingsController.isScheduledMode();
+            }
+
+            @Override
+            public boolean headerFocusActive() {
+                return recordingsHeaderFocusActive;
+            }
+
+            @Override
+            public int headerFocusIndex() {
+                return recordingsHeaderFocusIndex;
+            }
+
+            @Override
+            public int pendingScrollIndex() {
+                return pendingRecordingsListScrollIndex;
+            }
+
+            @Override
+            public void switchMode(boolean scheduledMode) {
+                switchRecordingsMode(scheduledMode);
+            }
+
+            @Override
+            public void refresh() {
+                refreshRecordingsPanel();
+            }
+
+            @Override
+            public void selectAndPlay(int position, RecordingsRepository.RecordingItem item, String basePath) {
+                recordingsController.selectIndex(position);
+                pendingRecordingsListScrollIndex = position;
+                refreshRecordingsPanelSurface();
+                if (item != null) {
+                    playRecording(item, basePath);
                 }
-                posterUrl = item.poster == null ? "" : item.poster;
             }
-        }
-
-        return new RecordingsPanelUiModel(
-                sectionTitle,
-                summary,
-                scheduledMode,
-                recordingsHeaderFocusActive ? recordingsHeaderFocusIndex : -1,
-                () -> switchRecordingsMode(false),
-                () -> switchRecordingsMode(true),
-                this::refreshRecordingsPanel,
-                hint,
-                posterUrl,
-                detailTitle,
-                detailMeta,
-                detailMetaColor,
-                detailPath,
-                detailPathVisible,
-                detailAction
-        );
-    }
-
-    private RecordingListUiModel buildRecordingListUiModel() {
-        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
-        List<RecordingListRowUiModel> items = new ArrayList<>();
-        if (result != null && result.items != null) {
-            for (int i = 0; i < result.items.size(); i++) {
-                final int position = i;
-                final RecordingsRepository.RecordingItem item = result.items.get(i);
-                items.add(new RecordingListRowUiModel(
-                        buildRecordingTitle(item),
-                        buildRecordingMeta(item),
-                        recordingMetaColor(item),
-                        buildRecordingStatusLabel(item),
-                        recordingStatusBadgeColor(item),
-                        item == null ? "" : item.poster,
-                        position == recordingsController.getSelectedIndex(),
-                        () -> {
-                            recordingsController.selectIndex(position);
-                            pendingRecordingsListScrollIndex = position;
-                            refreshRecordingsPanelSurface();
-                            if (item != null && result != null) {
-                                playRecording(item, result.basePath);
-                            }
-                        }
-                ));
-            }
-        }
-        return new RecordingListUiModel(items, pendingRecordingsListScrollIndex);
+        });
     }
 
     private String buildRecordingsHint() {

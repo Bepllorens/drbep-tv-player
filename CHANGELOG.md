@@ -1,3 +1,8 @@
+## 2.0.187-beta-compose-recordings-polish
+- Offline beta: el cambio de plataforma/grupo en tablet sintoniza automaticamente el primer canal visible cuando el canal actual no pertenece al nuevo filtro.
+- Offline beta: la barra tactil muestra mejor el contexto activo de plataforma/grupo y el multiview mejora sus etiquetas de ventana y audio activo.
+- Offline beta: el panel de grabaciones separa la construccion de modelos UI en una factory dedicada, reduciendo acoplamiento de `MainActivity` dentro de la migracion a Compose.
+
 ## 2.0.186-beta-catalog-oom-guard
 - Offline beta: se evita un cierre por falta de memoria al actualizar catalogos con campos URL/texto anormalmente grandes, descartandolos antes de normalizar el snapshot.
 - Offline beta: se blindan IDs, grupos, filtros VOD y reglas parentales para que un campo corrupto del catalogo no pueda tumbar el arranque de Fire TV.

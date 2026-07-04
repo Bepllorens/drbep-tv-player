@@ -12348,49 +12348,52 @@ public class MainActivity extends FragmentActivity {
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(String title, String subtitle, List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
-        List<QuickChannelRowUiModel> rows = new ArrayList<>();
-        if (items != null) {
-            for (ChannelItem item : items) {
-                if (item == null) {
-                    continue;
-                }
-                String rowTitle = item.favorite ? "★ " + displayName(item) : displayName(item);
-                String primaryMeta = item.isVod ? buildVodRowMeta(item) : (item.nowProgram != null && !item.nowProgram.trim().isEmpty() ? item.nowProgram : item.group);
-                if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
-                    primaryMeta = getString(R.string.search_channel_action_hint);
-                }
-                String listLabel = buildChannelMembershipLabel(item, 2);
-                if (!listLabel.isEmpty()) {
-                    primaryMeta = listLabel + "  ·  " + primaryMeta;
-                }
-                String typeLabel;
-                if (item.isAdultVod) {
-                    typeLabel = getString(R.string.channel_badge_vod_adult);
-                } else if (item.isVod) {
-                    typeLabel = getString(R.string.channel_badge_vod);
-                } else {
-                    typeLabel = getString(R.string.channel_badge_live);
-                }
-                ChannelItem channelItem = item;
-                rows.add(new QuickChannelRowUiModel(
-                        decorateProtectedItemTitle(item, rowTitle),
-                        decorateProtectedMeta(item, primaryMeta),
-                        buildProtectedTypeBadge(item, typeLabel),
-                        item.logoUrl,
-                        displayName(item),
-                        item.isVod,
-                        () -> {
-                            Dialog activeDialog = dialogHolder == null ? null : dialogHolder[0];
-                            if (action != null) {
-                                dismissModalForNextAction(activeDialog, () -> action.onChannelChosen(channelItem));
-                            } else if (activeDialog != null && activeDialog.isShowing()) {
-                                activeDialog.dismiss();
-                            }
-                        }
-                ));
+        return QuickChannelListUiFactory.build(title, subtitle, items, new QuickChannelListUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
             }
-        }
-        return new QuickChannelListUiModel(title, subtitle, rows);
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public String vodMeta(ChannelItem item) {
+                return buildVodRowMeta(item);
+            }
+
+            @Override
+            public String membershipLabel(ChannelItem item, int maxLabels) {
+                return buildChannelMembershipLabel(item, maxLabels);
+            }
+
+            @Override
+            public String protectedTitle(ChannelItem item, String rowTitle) {
+                return decorateProtectedItemTitle(item, rowTitle);
+            }
+
+            @Override
+            public String protectedMeta(ChannelItem item, String meta) {
+                return decorateProtectedMeta(item, meta);
+            }
+
+            @Override
+            public String protectedTypeBadge(ChannelItem item, String fallback) {
+                return buildProtectedTypeBadge(item, fallback);
+            }
+
+            @Override
+            public void choose(ChannelItem item) {
+                Dialog activeDialog = dialogHolder == null ? null : dialogHolder[0];
+                if (action != null) {
+                    dismissModalForNextAction(activeDialog, () -> action.onChannelChosen(item));
+                } else if (activeDialog != null && activeDialog.isShowing()) {
+                    activeDialog.dismiss();
+                }
+            }
+        });
     }
 
     private void tuneQuickAccessChannel(ChannelItem item) {

@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,11 +114,7 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val requester = remember { FocusRequester() }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(entry.preferred) {
-        if (entry.preferred) {
-            requester.requestFocus()
-        }
-    }
+    TvRequestFocus(requester, entry.preferred, entry.preferred)
     val model = entry.card ?: VisualEpgCardUiModel("", "", "", "", false, focused)
     val effectiveModel = VisualEpgCardUiModel(
         model.title,

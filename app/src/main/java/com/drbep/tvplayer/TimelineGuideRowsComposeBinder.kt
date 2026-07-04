@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -137,11 +136,7 @@ private fun TimelineChannelCell(row: TimelineGuideRowUiModel, imageBinder: Timel
 private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: Dp) {
     var focused by remember { mutableStateOf(false) }
     val requester = remember { FocusRequester() }
-    LaunchedEffect(block.preferred) {
-        if (block.preferred) {
-            requester.requestFocus()
-        }
-    }
+    TvRequestFocus(requester, block.preferred, block.preferred)
     val background = when {
         focused && block.scheduled -> Color(0xFF9A6A1F)
         focused && block.live -> Color(0xFF49A06E)

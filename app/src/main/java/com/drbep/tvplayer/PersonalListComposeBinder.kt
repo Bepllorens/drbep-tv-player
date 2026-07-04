@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.android.awaitFrame
 
 object PersonalListComposeBinder {
     @JvmStatic
@@ -83,14 +81,11 @@ private fun PersonalListPanel(
     onClose: Runnable?
 ) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
-    val firstRowRequester = remember { FocusRequester() }
-    LaunchedEffect(model) {
-        awaitFrame()
-        firstRowRequester.requestFocus()
-    }
+    val firstRowRequester = rememberTvInitialFocusRequester(model.items.isNotEmpty(), model)
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .tvPanelBackHandler(onClose)
             .background(Color(0xCC07101A))
             .padding(if (compact) 14.dp else 36.dp),
         contentAlignment = Alignment.Center

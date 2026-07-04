@@ -27,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -85,14 +84,9 @@ private fun RecordingsHeader(model: RecordingsPanelUiModel, posterBinder: Record
     val completedRequester = remember { FocusRequester() }
     val scheduledRequester = remember { FocusRequester() }
     val refreshRequester = remember { FocusRequester() }
-    LaunchedEffect(model.scheduledMode, model.focusedActionIndex) {
-        withFrameNanos { }
-        when (model.focusedActionIndex) {
-            0 -> completedRequester.requestFocus()
-            1 -> scheduledRequester.requestFocus()
-            2 -> refreshRequester.requestFocus()
-        }
-    }
+    TvRequestFocus(completedRequester, model.focusedActionIndex == 0, model.scheduledMode, model.focusedActionIndex)
+    TvRequestFocus(scheduledRequester, model.focusedActionIndex == 1, model.scheduledMode, model.focusedActionIndex)
+    TvRequestFocus(refreshRequester, model.focusedActionIndex == 2, model.scheduledMode, model.focusedActionIndex)
     Column(modifier = Modifier.fillMaxWidth()) {
         BasicText(
             text = model.sectionTitle,

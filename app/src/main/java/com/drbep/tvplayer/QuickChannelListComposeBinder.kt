@@ -24,10 +24,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -58,13 +56,7 @@ object QuickChannelListComposeBinder {
 @Composable
 private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: QuickChannelImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
-    val firstRowRequester = remember { FocusRequester() }
-    LaunchedEffect(model) {
-        withFrameNanos { }
-        if (model.items.isNotEmpty()) {
-            firstRowRequester.requestFocus()
-        }
-    }
+    val firstRowRequester = rememberTvInitialFocusRequester(model.items.isNotEmpty(), model)
     Column(
         modifier = Modifier
             .fillMaxSize()

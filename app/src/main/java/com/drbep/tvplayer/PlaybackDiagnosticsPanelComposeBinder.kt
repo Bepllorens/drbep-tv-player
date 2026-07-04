@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.android.awaitFrame
 
 object PlaybackDiagnosticsPanelComposeBinder {
     @JvmStatic
@@ -56,13 +54,7 @@ object PlaybackDiagnosticsPanelComposeBinder {
 @OptIn(ExperimentalLayoutApi::class)
 private fun PlaybackDiagnosticsPanel(model: PlaybackDiagnosticsPanelUiModel) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
-    val firstActionRequester = remember { FocusRequester() }
-    LaunchedEffect(model) {
-        awaitFrame()
-        if (!model.actions.isNullOrEmpty()) {
-            firstActionRequester.requestFocus()
-        }
-    }
+    val firstActionRequester = rememberTvInitialFocusRequester(!model.actions.isNullOrEmpty(), model)
     Box(
         modifier = Modifier
             .fillMaxWidth()

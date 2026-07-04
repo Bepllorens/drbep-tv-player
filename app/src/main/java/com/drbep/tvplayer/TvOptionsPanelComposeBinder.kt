@@ -38,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.android.awaitFrame
 
 object TvOptionsPanelComposeBinder {
     @JvmStatic
@@ -55,17 +54,12 @@ object TvOptionsPanelComposeBinder {
 private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val panelWidth = if (compact) Modifier.fillMaxWidth(0.94f) else Modifier.fillMaxWidth(0.44f)
-    val firstRowRequester = remember { FocusRequester() }
-    androidx.compose.runtime.LaunchedEffect(model) {
-        awaitFrame()
-        if (!model.rows.isNullOrEmpty()) {
-            firstRowRequester.requestFocus()
-        }
-    }
+    val firstRowRequester = rememberTvInitialFocusRequester(!model.rows.isNullOrEmpty(), model)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
+            .tvPanelBackHandler(model.onBack)
             .background(Color(0xCC000000)),
         contentAlignment = Alignment.Center
     ) {

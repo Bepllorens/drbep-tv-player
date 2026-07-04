@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,7 +43,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.android.awaitFrame
 
 object ProgramInfoPanelComposeBinder {
     @JvmStatic
@@ -60,13 +58,7 @@ object ProgramInfoPanelComposeBinder {
 @Composable
 private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: TimelineProgramDetailImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
-    val firstActionRequester = remember { FocusRequester() }
-    LaunchedEffect(model) {
-        awaitFrame()
-        if (!model.actions.isNullOrEmpty()) {
-            firstActionRequester.requestFocus()
-        }
-    }
+    val firstActionRequester = rememberTvInitialFocusRequester(!model.actions.isNullOrEmpty(), model)
     Box(
         modifier = Modifier
             .fillMaxSize()

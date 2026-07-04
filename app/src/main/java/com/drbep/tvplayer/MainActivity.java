@@ -6603,90 +6603,165 @@ public class MainActivity extends FragmentActivity {
     }
 
     private VodVisualPanelUiModel buildVodVisualPanelModel(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String trimmedSearchQuery, Dialog[] dialogHolder, Runnable onBack) {
-        boolean searchMode = trimmedSearchQuery != null && !trimmedSearchQuery.trim().isEmpty();
-        List<VodVisualActionUiModel> actions = new ArrayList<>();
-        if (searchMode) {
-            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_edit_search), false, () -> {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog(trimmedSearchQuery));
-            }));
-        }
-        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_type, typeFilter.label), true, () -> {
-            VodVisualTypeFilter nextType = typeFilter.next();
-            if (nextType == VodVisualTypeFilter.ADULT && currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod && isProtectedContentLocked()) {
-                ensureParentalAccessForFilterKey("vod:tivify:adult", () -> {
-                    dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, onBack));
-                });
-                return;
+        return VodVisualUiFactory.build(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, new VodVisualUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
             }
-            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(nextType, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, onBack));
-        }));
-        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> {
-            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(typeFilter, platformFilter.next(), statusFilter, sortFilter, trimmedSearchQuery, onBack));
-        }));
-        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_status, statusFilter.label), true, () -> {
-            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter.next(), sortFilter, trimmedSearchQuery, onBack));
-        }));
-        actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_sort, sortFilter.label), true, () -> {
-            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter.next(), trimmedSearchQuery, onBack));
-        }));
-        if (searchMode) {
-            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_clear_search), false, () -> {
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public boolean protectAdultVod() {
+                return currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod;
+            }
+
+            @Override
+            public boolean protectedContentLocked() {
+                return isProtectedContentLocked();
+            }
+
+            @Override
+            public boolean defaultFilter(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter) {
+                return isDefaultVodVisualFilter(currentTypeFilter, currentPlatformFilter, currentStatusFilter, currentSortFilter);
+            }
+
+            @Override
+            public String librarySummary() {
+                return buildVodLibrarySummary();
+            }
+
+            @Override
+            public String searchSummary(String query) {
+                return buildVodSearchSummary(query);
+            }
+
+            @Override
+            public List<ChannelItem> filteredItems(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter) {
+                return buildVodVisualFilteredItems(currentTypeFilter, currentPlatformFilter, currentStatusFilter, currentSortFilter);
+            }
+
+            @Override
+            public List<ChannelItem> filteredItems(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter, String query) {
+                return buildVodVisualFilteredItems(currentTypeFilter, currentPlatformFilter, currentStatusFilter, currentSortFilter, query);
+            }
+
+            @Override
+            public List<ChannelItem> continueItems() {
+                return buildVodContinueItems();
+            }
+
+            @Override
+            public List<ChannelItem> recentItems() {
+                return buildRecentVodItems();
+            }
+
+            @Override
+            public List<ChannelItem> runtimeItems() {
+                return buildVodItemsByFilter("vod:runtime:movies", false);
+            }
+
+            @Override
+            public List<ChannelItem> tivifyItems() {
+                return buildVodItemsByFilter("vod:tivify:general", false);
+            }
+
+            @Override
+            public List<ChannelItem> progressItems() {
+                return buildVodProgressItems();
+            }
+
+            @Override
+            public List<ChannelItem> alphaItems() {
+                return buildVodSortedItems(VodSortMode.ALPHA);
+            }
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public String posterMeta(ChannelItem item) {
+                return buildVodPosterMeta(item);
+            }
+
+            @Override
+            public String protectedTitle(ChannelItem item, String title) {
+                return decorateProtectedItemTitle(item, title);
+            }
+
+            @Override
+            public String protectedMeta(ChannelItem item, String meta) {
+                return decorateProtectedMeta(item, meta);
+            }
+
+            @Override
+            public String progressLabel(ChannelItem item) {
+                long progressMs = getVodResumePosition(item == null ? null : item.id);
+                return progressMs > 30_000L ? formatDurationShort(progressMs) : "";
+            }
+
+            @Override
+            public void editSearch(String query) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog(query));
+            }
+
+            @Override
+            public void openType(VodVisualTypeFilter nextTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter, String query) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(nextTypeFilter, currentPlatformFilter, currentStatusFilter, currentSortFilter, query, onBack));
+            }
+
+            @Override
+            public void openPlatform(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter nextPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter, String query) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(currentTypeFilter, nextPlatformFilter, currentStatusFilter, currentSortFilter, query, onBack));
+            }
+
+            @Override
+            public void openStatus(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter nextStatusFilter, VodVisualSortFilter currentSortFilter, String query) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(currentTypeFilter, currentPlatformFilter, nextStatusFilter, currentSortFilter, query, onBack));
+            }
+
+            @Override
+            public void openSort(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter nextSortFilter, String query) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(currentTypeFilter, currentPlatformFilter, currentStatusFilter, nextSortFilter, query, onBack));
+            }
+
+            @Override
+            public void clearSearch() {
                 dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(onBack));
-            }));
-        } else {
-            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_search), false, () -> {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog("", () -> showVodVisualLibraryDialog(onBack)));
-            }));
-            actions.add(new VodVisualActionUiModel(getString(R.string.vod_visual_filter_list_view), false, () -> {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodLibraryMenuDialog(() -> showVodVisualLibraryDialog(onBack)));
-            }));
-        }
-
-        List<VodVisualSectionUiModel> sections = new ArrayList<>();
-        if (searchMode) {
-            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery), dialogHolder, onBack);
-        } else if (isDefaultVodVisualFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_continue), buildVodContinueItems(), dialogHolder, onBack);
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_recent), buildRecentVodItems(), dialogHolder, onBack);
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_runtime), buildVodItemsByFilter("vod:runtime:movies", false), dialogHolder, onBack);
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_tivify), buildVodItemsByFilter("vod:tivify:general", false), dialogHolder, onBack);
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_with_progress), buildVodProgressItems(), dialogHolder, onBack);
-            addVodVisualSectionModel(sections, getString(R.string.vod_library_all_alpha), buildVodSortedItems(VodSortMode.ALPHA), dialogHolder, onBack);
-        } else {
-            addVodVisualSectionModel(sections, getString(R.string.vod_visual_results), buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter), dialogHolder, onBack);
-        }
-        return new VodVisualPanelUiModel(
-                searchMode ? getString(R.string.vod_search_results_title, trimmedSearchQuery) : getString(R.string.tools_section_vod),
-                searchMode ? buildVodSearchSummary(trimmedSearchQuery) : buildVodLibrarySummary(),
-                getString(R.string.vod_visual_help),
-                getString(R.string.vod_library_empty),
-                actions,
-                sections
-        );
-    }
-
-    private void addVodVisualSectionModel(List<VodVisualSectionUiModel> sections, String title, List<ChannelItem> items, Dialog[] dialogHolder, Runnable onBack) {
-        if (sections == null || items == null || items.isEmpty()) {
-            return;
-        }
-        List<VodVisualItemUiModel> mapped = new ArrayList<>();
-        for (ChannelItem item : items) {
-            if (item == null) {
-                continue;
             }
-            long progressMs = getVodResumePosition(item.id);
-            mapped.add(new VodVisualItemUiModel(
-                    decorateProtectedItemTitle(item, displayName(item)),
-                    decorateProtectedMeta(item, buildVodPosterMeta(item)),
-                    progressMs > 30_000L ? formatDurationShort(progressMs) : "",
-                    item.logoUrl,
-                    () -> dismissModalForNextAction(dialogHolder[0], () -> showVodInfoDialog(item, () -> showVodVisualLibraryDialog(onBack))),
-                    () -> dismissModalForNextAction(dialogHolder[0], () -> showVodActionsDialog(item, () -> showVodVisualLibraryDialog(onBack)))
-            ));
-        }
-        if (!mapped.isEmpty()) {
-            sections.add(new VodVisualSectionUiModel(getString(R.string.vod_visual_section_title, title, mapped.size()), mapped));
-        }
+
+            @Override
+            public void openSearch() {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog("", () -> showVodVisualLibraryDialog(onBack)));
+            }
+
+            @Override
+            public void openListView() {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodLibraryMenuDialog(() -> showVodVisualLibraryDialog(onBack)));
+            }
+
+            @Override
+            public void unlockAdultAndOpen(VodVisualTypeFilter nextTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter, String query) {
+                ensureParentalAccessForFilterKey("vod:tivify:adult", () -> {
+                    dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(nextTypeFilter, currentPlatformFilter, currentStatusFilter, currentSortFilter, query, onBack));
+                });
+            }
+
+            @Override
+            public void openInfo(ChannelItem item) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodInfoDialog(item, () -> showVodVisualLibraryDialog(onBack)));
+            }
+
+            @Override
+            public void openActions(ChannelItem item) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodActionsDialog(item, () -> showVodVisualLibraryDialog(onBack)));
+            }
+        });
     }
 
     private String buildVodPosterMeta(ChannelItem item) {
@@ -6802,26 +6877,58 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.diagnostics_none));
             return;
         }
-        boolean favorite = favoriteChannelIds.contains(channelItem.id);
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add(getString(R.string.diagnostics_action_retry_next_route));
-        actions.add(() -> retryCurrentPlaybackWithNextRoute(channelItem));
-        options.add(getString(R.string.diagnostics_action_temporary_mode));
-        actions.add(() -> showTemporaryPlaybackModeDialog(channelItem));
-        options.add(getString(R.string.audio_track_action));
-        actions.add(this::showAudioTrackDialog);
-        options.add(getString(favorite ? R.string.menu_remove_favorite : R.string.menu_add_favorite));
-        actions.add(() -> toggleFavoriteForChannel(channelItem));
-        options.add(getString(R.string.menu_personal_lists));
-        actions.add(() -> showPersonalListsDialog(channelItem));
-        options.add(getString(R.string.menu_channel_profile));
-        actions.add(() -> showChannelProfileDialog(channelItem));
-        options.add(getString(R.string.menu_mini_guide));
-        actions.add(() -> openMiniGuideForChannel(channelItem));
-        options.add(getString(R.string.tools_menu_playback_diagnostics));
-        actions.add(this::showPlaybackDiagnosticsDialog);
-        showTvOptionsDialog(R.string.tools_section_current_channel, displayName(channelItem), options, actions, onBack);
+        TvOptionsMenuModel menu = ChannelToolsUiFactory.buildCurrentChannel(channelItem, new ChannelToolsUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public boolean favorite(ChannelItem item) {
+                return item != null && favoriteChannelIds.contains(item.id);
+            }
+
+            @Override
+            public void retryRoute(ChannelItem item) {
+                retryCurrentPlaybackWithNextRoute(item);
+            }
+
+            @Override
+            public void temporaryMode(ChannelItem item) {
+                showTemporaryPlaybackModeDialog(item);
+            }
+
+            @Override
+            public void audioTracks() {
+                showAudioTrackDialog();
+            }
+
+            @Override
+            public void toggleFavorite(ChannelItem item) {
+                toggleFavoriteForChannel(item);
+            }
+
+            @Override
+            public void personalLists(ChannelItem item) {
+                showPersonalListsDialog(item);
+            }
+
+            @Override
+            public void profile(ChannelItem item) {
+                showChannelProfileDialog(item);
+            }
+
+            @Override
+            public void miniGuide(ChannelItem item) {
+                openMiniGuideForChannel(item);
+            }
+
+            @Override
+            public void diagnostics() {
+                showPlaybackDiagnosticsDialog();
+            }
+        });
+        showTvOptionsDialog(R.string.tools_section_current_channel, displayName(channelItem), menu.options, menu.actions, onBack);
     }
 
     private String buildCurrentChannelToolsMessage() {
@@ -6868,37 +6975,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showSettingsCenterDialog(Runnable onBack) {
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add(getString(R.string.settings_section_startup));
-        actions.add(() -> showStartupSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_section_playback));
-        actions.add(() -> showPlaybackSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_section_search));
-        actions.add(() -> showSearchSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_section_recordings));
-        actions.add(() -> showRecordingSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_section_local_data));
-        actions.add(() -> showLocalDataSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_section_parental));
-        actions.add(() -> showParentalSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_section_offline_system));
-        actions.add(() -> showOfflineSystemDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_offline_full_sync));
-        actions.add(this::runManualOfflineFullSync);
-        options.add(getString(R.string.settings_section_offline_catalog));
-        actions.add(() -> showOfflineCatalogSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.app_update_action_check));
-        actions.add(this::checkAppUpdateManually);
-        options.add(getString(R.string.app_update_channel_action, currentUpdateChannelLabel()));
-        actions.add(() -> showUpdateChannelDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.app_update_action_rescue));
-        actions.add(this::checkRescueAppUpdateManually);
-        options.add(getString(R.string.settings_section_diagnostics));
-        actions.add(() -> showSettingsDiagnosticsDialog(() -> showSettingsCenterDialog(onBack)));
-        options.add(getString(R.string.settings_section_reset));
-        actions.add(() -> showResetSettingsDialog(() -> showSettingsCenterDialog(onBack)));
-        showTvOptionsDialog(R.string.title_settings_center, null, options, actions, onBack);
+        TvOptionsMenuModel menu = SettingsUiFactory.buildCenter(buildSettingsUiHost(onBack));
+        showTvOptionsDialog(R.string.title_settings_center, menu.message, menu.options, menu.actions, onBack);
     }
 
     private String buildSettingsSummary() {
@@ -6915,43 +6993,204 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private SettingsUiFactory.Host buildSettingsUiHost(Runnable onBack) {
+        return new SettingsUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public boolean startupEnabled() {
+                return prefs == null || !prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false);
+            }
+
+            @Override
+            public String updateChannelLabel() {
+                return currentUpdateChannelLabel();
+            }
+
+            @Override
+            public int recentSearchCount() {
+                return globalSearchRecents.size();
+            }
+
+            @Override
+            public boolean playbackRepairEnabled() {
+                return MainActivity.this.playbackRepairEnabled;
+            }
+
+            @Override
+            public void openStartup() {
+                showStartupSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void openPlayback() {
+                showPlaybackSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void openSearch() {
+                showSearchSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void openRecordings() {
+                showRecordingSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void openLocalData() {
+                showLocalDataSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void openParental() {
+                showParentalSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void openOfflineSystem() {
+                showOfflineSystemDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void runFullSync() {
+                runManualOfflineFullSync();
+            }
+
+            @Override
+            public void openOfflineCatalog() {
+                showOfflineCatalogSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void checkUpdate() {
+                checkAppUpdateManually();
+            }
+
+            @Override
+            public void openUpdateChannel() {
+                showUpdateChannelDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void checkRescueUpdate() {
+                checkRescueAppUpdateManually();
+            }
+
+            @Override
+            public void openDiagnostics() {
+                showSettingsDiagnosticsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void openReset() {
+                showResetSettingsDialog(() -> showSettingsCenterDialog(onBack));
+            }
+
+            @Override
+            public void toggleStartup() {
+                if (startupEnabled()) {
+                    disableStartupHub();
+                } else {
+                    enableStartupHub();
+                }
+            }
+
+            @Override
+            public void showStartupNow() {
+                loadStartupHubStateAndShow();
+            }
+
+            @Override
+            public void setStartupChannel() {
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                if (current != null) {
+                    saveLastChannelId(current.id);
+                    showStatus(getString(R.string.status_channel_startup_set));
+                }
+            }
+
+            @Override
+            public void clearLastVod() {
+                lastVodId = "";
+                if (prefs != null) {
+                    prefs.edit().remove(PREF_LAST_VOD_ID).apply();
+                }
+                showStatus(getString(R.string.settings_status_last_vod_cleared));
+            }
+
+            @Override
+            public void showStartupSummary() {
+                showSettingsInfoDialog(R.string.settings_section_startup, buildStartupSettingsSummary(), () -> showStartupSettingsDialog(onBack));
+            }
+
+            @Override
+            public void openGlobalSearch() {
+                showGlobalSearchDialog();
+            }
+
+            @Override
+            public void clearRecentSearches() {
+                confirmSettingsAction(R.string.settings_search_clear_recent, R.string.settings_confirm_clear_searches, MainActivity.this::clearGlobalSearchRecents, () -> showSearchSettingsDialog(onBack));
+            }
+
+            @Override
+            public void showSearchSummary() {
+                showSettingsInfoDialog(R.string.settings_section_search, getString(R.string.settings_search_summary, globalSearchRecents.size()), () -> showSearchSettingsDialog(onBack));
+            }
+
+            @Override
+            public void togglePlaybackRepair() {
+                MainActivity.this.togglePlaybackRepair();
+            }
+
+            @Override
+            public void openCurrentPlaybackMode() {
+                openCurrentTemporaryPlaybackMode();
+            }
+
+            @Override
+            public void openPlaybackDiagnostics() {
+                showPlaybackDiagnosticsDialog();
+            }
+
+            @Override
+            public void clearLearnedPlaybackModes() {
+                confirmSettingsAction(R.string.settings_playback_clear_learned, R.string.settings_confirm_clear_learned_routes, MainActivity.this::clearLearnedPlaybackModes, () -> showPlaybackSettingsDialog(onBack));
+            }
+
+            @Override
+            public void clearPlaybackModes() {
+                confirmSettingsAction(R.string.settings_playback_clear_modes, R.string.settings_confirm_clear_modes, MainActivity.this::clearPlaybackModes, () -> showPlaybackSettingsDialog(onBack));
+            }
+
+            @Override
+            public void clearPlaybackDiagnostics() {
+                confirmSettingsAction(R.string.settings_playback_clear_diagnostics, R.string.settings_confirm_clear_diagnostics, MainActivity.this::clearAllPlaybackDiagnostics, () -> showPlaybackSettingsDialog(onBack));
+            }
+
+            @Override
+            public void showPlaybackSummary() {
+                showSettingsInfoDialog(R.string.settings_section_playback, buildPlaybackSettingsSummary(), () -> showPlaybackSettingsDialog(onBack));
+            }
+        };
+    }
+
     private void showStartupSettingsDialog() {
         showStartupSettingsDialog(null);
     }
 
     private void showStartupSettingsDialog(Runnable onBack) {
-        boolean startupEnabled = prefs == null || !prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false);
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add(getString(startupEnabled ? R.string.settings_startup_disable : R.string.settings_startup_enable));
-        actions.add(() -> {
-            if (startupEnabled) {
-                disableStartupHub();
-            } else {
-                enableStartupHub();
-            }
-        });
-        options.add(getString(R.string.settings_startup_show_now));
-        actions.add(this::loadStartupHubStateAndShow);
-        options.add(getString(R.string.settings_startup_set_current_channel));
-        actions.add(() -> {
-            ChannelItem current = getCurrentPlaybackChannelItem();
-            if (current != null) {
-                saveLastChannelId(current.id);
-                showStatus(getString(R.string.status_channel_startup_set));
-            }
-        });
-        options.add(getString(R.string.settings_startup_clear_last_vod));
-        actions.add(() -> {
-            lastVodId = "";
-            if (prefs != null) {
-                prefs.edit().remove(PREF_LAST_VOD_ID).apply();
-            }
-            showStatus(getString(R.string.settings_status_last_vod_cleared));
-        });
-        options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_startup, buildStartupSettingsSummary(), () -> showStartupSettingsDialog(onBack)));
-        showTvOptionsDialog(R.string.settings_section_startup, null, options, actions, onBack);
+        TvOptionsMenuModel menu = SettingsUiFactory.buildStartup(buildSettingsUiHost(onBack));
+        showTvOptionsDialog(R.string.settings_section_startup, menu.message, menu.options, menu.actions, onBack);
     }
 
     private String buildStartupSettingsSummary() {
@@ -6970,23 +7209,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showPlaybackSettingsDialog(Runnable onBack) {
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add(getString(playbackRepairEnabled ? R.string.settings_playback_repair_disable : R.string.settings_playback_repair_enable));
-        actions.add(this::togglePlaybackRepair);
-        options.add(getString(R.string.settings_playback_current_mode));
-        actions.add(this::openCurrentTemporaryPlaybackMode);
-        options.add(getString(R.string.settings_playback_diagnostics));
-        actions.add(this::showPlaybackDiagnosticsDialog);
-        options.add(getString(R.string.settings_playback_clear_learned));
-        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_learned, R.string.settings_confirm_clear_learned_routes, this::clearLearnedPlaybackModes, () -> showPlaybackSettingsDialog(onBack)));
-        options.add(getString(R.string.settings_playback_clear_modes));
-        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_modes, R.string.settings_confirm_clear_modes, this::clearPlaybackModes, () -> showPlaybackSettingsDialog(onBack)));
-        options.add(getString(R.string.settings_playback_clear_diagnostics));
-        actions.add(() -> confirmSettingsAction(R.string.settings_playback_clear_diagnostics, R.string.settings_confirm_clear_diagnostics, this::clearAllPlaybackDiagnostics, () -> showPlaybackSettingsDialog(onBack)));
-        options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_playback, buildPlaybackSettingsSummary(), () -> showPlaybackSettingsDialog(onBack)));
-        showTvOptionsDialog(R.string.settings_section_playback, null, options, actions, onBack);
+        TvOptionsMenuModel menu = SettingsUiFactory.buildPlayback(buildSettingsUiHost(onBack));
+        showTvOptionsDialog(R.string.settings_section_playback, menu.message, menu.options, menu.actions, onBack);
     }
 
     private String buildPlaybackSettingsSummary() {
@@ -7008,15 +7232,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showSearchSettingsDialog(Runnable onBack) {
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add(getString(R.string.quick_hub_global_search));
-        actions.add(this::showGlobalSearchDialog);
-        options.add(getString(R.string.settings_search_clear_recent));
-        actions.add(() -> confirmSettingsAction(R.string.settings_search_clear_recent, R.string.settings_confirm_clear_searches, this::clearGlobalSearchRecents, () -> showSearchSettingsDialog(onBack)));
-        options.add(getString(R.string.settings_action_view_summary));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_search, getString(R.string.settings_search_summary, globalSearchRecents.size()), () -> showSearchSettingsDialog(onBack)));
-        showTvOptionsDialog(R.string.settings_section_search, null, options, actions, onBack);
+        TvOptionsMenuModel menu = SettingsUiFactory.buildSearch(buildSettingsUiHost(onBack));
+        showTvOptionsDialog(R.string.settings_section_search, menu.message, menu.options, menu.actions, onBack);
     }
 
     private void showRecordingSettingsDialog() {
@@ -10428,7 +10645,7 @@ public class MainActivity extends FragmentActivity {
         DURATION_DESC
     }
 
-    private enum VodVisualTypeFilter {
+    enum VodVisualTypeFilter {
         GENERAL("General"),
         ADULT("Adulto"),
         ALL("Todo");
@@ -10445,7 +10662,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private enum VodVisualPlatformFilter {
+    enum VodVisualPlatformFilter {
         ALL("Todo"),
         TIVIFY("Tivify"),
         RUNTIME("Runtime"),
@@ -10463,7 +10680,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private enum VodVisualStatusFilter {
+    enum VodVisualStatusFilter {
         ALL("Todo"),
         CONTINUE("Continuar"),
         PROGRESS("Con progreso"),
@@ -10481,7 +10698,7 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private enum VodVisualSortFilter {
+    enum VodVisualSortFilter {
         SMART("Recomendado"),
         ALPHA("A-Z"),
         RECENT("Recientes"),

@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 191
-        versionName "2.0.191-beta-compose-timeline-timeshift"
+        versionCode 192
+        versionName "2.0.192-beta-compose-vod-settings"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

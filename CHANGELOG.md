@@ -1,3 +1,8 @@
+## 2.0.192-beta-compose-vod-settings
+- Offline beta: VOD visual separa el ensamblado de panel, filtros, secciones y tarjetas en una factory dedicada.
+- Offline beta: Ajustes empieza a separar los menus de centro, inicio, busqueda y reproduccion en una factory de UI.
+- Offline beta: las acciones del canal actual pasan a una factory dedicada, manteniendo orden y comportamiento.
+
 ## 2.0.191-beta-compose-timeline-timeshift
 - Offline beta: la guia timeline separa la construccion de filas y bloques en una factory dedicada, conservando foco, acciones y grabacion directa.
 - Offline beta: el HUD de timeshift separa el modelo y callbacks de seek/live en una factory dedicada.

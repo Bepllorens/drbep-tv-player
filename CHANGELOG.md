@@ -1,3 +1,8 @@
+## 2.0.190-beta-compose-dialog-core
+- Offline beta: los paneles nucleares de opciones e introduccion de texto pasan tambien por el host comun de dialogos Compose fullscreen.
+- Offline beta: desaparecen los dialogos fullscreen legacy manuales de `MainActivity`, dejando una ruta comun para foco, cancelacion y cierre modal.
+- Offline beta: la gestion visual de listas personales separa la construccion de filas en una factory dedicada.
+
 ## 2.0.189-beta-compose-factory-dialogs
 - Offline beta: busqueda global, resultados EPG, mini guia y banner inferior de zapping separan la construccion de modelos UI en factories dedicadas.
 - Offline beta: se introduce un host comun para dialogos Compose fullscreen y se aplica a VOD, EPG visual, timeline, busqueda, listas, activacion offline y paneles de diagnostico/mensaje.

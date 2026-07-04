@@ -10019,7 +10019,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         prepareModalSurface();
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         TvTextInputPanelUiModel wrapped = new TvTextInputPanelUiModel(
@@ -10030,32 +10030,25 @@ public class MainActivity extends FragmentActivity {
                 model.neutralLabel,
                 model.fields,
                 values -> {
-                    dismissModalForNextAction(dialog, model.onSubmit == null ? null : () -> model.onSubmit.submit(values));
+                    dismissModalForNextAction(dialogHolder[0], model.onSubmit == null ? null : () -> model.onSubmit.submit(values));
                 },
                 () -> {
-                    dismissModalForNextAction(dialog, model.onCancel);
+                    dismissModalForNextAction(dialogHolder[0], model.onCancel);
                 },
                 () -> {
-                    dismissModalForNextAction(dialog, model.onNeutral);
+                    dismissModalForNextAction(dialogHolder[0], model.onNeutral);
                 }
         );
         TvTextInputPanelComposeBinder.bind(composeView, wrapped);
-        dialog.setContentView(composeView);
-        dialog.setOnCancelListener(d -> {
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (model.onCancel != null) {
                 beginModalTransition(null);
                 uiHandler.post(model.onCancel);
                 finishModalTransitionAfterDelay();
             }
-        });
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void showTvOptionsDialog(int titleResId, String message, List<String> options, List<Runnable> actions, Runnable onBack) {
@@ -10065,7 +10058,7 @@ public class MainActivity extends FragmentActivity {
     private void showTvOptionsDialog(String title, String message, List<String> options, List<Runnable> actions, Runnable onBack) {
         prepareModalSurface();
         final boolean[] navigationHandled = {false};
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         List<TvOptionsPanelRowUiModel> rows = new ArrayList<>();
@@ -10077,14 +10070,14 @@ public class MainActivity extends FragmentActivity {
                     () -> {
                         if (index >= 0 && actions != null && index < actions.size()) {
                             navigationHandled[0] = true;
-                            dismissModalForNextAction(dialog, actions.get(index));
+                            dismissModalForNextAction(dialogHolder[0], actions.get(index));
                         }
                     }
             ));
         }
         Runnable backAction = () -> {
             navigationHandled[0] = true;
-            dismissModalForNextAction(dialog, onBack);
+            dismissModalForNextAction(dialogHolder[0], onBack);
         };
         TvOptionsPanelComposeBinder.bind(
                 composeView,
@@ -10096,7 +10089,8 @@ public class MainActivity extends FragmentActivity {
                         backAction
                 )
         );
-        dialog.setContentView(composeView);
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
         if (onBack != null) {
             dialog.setOnKeyListener((ignored, keyCode, event) -> {
                 if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP && !navigationHandled[0]) {
@@ -10106,14 +10100,7 @@ public class MainActivity extends FragmentActivity {
                 return false;
             });
         }
-        dialog.setOnDismissListener(d -> handleModalDismissed());
-        dialog.show();
         handleModalShown();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setDimAmount(0f);
-        }
     }
 
     private void maybeShowStartupHub() {
@@ -10949,35 +10936,39 @@ public class MainActivity extends FragmentActivity {
     }
 
     private PersonalListManagerUiModel buildPersonalListManagerUiModel(List<ChannelCollectionStore.ChannelCollection> collections, Runnable beforeAction) {
-        List<PersonalListRowUiModel> rows = new ArrayList<>();
-        if (collections != null) {
-            for (ChannelCollectionStore.ChannelCollection collection : collections) {
-                if (collection == null) {
-                    continue;
-                }
-                String badge = String.valueOf(Math.min(99, collection.channelIds.size()));
-                String preview = getString(R.string.personal_list_count, collection.channelIds.size()) + "  ·  " + buildPersonalListPreview(collection);
-                rows.add(new PersonalListRowUiModel(
-                        badge,
-                        collection.label,
-                        preview,
-                        getString(R.string.personal_list_action_badge),
-                        () -> {
-                            if (beforeAction != null) {
-                                beforeAction.run();
-                            }
-                            showPersonalListChannelsPanel(collection);
-                        },
-                        () -> {
-                            if (beforeAction != null) {
-                                beforeAction.run();
-                            }
-                            showPersonalListActionsDialog(collection);
-                        }
-                ));
+        return PersonalListUiFactory.build(collections, new PersonalListUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
             }
-        }
-        return new PersonalListManagerUiModel(rows);
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public String preview(ChannelCollectionStore.ChannelCollection collection) {
+                return buildPersonalListPreview(collection);
+            }
+
+            @Override
+            public void beforeAction() {
+                if (beforeAction != null) {
+                    beforeAction.run();
+                }
+            }
+
+            @Override
+            public void openChannels(ChannelCollectionStore.ChannelCollection collection) {
+                showPersonalListChannelsPanel(collection);
+            }
+
+            @Override
+            public void openActions(ChannelCollectionStore.ChannelCollection collection) {
+                showPersonalListActionsDialog(collection);
+            }
+        });
     }
 
     private void showPersonalListActionsDialog(ChannelCollectionStore.ChannelCollection collection) {

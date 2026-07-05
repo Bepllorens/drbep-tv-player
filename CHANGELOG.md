@@ -1,3 +1,8 @@
+## 2.0.197-beta-secure-drm-control
+- Offline beta: prepara el control plane seguro para DRM resolviendo claves ClearKey bajo demanda por `/api/stream`.
+- Offline beta: el export de catalogo sustituye secretos DRM embebidos por `drm_ref` por defecto.
+- Offline beta: VOD con DRM usa licencia remota en vez de transportar ClearKeys dentro del snapshot local.
+
 ## 2.0.196-beta-security-hardening
 - Offline beta: endurece la build release desactivando backup Android y cleartext global.
 - Offline beta: cifra el snapshot local del catalogo con AES-GCM y clave de Android Keystore, migrando catalogos antiguos al leerlos.

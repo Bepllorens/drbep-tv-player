@@ -1760,10 +1760,17 @@ public class MainActivity extends FragmentActivity {
         }
         String drm = safeLower(channel.drmScheme);
         String playUrl = safeLower(request.playUrl);
-        return "clearkey".equals(drm)
-                && playUrl.contains(".mpd")
-                && request.drmLicenseUrl != null
-                && request.drmLicenseUrl.startsWith("data:application/json;base64,");
+        if (!"clearkey".equals(drm) && !"widevine".equals(drm)) {
+            return false;
+        }
+        if (PlayerController.isSecureDrmReference(request.drmLicenseUrl)) {
+            return true;
+        }
+        if ("clearkey".equals(drm) && playUrl.contains(".mpd")) {
+            return true;
+        }
+        return "widevine".equals(drm)
+                && (request.drmLicenseUrl == null || request.drmLicenseUrl.trim().isEmpty());
     }
 
     private String displayName(ChannelItem channelItem) {

@@ -178,7 +178,7 @@ final class CatalogRepository {
                     platformName,
                     customGroups,
                     firstNonEmpty(safeCatalogText(channel.optString("drm_scheme", "")), safeCatalogText(channel.optString("drm_type", ""))),
-                    firstNonEmpty(safeCatalogUrl(channel.optString("drm_license_url", "")), safeCatalogUrl(channel.optString("license_url", "")), buildClearKeyDataLicenseUrl(channel.optJSONObject("clearkey"))),
+                    resolveSecureDrmLicenseReference(id, channel),
                     "",
                     directPlayback,
                     playbackProfile
@@ -381,6 +381,13 @@ final class CatalogRepository {
             if (!hasKeys && clearKeys != null && clearKeys.length() > 0) {
                 hasKeys = true;
             }
+            boolean secureDrm = row.optBoolean("secure_drm", false)
+                    || !safeCatalogText(row.optString("drm_ref", "")).isEmpty()
+                    || !safeCatalogText(row.optString("drm_reference", "")).isEmpty()
+                    || !safeCatalogText(row.optString("secure_drm_ref", "")).isEmpty();
+            if (secureDrm) {
+                hasKeys = true;
+            }
 
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, adult),
@@ -398,7 +405,7 @@ final class CatalogRepository {
                     "Tivify VOD",
                     new ArrayList<>(),
                     hasKeys ? "clearkey" : "",
-                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), buildClearKeyDataLicenseUrl(clearKeys), standaloneMode ? "" : buildVodLicenseUrl(selectedUrl)) : "",
+                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), secureDrm ? buildVodLicenseUrl(selectedUrl) : "", standaloneMode ? "" : buildVodLicenseUrl(selectedUrl), buildClearKeyDataLicenseUrl(clearKeys)) : "",
                     adult ? "vod:tivify:adult" : "vod:tivify:general",
                     true,
                     description,
@@ -629,6 +636,28 @@ final class CatalogRepository {
     private String buildVodLicenseUrl(String selectedUrl) {
         String token = Base64.encodeToString(selectedUrl.getBytes(StandardCharsets.UTF_8), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
         return baseUrl + "/api/vod/tivify/clearkey?u=" + token;
+    }
+
+    private static String resolveSecureDrmLicenseReference(String channelId, JSONObject channel) {
+        if (channel == null) {
+            return "";
+        }
+        String explicitReference = firstNonEmpty(
+                safeCatalogText(channel.optString("drm_ref", "")),
+                safeCatalogText(channel.optString("drm_reference", "")),
+                safeCatalogText(channel.optString("secure_drm_ref", ""))
+        );
+        if (!explicitReference.isEmpty()) {
+            return "drbep-secure-stream:" + safeCatalogText(explicitReference);
+        }
+        JSONObject clearKeys = channel.optJSONObject("clearkey");
+        if (clearKeys != null && clearKeys.length() > 0) {
+            return "drbep-secure-stream:" + safeCatalogText(channelId);
+        }
+        return firstNonEmpty(
+                safeCatalogUrl(channel.optString("drm_license_url", "")),
+                safeCatalogUrl(channel.optString("license_url", ""))
+        );
     }
 
     private static String buildClearKeyDataLicenseUrl(JSONObject clearKeys) {

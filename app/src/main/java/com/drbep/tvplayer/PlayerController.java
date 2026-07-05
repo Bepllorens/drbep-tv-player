@@ -68,6 +68,7 @@ final class PlayerController {
     private static final String TAG = "PlayerController";
     private static final String PREFS = "drbep_tv_prefs";
     private static final String CLEARKEY_DATA_URI_PREFIX = "data:application/json;base64,";
+    private static final String SECURE_STREAM_LICENSE_PREFIX = "drbep-secure-stream:";
     private static final int PLAYBACK_CONNECT_TIMEOUT_MS = 20_000;
     private static final int PLAYBACK_READ_TIMEOUT_MS = 30_000;
     private static final long TIMESHIFT_MAX_BACK_MS = 2L * 60L * 60L * 1000L;
@@ -1276,6 +1277,11 @@ final class PlayerController {
         }
         if ("widevine".equals(decision.drmType)) {
             String licenseUrl = resolveWidevineLicenseUrl(request);
+            if (isSecureDrmReference(licenseUrl)) {
+                licenseUrl = streamInfo != null && streamInfo.licenseUrl != null && !streamInfo.licenseUrl.trim().isEmpty()
+                        ? streamInfo.licenseUrl
+                        : baseUrl + "/api/widevine/" + request.channelId;
+            }
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
@@ -1289,6 +1295,13 @@ final class PlayerController {
                     : streamInfo != null && streamInfo.licenseUrl != null && !streamInfo.licenseUrl.trim().isEmpty()
                     ? streamInfo.licenseUrl
                     : baseUrl + "/api/clearkey/" + request.channelId;
+            if (isSecureDrmReference(licenseUrl)) {
+                licenseUrl = streamInfo != null && streamInfo.clearKeyLicenseDataUri != null && !streamInfo.clearKeyLicenseDataUri.trim().isEmpty()
+                        ? streamInfo.clearKeyLicenseDataUri
+                        : streamInfo != null && streamInfo.licenseUrl != null && !streamInfo.licenseUrl.trim().isEmpty()
+                        ? streamInfo.licenseUrl
+                        : baseUrl + "/api/clearkey/" + request.channelId;
+            }
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
@@ -1603,6 +1616,9 @@ final class PlayerController {
         if (!"clearkey".equals(drmType) && !"widevine".equals(drmType)) {
             return null;
         }
+        if (isSecureDrmReference(request.drmLicenseUrl)) {
+            return null;
+        }
         String playUrlLower = request.playUrl.toLowerCase(Locale.ROOT);
         StreamInfo info = new StreamInfo();
         info.drmType = drmType;
@@ -1636,6 +1652,10 @@ final class PlayerController {
             return false;
         }
         return !isBlank(request.drmLicenseUrl) || !isBlank(request.playbackProfile);
+    }
+
+    static boolean isSecureDrmReference(String licenseUrl) {
+        return licenseUrl != null && licenseUrl.trim().startsWith(SECURE_STREAM_LICENSE_PREFIX);
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import copy
 import json
 import sys
 import time
@@ -59,6 +60,70 @@ def filter_catalog(catalog, args):
         if channel_allowed(channel, allow_platforms, deny_platforms, allow_groups, deny_groups)
     ]
     return filtered
+
+
+SENSITIVE_DRM_FIELDS = {
+    "clearkey",
+    "clear_keys",
+    "clearkey_json",
+    "license_key",
+    "drm_key",
+    "key",
+    "kid",
+}
+
+
+def secure_drm_reference_for(item):
+    if not isinstance(item, dict):
+        return ""
+    for candidate in ("id", "channel_id", "external_id", "provider_id", "name"):
+        value = str(item.get(candidate, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def has_embedded_drm_secret(item):
+    if not isinstance(item, dict):
+        return False
+    for field in SENSITIVE_DRM_FIELDS:
+        value = item.get(field)
+        if value:
+            return True
+    license_url = str(item.get("license_url", "") or item.get("drm_license_url", "")).strip().lower()
+    return license_url.startswith("data:application/json")
+
+
+def scrub_drm_secrets(item):
+    if not isinstance(item, dict):
+        return item
+    cleaned = copy.deepcopy(item)
+    if not has_embedded_drm_secret(cleaned):
+        return cleaned
+    drm_ref = secure_drm_reference_for(cleaned)
+    for field in SENSITIVE_DRM_FIELDS:
+        cleaned.pop(field, None)
+    cleaned.pop("license_url", None)
+    cleaned.pop("drm_license_url", None)
+    cleaned["drm_ref"] = drm_ref
+    cleaned["secure_drm"] = True
+    if not str(cleaned.get("drm_scheme", "") or cleaned.get("drm_type", "")).strip():
+        cleaned["drm_scheme"] = "clearkey"
+    return cleaned
+
+
+def scrub_drm_secrets_in_list(rows):
+    if not isinstance(rows, list):
+        return []
+    return [scrub_drm_secrets(row) for row in rows]
+
+
+def scrub_catalog_drm_secrets(catalog):
+    if not isinstance(catalog, dict):
+        return catalog
+    cleaned = copy.deepcopy(catalog)
+    cleaned["channels"] = scrub_drm_secrets_in_list(cleaned.get("channels", []))
+    return cleaned
 
 
 def parse_epoch_seconds(value):
@@ -174,11 +239,19 @@ def main():
     parser.add_argument("--parental-channel-ids", default="", help="IDs de canales protegidos por PIN, separados por coma")
     parser.add_argument("--parental-filter-keys", default="", help="Claves de filtro protegidas por PIN, separadas por coma")
     parser.add_argument("--parental-protect-adult", action=argparse.BooleanOptionalAction, default=False, help="Protege VOD adulto con PIN")
+    parser.add_argument("--secure-drm-references", action=argparse.BooleanOptionalAction, default=True, help="Sustituir claves DRM embebidas por referencias resueltas bajo demanda")
     args = parser.parse_args()
 
     catalog = filter_catalog(fetch_json(args.base_url, "/api/channels/catalog?include_disabled=0", args.timeout), args)
     tivify = optional_fetch(args.base_url, "/api/vod/tivify", args.timeout, {})
     runtime = optional_fetch(args.base_url, "/api/vod/runtime", args.timeout, {})
+    if args.secure_drm_references:
+        catalog = scrub_catalog_drm_secrets(catalog)
+        tivify = dict(tivify) if isinstance(tivify, dict) else {}
+        tivify["vod"] = scrub_drm_secrets_in_list(tivify.get("vod", []))
+        tivify["adult"] = scrub_drm_secrets_in_list(tivify.get("adult", []))
+        runtime = dict(runtime) if isinstance(runtime, dict) else {}
+        runtime["movies"] = scrub_drm_secrets_in_list(runtime.get("movies", []))
     now = int(time.time())
     permissions = {
         "allow_platforms": sorted(csv_set(args.allow_platforms)),

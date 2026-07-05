@@ -40,6 +40,25 @@ final class SettingsUiFactory {
         void clearPlaybackModes();
         void clearPlaybackDiagnostics();
         void showPlaybackSummary();
+        boolean offlineRecordingsDisabled();
+        boolean recordingsAutoRefreshEnabled();
+        boolean parentalPinConfigured();
+        boolean parentalUnlocked();
+        String recordingsOfflineSummary();
+        void toggleRecordingsAutoRefresh();
+        void openRecordingsBrowser();
+        void clearRecordingProgress();
+        void showRecordingsSummary();
+        void clearVodProgress();
+        void clearRecentChannels();
+        void clearFavorites();
+        void resetListsAndProfiles();
+        void showLocalDataSummary();
+        void showParentalStatus();
+        void toggleParentalLock();
+        void changeParentalPin();
+        void clearParentalPin();
+        void setParentalPin();
     }
 
     private SettingsUiFactory() {
@@ -95,6 +114,44 @@ final class SettingsUiFactory {
         add(options, actions, host.text(R.string.settings_playback_clear_modes), host::clearPlaybackModes);
         add(options, actions, host.text(R.string.settings_playback_clear_diagnostics), host::clearPlaybackDiagnostics);
         add(options, actions, host.text(R.string.settings_action_view_summary), host::showPlaybackSummary);
+        return new TvOptionsMenuModel(options, actions);
+    }
+
+    static TvOptionsMenuModel buildRecordings(Host host) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        if (!host.offlineRecordingsDisabled()) {
+            add(options, actions, host.text(host.recordingsAutoRefreshEnabled() ? R.string.settings_recordings_auto_off : R.string.settings_recordings_auto_on), host::toggleRecordingsAutoRefresh);
+            add(options, actions, host.text(R.string.tools_menu_recordings_panel), host::openRecordingsBrowser);
+        }
+        add(options, actions, host.text(R.string.settings_recordings_clear_progress), host::clearRecordingProgress);
+        add(options, actions, host.text(R.string.settings_action_view_summary), host::showRecordingsSummary);
+        return new TvOptionsMenuModel(options, actions, host.offlineRecordingsDisabled() ? host.recordingsOfflineSummary() : null);
+    }
+
+    static TvOptionsMenuModel buildLocalData(Host host) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        add(options, actions, host.text(R.string.settings_data_clear_vod_progress), host::clearVodProgress);
+        add(options, actions, host.text(R.string.settings_data_clear_recording_progress), host::clearRecordingProgress);
+        add(options, actions, host.text(R.string.settings_data_clear_recent_channels), host::clearRecentChannels);
+        add(options, actions, host.text(R.string.settings_data_clear_favorites), host::clearFavorites);
+        add(options, actions, host.text(R.string.settings_data_reset_lists_profiles), host::resetListsAndProfiles);
+        add(options, actions, host.text(R.string.settings_action_view_summary), host::showLocalDataSummary);
+        return new TvOptionsMenuModel(options, actions);
+    }
+
+    static TvOptionsMenuModel buildParental(Host host) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        add(options, actions, host.text(R.string.settings_parental_view_status), host::showParentalStatus);
+        if (host.parentalPinConfigured()) {
+            add(options, actions, host.text(host.parentalUnlocked() ? R.string.settings_parental_lock_now : R.string.settings_parental_unlock), host::toggleParentalLock);
+            add(options, actions, host.text(R.string.settings_parental_change_pin), host::changeParentalPin);
+            add(options, actions, host.text(R.string.settings_parental_clear_pin), host::clearParentalPin);
+        } else {
+            add(options, actions, host.text(R.string.settings_parental_set_pin), host::setParentalPin);
+        }
         return new TvOptionsMenuModel(options, actions);
     }
 

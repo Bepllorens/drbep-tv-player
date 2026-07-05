@@ -1,3 +1,8 @@
+## 2.0.193-beta-compose-menu-factories
+- Offline beta: diagnostico de reproduccion separa panel principal, historial y acciones avanzadas en una factory dedicada.
+- Offline beta: listas personales, ficha de canal, ajustes, herramientas y menu VOD clasico pasan a factories de UI reutilizables.
+- Offline beta: se reduce mas peso de `MainActivity` manteniendo la navegacion de vuelta entre submenus y el comportamiento existente.
+
 ## 2.0.192-beta-compose-vod-settings
 - Offline beta: VOD visual separa el ensamblado de panel, filtros, secciones y tarjetas en una factory dedicada.
 - Offline beta: Ajustes empieza a separar los menus de centro, inicio, busqueda y reproduccion en una factory de UI.

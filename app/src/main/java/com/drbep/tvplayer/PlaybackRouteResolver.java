@@ -57,6 +57,17 @@ final class PlaybackRouteResolver {
         String playbackProfile = safeLower(request.playbackProfile);
         boolean standaloneDirectAllowed = shouldPreferDirectInStandalone(request, streamInfo, playbackMode, playbackProfile);
 
+        if (isMovistarIsmRequest(request, streamInfo)) {
+            return new Decision(
+                    ismHlsUrl(request.channelId),
+                    MimeTypes.APPLICATION_M3U8,
+                    "",
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
+
         if (request.directPlayback) {
             String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
             return new Decision(
@@ -81,6 +92,17 @@ final class PlaybackRouteResolver {
         }
 
         if ("server_live".equals(playbackProfile)) {
+            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
+            if ("smooth".equals(streamType) || looksSmooth) {
+                return new Decision(
+                        ismHlsUrl(request.channelId),
+                        MimeTypes.APPLICATION_M3U8,
+                        "",
+                        playbackMode,
+                        false,
+                        false
+                );
+            }
             return new Decision(
                     liveStreamUrl(request.channelId),
                     MimeTypes.VIDEO_MP2T,
@@ -142,7 +164,18 @@ final class PlaybackRouteResolver {
         }
 
         if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
+            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
             if ("server_live".equals(safeLower(request.playbackProfile))) {
+                if ("smooth".equals(streamType) || looksSmooth) {
+                    return new Decision(
+                            ismHlsUrl(request.channelId),
+                            MimeTypes.APPLICATION_M3U8,
+                            "",
+                            playbackMode,
+                            false,
+                            false
+                    );
+                }
                 return new Decision(
                         liveStreamUrl(request.channelId),
                         MimeTypes.VIDEO_MP2T,
@@ -152,7 +185,6 @@ final class PlaybackRouteResolver {
                         false
                 );
             }
-            String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
             if ("smooth".equals(streamType) || looksSmooth) {
                 String targetUrl = streamInfo != null && streamInfo.sourceUrl != null && !streamInfo.sourceUrl.trim().isEmpty()
                         ? streamInfo.sourceUrl
@@ -476,6 +508,10 @@ final class PlaybackRouteResolver {
         return baseUrl + "/live/" + channelId + "?client=firestick";
     }
 
+    private String ismHlsUrl(String channelId) {
+        return baseUrl + "/hls/ism/" + channelId + "/index.m3u8";
+    }
+
     private String hevcHlsUrl(String channelId) {
         return baseUrl + "/hls/" + channelId + "/playlist.m3u8?codec=hevc";
     }
@@ -517,5 +553,17 @@ final class PlaybackRouteResolver {
     private static boolean looksLikeSmooth(String lowerUrl) {
         String value = lowerUrl == null ? "" : lowerUrl;
         return value.contains(".isml/manifest") || value.contains(".ism/manifest");
+    }
+
+    private static boolean isMovistarIsmRequest(PlayerController.PlaybackRequest request, PlayerController.StreamInfo streamInfo) {
+        if (request == null) {
+            return false;
+        }
+        String platform = safeLower(request.platformName);
+        String groupOrChannel = platform + " " + safeLower(request.channelName);
+        String url = safeLower(request.playUrl);
+        String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
+        boolean looksSmooth = "smooth".equals(streamType) || looksLikeSmooth(url);
+        return looksSmooth && groupOrChannel.contains("movistar") && groupOrChannel.contains("ism");
     }
 }

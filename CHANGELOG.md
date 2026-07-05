@@ -1,3 +1,7 @@
+## 2.0.200-beta-movistar-ism-hls
+- Offline beta: restaura Movistar ISM usando la ruta HLS fMP4 `/hls/ism/{id}/index.m3u8`.
+- Offline beta: evita que los canales Smooth ClearKey de Movistar ISM caigan en el manifiesto Smooth local del Fire Stick.
+
 ## 2.0.199-beta-drm-device-token
 - Offline beta: anade `access_token` y `device_id` en URLs sensibles de reproduccion y licencias DRM.
 - Offline beta: evita fallos tras el endurecimiento del backend cuando el callback DRM no conserva todos los headers.

@@ -1,7 +1,9 @@
 package com.drbep.tvplayer;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.text.SimpleDateFormat;
 import java.util.function.Consumer;
 
 final class TimelineGuideUiFactory {
@@ -15,6 +17,16 @@ final class TimelineGuideUiFactory {
         void focusProgram(ChannelItem channel, long windowStartMs, int centerMinute, TimelineProgramDetailUiModel detail, Consumer<TimelineProgramDetailUiModel> renderDetail);
         void openProgramActions(ChannelItem channel, EpgRepository.EpgProgram program);
         void toggleRecording(ChannelItem channel, EpgRepository.EpgProgram program, boolean scheduled);
+    }
+
+    interface HeaderHost {
+        String text(int resId);
+        String text(int resId, Object... args);
+        void now();
+        void previous();
+        void nextChannel();
+        void next();
+        void close();
     }
 
     private TimelineGuideUiFactory() {
@@ -54,6 +66,43 @@ final class TimelineGuideUiFactory {
             outputRows.add(new TimelineGuideRowUiModel(row.channel.name, row.channel.logoUrl, labelWidth, blocks));
         }
         return new TimelineGuideRowsUiModel(outputRows);
+    }
+
+    static TimelineHeaderUiModel buildHeader(long windowStartMs, long windowEndMs, SimpleDateFormat dayFormat, SimpleDateFormat hourFormat, Runnable afterActionFocus, HeaderHost host) {
+        String windowLabel = host.text(
+                R.string.timeline_window_label,
+                dayFormat.format(new Date(windowStartMs)),
+                hourFormat.format(new Date(windowStartMs)),
+                hourFormat.format(new Date(windowEndMs))
+        );
+        return new TimelineHeaderUiModel(
+                host.text(R.string.title_timeline_guide),
+                windowLabel,
+                java.util.Arrays.asList(
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(host.text(R.string.timeline_now_button), host::now, afterActionFocus),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(host.text(R.string.timeline_prev_button), host::previous, afterActionFocus),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(host.text(R.string.timeline_channel_next_button), host::nextChannel, afterActionFocus),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(host.text(R.string.timeline_next_button), host::next, afterActionFocus),
+                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(host.text(R.string.dialog_close), host::close, afterActionFocus)
+                )
+        );
+    }
+
+    static TimelineScaleUiModel buildScale(long windowStartMs, int labelWidth, int stripWidth, long windowMs, SimpleDateFormat hourFormat) {
+        int totalWindowMinutes = (int) (windowMs / 60000L);
+        int headerSlotMinutes = windowMs >= 6L * 60L * 60L * 1000L ? 60 : 30;
+        int headerSlotCount = Math.max(1, totalWindowMinutes / headerSlotMinutes);
+        int headerSlotWidth = stripWidth / headerSlotCount;
+        List<TimelineScaleSlotUiModel> scaleSlots = new ArrayList<>();
+        for (int i = 0; i < headerSlotCount; i++) {
+            long slotStartMs = windowStartMs + (i * headerSlotMinutes * 60L * 1000L);
+            scaleSlots.add(new TimelineScaleSlotUiModel(
+                    hourFormat.format(new Date(slotStartMs)),
+                    i % 2 == 0 ? 0xFFA7D0FF : 0xFF6F92B8,
+                    headerSlotWidth
+            ));
+        }
+        return new TimelineScaleUiModel(labelWidth, scaleSlots);
     }
 
     private static List<TimelineGuideBlockUiModel> buildBlocks(

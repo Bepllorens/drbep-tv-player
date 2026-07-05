@@ -26,6 +26,14 @@ final class RecordingsUiFactory {
         void selectAndPlay(int position, RecordingsRepository.RecordingItem item, String basePath);
     }
 
+    interface PresentationHost {
+        String text(int resId);
+        String text(int resId, Object... args);
+        String safeLower(String value);
+        String filterLabel();
+        boolean hasConflict(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result);
+    }
+
     private RecordingsUiFactory() {
     }
 
@@ -105,5 +113,87 @@ final class RecordingsUiFactory {
             }
         }
         return new RecordingListUiModel(items, host.pendingScrollIndex());
+    }
+
+    static String buildSummary(RecordingsRepository.RecordingsResult result, PresentationHost host) {
+        String summary;
+        if (result == null || result.items == null || result.items.isEmpty()) {
+            summary = result != null && result.scheduledMode
+                    ? host.text(R.string.recordings_summary_scheduled, 0, 0, 0, 0, 0)
+                    : host.text(R.string.recordings_summary_completed, 0);
+        } else if (!result.scheduledMode) {
+            summary = host.text(R.string.recordings_summary_completed, result.items.size());
+        } else {
+            RecordingsController.SummaryStats stats = RecordingsController.buildSummaryStats(result);
+            summary = host.text(R.string.recordings_summary_scheduled, stats.total, stats.scheduled, stats.recording, stats.issue, stats.conflict);
+        }
+        String label = host.filterLabel();
+        return label == null || label.isEmpty() ? summary : summary + "  ·  " + label;
+    }
+
+    static String statusLabel(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result, PresentationHost host) {
+        if (item == null || item.status == null || item.status.trim().isEmpty()) {
+            return host.text(R.string.recording_status_ready);
+        }
+        if (host.hasConflict(item, result)) {
+            return host.text(R.string.recording_status_conflict_short);
+        }
+        String status = item.status.trim().toLowerCase(java.util.Locale.US);
+        switch (status) {
+            case "completed":
+                return host.text(R.string.recording_status_completed_short);
+            case "recording":
+                return host.text(R.string.recording_status_recording_short);
+            case "failed":
+            case "error":
+                return host.text(R.string.recording_status_issue_short);
+            case "scheduled":
+                return host.text(R.string.recording_status_scheduled_short);
+            default:
+                return status.toUpperCase(java.util.Locale.US);
+        }
+    }
+
+    static int statusBadgeColor(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result, PresentationHost host) {
+        if (item == null || item.status == null) {
+            return 0xFF4F3A23;
+        }
+        if (host.hasConflict(item, result)) {
+            return 0xFF9A6B28;
+        }
+        String status = item.status.trim().toLowerCase(java.util.Locale.US);
+        switch (status) {
+            case "completed":
+                return 0xFF2E6A57;
+            case "recording":
+                return 0xFF8B3D2F;
+            case "scheduled":
+                return 0xFF3F5877;
+            case "failed":
+            case "error":
+                return 0xFF7A3340;
+            default:
+                return 0xFF4F3A23;
+        }
+    }
+
+    static int metaColor(RecordingsRepository.RecordingItem item, PresentationHost host) {
+        if (item == null || item.playable) {
+            return 0xFFF2D5AF;
+        }
+        switch (host.safeLower(item.status)) {
+            case "recording":
+            case "running":
+            case "in_progress":
+                return 0xFF8DE1A5;
+            case "failed":
+            case "error":
+                return 0xFFFF9C9C;
+            case "cancelled":
+            case "canceled":
+                return 0xFFC7D2E2;
+            default:
+                return 0xFF9BD0FF;
+        }
     }
 }

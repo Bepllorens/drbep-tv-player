@@ -1,3 +1,8 @@
+## 2.0.194-beta-compose-ui-split-5
+- Offline beta: VOD avanzado separa categorias y acciones de progreso en factories reutilizables.
+- Offline beta: update, recordings, timeline y listas rapidas extraen mas construccion visual fuera de `MainActivity`.
+- Offline beta: se avanza en los cinco bloques pendientes dejando para el final la orquestacion profunda de playback/rutas.
+
 ## 2.0.193-beta-compose-menu-factories
 - Offline beta: diagnostico de reproduccion separa panel principal, historial y acciones avanzadas en una factory dedicada.
 - Offline beta: listas personales, ficha de canal, ajustes, herramientas y menu VOD clasico pasan a factories de UI reutilizables.

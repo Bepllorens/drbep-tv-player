@@ -24,6 +24,15 @@ final class VodLibraryMenuUiFactory {
         void openProgressManager();
     }
 
+    interface AdvancedHost {
+        String text(int resId);
+        String displayName(ChannelItem item);
+        void openCategory(String title, List<ChannelItem> items);
+        void continueVod(ChannelItem item);
+        void startOver(ChannelItem item);
+        void clearProgress(ChannelItem item);
+    }
+
     private VodLibraryMenuUiFactory() {
     }
 
@@ -54,6 +63,35 @@ final class VodLibraryMenuUiFactory {
         add(options, actions, host.text(R.string.quick_hub_search_vod), host::openSearch);
         add(options, actions, host.optionLabel(R.string.vod_library_manage_progress, progressItems), host::openProgressManager);
         return new TvOptionsMenuModel(options, actions);
+    }
+
+    static TvOptionsMenuModel buildCategories(List<java.util.Map.Entry<String, List<ChannelItem>>> entries, AdvancedHost host) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        if (entries == null || host == null) {
+            return new TvOptionsMenuModel(options, actions);
+        }
+        for (java.util.Map.Entry<String, List<ChannelItem>> entry : entries) {
+            if (entry == null) {
+                continue;
+            }
+            List<ChannelItem> categoryItems = entry.getValue() == null ? new ArrayList<>() : new ArrayList<>(entry.getValue());
+            String categoryTitle = entry.getKey() == null ? "" : entry.getKey();
+            add(options, actions, categoryTitle + " (" + categoryItems.size() + ")", () -> host.openCategory(categoryTitle, categoryItems));
+        }
+        return new TvOptionsMenuModel(options, actions);
+    }
+
+    static TvOptionsMenuModel buildProgressActions(ChannelItem item, AdvancedHost host) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        if (item == null || host == null) {
+            return new TvOptionsMenuModel(options, actions, "");
+        }
+        add(options, actions, host.text(R.string.vod_action_continue), () -> host.continueVod(item));
+        add(options, actions, host.text(R.string.vod_action_start_over), () -> host.startOver(item));
+        add(options, actions, host.text(R.string.vod_action_clear_progress), () -> host.clearProgress(item));
+        return new TvOptionsMenuModel(options, actions, host.displayName(item));
     }
 
     private static void add(List<String> options, List<Runnable> actions, String label, Runnable action) {

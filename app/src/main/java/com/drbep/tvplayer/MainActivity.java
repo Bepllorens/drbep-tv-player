@@ -9624,44 +9624,38 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showAppUpdateAvailableDialog(AppUpdateManager.UpdateInfo info) {
-        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
-        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Actual", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")", ""));
-        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Disponible", safeUpdateVersionName(info) + " (" + info.versionCode + ")", "ok"));
-        rows.add(new PlaybackDiagnosticsRowUiModel("Version", "Canal", info.channel == null || info.channel.trim().isEmpty() ? currentUpdateChannelLabel() : info.channel, ""));
-        rows.add(new PlaybackDiagnosticsRowUiModel("Instalacion", "Obligatoria", getString(info.required ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no), info.required ? "warn" : ""));
-        rows.add(new PlaybackDiagnosticsRowUiModel("Instalacion", "APK", info.apkUrl == null || info.apkUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : info.apkUrl, ""));
-        if (info.sha256 != null && !info.sha256.trim().isEmpty()) {
-            rows.add(new PlaybackDiagnosticsRowUiModel("Instalacion", "SHA-256", info.sha256, ""));
-        }
-        List<String> notes = new ArrayList<>();
-        if (info.changelog == null || info.changelog.isEmpty()) {
-            notes.add(getString(R.string.diagnostics_value_unknown));
-        } else {
-            for (String item : info.changelog) {
-                if (item != null && !item.trim().isEmpty()) {
-                    notes.add("• " + item.trim());
-                }
+        PlaybackDiagnosticsPanelUiModel model = AppUpdateUiFactory.buildAvailable(info, new AppUpdateUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
             }
-        }
-        List<TvMessageActionUiModel> actions = new ArrayList<>();
-        actions.add(new TvMessageActionUiModel(
-                getString(R.string.app_update_action_install),
-                false,
-                () -> downloadAndInstallAppUpdate(info)
-        ));
-        actions.add(new TvMessageActionUiModel(
-                getString(info.required ? R.string.dialog_close : R.string.app_update_action_later),
-                false,
-                null
-        ));
-        showStructuredStatusPanel(
-                getString(R.string.app_update_available_title, safeUpdateVersionName(info)),
-                getString(R.string.app_update_channel_current, currentUpdateChannelLabel()),
-                getString(R.string.settings_update_state_available_short, safeUpdateVersionName(info), info.versionCode),
-                rows,
-                notes,
-                actions
-        );
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public String currentVersion() {
+                return BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")";
+            }
+
+            @Override
+            public String currentChannelLabel() {
+                return currentUpdateChannelLabel();
+            }
+
+            @Override
+            public String safeVersionName(AppUpdateManager.UpdateInfo updateInfo) {
+                return safeUpdateVersionName(updateInfo);
+            }
+
+            @Override
+            public void install(AppUpdateManager.UpdateInfo updateInfo) {
+                downloadAndInstallAppUpdate(updateInfo);
+            }
+        });
+        showStructuredStatusPanel(model.title, model.subtitle, model.summary, model.rows, model.notes, model.actions);
     }
 
     private void downloadAndInstallAppUpdate(AppUpdateManager.UpdateInfo info) {
@@ -11218,23 +11212,47 @@ public class MainActivity extends FragmentActivity {
             }
             return left.getKey().compareToIgnoreCase(right.getKey());
         });
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
         for (Map.Entry<String, List<ChannelItem>> entry : entries) {
             List<ChannelItem> categoryItems = new ArrayList<>(entry.getValue());
             sortVodLibraryItems(categoryItems);
-            options.add(entry.getKey() + " (" + categoryItems.size() + ")");
-            String categoryTitle = entry.getKey();
-            Runnable returnToCategories = () -> showVodCategoriesDialog(onBack);
-            actions.add(() -> showQuickChannelListDialog(
-                    categoryTitle,
-                    categoryItems,
-                    getString(R.string.vod_library_empty),
-                    item -> showVodInfoDialog(item, () -> showQuickChannelListDialog(categoryTitle, categoryItems, getString(R.string.vod_library_empty), selected -> showVodInfoDialog(selected), returnToCategories)),
-                    returnToCategories
-            ));
+            entry.setValue(categoryItems);
         }
-        showTvOptionsDialog(R.string.vod_library_categories, null, options, actions, onBack);
+        Runnable returnToCategories = () -> showVodCategoriesDialog(onBack);
+        TvOptionsMenuModel menu = VodLibraryMenuUiFactory.buildCategories(entries, new VodLibraryMenuUiFactory.AdvancedHost() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public void openCategory(String title, List<ChannelItem> items) {
+                showQuickChannelListDialog(
+                        title,
+                        items,
+                        getString(R.string.vod_library_empty),
+                        item -> showVodInfoDialog(item, () -> showQuickChannelListDialog(title, items, getString(R.string.vod_library_empty), selected -> showVodInfoDialog(selected), returnToCategories)),
+                        returnToCategories
+                );
+            }
+
+            @Override
+            public void continueVod(ChannelItem item) {
+            }
+
+            @Override
+            public void startOver(ChannelItem item) {
+            }
+
+            @Override
+            public void clearProgress(ChannelItem item) {
+            }
+        });
+        showTvOptionsDialog(R.string.vod_library_categories, menu.message, menu.options, menu.actions, onBack);
     }
 
     private List<ChannelItem> buildVodContinueItems() {
@@ -11368,21 +11386,39 @@ public class MainActivity extends FragmentActivity {
         if (item == null) {
             return;
         }
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        options.add(getString(R.string.vod_action_continue));
-        actions.add(() -> ensureParentalAccessForItem(item, () -> playChannelItemInternal(item, true, getVodResumePosition(item.id))));
-        options.add(getString(R.string.vod_action_start_over));
-        actions.add(() -> {
-            clearVodResumePosition(item.id);
-            ensureParentalAccessForItem(item, () -> playChannelItemInternal(item, true, 0L));
+        TvOptionsMenuModel menu = VodLibraryMenuUiFactory.buildProgressActions(item, new VodLibraryMenuUiFactory.AdvancedHost() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public void openCategory(String title, List<ChannelItem> items) {
+            }
+
+            @Override
+            public void continueVod(ChannelItem target) {
+                ensureParentalAccessForItem(target, () -> playChannelItemInternal(target, true, getVodResumePosition(target.id)));
+            }
+
+            @Override
+            public void startOver(ChannelItem target) {
+                clearVodResumePosition(target.id);
+                ensureParentalAccessForItem(target, () -> playChannelItemInternal(target, true, 0L));
+            }
+
+            @Override
+            public void clearProgress(ChannelItem target) {
+                clearVodResumePosition(target.id);
+                showStatus(getString(R.string.vod_status_progress_cleared));
+            }
         });
-        options.add(getString(R.string.vod_action_clear_progress));
-        actions.add(() -> {
-            clearVodResumePosition(item.id);
-            showStatus(getString(R.string.vod_status_progress_cleared));
-        });
-        showTvOptionsDialog(R.string.vod_library_manage_progress, displayName(item), options, actions, onBack);
+        showTvOptionsDialog(R.string.vod_library_manage_progress, menu.message, menu.options, menu.actions, onBack);
     }
 
     private List<ChannelItem> buildVodSearchResults(String query, boolean includeAdult) {
@@ -12562,64 +12598,55 @@ public class MainActivity extends FragmentActivity {
         final boolean rememberFocusedCenter = lastTimelineFocusedCenterMinute >= 0 && lastTimelineWindowStartMs == windowStartMs;
         SimpleDateFormat dayFormat = new SimpleDateFormat("EEE d MMM", Locale.getDefault());
         SimpleDateFormat hourFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        String windowLabel = getString(
-                R.string.timeline_window_label,
-                dayFormat.format(new Date(windowStartMs)),
-                hourFormat.format(new Date(windowStartMs)),
-                hourFormat.format(new Date(windowEndMs))
-        );
-        TimelineHeaderUiModel timelineHeaderModel = new TimelineHeaderUiModel(
-                getString(R.string.title_timeline_guide),
-                windowLabel,
-                java.util.Arrays.asList(
-                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                getString(R.string.timeline_now_button),
-                                () -> {
-                                    if (timelineDialogRef[0] != null) {
-                                        timelineDialogRef[0].dismiss();
-                                    }
-                                    openTimelineGuideNow();
-                                },
-                                focusInitialTimelineProgram
-                        ),
-                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                getString(R.string.timeline_prev_button),
-                                () -> {
-                                    if (timelineDialogRef[0] != null) {
-                                        timelineDialogRef[0].dismiss();
-                                    }
-                                    int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
-                                    openTimelineGuide(anchorIndex, Math.max(0L, windowStartMs - TIMELINE_SHIFT_MS));
-                                },
-                                focusInitialTimelineProgram
-                        ),
-                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                getString(R.string.timeline_channel_next_button),
-                                this::openTimelineGuideNextForAnchor,
-                                focusInitialTimelineProgram
-                        ),
-                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                getString(R.string.timeline_next_button),
-                                () -> {
-                                    if (timelineDialogRef[0] != null) {
-                                        timelineDialogRef[0].dismiss();
-                                    }
-                                    int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
-                                    openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
-                                },
-                                focusInitialTimelineProgram
-                        ),
-                        new TimelineHeaderUiModel.TimelineHeaderActionUiModel(
-                                getString(R.string.dialog_close),
-                                () -> {
-                                    if (timelineDialogRef[0] != null) {
-                                        timelineDialogRef[0].dismiss();
-                                    }
-                                },
-                                focusInitialTimelineProgram
-                        )
-                )
-        );
+        TimelineHeaderUiModel timelineHeaderModel = TimelineGuideUiFactory.buildHeader(windowStartMs, windowEndMs, dayFormat, hourFormat, focusInitialTimelineProgram, new TimelineGuideUiFactory.HeaderHost() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public void now() {
+                if (timelineDialogRef[0] != null) {
+                    timelineDialogRef[0].dismiss();
+                }
+                openTimelineGuideNow();
+            }
+
+            @Override
+            public void previous() {
+                if (timelineDialogRef[0] != null) {
+                    timelineDialogRef[0].dismiss();
+                }
+                int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
+                openTimelineGuide(anchorIndex, Math.max(0L, windowStartMs - TIMELINE_SHIFT_MS));
+            }
+
+            @Override
+            public void nextChannel() {
+                openTimelineGuideNextForAnchor();
+            }
+
+            @Override
+            public void next() {
+                if (timelineDialogRef[0] != null) {
+                    timelineDialogRef[0].dismiss();
+                }
+                int anchorIndex = overlayNavigationState.selectedOverlayIndex >= 0 && overlayNavigationState.selectedOverlayIndex < channels.size() ? overlayNavigationState.selectedOverlayIndex : Math.max(0, overlayNavigationState.currentIndex);
+                openTimelineGuide(anchorIndex, windowStartMs + TIMELINE_SHIFT_MS);
+            }
+
+            @Override
+            public void close() {
+                if (timelineDialogRef[0] != null) {
+                    timelineDialogRef[0].dismiss();
+                }
+            }
+        });
 
         android.util.DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
         int dialogWidthPx = (int) (displayMetrics.widthPixels * 0.98f);
@@ -12628,20 +12655,7 @@ public class MainActivity extends FragmentActivity {
         int stripWidth = Math.max(dp(540), dialogWidthPx - labelWidth - horizontalChrome);
         int totalWindowMinutes = (int) (TIMELINE_WINDOW_MS / 60000L);
         float minuteWidth = stripWidth / (float) totalWindowMinutes;
-        int headerSlotMinutes = TIMELINE_WINDOW_MS >= 6L * 60L * 60L * 1000L ? 60 : 30;
-        int headerSlotCount = Math.max(1, totalWindowMinutes / headerSlotMinutes);
-        int headerSlotWidth = stripWidth / headerSlotCount;
-
-        List<TimelineScaleSlotUiModel> scaleSlots = new ArrayList<>();
-        for (int i = 0; i < headerSlotCount; i++) {
-            long slotStartMs = windowStartMs + (i * headerSlotMinutes * 60L * 1000L);
-            scaleSlots.add(new TimelineScaleSlotUiModel(
-                    hourFormat.format(new Date(slotStartMs)),
-                    i % 2 == 0 ? 0xFFA7D0FF : 0xFF6F92B8,
-                    headerSlotWidth
-            ));
-        }
-        TimelineScaleUiModel timelineScaleModel = new TimelineScaleUiModel(labelWidth, scaleSlots);
+        TimelineScaleUiModel timelineScaleModel = TimelineGuideUiFactory.buildScale(windowStartMs, labelWidth, stripWidth, TIMELINE_WINDOW_MS, hourFormat);
         TimelineGuideRowsUiModel timelineRowsModel = buildTimelineGuideRowsUiModel(
                 rows,
                 windowStartMs,
@@ -12742,10 +12756,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showQuickChannelListDialog(String title, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action, Runnable onBack) {
-        if (items == null || items.isEmpty()) {
-            showStatus(emptyMessage == null || emptyMessage.trim().isEmpty()
-                    ? getString(R.string.overlay_no_results)
-                    : emptyMessage);
+        QuickChannelDialogUiFactory.Host dialogHost = buildQuickChannelDialogUiHost();
+        if (!QuickChannelDialogUiFactory.hasItems(items)) {
+            showStatus(QuickChannelDialogUiFactory.emptyMessage(emptyMessage, dialogHost));
             return;
         }
         prepareModalSurface();
@@ -12758,7 +12771,7 @@ public class MainActivity extends FragmentActivity {
         final Dialog[] dialogHolder = new Dialog[1];
         QuickChannelListComposeBinder.bind(quickChannelListComposeView, buildQuickChannelListUiModel(
                 title,
-                getString(R.string.quick_channel_count, items.size()) + "  ·  " + getString(R.string.quick_channel_hint),
+                QuickChannelDialogUiFactory.subtitle(items, dialogHost),
                 items,
                 dialogHolder,
                 action
@@ -12779,6 +12792,20 @@ public class MainActivity extends FragmentActivity {
         }, this::handleModalDismissed);
         dialogHolder[0] = dialog;
         handleModalShown();
+    }
+
+    private QuickChannelDialogUiFactory.Host buildQuickChannelDialogUiHost() {
+        return new QuickChannelDialogUiFactory.Host() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+        };
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
@@ -14130,25 +14157,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String buildRecordingsSummary(RecordingsRepository.RecordingsResult result) {
-        if (result == null || result.items == null || result.items.isEmpty()) {
-            if (result != null && result.scheduledMode) {
-                return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_scheduled, 0, 0, 0, 0, 0));
-            }
-            return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_completed, 0));
-        }
-        if (!result.scheduledMode) {
-            return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_completed, result.items.size()));
-        }
-        RecordingsController.SummaryStats stats = RecordingsController.buildSummaryStats(result);
-        return appendRecordingsSummaryFilters(getString(R.string.recordings_summary_scheduled, stats.total, stats.scheduled, stats.recording, stats.issue, stats.conflict));
-    }
-
-    private String appendRecordingsSummaryFilters(String summary) {
-        String label = buildRecordingsFilterLabel();
-        if (label.isEmpty()) {
-            return summary;
-        }
-        return summary + "  ·  " + label;
+        return RecordingsUiFactory.buildSummary(result, buildRecordingsPresentationHost());
     }
 
     private String humanizeRecordingStatus(String status) {
@@ -14175,69 +14184,44 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String buildRecordingStatusLabel(RecordingsRepository.RecordingItem item) {
-        if (item == null || item.status == null || item.status.trim().isEmpty()) {
-            return getString(R.string.recording_status_ready);
-        }
-        if (hasRecordingConflict(item, recordingsController.getCurrentResult())) {
-            return getString(R.string.recording_status_conflict_short);
-        }
-        String status = item.status.trim().toLowerCase(Locale.US);
-        switch (status) {
-            case "completed":
-                return getString(R.string.recording_status_completed_short);
-            case "recording":
-                return getString(R.string.recording_status_recording_short);
-            case "failed":
-            case "error":
-                return getString(R.string.recording_status_issue_short);
-            case "scheduled":
-                return getString(R.string.recording_status_scheduled_short);
-            default:
-                return status.toUpperCase(Locale.US);
-        }
+        return RecordingsUiFactory.statusLabel(item, recordingsController.getCurrentResult(), buildRecordingsPresentationHost());
     }
 
     private int recordingStatusBadgeColor(RecordingsRepository.RecordingItem item) {
-        if (item == null || item.status == null) {
-            return 0xFF4F3A23;
-        }
-        if (hasRecordingConflict(item, recordingsController.getCurrentResult())) {
-            return 0xFF9A6B28;
-        }
-        String status = item.status.trim().toLowerCase(Locale.US);
-        switch (status) {
-            case "completed":
-                return 0xFF2E6A57;
-            case "recording":
-                return 0xFF8B3D2F;
-            case "scheduled":
-                return 0xFF3F5877;
-            case "failed":
-            case "error":
-                return 0xFF7A3340;
-            default:
-                return 0xFF4F3A23;
-        }
+        return RecordingsUiFactory.statusBadgeColor(item, recordingsController.getCurrentResult(), buildRecordingsPresentationHost());
     }
 
     private int recordingMetaColor(RecordingsRepository.RecordingItem item) {
-        if (item == null || item.playable) {
-            return 0xFFF2D5AF;
-        }
-        switch (safeLower(item.status)) {
-            case "recording":
-            case "running":
-            case "in_progress":
-                return 0xFF8DE1A5;
-            case "failed":
-            case "error":
-                return 0xFFFF9C9C;
-            case "cancelled":
-            case "canceled":
-                return 0xFFC7D2E2;
-            default:
-                return 0xFF9BD0FF;
-        }
+        return RecordingsUiFactory.metaColor(item, buildRecordingsPresentationHost());
+    }
+
+    private RecordingsUiFactory.PresentationHost buildRecordingsPresentationHost() {
+        return new RecordingsUiFactory.PresentationHost() {
+            @Override
+            public String text(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String text(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public String safeLower(String value) {
+                return MainActivity.this.safeLower(value);
+            }
+
+            @Override
+            public String filterLabel() {
+                return buildRecordingsFilterLabel();
+            }
+
+            @Override
+            public boolean hasConflict(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result) {
+                return MainActivity.this.hasRecordingConflict(item, result);
+            }
+        };
     }
 
     private void prefetchChannelLogos(List<ChannelItem> items, int maxItems, int widthDp, int heightDp) {

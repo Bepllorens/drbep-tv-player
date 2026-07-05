@@ -1,3 +1,7 @@
+## 2.0.199-beta-drm-device-token
+- Offline beta: anade `access_token` y `device_id` en URLs sensibles de reproduccion y licencias DRM.
+- Offline beta: evita fallos tras el endurecimiento del backend cuando el callback DRM no conserva todos los headers.
+
 ## 2.0.198-beta-secure-drm-hotfix
 - Offline beta: corrige el cifrado AES-GCM del snapshot dejando que Android Keystore genere el IV.
 - Offline beta: recupera Movistar ISM priorizando la licencia ClearKey local resuelta desde `/api/stream`.

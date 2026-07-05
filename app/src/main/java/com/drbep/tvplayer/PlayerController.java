@@ -2057,15 +2057,19 @@ final class PlayerController {
         if (!shouldAttachOfflineAccessToken(trimmed)) {
             return trimmed;
         }
-        if (trimmed.contains("access_token=")) {
-            return trimmed;
-        }
         String token = catalogSnapshotStore.getAccessToken();
-        if (token == null || token.trim().isEmpty()) {
+        String deviceId = catalogSnapshotStore.getDeviceId();
+        if ((token == null || token.trim().isEmpty()) && (deviceId == null || deviceId.trim().isEmpty())) {
             return trimmed;
         }
-        String separator = trimmed.contains("?") ? "&" : "?";
-        return trimmed + separator + "access_token=" + Uri.encode(token.trim());
+        Uri.Builder builder = Uri.parse(trimmed).buildUpon();
+        if (!trimmed.contains("access_token=") && token != null && !token.trim().isEmpty()) {
+            builder.appendQueryParameter("access_token", token.trim());
+        }
+        if (!trimmed.contains("device_id=") && deviceId != null && !deviceId.trim().isEmpty()) {
+            builder.appendQueryParameter("device_id", deviceId.trim());
+        }
+        return builder.build().toString();
     }
 
     private boolean shouldAttachOfflineAccessToken(String url) {
@@ -2097,6 +2101,8 @@ final class PlayerController {
                 || path.startsWith("/ios/")
                 || path.startsWith("/live/")
                 || path.startsWith("/api/stream/")
+                || path.startsWith("/api/clearkey/")
+                || path.startsWith("/api/widevine/")
                 || path.startsWith("/api/vod/");
     }
 

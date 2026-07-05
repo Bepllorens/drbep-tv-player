@@ -405,7 +405,7 @@ final class CatalogRepository {
                     "Tivify VOD",
                     new ArrayList<>(),
                     hasKeys ? "clearkey" : "",
-                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), secureDrm ? buildVodLicenseUrl(selectedUrl) : "", standaloneMode ? "" : buildVodLicenseUrl(selectedUrl), buildClearKeyDataLicenseUrl(clearKeys)) : "",
+                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), buildVodLicenseUrl(selectedUrl)) : "",
                     adult ? "vod:tivify:adult" : "vod:tivify:general",
                     true,
                     description,
@@ -658,56 +658,6 @@ final class CatalogRepository {
                 safeCatalogUrl(channel.optString("drm_license_url", "")),
                 safeCatalogUrl(channel.optString("license_url", ""))
         );
-    }
-
-    private static String buildClearKeyDataLicenseUrl(JSONObject clearKeys) {
-        if (clearKeys == null || clearKeys.length() == 0) {
-            return "";
-        }
-        try {
-            JSONArray keys = new JSONArray();
-            java.util.Iterator<String> iterator = clearKeys.keys();
-            while (iterator.hasNext()) {
-                String kidHex = iterator.next();
-                String keyHex = clearKeys.optString(kidHex, "");
-                String kid = encodeHexAsBase64Url(kidHex);
-                String key = encodeHexAsBase64Url(keyHex);
-                if (kid.isEmpty() || key.isEmpty()) {
-                    continue;
-                }
-                JSONObject entry = new JSONObject();
-                entry.put("kty", "oct");
-                entry.put("kid", kid);
-                entry.put("k", key);
-                keys.put(entry);
-            }
-            if (keys.length() == 0) {
-                return "";
-            }
-            JSONObject license = new JSONObject();
-            license.put("keys", keys);
-            license.put("type", "temporary");
-            return "data:application/json;base64," + Base64.encodeToString(license.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private static String encodeHexAsBase64Url(String hex) {
-        String normalized = safeCatalogText(hex);
-        if (normalized.isEmpty() || normalized.length() % 2 != 0) {
-            return "";
-        }
-        try {
-            byte[] bytes = new byte[normalized.length() / 2];
-            for (int i = 0; i < bytes.length; i++) {
-                int index = i * 2;
-                bytes[i] = (byte) Integer.parseInt(normalized.substring(index, index + 2), 16);
-            }
-            return Base64.encodeToString(bytes, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-        } catch (Exception e) {
-            return "";
-        }
     }
 
     private static String buildVodItemId(String selectedUrl, String title, boolean adult) {

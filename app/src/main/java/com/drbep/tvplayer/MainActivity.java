@@ -1506,6 +1506,7 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
                     applyLoadedChannels(result);
+                    maybeShowStartupCatalogCacheValidated();
                     runPostUpdateStartupHealthCheck("catalog-load", result);
                     refreshStandaloneCatalogInBackgroundIfPossible();
                 });
@@ -8297,6 +8298,9 @@ public class MainActivity extends FragmentActivity {
         String permissionsChangedAt = status.permissionsChangedAtMs <= 0L
                 ? getString(R.string.diagnostics_value_no)
                 : formatDateTime(status.permissionsChangedAtMs);
+        String startupCacheHitAt = status.lastStartupCacheHitMs <= 0L
+                ? getString(R.string.diagnostics_value_no)
+                : formatDateTime(status.lastStartupCacheHitMs);
         return getString(
                 R.string.offline_catalog_summary,
                 BuildConfig.STANDALONE_MODE ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
@@ -8319,7 +8323,9 @@ public class MainActivity extends FragmentActivity {
                 status.permissions == null || status.permissions.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.permissions,
                 permissionsChangedAt,
                 status.hasLastGoodBackup ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                startupCacheHitAt,
                 buildOfflineVerificationSummary(verification),
+                buildShortFingerprint(status.catalogFingerprint),
                 buildShortFingerprint(status.payloadFingerprint)
         );
     }
@@ -8607,6 +8613,7 @@ public class MainActivity extends FragmentActivity {
                         .put("catalog_payload_fingerprint", status.payloadFingerprint)
                         .put("catalog_fingerprint", status.catalogFingerprint)
                         .put("catalog_permissions_fingerprint", status.permissionsFingerprint)
+                        .put("last_startup_cache_hit_ms", status.lastStartupCacheHitMs)
                         .put("catalog_last_rejected_at_ms", status.lastRejectedAtMs)
                         .put("catalog_last_rejected_reason", status.lastRejectedReason)
                         .put("catalog_last_rejected_previous_channels", status.lastRejectedPreviousChannels)
@@ -9022,6 +9029,17 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         refreshOfflineCatalog(false, false);
+    }
+
+    private void maybeShowStartupCatalogCacheValidated() {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null) {
+            return;
+        }
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        long hitMs = status == null ? 0L : status.lastStartupCacheHitMs;
+        if (hitMs > 0L && System.currentTimeMillis() - hitMs < 60_000L) {
+            showStatus(getString(R.string.offline_catalog_status_cache_validated));
+        }
     }
 
     private boolean isWithinStartupMaintenanceGrace() {

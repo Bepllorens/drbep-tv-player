@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 208
-        versionName "2.0.208-beta-vodafone-cdntv-cleartext"
+        versionCode 209
+        versionName "2.0.209-beta-catalog-fingerprint-startup"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",

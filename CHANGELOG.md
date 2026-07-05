@@ -1,3 +1,8 @@
+## 2.0.209-beta-catalog-fingerprint-startup
+- Offline beta: valida una huella ligera del catalogo en el arranque y usa el snapshot local si no hay cambios, evitando descargar/parsing innecesario.
+- Offline beta: muestra y reporta el ultimo arranque con cache validada para comprobarlo desde app y dashboard.
+- Offline beta: mantiene compatibilidad si el backend antiguo no expone `/api/offline/snapshot/meta`, usando el snapshot local como fallback.
+
 ## 2.0.208-beta-vodafone-cdntv-cleartext
 - Offline beta: permite HTTP para los subdominios `cdntv.vodafone.es` a los que redirige el MPD de `La 1 UHD`.
 

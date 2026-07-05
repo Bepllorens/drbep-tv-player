@@ -754,7 +754,7 @@
     <string name="settings_data_clear_recent_channels">Limpiar canales recientes</string>
     <string name="settings_data_clear_favorites">Limpiar favoritos</string>
     <string name="settings_data_reset_lists_profiles">Reset listas y perfiles</string>
-    <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nGenerado: %4$s\nCaduca: %5$s\nCanales: %6$d  ·  VOD: %7$d\nEPG: %8$d canales · %9$d programas · hasta %10$s\nTamano: %11$s\nSchema: %12$s\nURL: %13$s\nOrigen snapshot: %14$s\nDispositivo: %15$s\nToken: %16$s\nUsuario: %17$s\nPermisos: %18$s\nUltimo cambio de permisos: %19$s\nUltimo catalogo bueno: %20$s\nVerificacion: %21$s\nHuella: %22$s</string>
+    <string name="offline_catalog_summary">Modo independiente: %1$s\nCatalogo local: %2$s\nActualizado: %3$s\nGenerado: %4$s\nCaduca: %5$s\nCanales: %6$d  ·  VOD: %7$d\nEPG: %8$d canales · %9$d programas · hasta %10$s\nTamano: %11$s\nSchema: %12$s\nURL: %13$s\nOrigen snapshot: %14$s\nDispositivo: %15$s\nToken: %16$s\nUsuario: %17$s\nPermisos: %18$s\nUltimo cambio de permisos: %19$s\nUltimo catalogo bueno: %20$s\nUltimo arranque cache validada: %21$s\nVerificacion: %22$s\nHuella catalogo: %23$s\nHuella payload: %24$s</string>
     <string name="offline_catalog_action_refresh">Actualizar catalogo local</string>
     <string name="offline_catalog_action_verify">Verificar catalogo local</string>
     <string name="offline_catalog_action_repair">Reparar catalogo</string>
@@ -789,6 +789,7 @@
     <string name="offline_catalog_status_using_last_good">Usando ultimo catalogo bueno</string>
     <string name="offline_catalog_status_already_fresh">Catalogo local al dia</string>
     <string name="offline_catalog_status_unchanged">Catalogo sin cambios</string>
+    <string name="offline_catalog_status_cache_validated">Catalogo local valido · sin cambios</string>
     <string name="offline_catalog_status_permissions_changed">Catalogo actualizado · permisos cambiados</string>
     <string name="offline_catalog_status_reactivated">Catalogo reactivado correctamente</string>
     <string name="offline_catalog_status_url_saved">URL de catalogo guardada</string>

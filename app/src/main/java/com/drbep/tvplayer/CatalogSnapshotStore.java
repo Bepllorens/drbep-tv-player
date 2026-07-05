@@ -62,6 +62,7 @@ final class CatalogSnapshotStore {
     private static final String PREF_SOURCE_BASE_URL = "source_base_url";
     private static final String PREF_PAYLOAD_FINGERPRINT = "payload_fingerprint";
     private static final String PREF_CATALOG_FINGERPRINT = "catalog_fingerprint";
+    private static final String PREF_LAST_STARTUP_CACHE_HIT_MS = "last_startup_cache_hit_ms";
     private static final String PREF_VERIFICATION_STATE = "verification_state";
     private static final String PREF_VERIFICATION_MESSAGE = "verification_message";
     private static final String PREF_LAST_REJECTED_AT_MS = "last_rejected_at_ms";
@@ -108,6 +109,7 @@ final class CatalogSnapshotStore {
             try {
                 if (remoteCatalogFingerprintMatches(fallbackUrl)) {
                     Log.i(TAG, "startup catalog fingerprint unchanged; using local snapshot");
+                    prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
                     return loadSnapshotObject();
                 }
                 Log.i(TAG, "startup catalog fingerprint changed; refreshing lite catalog");
@@ -407,6 +409,7 @@ final class CatalogSnapshotStore {
                 .remove(PREF_SOURCE_BASE_URL)
                 .remove(PREF_PAYLOAD_FINGERPRINT)
                 .remove(PREF_CATALOG_FINGERPRINT)
+                .remove(PREF_LAST_STARTUP_CACHE_HIT_MS)
                 .remove(PREF_VERIFICATION_STATE)
                 .remove(PREF_VERIFICATION_MESSAGE)
                 .remove(PREF_LAST_REJECTED_AT_MS)
@@ -520,6 +523,7 @@ final class CatalogSnapshotStore {
                 prefs.getString(PREF_PAYLOAD_FINGERPRINT, ""),
                 prefs.getString(PREF_CATALOG_FINGERPRINT, ""),
                 prefs.getString(PREF_PERMISSIONS_FINGERPRINT, ""),
+                prefs.getLong(PREF_LAST_STARTUP_CACHE_HIT_MS, 0L),
                 prefs.getLong(PREF_PERMISSIONS_CHANGED_AT_MS, 0L),
                 prefs.getString(PREF_VERIFICATION_STATE, ""),
                 prefs.getString(PREF_VERIFICATION_MESSAGE, ""),
@@ -1278,6 +1282,7 @@ final class CatalogSnapshotStore {
         final String payloadFingerprint;
         final String catalogFingerprint;
         final String permissionsFingerprint;
+        final long lastStartupCacheHitMs;
         final long permissionsChangedAtMs;
         final String verificationState;
         final String verificationMessage;
@@ -1291,18 +1296,18 @@ final class CatalogSnapshotStore {
         final int lastRejectedCandidateTotal;
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken) {
-            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", "", 0L, "", "", hasAccessToken, false);
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", "", 0L, 0L, "", "", hasAccessToken, false);
         }
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken, boolean hasLastGoodBackup) {
-            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", "", 0L, "", "", hasAccessToken, hasLastGoodBackup);
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", "", 0L, 0L, "", "", hasAccessToken, hasLastGoodBackup);
         }
 
-        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String catalogFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup) {
-            this(available, sizeBytes, updatedAtMs, expiresAtMs, generatedAtMs, expired, channelCount, vodCount, epgChannelCount, epgProgramCount, epgUntilMs, schema, sourceUrl, sourceBaseUrl, deviceId, subject, permissions, payloadFingerprint, catalogFingerprint, permissionsFingerprint, permissionsChangedAtMs, verificationState, verificationMessage, hasAccessToken, hasLastGoodBackup, 0L, "", 0, 0, 0, 0);
+        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String catalogFingerprint, String permissionsFingerprint, long lastStartupCacheHitMs, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup) {
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, generatedAtMs, expired, channelCount, vodCount, epgChannelCount, epgProgramCount, epgUntilMs, schema, sourceUrl, sourceBaseUrl, deviceId, subject, permissions, payloadFingerprint, catalogFingerprint, permissionsFingerprint, lastStartupCacheHitMs, permissionsChangedAtMs, verificationState, verificationMessage, hasAccessToken, hasLastGoodBackup, 0L, "", 0, 0, 0, 0);
         }
 
-        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String catalogFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup, long lastRejectedAtMs, String lastRejectedReason, int lastRejectedPreviousChannels, int lastRejectedCandidateChannels, int lastRejectedPreviousTotal, int lastRejectedCandidateTotal) {
+        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String catalogFingerprint, String permissionsFingerprint, long lastStartupCacheHitMs, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup, long lastRejectedAtMs, String lastRejectedReason, int lastRejectedPreviousChannels, int lastRejectedCandidateChannels, int lastRejectedPreviousTotal, int lastRejectedCandidateTotal) {
             this.available = available;
             this.sizeBytes = sizeBytes;
             this.updatedAtMs = updatedAtMs;
@@ -1323,6 +1328,7 @@ final class CatalogSnapshotStore {
             this.payloadFingerprint = payloadFingerprint == null ? "" : payloadFingerprint;
             this.catalogFingerprint = catalogFingerprint == null ? "" : catalogFingerprint;
             this.permissionsFingerprint = permissionsFingerprint == null ? "" : permissionsFingerprint;
+            this.lastStartupCacheHitMs = lastStartupCacheHitMs;
             this.permissionsChangedAtMs = permissionsChangedAtMs;
             this.verificationState = verificationState == null ? "" : verificationState;
             this.verificationMessage = verificationMessage == null ? "" : verificationMessage;

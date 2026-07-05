@@ -8605,6 +8605,7 @@ public class MainActivity extends FragmentActivity {
                         .put("catalog_verification_state", status.verificationState)
                         .put("catalog_verification_message", status.verificationMessage)
                         .put("catalog_payload_fingerprint", status.payloadFingerprint)
+                        .put("catalog_fingerprint", status.catalogFingerprint)
                         .put("catalog_permissions_fingerprint", status.permissionsFingerprint)
                         .put("catalog_last_rejected_at_ms", status.lastRejectedAtMs)
                         .put("catalog_last_rejected_reason", status.lastRejectedReason)

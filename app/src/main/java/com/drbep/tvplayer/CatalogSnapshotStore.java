@@ -61,6 +61,7 @@ final class CatalogSnapshotStore {
     private static final String PREF_SCHEMA = "schema";
     private static final String PREF_SOURCE_BASE_URL = "source_base_url";
     private static final String PREF_PAYLOAD_FINGERPRINT = "payload_fingerprint";
+    private static final String PREF_CATALOG_FINGERPRINT = "catalog_fingerprint";
     private static final String PREF_VERIFICATION_STATE = "verification_state";
     private static final String PREF_VERIFICATION_MESSAGE = "verification_message";
     private static final String PREF_LAST_REJECTED_AT_MS = "last_rejected_at_ms";
@@ -103,6 +104,20 @@ final class CatalogSnapshotStore {
 
     JSONObject loadStartupSnapshotObject(String fallbackUrl) throws Exception {
         File file = snapshotFile();
+        if (file.exists() && file.length() > 0L && hasRefreshCredentials(fallbackUrl)) {
+            try {
+                if (remoteCatalogFingerprintMatches(fallbackUrl)) {
+                    Log.i(TAG, "startup catalog fingerprint unchanged; using local snapshot");
+                    return loadSnapshotObject();
+                }
+                Log.i(TAG, "startup catalog fingerprint changed; refreshing lite catalog");
+                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
+            } catch (SecurityException e) {
+                throw e;
+            } catch (Exception e) {
+                Log.w(TAG, "startup catalog meta check failed; falling back to stored snapshot", e);
+            }
+        }
         if (file.exists() && file.length() > STARTUP_LITE_REFRESH_THRESHOLD_BYTES && hasRefreshCredentials(fallbackUrl)) {
             try {
                 Log.w(TAG, "snapshot too large for startup, refreshing lite catalog bytes=" + file.length());
@@ -346,6 +361,7 @@ final class CatalogSnapshotStore {
                 .putString(PREF_SCHEMA, schema)
                 .putString(PREF_SOURCE_BASE_URL, payload.optString("source_base_url", "").trim())
                 .putString(PREF_PAYLOAD_FINGERPRINT, payloadFingerprint)
+                .putString(PREF_CATALOG_FINGERPRINT, payload.optString("catalog_fingerprint", "").trim())
                 .putString(PREF_VERIFICATION_STATE, VERIFICATION_OK)
                 .putString(PREF_VERIFICATION_MESSAGE, "")
                 .remove(PREF_LAST_REJECTED_AT_MS)
@@ -390,6 +406,7 @@ final class CatalogSnapshotStore {
                 .remove(PREF_SCHEMA)
                 .remove(PREF_SOURCE_BASE_URL)
                 .remove(PREF_PAYLOAD_FINGERPRINT)
+                .remove(PREF_CATALOG_FINGERPRINT)
                 .remove(PREF_VERIFICATION_STATE)
                 .remove(PREF_VERIFICATION_MESSAGE)
                 .remove(PREF_LAST_REJECTED_AT_MS)
@@ -501,6 +518,7 @@ final class CatalogSnapshotStore {
                 prefs.getString(PREF_SUBJECT, ""),
                 prefs.getString(PREF_PERMISSIONS, ""),
                 prefs.getString(PREF_PAYLOAD_FINGERPRINT, ""),
+                prefs.getString(PREF_CATALOG_FINGERPRINT, ""),
                 prefs.getString(PREF_PERMISSIONS_FINGERPRINT, ""),
                 prefs.getLong(PREF_PERMISSIONS_CHANGED_AT_MS, 0L),
                 prefs.getString(PREF_VERIFICATION_STATE, ""),
@@ -878,6 +896,51 @@ final class CatalogSnapshotStore {
         return !getAccessToken().trim().isEmpty() && !getSourceUrl(fallbackUrl).trim().isEmpty();
     }
 
+    private boolean remoteCatalogFingerprintMatches(String fallbackUrl) throws Exception {
+        String localFingerprint = prefs.getString(PREF_CATALOG_FINGERPRINT, "").trim();
+        if (localFingerprint.isEmpty()) {
+            return false;
+        }
+        String metaUrl = snapshotMetaUrl(getSourceUrl(fallbackUrl));
+        if (metaUrl.isEmpty()) {
+            return false;
+        }
+        HttpClient.Response response = httpClient.get(metaUrl, 5000, 12000, buildSnapshotHeaders());
+        if (response == null) {
+            throw new IllegalStateException("meta de catalogo sin respuesta");
+        }
+        if (response.code == 401 || response.code == 403) {
+            throw new SecurityException("catalogo remoto no autorizado: HTTP " + response.code);
+        }
+        httpClient.requireSuccess(response, "comprobando huella de catalogo");
+        JSONObject payload = new JSONObject(response.body == null ? "" : response.body);
+        String remoteFingerprint = payload.optString("catalog_fingerprint", "").trim();
+        return !remoteFingerprint.isEmpty() && remoteFingerprint.equals(localFingerprint);
+    }
+
+    private static String snapshotMetaUrl(String sourceUrl) throws Exception {
+        String clean = sourceUrl == null ? "" : sourceUrl.trim();
+        if (clean.isEmpty()) {
+            return "";
+        }
+        URI uri = new URI(clean);
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        if (path.endsWith("/api/offline/snapshot/meta")) {
+            return uri.toString();
+        }
+        if (!path.endsWith("/api/offline/snapshot")) {
+            return "";
+        }
+        URI meta = new URI(
+                uri.getScheme(),
+                uri.getAuthority(),
+                path + "/meta",
+                uri.getQuery(),
+                uri.getFragment()
+        );
+        return meta.toString();
+    }
+
     private static String appendStartupLiteQuery(String sourceUrl) {
         String clean = sourceUrl == null ? "" : sourceUrl.trim();
         if (clean.isEmpty() || clean.contains("startup_lite=") || clean.contains("lite=")) {
@@ -1213,6 +1276,7 @@ final class CatalogSnapshotStore {
         final String subject;
         final String permissions;
         final String payloadFingerprint;
+        final String catalogFingerprint;
         final String permissionsFingerprint;
         final long permissionsChangedAtMs;
         final String verificationState;
@@ -1227,18 +1291,18 @@ final class CatalogSnapshotStore {
         final int lastRejectedCandidateTotal;
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken) {
-            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", 0L, "", "", hasAccessToken, false);
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", "", 0L, "", "", hasAccessToken, false);
         }
 
         SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, boolean expired, int channelCount, int vodCount, String sourceUrl, String deviceId, String subject, String permissions, boolean hasAccessToken, boolean hasLastGoodBackup) {
-            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", 0L, "", "", hasAccessToken, hasLastGoodBackup);
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, 0L, expired, channelCount, vodCount, 0, 0, 0L, "", sourceUrl, "", deviceId, subject, permissions, "", "", "", 0L, "", "", hasAccessToken, hasLastGoodBackup);
         }
 
-        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup) {
-            this(available, sizeBytes, updatedAtMs, expiresAtMs, generatedAtMs, expired, channelCount, vodCount, epgChannelCount, epgProgramCount, epgUntilMs, schema, sourceUrl, sourceBaseUrl, deviceId, subject, permissions, payloadFingerprint, permissionsFingerprint, permissionsChangedAtMs, verificationState, verificationMessage, hasAccessToken, hasLastGoodBackup, 0L, "", 0, 0, 0, 0);
+        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String catalogFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup) {
+            this(available, sizeBytes, updatedAtMs, expiresAtMs, generatedAtMs, expired, channelCount, vodCount, epgChannelCount, epgProgramCount, epgUntilMs, schema, sourceUrl, sourceBaseUrl, deviceId, subject, permissions, payloadFingerprint, catalogFingerprint, permissionsFingerprint, permissionsChangedAtMs, verificationState, verificationMessage, hasAccessToken, hasLastGoodBackup, 0L, "", 0, 0, 0, 0);
         }
 
-        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup, long lastRejectedAtMs, String lastRejectedReason, int lastRejectedPreviousChannels, int lastRejectedCandidateChannels, int lastRejectedPreviousTotal, int lastRejectedCandidateTotal) {
+        SnapshotStatus(boolean available, long sizeBytes, long updatedAtMs, long expiresAtMs, long generatedAtMs, boolean expired, int channelCount, int vodCount, int epgChannelCount, int epgProgramCount, long epgUntilMs, String schema, String sourceUrl, String sourceBaseUrl, String deviceId, String subject, String permissions, String payloadFingerprint, String catalogFingerprint, String permissionsFingerprint, long permissionsChangedAtMs, String verificationState, String verificationMessage, boolean hasAccessToken, boolean hasLastGoodBackup, long lastRejectedAtMs, String lastRejectedReason, int lastRejectedPreviousChannels, int lastRejectedCandidateChannels, int lastRejectedPreviousTotal, int lastRejectedCandidateTotal) {
             this.available = available;
             this.sizeBytes = sizeBytes;
             this.updatedAtMs = updatedAtMs;
@@ -1257,6 +1321,7 @@ final class CatalogSnapshotStore {
             this.subject = subject == null ? "" : subject;
             this.permissions = permissions == null ? "" : permissions;
             this.payloadFingerprint = payloadFingerprint == null ? "" : payloadFingerprint;
+            this.catalogFingerprint = catalogFingerprint == null ? "" : catalogFingerprint;
             this.permissionsFingerprint = permissionsFingerprint == null ? "" : permissionsFingerprint;
             this.permissionsChangedAtMs = permissionsChangedAtMs;
             this.verificationState = verificationState == null ? "" : verificationState;

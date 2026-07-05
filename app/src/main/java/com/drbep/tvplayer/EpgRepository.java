@@ -66,6 +66,7 @@ final class EpgRepository {
     private static final long PROGRAMS_CACHE_MS = 120000L;
     private static final long NOW_CACHE_MS = 45000L;
     private static final long OFFLINE_PROGRAM_MAP_CACHE_MS = 120000L;
+    private static final long MAX_OFFLINE_EPG_SNAPSHOT_BYTES = 12L * 1024L * 1024L;
 
     EpgRepository(String baseUrl) {
         this(baseUrl, null, false);
@@ -436,12 +437,26 @@ final class EpgRepository {
         if (!standaloneMode) {
             return false;
         }
+        if (!shouldReadOfflineEpgSnapshot()) {
+            return false;
+        }
         try {
             CachedOfflineProgramMap cached = loadCachedOfflineProgramMap();
             return cached != null && !cached.byChannelId.isEmpty();
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private boolean shouldReadOfflineEpgSnapshot() {
+        if (snapshotStore == null) {
+            return false;
+        }
+        CatalogSnapshotStore.SnapshotStatus status = snapshotStore.getStatus(baseUrl);
+        if (status == null || !status.available || status.expired || status.epgProgramCount <= 0) {
+            return false;
+        }
+        return status.sizeBytes <= MAX_OFFLINE_EPG_SNAPSHOT_BYTES;
     }
 
     private Map<String, EpgProgramPair> fetchRemoteProgramPairsForChannels(List<ChannelItem> channelItems) throws Exception {
@@ -484,6 +499,10 @@ final class EpgRepository {
         Map<String, List<EpgProgram>> empty = new LinkedHashMap<>();
         if (snapshotStore == null) {
             return new CachedOfflineProgramMap(System.currentTimeMillis(), "", empty, new HashMap<>(), new HashMap<>());
+        }
+        if (!shouldReadOfflineEpgSnapshot()) {
+            cachedOfflineProgramMap = new CachedOfflineProgramMap(System.currentTimeMillis(), "", empty, new HashMap<>(), new HashMap<>());
+            return cachedOfflineProgramMap;
         }
         String fingerprint = buildOfflineSnapshotFingerprint();
         long now = System.currentTimeMillis();

@@ -1,3 +1,11 @@
+## 2.0.205-beta-remote-epg-guard
+- Offline beta: evita abrir snapshots grandes para decidir si hay EPG local.
+- Offline beta: si el catalogo ligero no trae EPG local, usa el EPG remoto autenticado para la guia actual.
+
+## 2.0.204-beta-deferred-visible-epg
+- Offline beta: recupera la carga diferida de EPG actual para los canales visibles tras pintar el catalogo.
+- Offline beta: mantiene bloqueada la precarga EPG completa al arrancar para evitar volver al arranque pesado.
+
 ## 2.0.203-beta-startup-lite-epg-guard
 - Offline beta: permite guardar el catalogo ligero de arranque sin rechazarlo como reduccion sospechosa.
 - Offline beta: evita precargar EPG completo tras el primer frame cuando el catalogo ligero no trae programas.

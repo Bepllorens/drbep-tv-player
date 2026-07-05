@@ -1628,10 +1628,9 @@ public class MainActivity extends FragmentActivity {
                 int index = Math.max(0, Math.min(deferredStartIndex, channels.size() - 1));
                 playChannelItem(channels.get(index), true);
             }, 1200L);
+            uiHandler.postDelayed(() -> loadEpgNow(false), 3200L);
         } else {
             tuneToIndex(startIndex, true);
-        }
-        if (!BuildConfig.STANDALONE_MODE) {
             uiHandler.postDelayed(() -> loadEpgNow(false), 450L);
         }
         uiHandler.postDelayed(this::maybeShowStartupHub, 700L);

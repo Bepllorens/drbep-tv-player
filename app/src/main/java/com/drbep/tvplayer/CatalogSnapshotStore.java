@@ -2,6 +2,9 @@ package com.drbep.tvplayer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -10,11 +13,14 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.net.URI;
+import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.KeyFactory;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +31,13 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Locale;
 import java.util.UUID;
+
+import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 
 final class CatalogSnapshotStore {
     private static final String TAG = "CatalogSnapshotStore";
@@ -60,6 +73,10 @@ final class CatalogSnapshotStore {
     private static final String SNAPSHOT_FILE = "catalog_snapshot.json";
     private static final String LAST_GOOD_SNAPSHOT_FILE = "catalog_snapshot.last_good.json";
     private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
+    private static final String SNAPSHOT_ENCRYPTION_ALIAS = "drbep_catalog_snapshot_aes_v1";
+    private static final byte[] SNAPSHOT_ENCRYPTED_MAGIC = "DRBEPENC1\n".getBytes(StandardCharsets.US_ASCII);
+    private static final int SNAPSHOT_GCM_IV_BYTES = 12;
+    private static final int SNAPSHOT_GCM_TAG_BITS = 128;
     private static final String VERIFICATION_OK = "ok";
     private static final String VERIFICATION_WARNING = "warning";
     private static final String VERIFICATION_ERROR = "error";
@@ -107,28 +124,25 @@ final class CatalogSnapshotStore {
             throw new IllegalStateException("no hay " + label);
         }
         long startMs = System.currentTimeMillis();
-        // Read directly into a StringBuilder via BufferedReader to avoid allocating
-        // both a byte[] and a String simultaneously (saves ~27 MB peak on a 27 MB catalog).
-        StringBuilder sb = new StringBuilder((int) file.length());
-        try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                new java.io.InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8), 65536)) {
-            char[] buf = new char[8192];
-            int n;
-            while ((n = reader.read(buf)) != -1) {
-                sb.append(buf, 0, n);
-            }
-        }
+        boolean encrypted = isEncryptedSnapshotFile(file);
+        StringBuilder sb = readSnapshotString(file, encrypted);
         long readMs = System.currentTimeMillis() - startMs;
         long parseStartMs = System.currentTimeMillis();
-        JSONObject payload = new JSONObject(sb.toString());
+        String rawJson = sb.toString();
+        JSONObject payload = new JSONObject(rawJson);
         sb = null; // allow GC before validation
         long parseMs = System.currentTimeMillis() - parseStartMs;
         long validateStartMs = System.currentTimeMillis();
         validateSnapshotPayload(payload, verifySignature);
+        if (!encrypted) {
+            rewriteSnapshotEncrypted(file, rawJson);
+        }
+        rawJson = null;
         long validateMs = System.currentTimeMillis() - validateStartMs;
         Log.i(TAG, "snapshot read label=" + label
                 + " bytes=" + file.length()
                 + " verifySignature=" + verifySignature
+                + " encrypted=" + encrypted
                 + " readMs=" + readMs
                 + " parseMs=" + parseMs
                 + " validateMs=" + validateMs
@@ -274,13 +288,9 @@ final class CatalogSnapshotStore {
             permissionsChangedAtMs = 0L;
         }
         String jsonToWrite = rawJson == null || rawJson.trim().isEmpty() ? payload.toString() : rawJson;
-        try (FileOutputStream outputStream = new FileOutputStream(tmp, false)) {
-            writeUtf8String(outputStream, jsonToWrite);
-        }
+        writeSnapshotString(tmp, jsonToWrite);
         if (!tmp.renameTo(current)) {
-            try (FileOutputStream outputStream = new FileOutputStream(current, false)) {
-                writeUtf8String(outputStream, jsonToWrite);
-            }
+            writeSnapshotString(current, jsonToWrite);
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
         }
@@ -539,7 +549,12 @@ final class CatalogSnapshotStore {
             return;
         }
         try {
-            copyFile(source, lastGoodSnapshotFile());
+            File lastGood = lastGoodSnapshotFile();
+            copyFile(source, lastGood);
+            if (!isEncryptedSnapshotFile(lastGood)) {
+                StringBuilder rawBackup = readSnapshotString(lastGood, false);
+                rewriteSnapshotEncrypted(lastGood, rawBackup.toString());
+            }
         } catch (Exception ignored) {
             // Keep the previous last-good snapshot if the copy fails.
         }
@@ -611,6 +626,111 @@ final class CatalogSnapshotStore {
     }
 
     private static void writeUtf8String(FileOutputStream outputStream, String value) throws Exception {
+        try (OutputStreamWriter writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
+            writer.write(value == null ? "" : value);
+        }
+    }
+
+    private StringBuilder readSnapshotString(File file, boolean encrypted) throws Exception {
+        InputStream inputStream = encrypted ? encryptedSnapshotInputStream(file) : new FileInputStream(file);
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(inputStream, StandardCharsets.UTF_8), 65536)) {
+            StringBuilder sb = new StringBuilder((int) Math.min(file.length(), 32L * 1024L * 1024L));
+            char[] buf = new char[8192];
+            int n;
+            while ((n = reader.read(buf)) != -1) {
+                sb.append(buf, 0, n);
+            }
+            return sb;
+        }
+    }
+
+    private void writeSnapshotString(File file, String value) throws Exception {
+        try (FileOutputStream outputStream = new FileOutputStream(file, false)) {
+            outputStream.write(SNAPSHOT_ENCRYPTED_MAGIC);
+            byte[] iv = new byte[SNAPSHOT_GCM_IV_BYTES];
+            new SecureRandom().nextBytes(iv);
+            outputStream.write(iv);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSnapshotKey(), new GCMParameterSpec(SNAPSHOT_GCM_TAG_BITS, iv));
+            try (CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher)) {
+                writeUtf8StringToStream(cipherOutputStream, value);
+            }
+        }
+    }
+
+    private void rewriteSnapshotEncrypted(File file, String rawJson) {
+        if (file == null || rawJson == null || rawJson.trim().isEmpty()) {
+            return;
+        }
+        File encryptedTmp = new File(file.getParentFile(), file.getName() + ".enc.tmp");
+        try {
+            writeSnapshotString(encryptedTmp, rawJson);
+            if (!encryptedTmp.renameTo(file)) {
+                writeSnapshotString(file, rawJson);
+                //noinspection ResultOfMethodCallIgnored
+                encryptedTmp.delete();
+            }
+            Log.i(TAG, "snapshot migrated to encrypted storage file=" + file.getName());
+        } catch (Exception e) {
+            Log.w(TAG, "failed to migrate snapshot to encrypted storage file=" + file.getName(), e);
+            //noinspection ResultOfMethodCallIgnored
+            encryptedTmp.delete();
+        }
+    }
+
+    private InputStream encryptedSnapshotInputStream(File file) throws Exception {
+        FileInputStream inputStream = new FileInputStream(file);
+        byte[] magic = new byte[SNAPSHOT_ENCRYPTED_MAGIC.length];
+        if (inputStream.read(magic) != magic.length || !java.util.Arrays.equals(magic, SNAPSHOT_ENCRYPTED_MAGIC)) {
+            inputStream.close();
+            throw new IllegalStateException("cabecera de catalogo cifrado invalida");
+        }
+        byte[] iv = new byte[SNAPSHOT_GCM_IV_BYTES];
+        if (inputStream.read(iv) != iv.length) {
+            inputStream.close();
+            throw new IllegalStateException("iv de catalogo cifrado invalido");
+        }
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, getOrCreateSnapshotKey(), new GCMParameterSpec(SNAPSHOT_GCM_TAG_BITS, iv));
+        return new CipherInputStream(inputStream, cipher);
+    }
+
+    private boolean isEncryptedSnapshotFile(File file) {
+        if (file == null || !file.exists() || file.length() < SNAPSHOT_ENCRYPTED_MAGIC.length + SNAPSHOT_GCM_IV_BYTES) {
+            return false;
+        }
+        try (FileInputStream inputStream = new FileInputStream(file)) {
+            byte[] magic = new byte[SNAPSHOT_ENCRYPTED_MAGIC.length];
+            return inputStream.read(magic) == magic.length && java.util.Arrays.equals(magic, SNAPSHOT_ENCRYPTED_MAGIC);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private SecretKey getOrCreateSnapshotKey() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        java.security.Key existing = keyStore.getKey(SNAPSHOT_ENCRYPTION_ALIAS, null);
+        if (existing instanceof SecretKey) {
+            return (SecretKey) existing;
+        }
+        KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+        KeyGenParameterSpec.Builder builder = new KeyGenParameterSpec.Builder(
+                SNAPSHOT_ENCRYPTION_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT
+        )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            builder.setUnlockedDeviceRequired(false);
+        }
+        keyGenerator.init(builder.build());
+        return keyGenerator.generateKey();
+    }
+
+    private static void writeUtf8StringToStream(java.io.OutputStream outputStream, String value) throws Exception {
         try (OutputStreamWriter writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
             writer.write(value == null ? "" : value);
         }

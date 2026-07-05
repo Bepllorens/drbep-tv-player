@@ -1,3 +1,8 @@
+## 2.0.196-beta-security-hardening
+- Offline beta: endurece la build release desactivando backup Android y cleartext global.
+- Offline beta: cifra el snapshot local del catalogo con AES-GCM y clave de Android Keystore, migrando catalogos antiguos al leerlos.
+- Offline beta: elimina fallbacks LAN/dev de EPG, updates y clasificacion de trafico en la app publica.
+
 ## 2.0.195-beta-compose-playback-split
 - Offline beta: playback separa menus de modo permanente/temporal en una factory dedicada.
 - Offline beta: la resolucion de modo efectivo y el auto-repair/learned routes pasan a coordinadores separados.

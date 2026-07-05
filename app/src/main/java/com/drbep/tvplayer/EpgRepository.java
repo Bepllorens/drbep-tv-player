@@ -13,7 +13,6 @@ import java.util.Map;
 final class EpgRepository {
     private static final String PUBLIC_EPG_BASE_URL = "https://iptv.bepllorens.com";
     private static final String OFFLINE_PUBLIC_BASE_URL = "https://fire.tvbep.com";
-    private static final String LAN_EPG_BASE_URL = "http://192.168.93.223:8080";
 
     static final class EpgProgram {
         final String channelId;
@@ -612,7 +611,6 @@ final class EpgRepository {
         }
         addCandidate(candidates, PUBLIC_EPG_BASE_URL);
         addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
-        addCandidate(candidates, LAN_EPG_BASE_URL);
         return candidates;
     }
 

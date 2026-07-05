@@ -33,7 +33,6 @@ final class AppUpdateManager {
     private static final String LATEST_PATH = "/api/offline/app/latest";
     private static final String APK_MIME = "application/vnd.android.package-archive";
     private static final String PUBLIC_FALLBACK_BASE_URL = "https://fire.tvbep.com";
-    private static final String LAN_FALLBACK_BASE_URL = "http://192.168.93.223:8080";
     private static final String PAYLOAD_SOURCE_BASE_URL = "_source_base_url";
 
     private final Context context;
@@ -102,7 +101,6 @@ final class AppUpdateManager {
         List<String> candidates = new ArrayList<>();
         addCandidate(candidates, baseUrl);
         addCandidate(candidates, PUBLIC_FALLBACK_BASE_URL);
-        addCandidate(candidates, LAN_FALLBACK_BASE_URL);
         return candidates;
     }
 

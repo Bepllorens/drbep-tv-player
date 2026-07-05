@@ -8763,9 +8763,7 @@ public class MainActivity extends FragmentActivity {
                 return false;
             }
         return host.contains("fire.tvbep.com")
-                    || host.contains("iptv.bepllorens.com")
-                    || host.contains("192.168.93.223")
-                    || host.contains("192.168.93.16");
+                    || host.contains("iptv.bepllorens.com");
         } catch (Exception ignored) {
             return false;
         }

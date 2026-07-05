@@ -2211,9 +2211,7 @@ final class PlayerController {
         boolean backendHosted = !targetHost.isEmpty()
                 && (targetHost.equals(backendHost)
                 || targetHost.contains("fire.tvbep.com")
-                || targetHost.contains("iptv.bepllorens.com")
-                || targetHost.contains("192.168.93.223")
-                || targetHost.contains("192.168.93.16"));
+                || targetHost.contains("iptv.bepllorens.com"));
         if (!backendHosted) {
             return true;
         }

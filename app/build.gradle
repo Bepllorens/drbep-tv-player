@@ -12,7 +12,7 @@ configurations.all {
 def playerUrl = (project.findProperty('playerUrl') ?: 'https://iptv.bepllorens.com/player.html').toString()
 def allowInsecureSsl = (project.findProperty('allowInsecureSsl') ?: 'true').toString().toBoolean()
 def forceFirestickUrl = (project.findProperty('forceFirestickUrl') ?: 'false').toString().toBoolean()
-def firestickLockedUrl = (project.findProperty('firestickLockedUrl') ?: 'http://192.168.93.223:8080/player.html').toString()
+def firestickLockedUrl = (project.findProperty('firestickLockedUrl') ?: '').toString()
 
 def debugPlayerUrl = (project.findProperty('debugPlayerUrl') ?: playerUrl).toString()
 def debugAllowInsecureSsl = (project.findProperty('debugAllowInsecureSsl') ?: allowInsecureSsl.toString()).toString().toBoolean()
@@ -66,9 +66,14 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 195
-        versionName "2.0.195-beta-compose-playback-split"
+        versionCode 196
+        versionName "2.0.196-beta-security-hardening"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders = [
+                appAllowBackup: "false",
+                appFullBackupContent: "false",
+                appUsesCleartextTraffic: "false"
+        ]
     }
 
     signingConfigs {
@@ -88,6 +93,11 @@ android {
 
     buildTypes {
         debug {
+            manifestPlaceholders = [
+                    appAllowBackup: "false",
+                    appFullBackupContent: "false",
+                    appUsesCleartextTraffic: "true"
+            ]
             buildConfigField "String", "PLAYER_URL", "\"${escapedDebugPlayerUrl}\""
             buildConfigField "boolean", "ALLOW_INSECURE_SSL", debugAllowInsecureSsl.toString()
             buildConfigField "boolean", "FORCE_FIRESTICK_URL", debugForceFirestickUrl.toString()
@@ -102,6 +112,11 @@ android {
         }
         release {
             signingConfig signingConfigs.release
+            manifestPlaceholders = [
+                    appAllowBackup: "false",
+                    appFullBackupContent: "false",
+                    appUsesCleartextTraffic: "false"
+            ]
             buildConfigField "String", "PLAYER_URL", "\"${escapedReleasePlayerUrl}\""
             buildConfigField "boolean", "ALLOW_INSECURE_SSL", releaseAllowInsecureSsl.toString()
             buildConfigField "boolean", "FORCE_FIRESTICK_URL", releaseForceFirestickUrl.toString()

@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 194
-        versionName "2.0.194-beta-compose-ui-split-5"
+        versionCode 195
+        versionName "2.0.195-beta-compose-playback-split"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

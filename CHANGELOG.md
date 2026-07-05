@@ -1,3 +1,8 @@
+## 2.0.195-beta-compose-playback-split
+- Offline beta: playback separa menus de modo permanente/temporal en una factory dedicada.
+- Offline beta: la resolucion de modo efectivo y el auto-repair/learned routes pasan a coordinadores separados.
+- Offline beta: el panel de recovery VOD se extrae de `MainActivity` manteniendo retry, diagnostico y biblioteca.
+
 ## 2.0.194-beta-compose-ui-split-5
 - Offline beta: VOD avanzado separa categorias y acciones de progreso en factories reutilizables.
 - Offline beta: update, recordings, timeline y listas rapidas extraen mas construccion visual fuera de `MainActivity`.

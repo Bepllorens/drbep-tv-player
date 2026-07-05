@@ -1,3 +1,14 @@
+## 2.0.208-beta-vodafone-cdntv-cleartext
+- Offline beta: permite HTTP para los subdominios `cdntv.vodafone.es` a los que redirige el MPD de `La 1 UHD`.
+
+## 2.0.207-beta-vodafone-cleartext-epg
+- Offline beta: permite HTTP solo para los dominios Vodafone usados por `La 1 UHD` en el MPD local.
+- Offline beta: conserva los reintentos de MPD y la hidratacion diferida de EPG del catalogo completo.
+
+## 2.0.206-beta-dash-epg-hydration
+- Offline beta: `La 1 UHD` reintenta la descarga del MPD local y puede servir el ultimo manifest bueno si Vodafone corta la conexion.
+- Offline beta: carga EPG del grupo visible y despues hidrata el resto del catalogo en diferido.
+
 ## 2.0.205-beta-remote-epg-guard
 - Offline beta: evita abrir snapshots grandes para decidir si hay EPG local.
 - Offline beta: si el catalogo ligero no trae EPG local, usa el EPG remoto autenticado para la guia actual.

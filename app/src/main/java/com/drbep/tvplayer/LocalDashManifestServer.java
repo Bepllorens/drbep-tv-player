@@ -83,10 +83,21 @@ final class LocalDashManifestServer {
                 writeResponse(s, 404, "text/plain", "manifest not registered".getBytes(StandardCharsets.UTF_8));
                 return;
             }
-            ManifestFetch fetch = fetchManifest(entry.sourceUrl);
-            String patched = PlayerController.patchDashManifestForLocalClearKey(fetch.body, fetch.finalUrl, entry.kidHex);
-            writeResponse(s, 200, "application/dash+xml", patched.getBytes(StandardCharsets.UTF_8));
-            Log.w(TAG, "served channel=" + channelId + " bytes=" + patched.length());
+            try {
+                ManifestFetch fetch = fetchManifestWithRetries(entry.sourceUrl);
+                String patched = PlayerController.patchDashManifestForLocalClearKey(fetch.body, fetch.finalUrl, entry.kidHex);
+                entry.updateCachedManifest(patched);
+                writeResponse(s, 200, "application/dash+xml", patched.getBytes(StandardCharsets.UTF_8));
+                Log.w(TAG, "served channel=" + channelId + " bytes=" + patched.length());
+            } catch (Exception fetchError) {
+                String cached = entry.cachedManifestIfFresh();
+                if (!isBlank(cached)) {
+                    writeResponse(s, 200, "application/dash+xml", cached.getBytes(StandardCharsets.UTF_8));
+                    Log.w(TAG, "served stale manifest channel=" + channelId + " bytes=" + cached.length(), fetchError);
+                    return;
+                }
+                throw fetchError;
+            }
         } catch (Exception e) {
             Log.w(TAG, "request failed", e);
             try {
@@ -109,6 +120,26 @@ final class LocalDashManifestServer {
         return clean.substring(prefix.length(), clean.length() - suffix.length()).trim();
     }
 
+    private static ManifestFetch fetchManifestWithRetries(String sourceUrl) throws Exception {
+        Exception lastError = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                return fetchManifest(sourceUrl);
+            } catch (Exception e) {
+                lastError = e;
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(attempt == 1 ? 250L : 700L);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw interrupted;
+                    }
+                }
+            }
+        }
+        throw lastError == null ? new IllegalStateException("DASH manifest fetch failed") : lastError;
+    }
+
     private static ManifestFetch fetchManifest(String sourceUrl) throws Exception {
         HttpURLConnection conn = null;
         try {
@@ -116,6 +147,10 @@ final class LocalDashManifestServer {
             conn.setConnectTimeout(6000);
             conn.setReadTimeout(15000);
             conn.setRequestProperty("Accept", "application/dash+xml,text/xml,*/*");
+            conn.setRequestProperty("Accept-Encoding", "identity");
+            conn.setRequestProperty("Accept-Language", "es-ES,es;q=0.9,en;q=0.8");
+            conn.setRequestProperty("Connection", "close");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36");
             int code = conn.getResponseCode();
             InputStream input = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
             String body = input == null ? "" : readAll(input);
@@ -161,12 +196,32 @@ final class LocalDashManifestServer {
     }
 
     private static final class Entry {
+        private static final long CACHED_MANIFEST_TTL_MS = 5L * 60L * 1000L;
+
         final String sourceUrl;
         final String kidHex;
+        private volatile String cachedManifest = "";
+        private volatile long cachedAtMs = 0L;
 
         Entry(String sourceUrl, String kidHex) {
             this.sourceUrl = sourceUrl;
             this.kidHex = kidHex;
+        }
+
+        void updateCachedManifest(String manifest) {
+            if (isBlank(manifest)) {
+                return;
+            }
+            cachedManifest = manifest;
+            cachedAtMs = System.currentTimeMillis();
+        }
+
+        String cachedManifestIfFresh() {
+            String manifest = cachedManifest;
+            if (isBlank(manifest) || cachedAtMs <= 0L || System.currentTimeMillis() - cachedAtMs > CACHED_MANIFEST_TTL_MS) {
+                return "";
+            }
+            return manifest;
         }
     }
 

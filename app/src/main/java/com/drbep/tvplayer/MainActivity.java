@@ -1629,6 +1629,12 @@ public class MainActivity extends FragmentActivity {
                 playChannelItem(channels.get(index), true);
             }, 1200L);
             uiHandler.postDelayed(() -> loadEpgNow(false), 3200L);
+            uiHandler.postDelayed(() -> loadEpgNow(true), 14000L);
+            uiHandler.postDelayed(() -> {
+                if (!epgFullCatalogLoaded) {
+                    loadEpgNow(true);
+                }
+            }, 28000L);
         } else {
             tuneToIndex(startIndex, true);
             uiHandler.postDelayed(() -> loadEpgNow(false), 450L);

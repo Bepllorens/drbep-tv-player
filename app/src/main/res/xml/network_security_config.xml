@@ -4,5 +4,8 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">vfsmartcdn.gb.vodafone.es</domain>
+        <domain includeSubdomains="false">vfpc.gb.vodafone.es</domain>
+        <domain includeSubdomains="true">cdntv.vodafone.es</domain>
     </domain-config>
 </network-security-config>

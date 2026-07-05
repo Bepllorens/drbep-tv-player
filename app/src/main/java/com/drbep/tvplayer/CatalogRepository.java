@@ -49,7 +49,7 @@ final class CatalogRepository {
             if (snapshotStore == null) {
                 throw new IllegalStateException("catalogo local no configurado");
             }
-            return parseCatalogPayload(snapshotStore.loadSnapshotObject(), false);
+            return parseCatalogPayload(snapshotStore.loadStartupSnapshotObject(baseUrl + "/api/offline/snapshot"), false);
         }
         JSONObject payload = fetchRemoteCatalogPayload();
         return parseCatalogPayload(payload, true);

@@ -995,7 +995,7 @@ final class PlayerController {
                     streamInfoCache.put(channelId, info);
                 }
             }
-            info = ensurePatchedClearKeyManifests(channelId, info);
+            info = ensurePatchedClearKeyManifests(request, info);
             Log.d(TAG, "resolveStreamInfo channelId=" + channelId
                     + " fromCache=" + fromCache
                     + " streamInfo=" + describeStreamInfo(info));
@@ -1047,7 +1047,7 @@ final class PlayerController {
                     streamInfoCache.put(channelId, info);
                 }
             }
-            info = ensurePatchedClearKeyManifests(channelId, info);
+            info = ensurePatchedClearKeyManifests(request, info);
             StreamInfo resolved = info;
             Log.d(TAG, "playChannelAfterResolvingStreamInfo channelId=" + channelId
                     + " fromCache=" + fromCache
@@ -1221,7 +1221,7 @@ final class PlayerController {
             pendingAutoRecoveryReason = "";
         }
         currentRequest = request;
-        streamInfo = ensurePatchedClearKeyManifests(request.channelId, streamInfo);
+        streamInfo = ensurePatchedClearKeyManifests(request, streamInfo);
         currentStreamInfo = streamInfo;
         currentRecordingUrl = null;
         usingPlaybackFallback = useFallback;
@@ -1775,6 +1775,16 @@ final class PlayerController {
         return info;
     }
 
+    private StreamInfo ensurePatchedClearKeyManifests(PlaybackRequest request, StreamInfo info) {
+        if (request == null) {
+            return ensurePatchedClearKeyManifests("", info);
+        }
+        if (isMovistarIsmRequest(request, info)) {
+            return info;
+        }
+        return ensurePatchedClearKeyManifests(request.channelId, info);
+    }
+
     private StreamInfo ensurePatchedSmoothClearKeyManifest(String channelId, StreamInfo info) {
         if (info == null || !isBlank(info.patchedSmoothClearKeyManifestDataUri)) {
             return info;
@@ -1822,6 +1832,25 @@ final class PlayerController {
             Log.w(TAG, "failed to register local smooth manifest channelId=" + channelId, e);
             return "";
         }
+    }
+
+    private static boolean isMovistarIsmRequest(PlaybackRequest request, StreamInfo info) {
+        if (request == null) {
+            return false;
+        }
+        String platform = safeLower(request.platformName);
+        String channel = safeLower(request.channelName);
+        String playUrl = safeLower(request.playUrl);
+        String sourceUrl = info == null ? "" : safeLower(info.sourceUrl);
+        String streamType = info == null ? "" : safeLower(info.type);
+        boolean looksSmooth = "smooth".equals(streamType)
+                || playUrl.contains(".isml/manifest")
+                || playUrl.contains(".ism/manifest")
+                || sourceUrl.contains(".isml/manifest")
+                || sourceUrl.contains(".ism/manifest");
+        return looksSmooth
+                && (platform.contains("movistar") || channel.contains("movistar"))
+                && (platform.contains("ism") || channel.contains("ism") || playUrl.contains(".isml/") || sourceUrl.contains(".isml/"));
     }
 
     private static String rewriteDashTemplateAttribute(String manifest, String attribute, String originBaseUrl, String proxySegmentUrl, String kidHex, String keyHex) throws Exception {

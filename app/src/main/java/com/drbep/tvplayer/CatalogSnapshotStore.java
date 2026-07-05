@@ -101,6 +101,19 @@ final class CatalogSnapshotStore {
         return readSnapshotObject(snapshotFile(), "catalogo local guardado", false);
     }
 
+    JSONObject loadStartupSnapshotObject(String fallbackUrl) throws Exception {
+        File file = snapshotFile();
+        if (file.exists() && file.length() > STARTUP_LITE_REFRESH_THRESHOLD_BYTES && hasRefreshCredentials(fallbackUrl)) {
+            try {
+                Log.w(TAG, "snapshot too large for startup, refreshing lite catalog bytes=" + file.length());
+                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
+            } catch (Exception e) {
+                Log.w(TAG, "startup lite refresh failed; falling back to stored snapshot", e);
+            }
+        }
+        return loadSnapshotObject();
+    }
+
     JSONObject loadLastKnownGoodSnapshotObject() throws Exception {
         File lastGood = lastGoodSnapshotFile();
         if (lastGood.exists() && lastGood.length() > 0L) {
@@ -165,6 +178,25 @@ final class CatalogSnapshotStore {
         JSONObject payload = new JSONObject(rawBody);
         validateSnapshotPayload(payload);
         saveSnapshotObject(payload, sourceUrl, rawBody);
+        return payload;
+    }
+
+    JSONObject refreshStartupLiteFromConfiguredUrl(String fallbackUrl) throws Exception {
+        String sourceUrl = appendStartupLiteQuery(getSourceUrl(fallbackUrl));
+        if (sourceUrl.isEmpty()) {
+            throw new IllegalStateException("no hay URL de catalogo configurada");
+        }
+        HttpClient.Response response = httpClient.get(
+                sourceUrl,
+                10000,
+                30000,
+                buildSnapshotHeaders()
+        );
+        httpClient.requireSuccess(response, "actualizando catalogo local ligero");
+        String rawBody = response.body == null ? "" : response.body;
+        JSONObject payload = new JSONObject(rawBody);
+        validateSnapshotPayload(payload);
+        saveSnapshotObject(payload, getSourceUrl(fallbackUrl), rawBody, true);
         return payload;
     }
 
@@ -266,12 +298,16 @@ final class CatalogSnapshotStore {
     }
 
     void saveSnapshotObject(JSONObject payload, String sourceUrl, String rawJson) throws Exception {
+        saveSnapshotObject(payload, sourceUrl, rawJson, false);
+    }
+
+    private void saveSnapshotObject(JSONObject payload, String sourceUrl, String rawJson, boolean allowReducedCatalog) throws Exception {
         if (payload == null) {
             throw new IllegalArgumentException("catalogo local vacio");
         }
         validateSnapshotPayload(payload);
         File current = snapshotFile();
-        validateSnapshotDoesNotRegress(payload, current);
+        validateSnapshotDoesNotRegress(payload, current, allowReducedCatalog);
         backupCurrentSnapshotIfUseful(current);
         File tmp = tmpSnapshotFile();
         String schema = normalizeSchema(payload.optString("schema", ""));
@@ -538,6 +574,8 @@ final class CatalogSnapshotStore {
         return new File(context.getFilesDir(), SNAPSHOT_TMP_FILE);
     }
 
+    private static final long STARTUP_LITE_REFRESH_THRESHOLD_BYTES = 12L * 1024L * 1024L;
+
     // Minimum file size considered a valid catalog (1 MB). A real catalog with
     // channels is always much larger; this avoids parsing the full 27 MB JSON
     // just to check it has content, which would OOM while ExoPlayer is active.
@@ -559,7 +597,10 @@ final class CatalogSnapshotStore {
         }
     }
 
-    private void validateSnapshotDoesNotRegress(JSONObject payload, File current) throws Exception {
+    private void validateSnapshotDoesNotRegress(JSONObject payload, File current, boolean allowReducedCatalog) throws Exception {
+        if (allowReducedCatalog) {
+            return;
+        }
         if (payload == null || current == null || !current.exists() || current.length() <= 0L) {
             return;
         }
@@ -831,6 +872,18 @@ final class CatalogSnapshotStore {
             return maybeRelative.trim();
         }
         return new URI(base.endsWith("/") ? base : base + "/").resolve(maybeRelative.trim()).toString();
+    }
+
+    private boolean hasRefreshCredentials(String fallbackUrl) {
+        return !getAccessToken().trim().isEmpty() && !getSourceUrl(fallbackUrl).trim().isEmpty();
+    }
+
+    private static String appendStartupLiteQuery(String sourceUrl) {
+        String clean = sourceUrl == null ? "" : sourceUrl.trim();
+        if (clean.isEmpty() || clean.contains("startup_lite=") || clean.contains("lite=")) {
+            return clean;
+        }
+        return clean + (clean.contains("?") ? "&" : "?") + "startup_lite=1";
     }
 
     private void ensureDeviceId() {

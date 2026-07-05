@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 200
-        versionName "2.0.200-beta-movistar-ism-hls"
+        versionCode 203
+        versionName "2.0.203-beta-startup-lite-epg-guard"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",

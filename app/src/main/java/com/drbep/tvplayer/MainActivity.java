@@ -1611,7 +1611,7 @@ public class MainActivity extends FragmentActivity {
                 startIndex = found;
             }
         }
-        tuneToIndex(startIndex, true);
+        selectChannelIndex(startIndex);
         lastApplyChannelsDurationMs = System.currentTimeMillis() - startMs;
         int visibleCount = channels.size();
         int totalCount = allChannels.size();
@@ -1619,10 +1619,38 @@ public class MainActivity extends FragmentActivity {
                 ? getString(R.string.status_channels_ready, visibleCount, lastCatalogLoadDurationMs)
                 : getString(R.string.status_channels_ready_filtered, visibleCount, totalCount, lastCatalogLoadDurationMs));
         prefetchCurrentChannelLogos();
+        if (BuildConfig.STANDALONE_MODE) {
+            final int deferredStartIndex = startIndex;
+            uiHandler.postDelayed(() -> {
+                if (!isActivityReadyForUiWork() || channels.isEmpty()) {
+                    return;
+                }
+                int index = Math.max(0, Math.min(deferredStartIndex, channels.size() - 1));
+                playChannelItem(channels.get(index), true);
+            }, 1200L);
+        } else {
+            tuneToIndex(startIndex, true);
+        }
         if (!BuildConfig.STANDALONE_MODE) {
             uiHandler.postDelayed(() -> loadEpgNow(false), 450L);
         }
         uiHandler.postDelayed(this::maybeShowStartupHub, 700L);
+    }
+
+    private void selectChannelIndex(int index) {
+        if (channels.isEmpty()) {
+            return;
+        }
+        if (index < 0) {
+            index = channels.size() - 1;
+        }
+        if (index >= channels.size()) {
+            index = 0;
+        }
+        overlayNavigationState.currentIndex = index;
+        overlayNavigationState.selectedOverlayIndex = index;
+        refreshOverlayChannelList();
+        scrollOverlayChannelListToPosition(index);
     }
 
     private void tuneToIndex(int index, boolean autoPlay) {
@@ -1636,10 +1664,7 @@ public class MainActivity extends FragmentActivity {
             index = 0;
         }
 
-        overlayNavigationState.currentIndex = index;
-        overlayNavigationState.selectedOverlayIndex = index;
-        refreshOverlayChannelList();
-        scrollOverlayChannelListToPosition(index);
+        selectChannelIndex(index);
         playChannelItem(channels.get(index), autoPlay);
     }
 
@@ -1834,6 +1859,9 @@ public class MainActivity extends FragmentActivity {
 
     private void scheduleFullEpgLoadAfterFirstFrame(String channelId) {
         if (!BuildConfig.STANDALONE_MODE) {
+            return;
+        }
+        if (catalogSnapshotStore != null && catalogSnapshotStore.getStatus(BuildConfig.OFFLINE_BASE_URL).epgProgramCount <= 0) {
             return;
         }
         if (epgFullCatalogLoaded || epgFullCatalogLoadRequested) {

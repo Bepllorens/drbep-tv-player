@@ -1,3 +1,7 @@
+## 2.0.198-beta-secure-drm-hotfix
+- Offline beta: corrige el cifrado AES-GCM del snapshot dejando que Android Keystore genere el IV.
+- Offline beta: recupera Movistar ISM priorizando la licencia ClearKey local resuelta desde `/api/stream`.
+
 ## 2.0.197-beta-secure-drm-control
 - Offline beta: prepara el control plane seguro para DRM resolviendo claves ClearKey bajo demanda por `/api/stream`.
 - Offline beta: el export de catalogo sustituye secretos DRM embebidos por `drm_ref` por defecto.

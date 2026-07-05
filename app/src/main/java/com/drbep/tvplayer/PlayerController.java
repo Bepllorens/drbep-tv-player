@@ -1286,18 +1286,23 @@ final class PlayerController {
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
         } else if ("clearkey".equals(decision.drmType)) {
-            String licenseUrl = shouldUseRuntimeClearKeyLicense(request, decision)
+            String resolvedLocalClearKeyLicense = streamInfo != null
+                    && streamInfo.clearKeyLicenseDataUri != null
+                    && !streamInfo.clearKeyLicenseDataUri.trim().isEmpty()
+                    ? streamInfo.clearKeyLicenseDataUri
+                    : "";
+            String licenseUrl = !resolvedLocalClearKeyLicense.isEmpty()
+                    ? resolvedLocalClearKeyLicense
+                    : shouldUseRuntimeClearKeyLicense(request, decision)
                     ? baseUrl + "/api/clearkey/" + request.channelId
                     : request.drmLicenseUrl != null && !request.drmLicenseUrl.trim().isEmpty()
                     ? request.drmLicenseUrl
-                    : streamInfo != null && streamInfo.clearKeyLicenseDataUri != null && !streamInfo.clearKeyLicenseDataUri.trim().isEmpty()
-                    ? streamInfo.clearKeyLicenseDataUri
                     : streamInfo != null && streamInfo.licenseUrl != null && !streamInfo.licenseUrl.trim().isEmpty()
                     ? streamInfo.licenseUrl
                     : baseUrl + "/api/clearkey/" + request.channelId;
             if (isSecureDrmReference(licenseUrl)) {
-                licenseUrl = streamInfo != null && streamInfo.clearKeyLicenseDataUri != null && !streamInfo.clearKeyLicenseDataUri.trim().isEmpty()
-                        ? streamInfo.clearKeyLicenseDataUri
+                licenseUrl = !resolvedLocalClearKeyLicense.isEmpty()
+                        ? resolvedLocalClearKeyLicense
                         : streamInfo != null && streamInfo.licenseUrl != null && !streamInfo.licenseUrl.trim().isEmpty()
                         ? streamInfo.licenseUrl
                         : baseUrl + "/api/clearkey/" + request.channelId;

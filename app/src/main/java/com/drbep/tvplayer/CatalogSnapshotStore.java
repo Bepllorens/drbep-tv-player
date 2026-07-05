@@ -20,7 +20,6 @@ import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.KeyFactory;
 import java.security.PublicKey;
-import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.nio.charset.StandardCharsets;
@@ -647,12 +646,14 @@ final class CatalogSnapshotStore {
 
     private void writeSnapshotString(File file, String value) throws Exception {
         try (FileOutputStream outputStream = new FileOutputStream(file, false)) {
-            outputStream.write(SNAPSHOT_ENCRYPTED_MAGIC);
-            byte[] iv = new byte[SNAPSHOT_GCM_IV_BYTES];
-            new SecureRandom().nextBytes(iv);
-            outputStream.write(iv);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSnapshotKey(), new GCMParameterSpec(SNAPSHOT_GCM_TAG_BITS, iv));
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSnapshotKey());
+            byte[] iv = cipher.getIV();
+            if (iv == null || iv.length != SNAPSHOT_GCM_IV_BYTES) {
+                throw new IllegalStateException("iv de catalogo cifrado invalido");
+            }
+            outputStream.write(SNAPSHOT_ENCRYPTED_MAGIC);
+            outputStream.write(iv);
             try (CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher)) {
                 writeUtf8StringToStream(cipherOutputStream, value);
             }

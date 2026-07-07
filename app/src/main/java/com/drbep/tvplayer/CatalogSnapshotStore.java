@@ -105,12 +105,21 @@ final class CatalogSnapshotStore {
 
     JSONObject loadStartupSnapshotObject(String fallbackUrl) throws Exception {
         File file = snapshotFile();
+        SnapshotStatus status = getStatus(fallbackUrl);
         if (file.exists() && file.length() > STARTUP_LITE_REFRESH_THRESHOLD_BYTES && hasRefreshCredentials(fallbackUrl)) {
             try {
                 Log.i(TAG, "startup snapshot is large; refreshing lite catalog before local parse bytes=" + file.length());
                 return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
             } catch (Exception e) {
                 Log.w(TAG, "startup lite refresh failed; falling back to stored snapshot", e);
+            }
+        }
+        if (localSnapshotNeedsVodRepair(status) && hasRefreshCredentials(fallbackUrl)) {
+            try {
+                Log.i(TAG, "startup snapshot has VOD permission but no VOD items; refreshing lite catalog");
+                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
+            } catch (Exception e) {
+                Log.w(TAG, "startup VOD repair refresh failed; falling back to stored snapshot", e);
             }
         }
         if (file.exists() && file.length() > 0L && hasRefreshCredentials(fallbackUrl)) {
@@ -129,6 +138,14 @@ final class CatalogSnapshotStore {
             }
         }
         return loadSnapshotObject();
+    }
+
+    private static boolean localSnapshotNeedsVodRepair(SnapshotStatus status) {
+        if (status == null || !status.available || status.expired || status.vodCount > 0) {
+            return false;
+        }
+        String permissions = status.permissions == null ? "" : status.permissions.toLowerCase(Locale.US);
+        return permissions.contains("vod=true");
     }
 
     JSONObject loadLastKnownGoodSnapshotObject() throws Exception {

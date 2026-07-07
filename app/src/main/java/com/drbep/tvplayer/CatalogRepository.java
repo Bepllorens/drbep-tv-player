@@ -1,5 +1,6 @@
 package com.drbep.tvplayer;
 
+import android.net.Uri;
 import android.util.Base64;
 import android.util.Log;
 
@@ -231,6 +232,8 @@ final class CatalogRepository {
             copyIfMissing(rawPayload, catalog, "runtime_movies");
             copyIfMissing(rawPayload, catalog, "runtime_vod");
             copyIfMissing(rawPayload, catalog, "movies");
+            copyIfMissing(rawPayload, catalog, "movistar_movies");
+            copyIfMissing(rawPayload, catalog, "movistar_series");
             return catalog;
         }
         return rawPayload;
@@ -331,6 +334,10 @@ final class CatalogRepository {
         if (offlinePermissions.allowsRuntimeVod()) {
             appendRuntimeVodArray(parsed, firstArray(payload, "runtime_movies", "movies", "runtime_vod"), "vod:runtime:movies", "Runtime Peliculas");
         }
+        if (offlinePermissions.allowsMovistarVod()) {
+            appendMovistarVodArray(parsed, firstArray(payload, "movistar_movies"), "vod:movistar:movies", "Movistar Peliculas");
+            appendMovistarVodArray(parsed, firstArray(payload, "movistar_series"), "vod:movistar:series", "Movistar Series");
+        }
     }
 
     private static JSONArray firstArray(JSONObject payload, String... keys) {
@@ -388,6 +395,11 @@ final class CatalogRepository {
             if (secureDrm) {
                 hasKeys = true;
             }
+            String drmRef = firstNonEmpty(
+                    safeCatalogText(row.optString("drm_ref", "")),
+                    safeCatalogText(row.optString("drm_reference", "")),
+                    safeCatalogText(row.optString("secure_drm_ref", ""))
+            );
 
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, adult),
@@ -405,8 +417,70 @@ final class CatalogRepository {
                     "Tivify VOD",
                     new ArrayList<>(),
                     hasKeys ? "clearkey" : "",
-                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), buildVodLicenseUrl(selectedUrl)) : "",
+                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), buildVodLicenseUrlFromRef(drmRef), buildVodLicenseUrl(selectedUrl)) : "",
                     adult ? "vod:tivify:adult" : "vod:tivify:general",
+                    true,
+                    description,
+                    year,
+                    durationSeconds
+            ));
+        }
+    }
+
+    private void appendMovistarVodArray(List<ChannelItem> parsed, JSONArray rows, String vodFilterKey, String platformName) {
+        if (rows == null) {
+            return;
+        }
+        int baseOrder = parsed.size() + 1;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            String selectedUrl = firstNonEmpty(
+                    safeCatalogUrl(row.optString("play_url", "")),
+                    safeCatalogUrl(row.optString("playback_endpoint", "")),
+                    safeCatalogUrl(row.optString("stream_url", "")),
+                    safeCatalogUrl(row.optString("hls_url", "")),
+                    safeCatalogUrl(row.optString("dash_url", ""))
+            );
+            if (selectedUrl.isEmpty()) {
+                continue;
+            }
+            selectedUrl = absolutizeUrl(selectedUrl);
+            String title = firstNonEmpty(
+                    safeCatalogText(row.optString("title", "")),
+                    safeCatalogText(row.optString("episode_title", "")),
+                    "Movistar VOD"
+            );
+            String logo = safeCatalogUrl(row.optString("poster", ""));
+            String group = firstNonEmpty(
+                    safeCatalogText(row.optString("genre", "")),
+                    safeCatalogText(row.optString("kind", "")),
+                    platformName
+            );
+            String description = safeCatalogText(row.optString("description", ""));
+            String year = safeCatalogText(row.optString("year", ""));
+            long durationSeconds = parseLongSafe(safeCatalogText(row.optString("duration_minutes", ""))) * 60L;
+
+            parsed.add(new ChannelItem(
+                    buildVodItemId(selectedUrl, title, false),
+                    title,
+                    "",
+                    logo,
+                    group,
+                    selectedUrl,
+                    "",
+                    baseOrder + i,
+                    baseOrder + i,
+                    true,
+                    false,
+                    0,
+                    platformName,
+                    new ArrayList<>(),
+                    "",
+                    "",
+                    vodFilterKey,
                     true,
                     description,
                     year,
@@ -626,6 +700,12 @@ final class CatalogRepository {
         if ("vod:runtime:movies".equals(key)) {
             return "Runtime Peliculas";
         }
+        if ("vod:movistar:movies".equals(key)) {
+            return "Movistar Peliculas";
+        }
+        if ("vod:movistar:series".equals(key)) {
+            return "Movistar Series";
+        }
         String fallback = safeCatalogText(platformName);
         if (!fallback.isEmpty()) {
             return fallback;
@@ -636,6 +716,14 @@ final class CatalogRepository {
     private String buildVodLicenseUrl(String selectedUrl) {
         String token = Base64.encodeToString(selectedUrl.getBytes(StandardCharsets.UTF_8), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
         return baseUrl + "/api/vod/tivify/clearkey?u=" + token;
+    }
+
+    private String buildVodLicenseUrlFromRef(String drmRef) {
+        String ref = safeCatalogText(drmRef);
+        if (ref.isEmpty()) {
+            return "";
+        }
+        return baseUrl + "/api/vod/tivify/clearkey?r=" + Uri.encode(ref);
     }
 
     private static String resolveSecureDrmLicenseReference(String channelId, JSONObject channel) {
@@ -793,6 +881,7 @@ final class CatalogRepository {
         permissions.vodEnabled = payload.optBoolean("vod", true);
         permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", true);
         permissions.runtimeEnabled = payload.optBoolean("runtime", true);
+        permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", true);
         permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
         permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
         permissions.canDeleteRecordings = payload.optBoolean("recordings_delete", false);
@@ -1006,6 +1095,7 @@ final class OfflinePermissions {
     boolean vodEnabled = true;
     boolean tivifyAdultEnabled = true;
     boolean runtimeEnabled = true;
+    boolean movistarVodEnabled = true;
     boolean canViewRecordings = true;
     boolean canScheduleRecordings = true;
     boolean canDeleteRecordings = false;
@@ -1035,6 +1125,10 @@ final class OfflinePermissions {
 
     boolean allowsRuntimeVod() {
         return runtimeEnabled;
+    }
+
+    boolean allowsMovistarVod() {
+        return vodEnabled && movistarVodEnabled;
     }
 
     boolean hasParentalRules() {

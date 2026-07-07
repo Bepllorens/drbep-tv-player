@@ -197,6 +197,7 @@ public class MainActivity extends FragmentActivity {
     private View timeshiftBarContainer;
     private ComposeView touchControlsComposeView;
     private ComposeView timeshiftComposeView;
+    private boolean touchSurfaceHudVisible;
     private View playbackGestureLayer;
     private android.app.Dialog activeTimelineDialog;
     private List<TimelineChannelPrograms> activeTimelineRows = new ArrayList<>();
@@ -912,7 +913,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean isTouchControlsVisible() {
-                return touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE;
+                return touchDeviceMode ? touchSurfaceHudVisible : touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE;
             }
 
             @Override
@@ -937,7 +938,12 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void setTouchControlsVisible(boolean visible) {
-                if (touchControlsBar != null) {
+                if (touchDeviceMode) {
+                    touchSurfaceHudVisible = visible;
+                    if (touchControlsBar != null) {
+                        touchControlsBar.setVisibility(View.GONE);
+                    }
+                } else if (touchControlsBar != null) {
                     touchControlsBar.setVisibility(visible ? View.VISIBLE : View.GONE);
                 }
             }
@@ -980,11 +986,10 @@ public class MainActivity extends FragmentActivity {
             updateVodTouchControlsState();
             return;
         }
-        touchControlsBar.setVisibility(View.VISIBLE);
+        touchSurfaceHudVisible = false;
+        touchControlsBar.setVisibility(View.GONE);
         updateVodTouchControlsState();
-        updateTouchHomeHub();
         updateTimeshiftBar();
-        scheduleTouchControlsAutoHide();
         for (int i = 0; i < multiTiles.length; i++) {
             final int slot = i;
             if (multiTiles[i] != null) {
@@ -1008,8 +1013,7 @@ public class MainActivity extends FragmentActivity {
         }
         updateVodTouchControlsState();
         boolean showForTouch = touchDeviceMode
-                && touchControlsBar != null
-                && touchControlsBar.getVisibility() == View.VISIBLE;
+                && touchSurfaceHudVisible;
         boolean showForTv = !touchDeviceMode && touchControlsController != null && touchControlsController.isTvTimeshiftHudVisible();
         if ((!showForTouch && !showForTv) || isOverlayVisible() || isRecordingsPanelVisible() || isMultiViewVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
@@ -1028,7 +1032,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private TimeshiftBarUiModel buildTimeshiftBarUiModel(PlayerController.PlaybackSeekState state) {
-        return TimeshiftUiFactory.build(state, new TimeshiftUiFactory.Host() {
+        TimeshiftBarUiModel model = TimeshiftUiFactory.build(state, new TimeshiftUiFactory.Host() {
             @Override
             public String statusLabel(PlayerController.PlaybackSeekState playbackSeekState) {
                 return buildPlaybackSeekLabel(playbackSeekState);
@@ -1076,6 +1080,18 @@ public class MainActivity extends FragmentActivity {
                 scheduleTouchControlsAutoHide();
             }
         });
+        if (!touchDeviceMode || model == null || !model.liveVisible) {
+            return model;
+        }
+        return new TimeshiftBarUiModel(
+                model.statusLabel,
+                model.progress,
+                false,
+                null,
+                model.onSeekStart,
+                model.previewLabelProvider,
+                model.seekCommitHandler
+        );
     }
 
     private String buildPlaybackSeekLabel(PlayerController.PlaybackSeekState state) {
@@ -1483,26 +1499,7 @@ public class MainActivity extends FragmentActivity {
         if (liveStateBadgeText == null || !touchDeviceMode) {
             return;
         }
-        String text;
-        int backgroundColor;
-        if (state == null) {
-            text = getString(R.string.playback_state_live);
-            backgroundColor = 0xCC1F7A3C;
-        } else {
-            long offsetMs = Math.max(0L, state.endMs - state.currentMs);
-            if (offsetMs < LIVE_BADGE_THRESHOLD_MS) {
-                text = getString(R.string.playback_state_live);
-                backgroundColor = 0xCC1F7A3C;
-            } else {
-                long totalSeconds = Math.round(offsetMs / 1000f);
-                long mins = totalSeconds / 60L;
-                long secs = totalSeconds % 60L;
-                text = getString(R.string.playback_state_timeshift, mins, secs);
-                backgroundColor = 0xCC9A5A00;
-            }
-        }
-        SurfaceBadgeComposeBinder.bind(liveStateBadgeText, new SurfaceBadgeUiModel(text, backgroundColor, 0xFFFFFFFF, false, false));
-        liveStateBadgeText.setVisibility(View.VISIBLE);
+        liveStateBadgeText.setVisibility(View.GONE);
     }
 
     private void loadChannels() {
@@ -5706,6 +5703,10 @@ public class MainActivity extends FragmentActivity {
 
     private void updateTouchHomeHub() {
         if (touchHomeHub == null || touchHomeComposeView == null) {
+            return;
+        }
+        if (touchDeviceMode) {
+            touchHomeHub.setVisibility(View.GONE);
             return;
         }
         boolean visible = touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE && !isOverlayVisible() && !isRecordingsPanelVisible() && !isMultiViewVisible();

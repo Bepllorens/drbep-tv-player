@@ -1629,13 +1629,7 @@ public class MainActivity extends FragmentActivity {
                 int index = Math.max(0, Math.min(deferredStartIndex, channels.size() - 1));
                 playChannelItem(channels.get(index), true);
             }, 1200L);
-            uiHandler.postDelayed(() -> loadEpgNow(false), 3200L);
-            uiHandler.postDelayed(() -> loadEpgNow(true), 14000L);
-            uiHandler.postDelayed(() -> {
-                if (!epgFullCatalogLoaded) {
-                    loadEpgNow(true);
-                }
-            }, 28000L);
+            uiHandler.postDelayed(() -> loadEpgNow(false), 60000L);
         } else {
             tuneToIndex(startIndex, true);
             uiHandler.postDelayed(() -> loadEpgNow(false), 450L);
@@ -1879,7 +1873,7 @@ public class MainActivity extends FragmentActivity {
         }
         epgFullLoadScheduledForChannelId = cleanChannelId;
         epgFullCatalogLoadRequested = true;
-        uiHandler.postDelayed(() -> loadEpgNow(true), 1500L);
+        uiHandler.postDelayed(() -> loadEpgNow(false), 60000L);
     }
 
     private void loadEpgNow(boolean fullCatalog) {
@@ -13022,7 +13016,9 @@ public class MainActivity extends FragmentActivity {
         if (index < 0) {
             syncOverlayCoordinator();
             channelOverlayCoordinator.setSearchQuery("");
-            channelOverlayCoordinator.setSelectedFilterKey("all");
+            if (directItem == null || !channelOverlayCoordinator.selectNaturalFilterForChannel(directItem)) {
+                channelOverlayCoordinator.setSelectedFilterKey("all");
+            }
             channelOverlayCoordinator.setFavoritesOnly(false);
             channelOverlayCoordinator.refreshVisibleChannels(channelId, channelId);
             syncOverlayStateFromCoordinator();

@@ -105,6 +105,14 @@ final class CatalogSnapshotStore {
 
     JSONObject loadStartupSnapshotObject(String fallbackUrl) throws Exception {
         File file = snapshotFile();
+        if (file.exists() && file.length() > STARTUP_LITE_REFRESH_THRESHOLD_BYTES && hasRefreshCredentials(fallbackUrl)) {
+            try {
+                Log.i(TAG, "startup snapshot is large; refreshing lite catalog before local parse bytes=" + file.length());
+                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
+            } catch (Exception e) {
+                Log.w(TAG, "startup lite refresh failed; falling back to stored snapshot", e);
+            }
+        }
         if (file.exists() && file.length() > 0L && hasRefreshCredentials(fallbackUrl)) {
             try {
                 if (remoteCatalogFingerprintMatches(fallbackUrl)) {
@@ -118,14 +126,6 @@ final class CatalogSnapshotStore {
                 throw e;
             } catch (Exception e) {
                 Log.w(TAG, "startup catalog meta check failed; falling back to stored snapshot", e);
-            }
-        }
-        if (file.exists() && file.length() > STARTUP_LITE_REFRESH_THRESHOLD_BYTES && hasRefreshCredentials(fallbackUrl)) {
-            try {
-                Log.w(TAG, "snapshot too large for startup, refreshing lite catalog bytes=" + file.length());
-                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
-            } catch (Exception e) {
-                Log.w(TAG, "startup lite refresh failed; falling back to stored snapshot", e);
             }
         }
         return loadSnapshotObject();

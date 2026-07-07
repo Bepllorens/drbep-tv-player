@@ -100,9 +100,22 @@ final class ChannelOverlayCoordinator {
         filters.addAll(result.filters);
         appendLocalFilters();
 
-        int foundFilterIndex = findFilterIndexByKey(selectedFilterKey);
+        String startupFilterKey = selectedFilterKey;
+        if (isHeavyStartupFilterKey(startupFilterKey)) {
+            String naturalFilterKey = findNaturalFilterKeyForChannelId(lastChannelId);
+            if (naturalFilterKey != null) {
+                startupFilterKey = naturalFilterKey;
+            }
+        }
+        int foundFilterIndex = findFilterIndexByKey(startupFilterKey);
         if (foundFilterIndex < 0) {
             foundFilterIndex = findFilterIndexByKey(result.defaultFilterKey);
+        }
+        if (foundFilterIndex >= 0 && isHeavyStartupFilterKey(filters.get(foundFilterIndex).key)) {
+            String lightFilterKey = firstLightFilterKey(result.defaultFilterKey);
+            if (lightFilterKey != null) {
+                foundFilterIndex = findFilterIndexByKey(lightFilterKey);
+            }
         }
         if (foundFilterIndex < 0) {
             foundFilterIndex = 0;
@@ -118,6 +131,16 @@ final class ChannelOverlayCoordinator {
                 rebuildVisibleChannels(lastChannelId, lastChannelId);
             }
         }
+    }
+
+    boolean selectNaturalFilterForChannel(ChannelItem item) {
+        String naturalFilterKey = findNaturalFilterKey(item);
+        if (naturalFilterKey == null) {
+            return false;
+        }
+        selectedFilterKey = naturalFilterKey;
+        favoritesOnly = false;
+        return true;
     }
 
     void refreshLocalFilters() {
@@ -352,24 +375,108 @@ final class ChannelOverlayCoordinator {
         boolean previousFavoritesOnly = favoritesOnly;
         String[] candidates = new String[]{
                 preferredFilterKey == null ? "" : preferredFilterKey,
-                "all",
                 filters.get(0).key
         };
         for (String candidate : candidates) {
+            if (isHeavyStartupFilterKey(candidate)) {
+                continue;
+            }
             String available = findAvailableFilterKey(candidate);
             if (available != null) {
                 return available;
             }
         }
         for (ChannelFilter filter : filters) {
+            if (filter != null && isHeavyStartupFilterKey(filter.key)) {
+                continue;
+            }
             String available = findAvailableFilterKey(filter == null ? "" : filter.key);
             if (available != null) {
                 return available;
             }
         }
+        String allAvailable = findAvailableFilterKey("all");
+        if (allAvailable != null) {
+            return allAvailable;
+        }
         selectedFilterKey = previousFilterKey;
         favoritesOnly = previousFavoritesOnly;
         return null;
+    }
+
+    private String firstLightFilterKey(String preferredFilterKey) {
+        if (filters.isEmpty()) {
+            return null;
+        }
+        if (!isHeavyStartupFilterKey(preferredFilterKey) && findFilterIndexByKey(preferredFilterKey) >= 0) {
+            return preferredFilterKey;
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type == FILTER_PLATFORM && !isHeavyStartupFilterKey(filter.key)) {
+                return filter.key;
+            }
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type == FILTER_CUSTOM_GROUP && !isHeavyStartupFilterKey(filter.key)) {
+                return filter.key;
+            }
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type != FILTER_ALL && filter.type != FILTER_FAVORITES && !isHeavyStartupFilterKey(filter.key)) {
+                return filter.key;
+            }
+        }
+        return null;
+    }
+
+    private String findNaturalFilterKeyForChannelId(String channelId) {
+        if (channelId == null || channelId.trim().isEmpty()) {
+            return null;
+        }
+        for (ChannelItem item : allChannels) {
+            if (item != null && channelId.equals(item.id)) {
+                return findNaturalFilterKey(item);
+            }
+        }
+        return null;
+    }
+
+    private String findNaturalFilterKey(ChannelItem item) {
+        if (item == null) {
+            return null;
+        }
+        if (item.isVod) {
+            String vodKey = item.vodFilterKey == null ? "" : item.vodFilterKey.trim();
+            if (!vodKey.isEmpty() && findFilterIndexByKey(vodKey) >= 0) {
+                return vodKey;
+            }
+            String genericVodKey = item.isAdultVod ? "vod-adult" : "vod";
+            if (findFilterIndexByKey(genericVodKey) >= 0) {
+                return genericVodKey;
+            }
+        }
+        if (item.platformId > 0) {
+            String platformKey = "platform:" + item.platformId;
+            if (findFilterIndexByKey(platformKey) >= 0) {
+                return platformKey;
+            }
+        }
+        if (item.customGroups != null) {
+            for (String groupName : item.customGroups) {
+                if (groupName == null || groupName.trim().isEmpty()) {
+                    continue;
+                }
+                String groupKey = "custom-group:" + groupName.trim().toLowerCase(java.util.Locale.ROOT);
+                if (findFilterIndexByKey(groupKey) >= 0) {
+                    return groupKey;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isHeavyStartupFilterKey(String key) {
+        return key == null || key.trim().isEmpty() || "all".equals(key.trim());
     }
 
     private String findAvailableFilterKey(String candidate) {

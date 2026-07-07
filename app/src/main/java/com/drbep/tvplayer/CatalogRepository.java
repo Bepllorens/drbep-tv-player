@@ -738,7 +738,7 @@ final class CatalogRepository {
         }
         if (config != null) {
             String desired = sanitizeFilterKey(config.defaultFilterKey);
-            if (!desired.isEmpty()) {
+            if (!desired.isEmpty() && !isHeavyStartupFilterKey(desired)) {
                 for (ChannelFilter filter : filters) {
                     if (desired.equals(filter.key)) {
                         return filter.key;
@@ -747,6 +747,9 @@ final class CatalogRepository {
             }
             if (!config.enabledFilterKeys.isEmpty()) {
                 for (String enabledKey : config.enabledFilterKeys) {
+                    if (isHeavyStartupFilterKey(enabledKey)) {
+                        continue;
+                    }
                     for (ChannelFilter filter : filters) {
                         if (enabledKey.equals(filter.key)) {
                             return filter.key;
@@ -755,7 +758,26 @@ final class CatalogRepository {
                 }
             }
         }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type == FILTER_PLATFORM) {
+                return filter.key;
+            }
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type == FILTER_CUSTOM_GROUP) {
+                return filter.key;
+            }
+        }
+        for (ChannelFilter filter : filters) {
+            if (filter != null && filter.type != FILTER_ALL && filter.type != FILTER_FAVORITES) {
+                return filter.key;
+            }
+        }
         return filters.get(0).key;
+    }
+
+    private static boolean isHeavyStartupFilterKey(String key) {
+        return key == null || key.trim().isEmpty() || "all".equals(key.trim());
     }
 
     private static OfflinePermissions parseOfflinePermissions(JSONObject rawPayload) {

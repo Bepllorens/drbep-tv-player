@@ -173,6 +173,7 @@ public class MainActivity extends FragmentActivity {
     private PlayerView playerView;
     private ComposeView errorText;
     private ComposeView statusText;
+    private ComposeView startupLoadingOverlay;
     private ComposeView overlayControlsComposeView;
     private View touchHomeHub;
     private ComposeView touchHomeComposeView;
@@ -507,6 +508,7 @@ public class MainActivity extends FragmentActivity {
         playerView = findViewById(R.id.playerView);
         errorText = findViewById(R.id.errorText);
         statusText = findViewById(R.id.statusText);
+        startupLoadingOverlay = findViewById(R.id.startupLoadingOverlay);
         overlayControlsComposeView = findViewById(R.id.overlayExploreSection);
         touchHomeHub = findViewById(R.id.touchHomeHub);
         touchHomeComposeView = findViewById(R.id.touchHomeHub);
@@ -815,12 +817,14 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void onPlaybackReady(PlayerController.PlaybackRequest request) {
+                MainActivity.this.hideStartupLoading();
                 MainActivity.this.markPostUpdatePlaybackHealthy(request == null ? "" : request.channelId);
                 MainActivity.this.sendPlaybackHeartbeat("ready");
             }
 
             @Override
             public void onFirstVideoFrameRendered(String channelId) {
+                MainActivity.this.hideStartupLoading();
                 MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
                 MainActivity.this.markPostUpdatePlaybackHealthy(channelId);
             }
@@ -1508,12 +1512,20 @@ public class MainActivity extends FragmentActivity {
         if (maybeShowOfflineFirstRunOnboarding(null)) {
             return;
         }
+        showStartupLoading(
+                getString(R.string.startup_loading_local_catalog),
+                getString(R.string.startup_loading_local_catalog_detail)
+        );
         ioExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
                 long durationMs = System.currentTimeMillis() - startMs;
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
+                    updateStartupLoading(
+                            getString(R.string.startup_loading_prepare_list),
+                            getString(R.string.startup_loading_prepare_list_detail)
+                    );
                     applyLoadedChannels(result);
                     maybeShowStartupCatalogCacheValidated();
                     runPostUpdateStartupHealthCheck("catalog-load", result);
@@ -1523,6 +1535,10 @@ public class MainActivity extends FragmentActivity {
                 if (BuildConfig.STANDALONE_MODE) {
                     Log.w(TAG, "local catalog load failed in standalone mode", catalogErr);
                     try {
+                        uiHandler.post(() -> updateStartupLoading(
+                                getString(R.string.startup_loading_refresh_catalog),
+                                getString(R.string.startup_loading_refresh_catalog_detail)
+                        ));
                         lastOfflineCatalogRefreshAttemptMs = System.currentTimeMillis();
                         CatalogLoadResult refreshed = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
                         long durationMs = System.currentTimeMillis() - startMs;
@@ -1531,23 +1547,36 @@ public class MainActivity extends FragmentActivity {
                             lastOfflineCatalogRefreshSuccessMs = System.currentTimeMillis();
                             lastOfflineCatalogRefreshError = "";
                             showStatus(getString(R.string.catalog_snapshot_refresh_ready));
+                            updateStartupLoading(
+                                    getString(R.string.startup_loading_prepare_list),
+                                    getString(R.string.startup_loading_prepare_list_detail)
+                            );
                             applyLoadedChannels(refreshed);
                             runPostUpdateStartupHealthCheck("catalog-refresh", refreshed);
                         });
                     } catch (Exception e) {
                         Log.e(TAG, "standalone catalog load failed", e);
                         try {
+                            uiHandler.post(() -> updateStartupLoading(
+                                    getString(R.string.startup_loading_last_good),
+                                    getString(R.string.startup_loading_last_good_detail)
+                            ));
                             CatalogLoadResult fallback = catalogRepository.fetchLastKnownGoodSnapshotCatalog();
                             long durationMs = System.currentTimeMillis() - startMs;
                             uiHandler.post(() -> {
                                 lastCatalogLoadDurationMs = durationMs;
                                 lastOfflineCatalogRefreshError = e.getMessage();
                                 showStatus(getString(R.string.offline_catalog_status_using_last_good));
+                                updateStartupLoading(
+                                        getString(R.string.startup_loading_prepare_list),
+                                        getString(R.string.startup_loading_prepare_list_detail)
+                                );
                                 applyLoadedChannels(fallback);
                                 runPostUpdateStartupHealthCheck("last-good-catalog", fallback);
                             });
                         } catch (Exception fallbackErr) {
                             uiHandler.post(() -> {
+                                hideStartupLoading();
                                 lastOfflineCatalogRefreshError = e.getMessage();
                                 if (!showOfflineCatalogRecoveryDialogIfNeeded(e)) {
                                     showError(getString(R.string.error_load_channels, e.getMessage()));
@@ -1564,12 +1593,17 @@ public class MainActivity extends FragmentActivity {
                     long durationMs = System.currentTimeMillis() - startMs;
                     uiHandler.post(() -> {
                         lastCatalogLoadDurationMs = durationMs;
+                        updateStartupLoading(
+                                getString(R.string.startup_loading_prepare_list),
+                                getString(R.string.startup_loading_prepare_list_detail)
+                        );
                         applyLoadedChannels(fallback);
                         runPostUpdateStartupHealthCheck("api-fallback", fallback);
                     });
                 } catch (Exception e) {
                     Log.e(TAG, "load channels failed", e);
                     uiHandler.post(() -> {
+                        hideStartupLoading();
                         showError(getString(R.string.error_load_channels, e.getMessage()));
                         showCatalogRecoveryDialog(e.getMessage());
                     });
@@ -1627,6 +1661,10 @@ public class MainActivity extends FragmentActivity {
                 : getString(R.string.status_channels_ready_filtered, visibleCount, totalCount, lastCatalogLoadDurationMs));
         prefetchCurrentChannelLogos();
         if (BuildConfig.STANDALONE_MODE) {
+            updateStartupLoading(
+                    getString(R.string.startup_loading_open_channel),
+                    getString(R.string.startup_loading_open_channel_detail)
+            );
             final int deferredStartIndex = startIndex;
             uiHandler.postDelayed(() -> {
                 if (!isActivityReadyForUiWork() || channels.isEmpty()) {
@@ -4552,6 +4590,33 @@ public class MainActivity extends FragmentActivity {
         uiHandler.postDelayed(hideHdrBadgeRunnable, 2000L);
     }
 
+    private void showStartupLoading(String step, String detail) {
+        if (startupLoadingOverlay == null) {
+            return;
+        }
+        StartupLoadingComposeBinder.bind(
+                startupLoadingOverlay,
+                new StartupLoadingUiModel(getString(R.string.startup_loading_title), step, detail)
+        );
+        startupLoadingOverlay.setVisibility(View.VISIBLE);
+    }
+
+    private void updateStartupLoading(String step, String detail) {
+        if (startupLoadingOverlay == null || startupLoadingOverlay.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        StartupLoadingComposeBinder.bind(
+                startupLoadingOverlay,
+                new StartupLoadingUiModel(getString(R.string.startup_loading_title), step, detail)
+        );
+    }
+
+    private void hideStartupLoading() {
+        if (startupLoadingOverlay != null) {
+            startupLoadingOverlay.setVisibility(View.GONE);
+        }
+    }
+
     private void showStatus(String text) {
         if (statusText == null || text == null || text.trim().isEmpty()) {
             return;
@@ -4584,6 +4649,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showError(String reason) {
+        hideStartupLoading();
         if (errorText == null) {
             return;
         }

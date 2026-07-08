@@ -49,6 +49,13 @@
         android:visibility="gone" />
 
     <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/startupLoadingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:focusable="false"
+        android:visibility="gone" />
+
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/zapBanner"
         android:layout_width="@dimen/zap_banner_width"
         android:layout_height="wrap_content"

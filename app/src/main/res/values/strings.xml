@@ -35,6 +35,17 @@
     <string name="error_vod_playback_details">Error reproduciendo VOD\n\n%1$s\n\nContenido: %2$s\n\nPulsa MENU para abrir herramientas o espera el panel de recuperacion.</string>
     <string name="status_ready">Listo para reproducir</string>
     <string name="status_loading_channels">Cargando canales...</string>
+    <string name="startup_loading_title">Arrancando DRBEP TV</string>
+    <string name="startup_loading_local_catalog">Leyendo catalogo local</string>
+    <string name="startup_loading_local_catalog_detail">Usando el ultimo catalogo valido para abrir la TV cuanto antes.</string>
+    <string name="startup_loading_prepare_list">Preparando canales</string>
+    <string name="startup_loading_prepare_list_detail">Ordenando tus plataformas, grupos y permisos.</string>
+    <string name="startup_loading_refresh_catalog">Actualizando catalogo</string>
+    <string name="startup_loading_refresh_catalog_detail">No hay catalogo local usable; descargando uno nuevo.</string>
+    <string name="startup_loading_last_good">Recuperando ultimo catalogo bueno</string>
+    <string name="startup_loading_last_good_detail">El catalogo principal no cargo, probando la copia segura.</string>
+    <string name="startup_loading_open_channel">Abriendo canal</string>
+    <string name="startup_loading_open_channel_detail">Catalogo listo. Preparando la reproduccion.</string>
     <string name="status_channels_ready">%1$d canales listos en %2$d ms</string>
     <string name="status_channels_ready_filtered">%1$d de %2$d canales visibles en %3$d ms</string>
     <string name="startup_hub_title">Inicio DRBEP TV</string>

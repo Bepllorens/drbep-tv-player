@@ -14,6 +14,8 @@ public final class ChannelOverlayUi {
         public final boolean qualityVisible;
         public final String recent;
         public final String contextLabel;
+        public final String contextInitials;
+        public final int contextAccentColor;
 
         public NowPlayingModel(String title, String meta, String route, String quality, boolean qualityVisible, String recent, String contextLabel) {
             this.title = title;
@@ -23,6 +25,8 @@ public final class ChannelOverlayUi {
             this.qualityVisible = qualityVisible;
             this.recent = recent;
             this.contextLabel = contextLabel == null ? "" : contextLabel.trim();
+            this.contextInitials = buildContextInitials(this.contextLabel);
+            this.contextAccentColor = buildContextAccentColor(this.contextLabel);
         }
     }
 
@@ -113,6 +117,46 @@ public final class ChannelOverlayUi {
             builder.append(label.trim());
         }
         return builder.toString();
+    }
+
+    private static String buildContextInitials(String label) {
+        String clean = safeTrim(label);
+        if (clean.isEmpty()) {
+            return "";
+        }
+        String[] parts = clean.replace("/", " ").replace("-", " ").split("\\s+");
+        StringBuilder initials = new StringBuilder();
+        for (String part : parts) {
+            String token = safeTrim(part);
+            if (token.isEmpty()) {
+                continue;
+            }
+            initials.append(Character.toUpperCase(token.charAt(0)));
+            if (initials.length() >= 3) {
+                break;
+            }
+        }
+        if (initials.length() == 0) {
+            return clean.substring(0, Math.min(2, clean.length())).toUpperCase();
+        }
+        return initials.toString();
+    }
+
+    private static int buildContextAccentColor(String label) {
+        int[] palette = new int[]{
+                0xFF3D8BFD,
+                0xFF00A6A6,
+                0xFFFF8A3D,
+                0xFF5B8DEF,
+                0xFF2FAF7B,
+                0xFFD56A8A
+        };
+        String clean = safeTrim(label);
+        if (clean.isEmpty()) {
+            return 0xFF3D8BFD;
+        }
+        int index = Math.floorMod(clean.toLowerCase().hashCode(), palette.length);
+        return palette[index];
     }
 
     private static String safeTrim(String value) {

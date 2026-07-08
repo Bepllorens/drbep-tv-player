@@ -409,6 +409,14 @@ final class CatalogRepository {
                     safeCatalogText(row.optString("drm_reference", "")),
                     safeCatalogText(row.optString("secure_drm_ref", ""))
             );
+            String drmLicenseUrl = "";
+            if (hasKeys) {
+                drmLicenseUrl = absolutizeUrl(firstNonEmpty(
+                        safeCatalogUrl(row.optString("license_url", "")),
+                        buildVodLicenseUrlFromRef(drmRef),
+                        buildVodLicenseUrl(selectedUrl)
+                ));
+            }
 
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, adult),
@@ -426,7 +434,7 @@ final class CatalogRepository {
                     "Tivify VOD",
                     new ArrayList<>(),
                     hasKeys ? "clearkey" : "",
-                    hasKeys ? firstNonEmpty(safeCatalogUrl(row.optString("license_url", "")), buildVodLicenseUrlFromRef(drmRef), buildVodLicenseUrl(selectedUrl)) : "",
+                    drmLicenseUrl,
                     adult ? "vod:tivify:adult" : "vod:tivify:general",
                     true,
                     description,

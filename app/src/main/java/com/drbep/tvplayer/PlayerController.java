@@ -1237,6 +1237,18 @@ final class PlayerController {
                 && request.platformName != null
                 && request.platformName.toLowerCase(Locale.ROOT).contains("movistar");
         PlaybackRouteResolver.Decision decision = buildPlaybackDecision(request, useFallback, streamInfo);
+        if (!request.vod
+                && !useFallback
+                && resumePositionMs <= 0L
+                && isSameChannel(request, previousRequest)
+                && decision != null
+                && decision.isEquivalentTo(currentPlaybackDecision)
+                && player.getPlaybackState() != Player.STATE_IDLE) {
+            Log.i(TAG, "skip duplicate live prepare channel=" + describeRequest(request)
+                    + " decision=" + describeDecision(decision)
+                    + " streamInfo=" + describeStreamInfo(streamInfo));
+            return;
+        }
         currentPlaybackDecision = decision;
         Log.d(TAG, "playChannelInternal channel=" + describeRequest(request)
             + " autoPlay=" + autoPlay

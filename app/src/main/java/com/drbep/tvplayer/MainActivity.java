@@ -941,7 +941,7 @@ public class MainActivity extends FragmentActivity {
                 if (touchDeviceMode) {
                     touchSurfaceHudVisible = visible;
                     if (touchControlsBar != null) {
-                        touchControlsBar.setVisibility(View.GONE);
+                        touchControlsBar.setVisibility(visible ? View.VISIBLE : View.GONE);
                     }
                 } else if (touchControlsBar != null) {
                     touchControlsBar.setVisibility(visible ? View.VISIBLE : View.GONE);
@@ -1777,7 +1777,27 @@ public class MainActivity extends FragmentActivity {
         if (isOrangePlaybackRequest(channel, request)) {
             return true;
         }
+        if (isMovistarIsmPlaybackRequest(channel, request)) {
+            return true;
+        }
         return false;
+    }
+
+    private boolean isMovistarIsmPlaybackRequest(ChannelItem channel, PlayerController.PlaybackRequest request) {
+        String platform = channel == null ? "" : safeLower(channel.platformName);
+        String group = channel == null ? "" : safeLower(channel.group);
+        String name = channel == null ? "" : safeLower(displayName(channel));
+        String playUrl = request == null ? "" : safeLower(request.playUrl);
+        String fallbackUrl = request == null ? "" : safeLower(request.fallbackPlayUrl);
+        boolean movistar = platform.contains("movistar ism")
+                || (platform.contains("movistar") && (group.contains("movistar") || name.contains("dazn")))
+                || playUrl.contains("movistarplus")
+                || fallbackUrl.contains("/hls/ism/");
+        boolean smooth = playUrl.contains(".isml/manifest")
+                || playUrl.contains(".ism/manifest")
+                || fallbackUrl.contains("/hls/ism/")
+                || platform.contains("ism");
+        return movistar && smooth;
     }
 
     private boolean isOrangePlaybackRequest(ChannelItem channel, PlayerController.PlaybackRequest request) {

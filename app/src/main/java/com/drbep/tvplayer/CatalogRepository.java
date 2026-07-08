@@ -462,6 +462,15 @@ final class CatalogRepository {
             String description = safeCatalogText(row.optString("description", ""));
             String year = safeCatalogText(row.optString("year", ""));
             long durationSeconds = parseLongSafe(safeCatalogText(row.optString("duration_minutes", ""))) * 60L;
+            String drmScheme = firstNonEmpty(
+                    safeCatalogText(row.optString("drm_type", "")),
+                    safeCatalogText(row.optString("drm_scheme", ""))
+            );
+            String drmLicenseUrl = firstNonEmpty(
+                    safeCatalogUrl(row.optString("license_url", "")),
+                    safeCatalogUrl(row.optString("drm_license_url", ""))
+            );
+            drmLicenseUrl = absolutizeUrl(drmLicenseUrl);
 
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, false),
@@ -478,8 +487,8 @@ final class CatalogRepository {
                     0,
                     platformName,
                     new ArrayList<>(),
-                    "",
-                    "",
+                    drmScheme,
+                    drmLicenseUrl,
                     vodFilterKey,
                     true,
                     description,

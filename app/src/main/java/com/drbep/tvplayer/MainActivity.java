@@ -311,6 +311,8 @@ public class MainActivity extends FragmentActivity {
     private int overlaySearchFocusRequestToken;
     private int overlaySearchClearFocusRequestToken;
     private boolean startupHubShown;
+    private boolean startupFastPlaybackStarted;
+    private String startupFastPlaybackChannelId = "";
     private String lastChannelId;
     private final StringBuilder quickSearchBuffer = new StringBuilder();
     private final List<ChannelItem> quickSearchMatches = new ArrayList<>();
@@ -710,6 +712,7 @@ public class MainActivity extends FragmentActivity {
         setupRecordingsPanel();
         setupTouchControls();
         enableImmersiveMode();
+        tryFastStartupPlaybackFromCache();
         loadChannels();
         detectUnfinishedAppUpdateIfNeeded();
         showPostUpdateNotesIfNeeded();
@@ -796,6 +799,11 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean isChannelCurrent(String channelId) {
+                if (startupFastPlaybackStarted
+                        && channelId != null
+                        && channelId.equals(startupFastPlaybackChannelId)) {
+                    return true;
+                }
                 ChannelItem current = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : null;
                 return current != null && channelId != null && channelId.equals(current.id);
             }
@@ -1520,6 +1528,10 @@ public class MainActivity extends FragmentActivity {
             try {
                 CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
                 long durationMs = System.currentTimeMillis() - startMs;
+                Log.w(TAG, "startup catalog loaded channels="
+                        + (result == null || result.channels == null ? 0 : result.channels.size())
+                        + " filters=" + (result == null || result.filters == null ? 0 : result.filters.size())
+                        + " durationMs=" + durationMs);
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
                     updateStartupLoading(
@@ -1612,6 +1624,35 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private void tryFastStartupPlaybackFromCache() {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || playerController == null) {
+            return;
+        }
+        long startMs = System.currentTimeMillis();
+        try {
+            ChannelItem cached = catalogSnapshotStore.loadStartupPlaybackChannel(BuildConfig.CATALOG_SNAPSHOT_URL);
+            if (cached == null) {
+                return;
+            }
+            if (lastChannelId != null && !lastChannelId.trim().isEmpty() && !lastChannelId.equals(cached.id)) {
+                return;
+            }
+            if (isProtectedItem(cached) && isProtectedContentLocked()) {
+                Log.w(TAG, "startup fast playback skipped protected channel=" + cached.id);
+                return;
+            }
+            startupFastPlaybackStarted = true;
+            startupFastPlaybackChannelId = cached.id;
+            Log.w(TAG, "startup fast playback start channel=" + cached.id
+                    + " loadMs=" + (System.currentTimeMillis() - startMs));
+            playChannelItemInternal(cached, true, 0L);
+        } catch (Exception e) {
+            Log.w(TAG, "startup fast playback failed", e);
+            startupFastPlaybackStarted = false;
+            startupFastPlaybackChannelId = "";
+        }
+    }
+
     private void showCatalogRecoveryDialog(String reason) {
         List<TvMessageActionUiModel> actions = new ArrayList<>();
         actions.add(new TvMessageActionUiModel(getString(R.string.startup_recovery_retry), false, this::loadChannels));
@@ -1639,12 +1680,16 @@ public class MainActivity extends FragmentActivity {
         epgLoadedFilterKeys.clear();
         epgQueuedFilterKeys.clear();
         uiHandler.removeCallbacks(progressiveEpgRunnable);
+        long coordinatorStartMs = System.currentTimeMillis();
         channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
+        long coordinatorMs = System.currentTimeMillis() - coordinatorStartMs;
+        long overlayStartMs = System.currentTimeMillis();
         syncOverlayStateFromCoordinator();
         persistNavigationState();
         refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
+        long overlayMs = System.currentTimeMillis() - overlayStartMs;
 
         if (channels.isEmpty()) {
             showError(getString(R.string.error_no_channels_for_filter));
@@ -1659,23 +1704,41 @@ public class MainActivity extends FragmentActivity {
         showStatus(visibleCount == totalCount
                 ? getString(R.string.status_channels_ready, visibleCount, lastCatalogLoadDurationMs)
                 : getString(R.string.status_channels_ready_filtered, visibleCount, totalCount, lastCatalogLoadDurationMs));
-        prefetchCurrentChannelLogos();
+        Log.w(TAG, "startup catalog applied visible=" + visibleCount
+                + " total=" + totalCount
+                + " coordinatorMs=" + coordinatorMs
+                + " overlayMs=" + overlayMs
+                + " totalApplyMs=" + lastApplyChannelsDurationMs);
         if (BuildConfig.STANDALONE_MODE) {
             updateStartupLoading(
                     getString(R.string.startup_loading_open_channel),
                     getString(R.string.startup_loading_open_channel_detail)
             );
             final int deferredStartIndex = startIndex;
+            ChannelItem startupChannel = channels.get(Math.max(0, Math.min(deferredStartIndex, channels.size() - 1)));
+            if (catalogSnapshotStore != null && startupChannel != null && !isProtectedItem(startupChannel)) {
+                catalogSnapshotStore.saveStartupPlaybackChannel(BuildConfig.CATALOG_SNAPSHOT_URL, startupChannel);
+            }
             uiHandler.postDelayed(() -> {
                 if (!isActivityReadyForUiWork() || channels.isEmpty()) {
                     return;
                 }
                 int index = Math.max(0, Math.min(deferredStartIndex, channels.size() - 1));
-                playChannelItem(channels.get(index), true);
-            }, 1200L);
+                ChannelItem channel = channels.get(index);
+                if (startupFastPlaybackStarted
+                        && channel != null
+                        && channel.id != null
+                        && channel.id.equals(startupFastPlaybackChannelId)) {
+                    Log.w(TAG, "startup full catalog playback skipped because fast channel is already playing id=" + channel.id);
+                    return;
+                }
+                playChannelItem(channel, true);
+            }, 120L);
+            uiHandler.postDelayed(this::prefetchCurrentChannelLogos, 2400L);
             scheduleVisibleEpgLoad(OFFLINE_EPG_INITIAL_DELAY_MS);
         } else {
             tuneToIndex(startIndex, true);
+            uiHandler.postDelayed(this::prefetchCurrentChannelLogos, 1800L);
             uiHandler.postDelayed(() -> loadEpgNow(false), 450L);
         }
         uiHandler.postDelayed(this::maybeShowStartupHub, 700L);
@@ -1764,6 +1827,12 @@ public class MainActivity extends FragmentActivity {
         }
         stopPlaybackHeartbeat("stop");
         saveLastChannelId(ch.id);
+        if (startupFastPlaybackStarted
+                && ch.id != null
+                && !ch.id.equals(startupFastPlaybackChannelId)) {
+            startupFastPlaybackStarted = false;
+            startupFastPlaybackChannelId = "";
+        }
         if (recentChannelsStore != null) {
             recentChannelsStore.add(ch.id, displayName(ch));
         }

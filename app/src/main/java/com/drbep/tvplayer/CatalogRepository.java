@@ -7,6 +7,7 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,7 +51,15 @@ final class CatalogRepository {
             if (snapshotStore == null) {
                 throw new IllegalStateException("catalogo local no configurado");
             }
-            return parseCatalogPayload(snapshotStore.loadStartupSnapshotObject(baseUrl + "/api/offline/snapshot"), false);
+            String snapshotUrl = baseUrl + "/api/offline/snapshot";
+            CatalogLoadResult cached = snapshotStore.loadStartupParsedCache(snapshotUrl);
+            if (cached != null) {
+                Log.w(TAG, "using parsed startup catalog cache channels=" + cached.channels.size());
+                return cached;
+            }
+            CatalogLoadResult result = parseCatalogPayload(snapshotStore.loadStartupSnapshotObject(snapshotUrl), false);
+            snapshotStore.saveStartupParsedCache(snapshotUrl, result);
+            return result;
         }
         JSONObject payload = fetchRemoteCatalogPayload();
         return parseCatalogPayload(payload, true);
@@ -60,7 +69,9 @@ final class CatalogRepository {
         if (snapshotStore == null) {
             throw new IllegalStateException("catalogo local no configurado");
         }
-        return parseCatalogPayload(snapshotStore.refreshFromConfiguredUrl(fallbackUrl), false);
+        CatalogLoadResult result = parseCatalogPayload(snapshotStore.refreshFromConfiguredUrl(fallbackUrl), false);
+        snapshotStore.saveStartupParsedCache(fallbackUrl, result);
+        return result;
     }
 
     CatalogLoadResult fetchLocalSnapshotCatalog() throws Exception {
@@ -1011,7 +1022,9 @@ final class CatalogRepository {
     }
 }
 
-final class ChannelItem {
+final class ChannelItem implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     final String id;
     final String name;
     final String tvgId;
@@ -1095,7 +1108,9 @@ final class ChannelItem {
     }
 }
 
-final class ChannelFilter {
+final class ChannelFilter implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     final String key;
     final String label;
     final int type;
@@ -1116,7 +1131,9 @@ final class StartupFilterConfig {
     String defaultFilterKey = "";
 }
 
-final class OfflinePermissions {
+final class OfflinePermissions implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     boolean liveEnabled = true;
     boolean vodEnabled = true;
     boolean tivifyAdultEnabled = true;
@@ -1220,7 +1237,9 @@ final class OfflinePermissions {
     }
 }
 
-final class CatalogLoadResult {
+final class CatalogLoadResult implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     final List<ChannelItem> channels;
     final List<ChannelFilter> filters;
     final String defaultFilterKey;

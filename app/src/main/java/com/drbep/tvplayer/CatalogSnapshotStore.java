@@ -10,11 +10,15 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
+import java.io.Serializable;
 import java.net.URI;
 import java.security.KeyStore;
 import java.security.MessageDigest;
@@ -30,6 +34,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
@@ -74,6 +80,10 @@ final class CatalogSnapshotStore {
     private static final String SNAPSHOT_FILE = "catalog_snapshot.json";
     private static final String LAST_GOOD_SNAPSHOT_FILE = "catalog_snapshot.last_good.json";
     private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
+    private static final String STARTUP_PARSED_CACHE_FILE = "catalog_startup_parsed.cache";
+    private static final String STARTUP_PLAYBACK_CACHE_FILE = "catalog_startup_playback.cache";
+    private static final int STARTUP_PARSED_CACHE_VERSION = 1;
+    private static final int STARTUP_PLAYBACK_CACHE_VERSION = 1;
     private static final String SNAPSHOT_ENCRYPTION_ALIAS = "drbep_catalog_snapshot_aes_v1";
     private static final byte[] SNAPSHOT_ENCRYPTED_MAGIC = "DRBEPENC1\n".getBytes(StandardCharsets.US_ASCII);
     private static final int SNAPSHOT_GCM_IV_BYTES = 12;
@@ -154,6 +164,108 @@ final class CatalogSnapshotStore {
             return readSnapshotObject(lastGood, "ultimo catalogo bueno", false);
         }
         return readSnapshotObject(snapshotFile(), "catalogo local guardado", false);
+    }
+
+    CatalogLoadResult loadStartupParsedCache(String fallbackUrl) {
+        File file = startupParsedCacheFile();
+        if (!file.exists() || file.length() <= 0L) {
+            return null;
+        }
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
+            return null;
+        }
+        try {
+            Object decoded = readEncryptedObject(file);
+            if (!(decoded instanceof StartupParsedCatalogCache)) {
+                throw new IllegalStateException("tipo de cache de arranque invalido");
+            }
+            StartupParsedCatalogCache cache = (StartupParsedCatalogCache) decoded;
+            if (!cache.matches(status)) {
+                return null;
+            }
+            CatalogLoadResult result = cache.result;
+            if (result == null || result.channels == null || result.channels.isEmpty() || result.filters == null || result.filters.isEmpty()) {
+                throw new IllegalStateException("cache de arranque vacia");
+            }
+            prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
+            Log.w(TAG, "startup parsed catalog cache hit channels=" + result.channels.size() + " filters=" + result.filters.size());
+            return result;
+        } catch (Exception e) {
+            Log.w(TAG, "startup parsed catalog cache ignored", e);
+            //noinspection ResultOfMethodCallIgnored
+            file.delete();
+            return null;
+        }
+    }
+
+    void saveStartupParsedCache(String fallbackUrl, CatalogLoadResult result) {
+        if (result == null || result.channels == null || result.channels.isEmpty()) {
+            return;
+        }
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
+            return;
+        }
+        try {
+            StartupParsedCatalogCache cache = new StartupParsedCatalogCache(status, result);
+            writeEncryptedObject(startupParsedCacheFile(), cache);
+            Log.w(TAG, "startup parsed catalog cache saved channels=" + result.channels.size() + " filters=" + (result.filters == null ? 0 : result.filters.size()));
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save startup parsed catalog cache", e);
+            //noinspection ResultOfMethodCallIgnored
+            startupParsedCacheFile().delete();
+        }
+    }
+
+    ChannelItem loadStartupPlaybackChannel(String fallbackUrl) {
+        File file = startupPlaybackCacheFile();
+        if (!file.exists() || file.length() <= 0L) {
+            return null;
+        }
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
+            return null;
+        }
+        try {
+            Object decoded = readEncryptedObject(file);
+            if (!(decoded instanceof StartupPlaybackChannelCache)) {
+                throw new IllegalStateException("tipo de cache de canal invalido");
+            }
+            StartupPlaybackChannelCache cache = (StartupPlaybackChannelCache) decoded;
+            if (!cache.matches(status)) {
+                return null;
+            }
+            ChannelItem channel = cache.channel;
+            if (channel == null || channel.id == null || channel.id.trim().isEmpty() || channel.isVod) {
+                throw new IllegalStateException("cache de canal vacia");
+            }
+            Log.w(TAG, "startup playback channel cache hit id=" + channel.id + " name=" + channel.name);
+            return channel;
+        } catch (Exception e) {
+            Log.w(TAG, "startup playback channel cache ignored", e);
+            //noinspection ResultOfMethodCallIgnored
+            file.delete();
+            return null;
+        }
+    }
+
+    void saveStartupPlaybackChannel(String fallbackUrl, ChannelItem channel) {
+        if (channel == null || channel.id == null || channel.id.trim().isEmpty() || channel.isVod) {
+            return;
+        }
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
+            return;
+        }
+        try {
+            writeEncryptedObject(startupPlaybackCacheFile(), new StartupPlaybackChannelCache(status, channel));
+            Log.w(TAG, "startup playback channel cache saved id=" + channel.id + " name=" + channel.name);
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save startup playback channel cache", e);
+            //noinspection ResultOfMethodCallIgnored
+            startupPlaybackCacheFile().delete();
+        }
     }
 
     boolean hasLastKnownGoodSnapshot() {
@@ -407,6 +519,14 @@ final class CatalogSnapshotStore {
             if (lastGood.exists()) {
                 lastGood.delete();
             }
+            File parsedCache = startupParsedCacheFile();
+            if (parsedCache.exists()) {
+                parsedCache.delete();
+            }
+            File playbackCache = startupPlaybackCacheFile();
+            if (playbackCache.exists()) {
+                playbackCache.delete();
+            }
         } catch (Exception ignored) {
         }
         prefs.edit()
@@ -613,6 +733,14 @@ final class CatalogSnapshotStore {
         return new File(context.getFilesDir(), SNAPSHOT_TMP_FILE);
     }
 
+    private File startupParsedCacheFile() {
+        return new File(context.getFilesDir(), STARTUP_PARSED_CACHE_FILE);
+    }
+
+    private File startupPlaybackCacheFile() {
+        return new File(context.getFilesDir(), STARTUP_PLAYBACK_CACHE_FILE);
+    }
+
     private static final long STARTUP_LITE_REFRESH_THRESHOLD_BYTES = 12L * 1024L * 1024L;
 
     // Minimum file size considered a valid catalog (1 MB). A real catalog with
@@ -737,6 +865,45 @@ final class CatalogSnapshotStore {
             try (CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher)) {
                 writeUtf8StringToStream(cipherOutputStream, value);
             }
+        }
+    }
+
+    private Object readEncryptedObject(File file) throws Exception {
+        try (InputStream inputStream = encryptedSnapshotInputStream(file);
+             GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream);
+             ObjectInputStream objectInputStream = new ObjectInputStream(gzipInputStream)) {
+            return objectInputStream.readObject();
+        }
+    }
+
+    private void writeEncryptedObject(File file, Serializable value) throws Exception {
+        if (value == null) {
+            throw new IllegalArgumentException("objeto cifrado vacio");
+        }
+        ByteArrayOutputStream rawOutput = new ByteArrayOutputStream(128 * 1024);
+        try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(rawOutput);
+             ObjectOutputStream objectOutputStream = new ObjectOutputStream(gzipOutputStream)) {
+            objectOutputStream.writeObject(value);
+        }
+        byte[] rawBytes = rawOutput.toByteArray();
+        File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
+        try (FileOutputStream outputStream = new FileOutputStream(tmp, false)) {
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSnapshotKey());
+            byte[] iv = cipher.getIV();
+            if (iv == null || iv.length != SNAPSHOT_GCM_IV_BYTES) {
+                throw new IllegalStateException("iv de cache cifrada invalido");
+            }
+            outputStream.write(SNAPSHOT_ENCRYPTED_MAGIC);
+            outputStream.write(iv);
+            try (CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher)) {
+                cipherOutputStream.write(rawBytes);
+            }
+        }
+        if (!tmp.renameTo(file)) {
+            copyFile(tmp, file);
+            //noinspection ResultOfMethodCallIgnored
+            tmp.delete();
         }
     }
 
@@ -1276,6 +1443,66 @@ final class CatalogSnapshotStore {
             warnings.append(" · ");
         }
         warnings.append(message.trim());
+    }
+
+    private static final class StartupParsedCatalogCache implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        final int version;
+        final String payloadFingerprint;
+        final String catalogFingerprint;
+        final String permissionsFingerprint;
+        final CatalogLoadResult result;
+
+        StartupParsedCatalogCache(SnapshotStatus status, CatalogLoadResult result) {
+            this.version = STARTUP_PARSED_CACHE_VERSION;
+            this.payloadFingerprint = status == null ? "" : status.payloadFingerprint;
+            this.catalogFingerprint = status == null ? "" : status.catalogFingerprint;
+            this.permissionsFingerprint = status == null ? "" : status.permissionsFingerprint;
+            this.result = result;
+        }
+
+        boolean matches(SnapshotStatus status) {
+            if (version != STARTUP_PARSED_CACHE_VERSION || status == null) {
+                return false;
+            }
+            return safeEquals(payloadFingerprint, status.payloadFingerprint)
+                    && safeEquals(catalogFingerprint, status.catalogFingerprint)
+                    && safeEquals(permissionsFingerprint, status.permissionsFingerprint);
+        }
+
+        private static boolean safeEquals(String left, String right) {
+            String a = left == null ? "" : left.trim();
+            String b = right == null ? "" : right.trim();
+            return a.equals(b);
+        }
+    }
+
+    private static final class StartupPlaybackChannelCache implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        final int version;
+        final String payloadFingerprint;
+        final String catalogFingerprint;
+        final String permissionsFingerprint;
+        final ChannelItem channel;
+
+        StartupPlaybackChannelCache(SnapshotStatus status, ChannelItem channel) {
+            this.version = STARTUP_PLAYBACK_CACHE_VERSION;
+            this.payloadFingerprint = status == null ? "" : status.payloadFingerprint;
+            this.catalogFingerprint = status == null ? "" : status.catalogFingerprint;
+            this.permissionsFingerprint = status == null ? "" : status.permissionsFingerprint;
+            this.channel = channel;
+        }
+
+        boolean matches(SnapshotStatus status) {
+            if (version != STARTUP_PLAYBACK_CACHE_VERSION || status == null) {
+                return false;
+            }
+            return StartupParsedCatalogCache.safeEquals(payloadFingerprint, status.payloadFingerprint)
+                    && StartupParsedCatalogCache.safeEquals(catalogFingerprint, status.catalogFingerprint)
+                    && StartupParsedCatalogCache.safeEquals(permissionsFingerprint, status.permissionsFingerprint);
+        }
     }
 
     static final class SnapshotStatus {

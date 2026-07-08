@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class VodVisualUiFactory {
+    private static final int DEFAULT_SECTION_LIMIT = 48;
+    private static final int RESULT_SECTION_LIMIT = 96;
+
     interface Host {
         String text(int resId);
         String text(int resId, Object... args);
@@ -107,26 +110,29 @@ final class VodVisualUiFactory {
     ) {
         List<VodVisualSectionUiModel> sections = new ArrayList<>();
         if (searchMode) {
-            addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter, query), host);
+            addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter, query), host, RESULT_SECTION_LIMIT);
         } else if (host.defaultFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
-            addSection(sections, host.text(R.string.vod_library_continue), host.continueItems(), host);
-            addSection(sections, host.text(R.string.vod_library_recent), host.recentItems(), host);
-            addSection(sections, host.text(R.string.vod_library_runtime), host.runtimeItems(), host);
-            addSection(sections, host.text(R.string.vod_library_tivify), host.tivifyItems(), host);
-            addSection(sections, host.text(R.string.vod_library_with_progress), host.progressItems(), host);
-            addSection(sections, host.text(R.string.vod_library_all_alpha), host.alphaItems(), host);
+            addSection(sections, host.text(R.string.vod_library_continue), host.continueItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, host.text(R.string.vod_library_recent), host.recentItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, host.text(R.string.vod_library_runtime), host.runtimeItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, host.text(R.string.vod_library_tivify), host.tivifyItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, host.text(R.string.vod_library_with_progress), host.progressItems(), host, DEFAULT_SECTION_LIMIT);
         } else {
-            addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter), host);
+            addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter), host, RESULT_SECTION_LIMIT);
         }
         return sections;
     }
 
-    private static void addSection(List<VodVisualSectionUiModel> sections, String title, List<ChannelItem> items, Host host) {
+    private static void addSection(List<VodVisualSectionUiModel> sections, String title, List<ChannelItem> items, Host host, int limit) {
         if (sections == null || items == null || items.isEmpty()) {
             return;
         }
         List<VodVisualItemUiModel> mapped = new ArrayList<>();
+        int max = limit <= 0 ? items.size() : Math.min(limit, items.size());
         for (ChannelItem item : items) {
+            if (mapped.size() >= max) {
+                break;
+            }
             if (item == null) {
                 continue;
             }

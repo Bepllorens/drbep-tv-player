@@ -1617,13 +1617,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
 
-        int startIndex = 0;
-        if (lastChannelId != null && !lastChannelId.trim().isEmpty()) {
-            int found = findChannelIndexById(lastChannelId);
-            if (found >= 0) {
-                startIndex = found;
-            }
-        }
+        int startIndex = resolveStartupPlaybackIndex();
         selectChannelIndex(startIndex);
         lastApplyChannelsDurationMs = System.currentTimeMillis() - startMs;
         int visibleCount = channels.size();
@@ -3654,6 +3648,31 @@ public class MainActivity extends FragmentActivity {
             }
         }
         return -1;
+    }
+
+    private int resolveStartupPlaybackIndex() {
+        if (channels.isEmpty()) {
+            return 0;
+        }
+        if (lastChannelId != null && !lastChannelId.trim().isEmpty()) {
+            int found = findChannelIndexById(lastChannelId);
+            if (found >= 0 && isLinearStartupChannel(channels.get(found))) {
+                return found;
+            }
+        }
+        for (int i = 0; i < channels.size(); i++) {
+            if (isLinearStartupChannel(channels.get(i))) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private boolean isLinearStartupChannel(ChannelItem item) {
+        return item != null
+                && !item.isVod
+                && item.playUrl != null
+                && !item.playUrl.trim().isEmpty();
     }
 
     private void saveLastChannelId(String channelID) {

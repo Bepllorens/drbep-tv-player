@@ -363,17 +363,6 @@ final class CatalogRepository {
             if (row == null) {
                 continue;
             }
-            String selectedUrl = firstNonEmpty(
-                    safeCatalogUrl(row.optString("selected_url", "")),
-                    safeCatalogUrl(row.optString("dash_url", "")),
-                    safeCatalogUrl(row.optString("hls_url", "")),
-                    safeCatalogUrl(row.optString("play_url", "")),
-                    safeCatalogUrl(row.optString("url", "")),
-                    safeCatalogUrl(row.optString("stream_url", ""))
-            );
-            if (selectedUrl.isEmpty()) {
-                continue;
-            }
             String title = safeCatalogText(row.optString("title", "VOD"));
             if (title.isEmpty()) {
                 title = "VOD";
@@ -394,6 +383,26 @@ final class CatalogRepository {
                     || !safeCatalogText(row.optString("secure_drm_ref", "")).isEmpty();
             if (secureDrm) {
                 hasKeys = true;
+            }
+            String selectedUrl = hasKeys
+                    ? firstNonEmpty(
+                            safeCatalogUrl(row.optString("dash_url", "")),
+                            safeCatalogUrl(row.optString("selected_url", "")),
+                            safeCatalogUrl(row.optString("play_url", "")),
+                            safeCatalogUrl(row.optString("url", "")),
+                            safeCatalogUrl(row.optString("hls_url", "")),
+                            safeCatalogUrl(row.optString("stream_url", ""))
+                    )
+                    : firstNonEmpty(
+                            safeCatalogUrl(row.optString("selected_url", "")),
+                            safeCatalogUrl(row.optString("dash_url", "")),
+                            safeCatalogUrl(row.optString("hls_url", "")),
+                            safeCatalogUrl(row.optString("play_url", "")),
+                            safeCatalogUrl(row.optString("url", "")),
+                            safeCatalogUrl(row.optString("stream_url", ""))
+                    );
+            if (selectedUrl.isEmpty()) {
+                continue;
             }
             String drmRef = firstNonEmpty(
                     safeCatalogText(row.optString("drm_ref", "")),

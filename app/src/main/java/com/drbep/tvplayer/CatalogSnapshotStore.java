@@ -11,9 +11,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -31,7 +34,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.zip.GZIPInputStream;
@@ -84,6 +90,9 @@ final class CatalogSnapshotStore {
     private static final String STARTUP_PLAYBACK_CACHE_FILE = "catalog_startup_playback.cache";
     private static final int STARTUP_PARSED_CACHE_VERSION = 1;
     private static final int STARTUP_PLAYBACK_CACHE_VERSION = 1;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 1;
+    private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
+    private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     private static final String SNAPSHOT_ENCRYPTION_ALIAS = "drbep_catalog_snapshot_aes_v1";
     private static final byte[] SNAPSHOT_ENCRYPTED_MAGIC = "DRBEPENC1\n".getBytes(StandardCharsets.US_ASCII);
     private static final int SNAPSHOT_GCM_IV_BYTES = 12;
@@ -176,16 +185,11 @@ final class CatalogSnapshotStore {
             return null;
         }
         try {
-            Object decoded = readEncryptedObject(file);
-            if (!(decoded instanceof StartupParsedCatalogCache)) {
-                throw new IllegalStateException("tipo de cache de arranque invalido");
-            }
-            StartupParsedCatalogCache cache = (StartupParsedCatalogCache) decoded;
-            if (!cache.matches(status)) {
+            CatalogLoadResult result = readStartupParsedCacheBinary(file, status);
+            if (result == null) {
                 return null;
             }
-            CatalogLoadResult result = cache.result;
-            if (result == null || result.channels == null || result.channels.isEmpty() || result.filters == null || result.filters.isEmpty()) {
+            if (result.channels == null || result.channels.isEmpty() || result.filters == null || result.filters.isEmpty()) {
                 throw new IllegalStateException("cache de arranque vacia");
             }
             prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
@@ -208,8 +212,7 @@ final class CatalogSnapshotStore {
             return;
         }
         try {
-            StartupParsedCatalogCache cache = new StartupParsedCatalogCache(status, result);
-            writeEncryptedObject(startupParsedCacheFile(), cache);
+            writeStartupParsedCacheBinary(startupParsedCacheFile(), status, result);
             Log.w(TAG, "startup parsed catalog cache saved channels=" + result.channels.size() + " filters=" + (result.filters == null ? 0 : result.filters.size()));
         } catch (Exception e) {
             Log.w(TAG, "failed to save startup parsed catalog cache", e);
@@ -885,7 +888,10 @@ final class CatalogSnapshotStore {
              ObjectOutputStream objectOutputStream = new ObjectOutputStream(gzipOutputStream)) {
             objectOutputStream.writeObject(value);
         }
-        byte[] rawBytes = rawOutput.toByteArray();
+        encryptRawBytesToFile(file, rawOutput.toByteArray());
+    }
+
+    private void encryptRawBytesToFile(File file, byte[] rawBytes) throws Exception {
         File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
         try (FileOutputStream outputStream = new FileOutputStream(tmp, false)) {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -905,6 +911,288 @@ final class CatalogSnapshotStore {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
         }
+    }
+
+    // --- Serializacion binaria manual de la cache de catalogo de arranque (rapida, sin reflexion) ---
+    private void writeStartupParsedCacheBinary(File file, SnapshotStatus status, CatalogLoadResult result) throws Exception {
+        ByteArrayOutputStream rawOutput = new ByteArrayOutputStream(256 * 1024);
+        try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(rawOutput);
+             DataOutputStream out = new DataOutputStream(gzipOutputStream)) {
+            out.writeInt(STARTUP_PARSED_BINARY_FORMAT_VERSION);
+            writeStr(out, status == null ? "" : status.payloadFingerprint);
+            writeStr(out, status == null ? "" : status.catalogFingerprint);
+            writeStr(out, status == null ? "" : status.permissionsFingerprint);
+            writeStr(out, result.defaultFilterKey);
+            writeOfflinePermissions(out, result.offlinePermissions);
+            List<ChannelFilter> filters = result.filters;
+            int filterCount = filters == null ? 0 : filters.size();
+            out.writeInt(filterCount);
+            for (int i = 0; i < filterCount; i++) {
+                writeFilter(out, filters.get(i));
+            }
+            List<ChannelItem> channels = result.channels;
+            int channelCount = channels == null ? 0 : channels.size();
+            out.writeInt(channelCount);
+            for (int i = 0; i < channelCount; i++) {
+                writeChannel(out, channels.get(i));
+            }
+        }
+        encryptRawBytesToFile(file, rawOutput.toByteArray());
+    }
+
+    private CatalogLoadResult readStartupParsedCacheBinary(File file, SnapshotStatus status) throws Exception {
+        try (InputStream inputStream = encryptedSnapshotInputStream(file);
+             GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream);
+             DataInputStream in = new DataInputStream(gzipInputStream)) {
+            int formatVersion = in.readInt();
+            if (formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
+                throw new IllegalStateException("version de cache binaria invalida: " + formatVersion);
+            }
+            String payloadFingerprint = readStr(in);
+            String catalogFingerprint = readStr(in);
+            String permissionsFingerprint = readStr(in);
+            if (!parsedCacheFingerprintMatches(status, payloadFingerprint, catalogFingerprint, permissionsFingerprint)) {
+                return null;
+            }
+            String defaultFilterKey = readStr(in);
+            OfflinePermissions permissions = readOfflinePermissions(in);
+            int filterCount = in.readInt();
+            if (filterCount < 0 || filterCount > MAX_BINARY_CACHE_ITEMS) {
+                throw new IOException("numero de filtros invalido=" + filterCount);
+            }
+            List<ChannelFilter> filters = new ArrayList<>(filterCount);
+            for (int i = 0; i < filterCount; i++) {
+                filters.add(readFilter(in));
+            }
+            int channelCount = in.readInt();
+            if (channelCount < 0 || channelCount > MAX_BINARY_CACHE_ITEMS) {
+                throw new IOException("numero de canales invalido=" + channelCount);
+            }
+            List<ChannelItem> channels = new ArrayList<>(channelCount);
+            for (int i = 0; i < channelCount; i++) {
+                channels.add(readChannel(in));
+            }
+            return new CatalogLoadResult(channels, filters, defaultFilterKey, permissions);
+        }
+    }
+
+    private boolean parsedCacheFingerprintMatches(SnapshotStatus status, String payloadFingerprint, String catalogFingerprint, String permissionsFingerprint) {
+        if (status == null) {
+            return false;
+        }
+        return safeFingerprintEquals(payloadFingerprint, status.payloadFingerprint)
+                && safeFingerprintEquals(catalogFingerprint, status.catalogFingerprint)
+                && safeFingerprintEquals(permissionsFingerprint, status.permissionsFingerprint);
+    }
+
+    private static boolean safeFingerprintEquals(String left, String right) {
+        String a = left == null ? "" : left.trim();
+        String b = right == null ? "" : right.trim();
+        return a.equals(b);
+    }
+
+    private void writeOfflinePermissions(DataOutputStream out, OfflinePermissions permissions) throws IOException {
+        OfflinePermissions p = permissions == null ? new OfflinePermissions() : permissions;
+        out.writeBoolean(p.liveEnabled);
+        out.writeBoolean(p.vodEnabled);
+        out.writeBoolean(p.tivifyAdultEnabled);
+        out.writeBoolean(p.runtimeEnabled);
+        out.writeBoolean(p.movistarVodEnabled);
+        out.writeBoolean(p.canViewRecordings);
+        out.writeBoolean(p.canScheduleRecordings);
+        out.writeBoolean(p.canDeleteRecordings);
+        out.writeBoolean(p.protectAdultVod);
+        out.writeInt(p.allowedPlatformIds.size());
+        for (Integer platformId : p.allowedPlatformIds) {
+            out.writeInt(platformId == null ? 0 : platformId);
+        }
+        writeStringSet(out, p.protectedFilterKeys);
+        writeStringSet(out, p.protectedChannelIds);
+        writeStringSet(out, p.protectedGroupNames);
+    }
+
+    private OfflinePermissions readOfflinePermissions(DataInputStream in) throws IOException {
+        OfflinePermissions p = new OfflinePermissions();
+        p.liveEnabled = in.readBoolean();
+        p.vodEnabled = in.readBoolean();
+        p.tivifyAdultEnabled = in.readBoolean();
+        p.runtimeEnabled = in.readBoolean();
+        p.movistarVodEnabled = in.readBoolean();
+        p.canViewRecordings = in.readBoolean();
+        p.canScheduleRecordings = in.readBoolean();
+        p.canDeleteRecordings = in.readBoolean();
+        p.protectAdultVod = in.readBoolean();
+        int platformCount = in.readInt();
+        if (platformCount < 0 || platformCount > MAX_BINARY_CACHE_ITEMS) {
+            throw new IOException("numero de plataformas invalido=" + platformCount);
+        }
+        for (int i = 0; i < platformCount; i++) {
+            p.allowedPlatformIds.add(in.readInt());
+        }
+        readStringSet(in, p.protectedFilterKeys);
+        readStringSet(in, p.protectedChannelIds);
+        readStringSet(in, p.protectedGroupNames);
+        return p;
+    }
+
+    private void writeFilter(DataOutputStream out, ChannelFilter filter) throws IOException {
+        writeStr(out, filter.key);
+        writeStr(out, filter.label);
+        out.writeInt(filter.type);
+        out.writeInt(filter.platformId);
+        writeStr(out, filter.groupName);
+    }
+
+    private ChannelFilter readFilter(DataInputStream in) throws IOException {
+        String key = readStr(in);
+        String label = readStr(in);
+        int type = in.readInt();
+        int platformId = in.readInt();
+        String groupName = readStr(in);
+        return new ChannelFilter(key, label, type, platformId, groupName);
+    }
+
+    private void writeChannel(DataOutputStream out, ChannelItem channel) throws IOException {
+        writeStr(out, channel.id);
+        writeStr(out, channel.name);
+        writeStr(out, channel.tvgId);
+        writeStr(out, channel.logoUrl);
+        writeStr(out, channel.group);
+        writeStr(out, channel.playUrl);
+        writeStr(out, channel.fallbackPlayUrl);
+        out.writeInt(channel.originalOrder);
+        out.writeInt(channel.dashboardOrder);
+        out.writeBoolean(channel.isVod);
+        out.writeBoolean(channel.isAdultVod);
+        out.writeInt(channel.platformId);
+        writeStr(out, channel.platformName);
+        List<String> customGroups = channel.customGroups;
+        if (customGroups == null) {
+            out.writeInt(-1);
+        } else {
+            out.writeInt(customGroups.size());
+            for (String group : customGroups) {
+                writeStr(out, group);
+            }
+        }
+        Map<String, Integer> groupOrder = channel.groupOrder;
+        int groupOrderSize = groupOrder == null ? 0 : groupOrder.size();
+        out.writeInt(groupOrderSize);
+        if (groupOrder != null) {
+            for (Map.Entry<String, Integer> entry : groupOrder.entrySet()) {
+                writeStr(out, entry.getKey());
+                out.writeInt(entry.getValue() == null ? 0 : entry.getValue());
+            }
+        }
+        writeStr(out, channel.drmScheme);
+        writeStr(out, channel.drmLicenseUrl);
+        writeStr(out, channel.vodFilterKey);
+        out.writeBoolean(channel.directPlayback);
+        writeStr(out, channel.playbackProfile);
+        writeStr(out, channel.vodDescription);
+        writeStr(out, channel.vodYear);
+        out.writeLong(channel.vodDurationSeconds);
+        out.writeBoolean(channel.favorite);
+        writeStr(out, channel.nowProgram);
+        writeStr(out, channel.nextProgram);
+    }
+
+    private ChannelItem readChannel(DataInputStream in) throws IOException {
+        String id = readStr(in);
+        String name = readStr(in);
+        String tvgId = readStr(in);
+        String logoUrl = readStr(in);
+        String group = readStr(in);
+        String playUrl = readStr(in);
+        String fallbackPlayUrl = readStr(in);
+        int originalOrder = in.readInt();
+        int dashboardOrder = in.readInt();
+        boolean isVod = in.readBoolean();
+        boolean isAdultVod = in.readBoolean();
+        int platformId = in.readInt();
+        String platformName = readStr(in);
+        int customGroupsSize = in.readInt();
+        List<String> customGroups;
+        if (customGroupsSize < 0) {
+            customGroups = null;
+        } else {
+            if (customGroupsSize > MAX_BINARY_CACHE_ITEMS) {
+                throw new IOException("customGroups invalido=" + customGroupsSize);
+            }
+            customGroups = new ArrayList<>(customGroupsSize);
+            for (int i = 0; i < customGroupsSize; i++) {
+                customGroups.add(readStr(in));
+            }
+        }
+        int groupOrderSize = in.readInt();
+        if (groupOrderSize < 0 || groupOrderSize > MAX_BINARY_CACHE_ITEMS) {
+            throw new IOException("groupOrder invalido=" + groupOrderSize);
+        }
+        Map<String, Integer> groupOrder = new LinkedHashMap<>();
+        for (int i = 0; i < groupOrderSize; i++) {
+            String key = readStr(in);
+            int value = in.readInt();
+            groupOrder.put(key, value);
+        }
+        String drmScheme = readStr(in);
+        String drmLicenseUrl = readStr(in);
+        String vodFilterKey = readStr(in);
+        boolean directPlayback = in.readBoolean();
+        String playbackProfile = readStr(in);
+        String vodDescription = readStr(in);
+        String vodYear = readStr(in);
+        long vodDurationSeconds = in.readLong();
+        boolean favorite = in.readBoolean();
+        String nowProgram = readStr(in);
+        String nextProgram = readStr(in);
+        ChannelItem channel = new ChannelItem(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl,
+                originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups,
+                drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, vodDescription, vodYear,
+                vodDurationSeconds, playbackProfile);
+        if (!groupOrder.isEmpty()) {
+            channel.groupOrder.putAll(groupOrder);
+        }
+        channel.favorite = favorite;
+        channel.nowProgram = nowProgram;
+        channel.nextProgram = nextProgram;
+        return channel;
+    }
+
+    private void writeStringSet(DataOutputStream out, Set<String> values) throws IOException {
+        if (values == null) {
+            out.writeInt(0);
+            return;
+        }
+        out.writeInt(values.size());
+        for (String value : values) {
+            writeStr(out, value);
+        }
+    }
+
+    private void readStringSet(DataInputStream in, Set<String> target) throws IOException {
+        int count = in.readInt();
+        if (count < 0 || count > MAX_BINARY_CACHE_ITEMS) {
+            throw new IOException("numero de elementos invalido=" + count);
+        }
+        for (int i = 0; i < count; i++) {
+            target.add(readStr(in));
+        }
+    }
+
+    private static void writeStr(DataOutputStream out, String value) throws IOException {
+        byte[] bytes = (value == null ? "" : value).getBytes(StandardCharsets.UTF_8);
+        out.writeInt(bytes.length);
+        out.write(bytes);
+    }
+
+    private static String readStr(DataInputStream in) throws IOException {
+        int length = in.readInt();
+        if (length < 0 || length > MAX_BINARY_CACHE_STR_BYTES) {
+            throw new IOException("longitud de cadena invalida=" + length);
+        }
+        byte[] bytes = new byte[length];
+        in.readFully(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private void rewriteSnapshotEncrypted(File file, String rawJson) {

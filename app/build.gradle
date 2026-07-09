@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 227
-        versionName "2.0.227-beta-perf-reminders-overlay"
+        versionCode 228
+        versionName "2.0.228-beta-overlay-refactor"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",

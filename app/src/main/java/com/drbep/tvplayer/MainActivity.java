@@ -171,7 +171,6 @@ public class MainActivity extends FragmentActivity {
 
     private PlayerView playerView;
     private OverlayUiController overlayUiController;
-    private ComposeView startupLoadingOverlay;
     private ComposeView overlayControlsComposeView;
     private View touchHomeHub;
     private ComposeView touchHomeComposeView;
@@ -512,7 +511,7 @@ public class MainActivity extends FragmentActivity {
         playerView = findViewById(R.id.playerView);
         ComposeView errorText = findViewById(R.id.errorText);
         ComposeView statusText = findViewById(R.id.statusText);
-        startupLoadingOverlay = findViewById(R.id.startupLoadingOverlay);
+        ComposeView startupLoadingOverlay = findViewById(R.id.startupLoadingOverlay);
         overlayControlsComposeView = findViewById(R.id.overlayExploreSection);
         touchHomeHub = findViewById(R.id.touchHomeHub);
         touchHomeComposeView = findViewById(R.id.touchHomeHub);
@@ -538,7 +537,7 @@ public class MainActivity extends FragmentActivity {
         quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
         ComposeView hdrBadgeText = findViewById(R.id.hdrBadgeText);
         overlayUiController = new OverlayUiController(this, uiHandler, createOverlayUiHost());
-        overlayUiController.attachViews(statusText, errorText, hdrBadgeText);
+        overlayUiController.attachViews(statusText, errorText, hdrBadgeText, startupLoadingOverlay);
         liveStateBadgeText = findViewById(R.id.liveStateBadgeText);
         touchControlsBar = findViewById(R.id.touchControlsBar);
         timeshiftBarContainer = findViewById(R.id.timeshiftBarContainer);
@@ -4677,30 +4676,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showStartupLoading(String step, String detail) {
-        if (startupLoadingOverlay == null) {
-            return;
-        }
-        StartupLoadingComposeBinder.bind(
-                startupLoadingOverlay,
-                new StartupLoadingUiModel(getString(R.string.startup_loading_title), step, detail)
-        );
-        startupLoadingOverlay.setVisibility(View.VISIBLE);
+        overlayUiController.showStartupLoading(step, detail);
     }
 
     private void updateStartupLoading(String step, String detail) {
-        if (startupLoadingOverlay == null || startupLoadingOverlay.getVisibility() != View.VISIBLE) {
-            return;
-        }
-        StartupLoadingComposeBinder.bind(
-                startupLoadingOverlay,
-                new StartupLoadingUiModel(getString(R.string.startup_loading_title), step, detail)
-        );
+        overlayUiController.updateStartupLoading(step, detail);
     }
 
     private void hideStartupLoading() {
-        if (startupLoadingOverlay != null) {
-            startupLoadingOverlay.setVisibility(View.GONE);
-        }
+        overlayUiController.hideStartupLoading();
     }
 
     private void showStatus(String text) {
@@ -4735,11 +4719,6 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void onOverlayPanelInvalidated() {
                 MainActivity.this.updateOverlayPanel();
-            }
-
-            @Override
-            public void hideStartupLoading() {
-                MainActivity.this.hideStartupLoading();
             }
 
             @Override

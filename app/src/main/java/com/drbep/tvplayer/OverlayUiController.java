@@ -21,9 +21,6 @@ final class OverlayUiController {
         /** Notifica que el panel de overlay debe recalcularse tras cambiar el estado. */
         void onOverlayPanelInvalidated();
 
-        /** Oculta el overlay de carga inicial antes de mostrar un error. */
-        void hideStartupLoading();
-
         /** Canal en reproduccion actual (para adaptar el mensaje de error VOD/directo). */
         ChannelItem currentPlaybackChannelItem();
 
@@ -44,6 +41,7 @@ final class OverlayUiController {
     private ComposeView statusText;
     private ComposeView errorText;
     private ComposeView hdrBadgeText;
+    private ComposeView startupLoadingOverlay;
 
     private final Runnable hideStatusRunnable = () -> {
         if (statusText != null) {
@@ -63,10 +61,35 @@ final class OverlayUiController {
     }
 
     /** Enlaza las vistas Compose una vez infladas en onCreate. */
-    void attachViews(ComposeView statusText, ComposeView errorText, ComposeView hdrBadgeText) {
+    void attachViews(ComposeView statusText, ComposeView errorText, ComposeView hdrBadgeText,
+                     ComposeView startupLoadingOverlay) {
         this.statusText = statusText;
         this.errorText = errorText;
         this.hdrBadgeText = hdrBadgeText;
+        this.startupLoadingOverlay = startupLoadingOverlay;
+    }
+
+    void showStartupLoading(String step, String detail) {
+        if (startupLoadingOverlay == null) {
+            return;
+        }
+        StartupLoadingComposeBinder.bind(startupLoadingOverlay,
+                new StartupLoadingUiModel(context.getString(R.string.startup_loading_title), step, detail));
+        startupLoadingOverlay.setVisibility(View.VISIBLE);
+    }
+
+    void updateStartupLoading(String step, String detail) {
+        if (startupLoadingOverlay == null || startupLoadingOverlay.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        StartupLoadingComposeBinder.bind(startupLoadingOverlay,
+                new StartupLoadingUiModel(context.getString(R.string.startup_loading_title), step, detail));
+    }
+
+    void hideStartupLoading() {
+        if (startupLoadingOverlay != null) {
+            startupLoadingOverlay.setVisibility(View.GONE);
+        }
     }
 
     void showStatus(String text) {
@@ -102,7 +125,7 @@ final class OverlayUiController {
     }
 
     void showError(String reason) {
-        host.hideStartupLoading();
+        hideStartupLoading();
         if (errorText == null) {
             return;
         }

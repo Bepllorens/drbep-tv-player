@@ -88,7 +88,6 @@ public class MainActivity extends FragmentActivity {
     private static final long TV_TIMESHIFT_HUD_HIDE_MS = 3500L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
-    private static final long RECORDINGS_AUTO_REFRESH_MS = 60000L;
     private static final long OFFLINE_CATALOG_AUTO_REFRESH_MS = 30L * 60L * 1000L;
     private static final long OFFLINE_CATALOG_EXPIRY_REFRESH_MS = 12L * 60L * 60L * 1000L;
     private static final long OFFLINE_CATALOG_RETRY_BASE_MS = 15L * 60L * 1000L;
@@ -227,16 +226,6 @@ public class MainActivity extends FragmentActivity {
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
-    private final Runnable recordingsAutoRefreshRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!recordingsAutoRefreshEnabled || !isRecordingsPanelVisible()) {
-                return;
-            }
-            refreshRecordingsPanel();
-            uiHandler.postDelayed(this, RECORDINGS_AUTO_REFRESH_MS);
-        }
-    };
     private final Runnable vodProgressSaveRunnable = new Runnable() {
         @Override
         public void run() {
@@ -336,13 +325,11 @@ public class MainActivity extends FragmentActivity {
     private final PlaybackRecoveryCoordinator playbackRecoveryCoordinator = new PlaybackRecoveryCoordinator(temporaryPlaybackModesByChannelId, learnedPlaybackModesByChannelId, playbackRepairAttemptsByChannelId);
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private final RecordingsController recordingsController = new RecordingsController();
+    private final RecordingsPanelController recordingsPanelController = new RecordingsPanelController(uiHandler, recordingsController, createRecordingsPanelHost());
     private OfflinePermissions currentOfflinePermissions = new OfflinePermissions();
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
-    private int recordingsHeaderFocusIndex = -1;
-    private boolean recordingsHeaderFocusActive;
     private boolean touchDeviceMode;
-    private boolean recordingsAutoRefreshEnabled;
     private boolean playbackRepairEnabled = true;
     private long lastCatalogLoadDurationMs;
     private long lastEpgNowLoadDurationMs;
@@ -383,7 +370,6 @@ public class MainActivity extends FragmentActivity {
     private boolean modalTransitionInProgress;
     private Runnable modalReturnAction;
     private boolean playbackHiddenBehindModal;
-    private int pendingRecordingsListScrollIndex = -1;
 
     static final class TimelineChannelPrograms {
         final ChannelItem channel;
@@ -546,6 +532,7 @@ public class MainActivity extends FragmentActivity {
         playbackGestureLayer = findViewById(R.id.playbackGestureLayer);
         channelOverlay = findViewById(R.id.channelOverlay);
         recordingsPanel = findViewById(R.id.recordingsPanel);
+        recordingsPanelController.attachPanel(recordingsPanel);
         channelListComposeView = findViewById(R.id.overlayListSection);
         if (channelOverlay != null) {
             channelOverlay.setClickable(true);
@@ -3617,7 +3604,7 @@ public class MainActivity extends FragmentActivity {
         }
         options.add(getString(R.string.recording_action_refresh));
         actions.add(this::refreshRecordingsPanel);
-        options.add(getString(recordingsAutoRefreshEnabled ? R.string.recording_action_auto_refresh_on : R.string.recording_action_auto_refresh_off));
+        options.add(getString(recordingsPanelController.isAutoRefreshEnabled() ? R.string.recording_action_auto_refresh_on : R.string.recording_action_auto_refresh_off));
         actions.add(this::toggleRecordingsAutoRefresh);
         options.add(getString(recordingsController.isScheduledMode() ? R.string.recording_action_switch_completed : R.string.recording_action_switch_scheduled));
         actions.add(() -> switchRecordingsMode(!recordingsController.isScheduledMode()));
@@ -3681,9 +3668,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void toggleRecordingsAutoRefresh() {
-        recordingsAutoRefreshEnabled = !recordingsAutoRefreshEnabled;
-        showStatus(getString(recordingsAutoRefreshEnabled ? R.string.recordings_panel_auto_refresh_on : R.string.recordings_panel_auto_refresh_off));
-        scheduleRecordingsAutoRefresh();
+        boolean enabled = recordingsPanelController.toggleAutoRefresh();
+        showStatus(getString(enabled ? R.string.recordings_panel_auto_refresh_on : R.string.recordings_panel_auto_refresh_off));
     }
 
     private void checkReminderNotifications() {
@@ -4113,7 +4099,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isRecordingsPanelVisible() {
-        return recordingsPanel != null && recordingsPanel.getVisibility() == View.VISIBLE;
+        return recordingsPanelController.isVisible();
     }
 
     private boolean isMultiViewVisible() {
@@ -4165,53 +4151,114 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result) {
-        showRecordingsPanel(result, null);
+        recordingsPanelController.show(result);
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result, String preferredId) {
-        if (recordingsPanel == null) {
-            showRecordingsDialog(result);
-            return;
-        }
-        clearQuickSearchOverlay();
-        hideOverlay();
-        closeMultiView();
-        if (touchControlsBar != null) {
-            touchControlsBar.setVisibility(View.GONE);
-        }
-        if (touchHomeHub != null) {
-            touchHomeHub.setVisibility(View.GONE);
-        }
-        if (timeshiftBarContainer != null) {
-            timeshiftBarContainer.setVisibility(View.GONE);
-        }
-        recordingsController.applyResult(result, preferredId);
-        recordingsHeaderFocusIndex = result.scheduledMode ? 1 : 0;
-        recordingsHeaderFocusActive = false;
-        Log.d(TAG, "showRecordingsPanel scheduled=" + result.scheduledMode + " count=" + result.items.size());
-        pendingRecordingsListScrollIndex = recordingsController.getSelectedIndex();
-        refreshRecordingsPanelSurface();
-        recordingsPanel.setVisibility(View.VISIBLE);
-        scheduleRecordingsAutoRefresh();
-        Log.d(TAG, "recordingsPanel visible=" + (recordingsPanel.getVisibility() == View.VISIBLE));
+        recordingsPanelController.show(result, preferredId);
     }
 
     private void hideRecordingsPanel() {
-        uiHandler.removeCallbacks(recordingsAutoRefreshRunnable);
-        recordingsController.clearCurrentResult();
-        recordingsHeaderFocusIndex = -1;
-        recordingsHeaderFocusActive = false;
-        if (recordingsPanel != null) {
-            recordingsPanel.setVisibility(View.GONE);
-        }
-        refreshRecordingsPanelSurface();
+        recordingsPanelController.hide();
     }
 
     private void scheduleRecordingsAutoRefresh() {
-        uiHandler.removeCallbacks(recordingsAutoRefreshRunnable);
-        if (recordingsAutoRefreshEnabled && isRecordingsPanelVisible()) {
-            uiHandler.postDelayed(recordingsAutoRefreshRunnable, RECORDINGS_AUTO_REFRESH_MS);
-        }
+        recordingsPanelController.scheduleAutoRefresh();
+    }
+
+    private RecordingsPanelController.Host createRecordingsPanelHost() {
+        return new RecordingsPanelController.Host() {
+            @Override
+            public String string(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String string(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public String summary(RecordingsRepository.RecordingsResult result) {
+                return buildRecordingsSummary(result);
+            }
+
+            @Override
+            public String hint() {
+                return buildRecordingsHint();
+            }
+
+            @Override
+            public String title(RecordingsRepository.RecordingItem item) {
+                return buildRecordingTitle(item);
+            }
+
+            @Override
+            public String meta(RecordingsRepository.RecordingItem item) {
+                return buildRecordingMeta(item);
+            }
+
+            @Override
+            public int metaColor(RecordingsRepository.RecordingItem item) {
+                return recordingMetaColor(item);
+            }
+
+            @Override
+            public String statusLabel(RecordingsRepository.RecordingItem item) {
+                return buildRecordingStatusLabel(item);
+            }
+
+            @Override
+            public int statusBadgeColor(RecordingsRepository.RecordingItem item) {
+                return recordingStatusBadgeColor(item);
+            }
+
+            @Override
+            public void bindPoster(ImageView imageView, String posterUrl) {
+                bindRecordingPoster(imageView, posterUrl);
+            }
+
+            @Override
+            public void switchMode(boolean scheduledMode) {
+                switchRecordingsMode(scheduledMode);
+            }
+
+            @Override
+            public void refreshData() {
+                refreshRecordingsPanel();
+            }
+
+            @Override
+            public void playRecording(RecordingsRepository.RecordingItem item, String basePath) {
+                MainActivity.this.playRecording(item, basePath);
+            }
+
+            @Override
+            public void showRecordingActionsDialog() {
+                MainActivity.this.showRecordingActionsDialog();
+            }
+
+            @Override
+            public void showRecordingsDialog(RecordingsRepository.RecordingsResult result) {
+                MainActivity.this.showRecordingsDialog(result);
+            }
+
+            @Override
+            public void onBeforeShowPanel() {
+                clearQuickSearchOverlay();
+                hideOverlay();
+                closeMultiView();
+                if (touchControlsBar != null) {
+                    touchControlsBar.setVisibility(View.GONE);
+                }
+                if (touchHomeHub != null) {
+                    touchHomeHub.setVisibility(View.GONE);
+                }
+                if (timeshiftBarContainer != null) {
+                    timeshiftBarContainer.setVisibility(View.GONE);
+                }
+            }
+        };
     }
 
     private boolean isQuickSearchVisible() {
@@ -4336,182 +4383,31 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void moveRecordingsSelection(int delta) {
-        if (recordingsController.moveSelection(delta) == null) {
-            return;
-        }
-        recordingsHeaderFocusActive = false;
-        pendingRecordingsListScrollIndex = recordingsController.getSelectedIndex();
-        refreshRecordingsPanelSurface();
+        recordingsPanelController.moveSelection(delta);
     }
 
     private void moveRecordingsHeaderFocus(int delta) {
-        if (!isRecordingsPanelVisible()) {
-            return;
-        }
-        int anchor = recordingsHeaderFocusIndex;
-        if (anchor < 0 || anchor > 2) {
-            anchor = recordingsController.isScheduledMode() ? 1 : 0;
-        }
-        int next = ((anchor + delta) % 3 + 3) % 3;
-        recordingsHeaderFocusIndex = next;
-        recordingsHeaderFocusActive = true;
-        refreshRecordingsPanelSurface();
+        recordingsPanelController.moveHeaderFocus(delta);
     }
 
     private boolean activateRecordingsHeaderFocus() {
-        if (!recordingsHeaderFocusActive || recordingsHeaderFocusIndex < 0) {
-            return false;
-        }
-        switch (recordingsHeaderFocusIndex) {
-            case 0:
-                switchRecordingsMode(false);
-                return true;
-            case 1:
-                switchRecordingsMode(true);
-                return true;
-            case 2:
-                refreshRecordingsPanel();
-                return true;
-            default:
-                return false;
-        }
+        return recordingsPanelController.activateHeaderFocus();
     }
 
     private void playSelectedRecording() {
-        RecordingsRepository.RecordingsResult result = recordingsController.getCurrentResult();
-        RecordingsRepository.RecordingItem item = recordingsController.getSelectedItem();
-        if (result == null || item == null) {
-            return;
-        }
-        if (!item.playable) {
-            showRecordingActionsDialog();
-            return;
-        }
-        playRecording(item, result.basePath);
+        recordingsPanelController.playSelected();
     }
 
     private void updateRecordingsDetailPanel() {
-        refreshRecordingsPanelSurface();
+        recordingsPanelController.refreshSurface();
     }
 
     private void refreshRecordingsPanelList() {
-        refreshRecordingsPanelSurface();
+        recordingsPanelController.refreshSurface();
     }
 
     private void refreshRecordingsPanelSurface() {
-        if (recordingsPanel == null) {
-            return;
-        }
-        RecordingsSurfaceComposeBinder.bind(
-                recordingsPanel,
-                buildRecordingsSurfaceUiModel(),
-                this::bindRecordingPoster
-        );
-        pendingRecordingsListScrollIndex = -1;
-    }
-
-    private RecordingsSurfaceUiModel buildRecordingsSurfaceUiModel() {
-        return RecordingsUiFactory.build(new RecordingsUiFactory.Host() {
-            @Override
-            public String text(int resId) {
-                return getString(resId);
-            }
-
-            @Override
-            public String text(int resId, Object... args) {
-                return getString(resId, args);
-            }
-
-            @Override
-            public String summary(RecordingsRepository.RecordingsResult result) {
-                return buildRecordingsSummary(result);
-            }
-
-            @Override
-            public String hint() {
-                return buildRecordingsHint();
-            }
-
-            @Override
-            public String title(RecordingsRepository.RecordingItem item) {
-                return buildRecordingTitle(item);
-            }
-
-            @Override
-            public String meta(RecordingsRepository.RecordingItem item) {
-                return buildRecordingMeta(item);
-            }
-
-            @Override
-            public int metaColor(RecordingsRepository.RecordingItem item) {
-                return recordingMetaColor(item);
-            }
-
-            @Override
-            public String statusLabel(RecordingsRepository.RecordingItem item) {
-                return buildRecordingStatusLabel(item);
-            }
-
-            @Override
-            public int statusBadgeColor(RecordingsRepository.RecordingItem item) {
-                return recordingStatusBadgeColor(item);
-            }
-
-            @Override
-            public RecordingsRepository.RecordingsResult currentResult() {
-                return recordingsController.getCurrentResult();
-            }
-
-            @Override
-            public RecordingsRepository.RecordingItem selectedItem() {
-                return recordingsController.getSelectedItem();
-            }
-
-            @Override
-            public int selectedIndex() {
-                return recordingsController.getSelectedIndex();
-            }
-
-            @Override
-            public boolean scheduledMode() {
-                return recordingsController.isScheduledMode();
-            }
-
-            @Override
-            public boolean headerFocusActive() {
-                return recordingsHeaderFocusActive;
-            }
-
-            @Override
-            public int headerFocusIndex() {
-                return recordingsHeaderFocusIndex;
-            }
-
-            @Override
-            public int pendingScrollIndex() {
-                return pendingRecordingsListScrollIndex;
-            }
-
-            @Override
-            public void switchMode(boolean scheduledMode) {
-                switchRecordingsMode(scheduledMode);
-            }
-
-            @Override
-            public void refresh() {
-                refreshRecordingsPanel();
-            }
-
-            @Override
-            public void selectAndPlay(int position, RecordingsRepository.RecordingItem item, String basePath) {
-                recordingsController.selectIndex(position);
-                pendingRecordingsListScrollIndex = position;
-                refreshRecordingsPanelSurface();
-                if (item != null) {
-                    playRecording(item, basePath);
-                }
-            }
-        });
+        recordingsPanelController.refreshSurface();
     }
 
     private String buildRecordingsHint() {
@@ -7612,7 +7508,7 @@ public class MainActivity extends FragmentActivity {
                 BuildConfig.VERSION_NAME,
                 BuildConfig.VERSION_CODE,
                 prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false) ? getString(R.string.diagnostics_value_no) : getString(R.string.diagnostics_value_yes),
-                recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                recordingsPanelController.isAutoRefreshEnabled() ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 overlayNavigationState.favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 globalSearchRecents.size(),
                 vodResumePositions.size(),
@@ -7816,7 +7712,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean recordingsAutoRefreshEnabled() {
-                return MainActivity.this.recordingsAutoRefreshEnabled;
+                return MainActivity.this.recordingsPanelController.isAutoRefreshEnabled();
             }
 
             @Override
@@ -7854,7 +7750,7 @@ public class MainActivity extends FragmentActivity {
                 if (isOfflineRecordingsDisabled()) {
                     showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_offline_summary, recordingResumePositions.size()), () -> showRecordingSettingsDialog(onBack));
                 } else {
-                    showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_summary, recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no), recordingResumePositions.size()), () -> showRecordingSettingsDialog(onBack));
+                    showSettingsInfoDialog(R.string.settings_section_recordings, getString(R.string.settings_recordings_summary, recordingsPanelController.isAutoRefreshEnabled() ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no), recordingResumePositions.size()), () -> showRecordingSettingsDialog(onBack));
                 }
             }
 
@@ -9719,7 +9615,7 @@ public class MainActivity extends FragmentActivity {
                 overlayNavigationState.selectedFilterKey == null ? "all" : overlayNavigationState.selectedFilterKey,
                 overlayNavigationState.favoritesOnly ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 prefs != null && prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false) ? getString(R.string.diagnostics_value_no) : getString(R.string.diagnostics_value_yes),
-                recordingsAutoRefreshEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
+                recordingsPanelController.isAutoRefreshEnabled() ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 channels.size(),
                 allChannels.size(),
                 temporaryPlaybackModesByChannelId.size(),

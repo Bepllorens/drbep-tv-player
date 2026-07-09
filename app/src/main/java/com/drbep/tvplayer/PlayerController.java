@@ -322,7 +322,10 @@ final class PlayerController {
         player = new ExoPlayer.Builder(context)
                 .setTrackSelector(trackSelector)
                 .setLoadControl(new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(12_000, 45_000, 900, 2_500)
+                        // Zapping mas rapido en Fire TV: menor buffer minimo para arrancar
+                        // y recuperar rebuffer antes, priorizando tiempo sobre tamano.
+                        .setBufferDurationsMs(10_000, 45_000, 600, 1_500)
+                        .setPrioritizeTimeOverSizeThresholds(true)
                         .build())
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)
                         .setDrmSessionManagerProvider(createDrmSessionManagerProvider()))
@@ -360,7 +363,7 @@ final class PlayerController {
             public void onPlaybackStateChanged(int playbackState) {
                 lastPlaybackState = playbackStateToString(playbackState);
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
-                Log.w(TAG, "playbackState=" + playbackStateToString(playbackState)
+                Log.d(TAG, "playbackState=" + playbackStateToString(playbackState)
                         + " channel=" + describeRequest(currentRequest)
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " playWhenReady=" + (player != null && player.getPlayWhenReady())
@@ -397,7 +400,7 @@ final class PlayerController {
                 firstFrameRenderedForCurrentItem = true;
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
-                Log.w(TAG, "firstFrame channel=" + describeRequest(request)
+                Log.d(TAG, "firstFrame channel=" + describeRequest(request)
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " readyElapsedMs=" + currentReadyElapsedMs
                         + " firstFrameElapsedMs=" + elapsedMs);
@@ -1324,7 +1327,7 @@ final class PlayerController {
                     .build());
         }
 
-        Log.w(TAG, "preparePlayback channel=" + describeRequest(request)
+        Log.d(TAG, "preparePlayback channel=" + describeRequest(request)
             + " decision=" + describeDecision(decision)
             + " streamInfo=" + describeStreamInfo(streamInfo)
             + " resumeMs=" + resumePositionMs);

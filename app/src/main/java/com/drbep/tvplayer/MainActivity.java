@@ -279,7 +279,21 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
     private volatile boolean epgLoadInFlight = false;
-    private final LruCache<String, Drawable> channelLogoCache = new LruCache<>(96);
+    // Cache de logos dimensionada por memoria real (KB) en vez de por numero fijo de
+    // entradas, evitando OOM en Fire Stick de gama baja con bitmaps grandes.
+    private final LruCache<String, Drawable> channelLogoCache = new LruCache<String, Drawable>(
+            Math.max(4 * 1024, (int) (Runtime.getRuntime().maxMemory() / 1024 / 8))) {
+        @Override
+        protected int sizeOf(String key, Drawable value) {
+            if (value instanceof BitmapDrawable) {
+                Bitmap bitmap = ((BitmapDrawable) value).getBitmap();
+                if (bitmap != null) {
+                    return Math.max(1, bitmap.getByteCount() / 1024);
+                }
+            }
+            return 1;
+        }
+    };
     private CatalogRepository catalogRepository;
     private CatalogSnapshotStore catalogSnapshotStore;
     private EpgRepository epgRepository;
@@ -2855,7 +2869,9 @@ public class MainActivity extends FragmentActivity {
                         }
                         return;
                     }
-                    Glide.with(this).load(item.imageUrl.trim()).fitCenter().into(imageView);
+                    Glide.with(this).load(item.imageUrl.trim()).fitCenter()
+                            .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                            .override(dp(320), dp(200)).into(imageView);
                 }
         );
 
@@ -13096,7 +13112,9 @@ public class MainActivity extends FragmentActivity {
                         }
                         return;
                     }
-                    Glide.with(this).load(item.imageUrl.trim()).centerCrop().into(imageView);
+                    Glide.with(this).load(item.imageUrl.trim()).centerCrop()
+                            .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                            .override(dp(320), dp(200)).into(imageView);
                 }
         );
         Dialog timelineDialog = ComposeDialogHost.showFullscreen(this, timelinePanelComposeView, () -> {
@@ -14733,6 +14751,7 @@ public class MainActivity extends FragmentActivity {
                 .load(trimmedLogoUrl)
                 .fitCenter()
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .override(Math.max(1, dp(widthDp)), Math.max(1, dp(heightDp)))
                 .placeholder(fallback)
                 .error(fallback)
                 .into(imageView);
@@ -14908,6 +14927,7 @@ public class MainActivity extends FragmentActivity {
                     .load(trimmedPosterUrl)
                     .fitCenter()
                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                    .override(dp(360), dp(540))
                     .into(imageView);
             return;
         }
@@ -14916,6 +14936,7 @@ public class MainActivity extends FragmentActivity {
                 .load(trimmedPosterUrl)
                 .centerCrop()
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .override(dp(360), dp(540))
                 .into(imageView);
     }
 

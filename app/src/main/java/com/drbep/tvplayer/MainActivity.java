@@ -312,10 +312,7 @@ public class MainActivity extends FragmentActivity {
     private boolean startupFastPlaybackStarted;
     private String startupFastPlaybackChannelId = "";
     private String lastChannelId;
-    private final StringBuilder quickSearchBuffer = new StringBuilder();
-    private final List<ChannelItem> quickSearchMatches = new ArrayList<>();
     private final List<String> globalSearchRecents = new ArrayList<>();
-    private int quickSearchSelectionIndex = 0;
     private final Set<String> favoriteChannelIds = new HashSet<>();
     private final Map<String, String> temporaryPlaybackModesByChannelId = new HashMap<>();
     private final Map<String, String> learnedPlaybackModesByChannelId = new HashMap<>();
@@ -325,6 +322,7 @@ public class MainActivity extends FragmentActivity {
     private final RecordingsController recordingsController = new RecordingsController();
     private final RecordingsPanelController recordingsPanelController = new RecordingsPanelController(uiHandler, recordingsController, createRecordingsPanelHost());
     private final ZapBannerController zapBannerController = new ZapBannerController(uiHandler, createZapBannerHost());
+    private final QuickSearchController quickSearchController = new QuickSearchController(uiHandler, createQuickSearchHost());
     private OfflinePermissions currentOfflinePermissions = new OfflinePermissions();
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
@@ -473,7 +471,6 @@ public class MainActivity extends FragmentActivity {
     }
 
     private final Runnable hideOverlayRunnable = this::hideOverlay;
-    private final Runnable clearQuickSearchRunnable = this::clearQuickSearchOverlay;
     private final Runnable reminderTickRunnable = new Runnable() {
         @Override
         public void run() {
@@ -516,6 +513,7 @@ public class MainActivity extends FragmentActivity {
         zapBanner = findViewById(R.id.zapBanner);
         zapBannerController.attachBanner(zapBanner);
         quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
+        quickSearchController.attachOverlay(quickSearchOverlay);
         ComposeView hdrBadgeText = findViewById(R.id.hdrBadgeText);
         overlayUiController = new OverlayUiController(this, uiHandler, createOverlayUiHost());
         overlayUiController.attachViews(statusText, errorText, hdrBadgeText, startupLoadingOverlay);
@@ -4253,106 +4251,51 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isQuickSearchVisible() {
-        return quickSearchOverlay != null && quickSearchOverlay.getVisibility() == View.VISIBLE;
+        return quickSearchController.isVisible();
     }
 
     private void handleQuickSearchCharacter(char value) {
-        if (!Character.isLetterOrDigit(value)) {
-            return;
-        }
-        quickSearchBuffer.append(Character.toLowerCase(value));
-        updateQuickSearchOverlay();
+        quickSearchController.handleCharacter(value);
     }
 
     private void deleteQuickSearchCharacter() {
-        if (quickSearchBuffer.length() == 0) {
-            clearQuickSearchOverlay();
-            return;
-        }
-        quickSearchBuffer.deleteCharAt(quickSearchBuffer.length() - 1);
-        if (quickSearchBuffer.length() == 0) {
-            clearQuickSearchOverlay();
-            return;
-        }
-        updateQuickSearchOverlay();
+        quickSearchController.deleteCharacter();
     }
 
     private void moveQuickSearchSelection(int delta) {
-        if (quickSearchMatches.isEmpty()) {
-            return;
-        }
-        quickSearchSelectionIndex += delta;
-        if (quickSearchSelectionIndex < 0) {
-            quickSearchSelectionIndex = quickSearchMatches.size() - 1;
-        }
-        if (quickSearchSelectionIndex >= quickSearchMatches.size()) {
-            quickSearchSelectionIndex = 0;
-        }
-        updateQuickSearchOverlay();
+        quickSearchController.moveSelection(delta);
     }
 
     private void tuneQuickSearchSelection() {
-        if (quickSearchMatches.isEmpty()) {
-            return;
-        }
-        if (quickSearchSelectionIndex < 0 || quickSearchSelectionIndex >= quickSearchMatches.size()) {
-            quickSearchSelectionIndex = 0;
-        }
-        tuneChannelById(quickSearchMatches.get(quickSearchSelectionIndex).id);
-        clearQuickSearchOverlay();
-    }
-
-    private void updateQuickSearchOverlay() {
-        if (quickSearchOverlay == null) {
-            return;
-        }
-        String query = quickSearchBuffer.toString().trim();
-        if (query.isEmpty()) {
-            clearQuickSearchOverlay();
-            return;
-        }
-        quickSearchMatches.clear();
-        quickSearchMatches.addAll(searchChannels(query, 6));
-        if (quickSearchSelectionIndex >= quickSearchMatches.size()) {
-            quickSearchSelectionIndex = 0;
-        }
-        quickSearchOverlay.setVisibility(View.VISIBLE);
-        String resultText;
-        if (quickSearchMatches.isEmpty()) {
-            resultText = getString(R.string.quick_search_no_results);
-        } else {
-            ChannelItem selected = quickSearchMatches.get(quickSearchSelectionIndex);
-            String primaryMeta = selected.nowProgram != null && !selected.nowProgram.trim().isEmpty() ? selected.nowProgram : selected.group;
-            if (primaryMeta == null || primaryMeta.trim().isEmpty()) {
-                primaryMeta = getString(R.string.search_channel_action_hint);
-            }
-            resultText = getString(
-                    R.string.quick_search_result,
-                    getString(R.string.quick_search_result_index, quickSearchSelectionIndex + 1, quickSearchMatches.size()) + "  ·  " + selected.name,
-                    primaryMeta
-            );
-        }
-        QuickSearchOverlayComposeBinder.bind(
-                quickSearchOverlay,
-                new QuickSearchOverlayUiModel(
-                        getString(R.string.quick_search_title),
-                        query.toUpperCase(Locale.getDefault()),
-                        resultText,
-                        getString(R.string.quick_search_hint)
-                )
-        );
-        uiHandler.removeCallbacks(clearQuickSearchRunnable);
-        uiHandler.postDelayed(clearQuickSearchRunnable, 3200L);
+        quickSearchController.tuneSelection();
     }
 
     private void clearQuickSearchOverlay() {
-        quickSearchBuffer.setLength(0);
-        quickSearchMatches.clear();
-        quickSearchSelectionIndex = 0;
-        if (quickSearchOverlay != null) {
-            quickSearchOverlay.setVisibility(View.GONE);
-        }
-        uiHandler.removeCallbacks(clearQuickSearchRunnable);
+        quickSearchController.clear();
+    }
+
+    private QuickSearchController.Host createQuickSearchHost() {
+        return new QuickSearchController.Host() {
+            @Override
+            public String string(int resId) {
+                return getString(resId);
+            }
+
+            @Override
+            public String string(int resId, Object... args) {
+                return getString(resId, args);
+            }
+
+            @Override
+            public List<ChannelItem> searchChannels(String query, int limit) {
+                return MainActivity.this.searchChannels(query, limit);
+            }
+
+            @Override
+            public void tuneChannelById(String channelId) {
+                MainActivity.this.tuneChannelById(channelId);
+            }
+        };
     }
 
     private List<ChannelItem> searchChannels(String query, int limit) {

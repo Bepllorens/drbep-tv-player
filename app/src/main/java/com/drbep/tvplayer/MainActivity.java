@@ -178,7 +178,6 @@ public class MainActivity extends FragmentActivity {
     private final PlayerView[] multiPlayerViews = new PlayerView[4];
     private final View[] multiTiles = new View[4];
     private final ComposeView[] multiOverlayViews = new ComposeView[4];
-    private final List<ZapActionItem> zapActionItems = new ArrayList<>();
     private final List<PlayerController> multiPlayerControllers = new ArrayList<>();
     private final List<ChannelItem> multiViewChannels = new ArrayList<>();
     private final String[] multiViewChannelIds = new String[4];
@@ -217,7 +216,6 @@ public class MainActivity extends FragmentActivity {
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
     private ComposeView zapBanner;
-    private final ZapBannerState zapBannerState = new ZapBannerState();
     private ComposeView quickSearchOverlay;
     private ComposeView recordingsPanel;
     private ComposeView channelListComposeView;
@@ -326,6 +324,7 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private final RecordingsController recordingsController = new RecordingsController();
     private final RecordingsPanelController recordingsPanelController = new RecordingsPanelController(uiHandler, recordingsController, createRecordingsPanelHost());
+    private final ZapBannerController zapBannerController = new ZapBannerController(uiHandler, createZapBannerHost());
     private OfflinePermissions currentOfflinePermissions = new OfflinePermissions();
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
@@ -474,11 +473,6 @@ public class MainActivity extends FragmentActivity {
     }
 
     private final Runnable hideOverlayRunnable = this::hideOverlay;
-    private final Runnable hideZapBannerRunnable = () -> {
-        if (zapBanner != null) {
-            zapBanner.setVisibility(View.GONE);
-        }
-    };
     private final Runnable clearQuickSearchRunnable = this::clearQuickSearchOverlay;
     private final Runnable reminderTickRunnable = new Runnable() {
         @Override
@@ -520,6 +514,7 @@ public class MainActivity extends FragmentActivity {
         overlayExploreSection = findViewById(R.id.overlayExploreSection);
         overlayListSection = findViewById(R.id.overlayListSection);
         zapBanner = findViewById(R.id.zapBanner);
+        zapBannerController.attachBanner(zapBanner);
         quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
         ComposeView hdrBadgeText = findViewById(R.id.hdrBadgeText);
         overlayUiController = new OverlayUiController(this, uiHandler, createOverlayUiHost());
@@ -4107,7 +4102,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isZapBannerVisible() {
-        return zapBannerState.isVisible() && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE;
+        return zapBannerController.isVisible();
     }
 
     private void showOverlay() {
@@ -4143,11 +4138,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void hideZapBanner() {
-        uiHandler.removeCallbacks(hideZapBannerRunnable);
-        if (zapBanner != null) {
-            zapBanner.setVisibility(View.GONE);
-        }
-        zapBannerState.hide();
+        zapBannerController.hide();
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result) {
@@ -6516,49 +6507,59 @@ public class MainActivity extends FragmentActivity {
         return joinLabels(parts);
     }
 
-    private void updateZapActionButtons(ChannelItem channelItem) {
-        int selectedIndex = zapBannerState.getSelectedActionIndex();
-        boolean favorite = channelItem != null && favoriteChannelIds.contains(channelItem.id);
-        zapActionItems.clear();
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_channels, true, false, selectedIndex == 0, this::showOverlay));
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_guide, true, false, selectedIndex == 1, this::openTimelineGuideForCurrentPlayback));
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_record, !isOfflineRecordingsDisabled(), false, selectedIndex == 2, this::scheduleCurrentProgramFromHud));
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_family, true, isProtectedItem(channelItem), selectedIndex == 3, this::showParentalSettingsDialog));
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_audio, true, false, selectedIndex == 4, this::showAudioTrackDialog));
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_quality, true, false, selectedIndex == 5, this::showPlaybackDiagnosticsFromHud));
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_favorite, true, favorite, selectedIndex == 6, this::toggleCurrentChannelFavoriteFromHud));
-        zapActionItems.add(buildZapActionItem(R.string.zap_action_more, true, false, selectedIndex == 7, this::showSimpleOfflineToolsMenu));
-        zapBannerState.ensureValidSelection(zapActionItems);
-        int normalizedIndex = zapBannerState.getSelectedActionIndex();
-        for (int i = 0; i < zapActionItems.size(); i++) {
-            ZapActionItem item = zapActionItems.get(i);
-            if (item == null) {
-                continue;
-            }
-            zapActionItems.set(i, new ZapActionItem(
-                    item.label,
-                    item.enabled,
-                    item.highlighted,
-                    i == normalizedIndex,
-                    item.onClick,
-                    item.onLongClick
-            ));
-        }
+    private void moveZapBannerSelection(int delta) {
+        zapBannerController.moveSelection(delta);
     }
 
-    private ZapBannerUiModel buildZapBannerUiModel(ChannelItem channelItem) {
-        updateZapActionButtons(channelItem);
-        EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channelItem.id);
-        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
-        return ZapBannerUiFactory.build(channelItem, pair, diagnostics, zapActionItems, new ZapBannerUiFactory.Host() {
+    private void activateZapBannerSelection() {
+        zapBannerController.activateSelection();
+    }
+
+    private ZapBannerController.Host createZapBannerHost() {
+        return new ZapBannerController.Host() {
             @Override
-            public String text(int resId) {
+            public String string(int resId) {
                 return getString(resId);
             }
 
             @Override
-            public String text(int resId, Object... args) {
+            public String string(int resId, Object... args) {
                 return getString(resId, args);
+            }
+
+            @Override
+            public boolean offlineRecordingsDisabled() {
+                return isOfflineRecordingsDisabled();
+            }
+
+            @Override
+            public boolean isProtectedItem(ChannelItem item) {
+                return MainActivity.this.isProtectedItem(item);
+            }
+
+            @Override
+            public boolean isFavorite(ChannelItem item) {
+                return item != null && favoriteChannelIds.contains(item.id);
+            }
+
+            @Override
+            public ChannelItem currentPlaybackChannel() {
+                return getCurrentPlaybackChannelItem();
+            }
+
+            @Override
+            public EpgRepository.EpgProgramPair epgPair(String channelId) {
+                return epgProgramPairByChannelId.get(channelId);
+            }
+
+            @Override
+            public PlayerController.PlaybackDiagnostics playbackDiagnostics() {
+                return playerController == null ? null : playerController.getPlaybackDiagnostics();
+            }
+
+            @Override
+            public void bindChannelLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
+                MainActivity.this.bindChannelLogo(imageView, logoUrl, channelName, widthDp, heightDp);
             }
 
             @Override
@@ -6577,8 +6578,8 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
-            public String playbackQuality(PlayerController.PlaybackDiagnostics playbackDiagnostics) {
-                return formatPlaybackQualityCompact(playbackDiagnostics);
+            public String playbackQuality(PlayerController.PlaybackDiagnostics diagnostics) {
+                return formatPlaybackQualityCompact(diagnostics);
             }
 
             @Override
@@ -6597,45 +6598,45 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
-            public long nowMs() {
-                return System.currentTimeMillis();
+            public void showChannels() {
+                showOverlay();
             }
-        });
-    }
 
-    private ZapActionItem buildZapActionItem(int labelRes, boolean enabled, boolean highlighted, boolean selected, Runnable action) {
-        return new ZapActionItem(
-                getString(labelRes),
-                enabled,
-                highlighted,
-                selected,
-                () -> {
-                    uiHandler.removeCallbacks(hideZapBannerRunnable);
-                    if (action != null) {
-                        action.run();
-                    }
-                }
-        );
-    }
-
-    private void moveZapBannerSelection(int delta) {
-        if (zapBannerState.moveSelection(delta, zapActionItems)) {
-            ChannelItem currentChannel = getCurrentPlaybackChannelItem();
-            if (currentChannel != null) {
-                updateZapBannerContent(currentChannel);
-            } else {
-                updateZapActionButtons(null);
+            @Override
+            public void openGuide() {
+                openTimelineGuideForCurrentPlayback();
             }
-            uiHandler.removeCallbacks(hideZapBannerRunnable);
-            uiHandler.postDelayed(hideZapBannerRunnable, 5500L);
-        }
-    }
 
-    private void activateZapBannerSelection() {
-        ZapActionItem item = zapBannerState.getSelectedAction(zapActionItems);
-        if (item != null && item.enabled && item.onClick != null) {
-            item.onClick.run();
-        }
+            @Override
+            public void scheduleCurrentProgram() {
+                scheduleCurrentProgramFromHud();
+            }
+
+            @Override
+            public void showParentalSettings() {
+                showParentalSettingsDialog();
+            }
+
+            @Override
+            public void showAudioTrack() {
+                showAudioTrackDialog();
+            }
+
+            @Override
+            public void showPlaybackDiagnostics() {
+                showPlaybackDiagnosticsFromHud();
+            }
+
+            @Override
+            public void toggleCurrentFavorite() {
+                toggleCurrentChannelFavoriteFromHud();
+            }
+
+            @Override
+            public void showToolsMenu() {
+                showSimpleOfflineToolsMenu();
+            }
+        };
     }
 
     private void openTimelineGuideForCurrentPlayback() {
@@ -6675,8 +6676,7 @@ public class MainActivity extends FragmentActivity {
         toggleFavoriteForChannel(currentChannel);
         if (isZapBannerVisible()) {
             updateZapBannerContent(currentChannel);
-            uiHandler.removeCallbacks(hideZapBannerRunnable);
-            uiHandler.postDelayed(hideZapBannerRunnable, 5500L);
+            zapBannerController.refreshAutoHideTimer();
         }
     }
 
@@ -14076,21 +14076,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showZapBanner(ChannelItem channelItem) {
-        if (zapBanner == null || channelItem == null) {
-            return;
-        }
-        zapBannerState.show();
-        updateZapBannerContent(channelItem);
-        zapBanner.setVisibility(View.VISIBLE);
-        uiHandler.removeCallbacks(hideZapBannerRunnable);
-        uiHandler.postDelayed(hideZapBannerRunnable, 5500L);
+        zapBannerController.show(channelItem);
     }
 
     private void updateZapBannerContent(ChannelItem channelItem) {
-        if (zapBanner == null || channelItem == null) {
-            return;
-        }
-        ZapBannerComposeBinder.bind(zapBanner, buildZapBannerUiModel(channelItem), this::bindChannelLogo);
+        zapBannerController.updateContent(channelItem);
     }
 
     private String buildGuideMeta(EpgRepository.EpgProgram program) {

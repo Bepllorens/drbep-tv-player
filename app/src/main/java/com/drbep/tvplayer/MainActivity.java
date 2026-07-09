@@ -84,7 +84,6 @@ import java.util.Map;
 public class MainActivity extends FragmentActivity {
     private static final String TAG = "DRBEP-TV-Native";
     private static final long OVERLAY_HIDE_MS = 6000L;
-    private static final long STATUS_HIDE_MS = 2500L;
     private static final long TOUCH_CONTROLS_HIDE_MS = 3000L;
     private static final long TV_TIMESHIFT_HUD_HIDE_MS = 3500L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
@@ -171,8 +170,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PARENTAL_PREF_PREFIX = "parental_control";
 
     private PlayerView playerView;
-    private ComposeView errorText;
-    private ComposeView statusText;
+    private OverlayUiController overlayUiController;
     private ComposeView startupLoadingOverlay;
     private ComposeView overlayControlsComposeView;
     private View touchHomeHub;
@@ -491,16 +489,6 @@ public class MainActivity extends FragmentActivity {
     }
 
     private final Runnable hideOverlayRunnable = this::hideOverlay;
-    private final Runnable hideStatusRunnable = () -> {
-        if (statusText != null) {
-            statusText.setVisibility(View.GONE);
-        }
-    };
-    private final Runnable hideHdrBadgeRunnable = () -> {
-        if (hdrBadgeText != null) {
-            hdrBadgeText.setVisibility(View.GONE);
-        }
-    };
     private final Runnable hideZapBannerRunnable = () -> {
         if (zapBanner != null) {
             zapBanner.setVisibility(View.GONE);
@@ -522,8 +510,8 @@ public class MainActivity extends FragmentActivity {
         setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.playerView);
-        errorText = findViewById(R.id.errorText);
-        statusText = findViewById(R.id.statusText);
+        ComposeView errorText = findViewById(R.id.errorText);
+        ComposeView statusText = findViewById(R.id.statusText);
         startupLoadingOverlay = findViewById(R.id.startupLoadingOverlay);
         overlayControlsComposeView = findViewById(R.id.overlayExploreSection);
         touchHomeHub = findViewById(R.id.touchHomeHub);
@@ -548,7 +536,9 @@ public class MainActivity extends FragmentActivity {
         overlayListSection = findViewById(R.id.overlayListSection);
         zapBanner = findViewById(R.id.zapBanner);
         quickSearchOverlay = findViewById(R.id.quickSearchOverlay);
-        hdrBadgeText = findViewById(R.id.hdrBadgeText);
+        ComposeView hdrBadgeText = findViewById(R.id.hdrBadgeText);
+        overlayUiController = new OverlayUiController(this, uiHandler, createOverlayUiHost());
+        overlayUiController.attachViews(statusText, errorText, hdrBadgeText);
         liveStateBadgeText = findViewById(R.id.liveStateBadgeText);
         touchControlsBar = findViewById(R.id.touchControlsBar);
         timeshiftBarContainer = findViewById(R.id.timeshiftBarContainer);
@@ -4683,16 +4673,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showHdrBadge(String label) {
-        if (hdrBadgeText == null) {
-            return;
-        }
-        SurfaceBadgeComposeBinder.bind(
-                hdrBadgeText,
-                new SurfaceBadgeUiModel(label == null || label.trim().isEmpty() ? getString(R.string.status_hdr_detected) : label.trim(), 0xE0A86A00, 0xFFFFFFFF, false, false)
-        );
-        hdrBadgeText.setVisibility(View.VISIBLE);
-        uiHandler.removeCallbacks(hideHdrBadgeRunnable);
-        uiHandler.postDelayed(hideHdrBadgeRunnable, 2000L);
+        overlayUiController.showHdrBadge(label);
     }
 
     private void showStartupLoading(String step, String detail) {
@@ -4723,20 +4704,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showStatus(String text) {
-        if (statusText == null || text == null || text.trim().isEmpty()) {
-            return;
-        }
-        if (isRedundantPlaybackStatus(text)) {
-            statusText.setVisibility(View.GONE);
-            updateOverlayPanel();
-            uiHandler.removeCallbacks(hideStatusRunnable);
-            return;
-        }
-        SurfaceBadgeComposeBinder.bind(statusText, new SurfaceBadgeUiModel(text, 0xB3000000, 0xFFFFFFFF, true, false));
-        statusText.setVisibility(View.VISIBLE);
-        updateOverlayPanel();
-        uiHandler.removeCallbacks(hideStatusRunnable);
-        uiHandler.postDelayed(hideStatusRunnable, STATUS_HIDE_MS);
+        overlayUiController.showStatus(text);
     }
 
     private boolean isRedundantPlaybackStatus(String text) {
@@ -4754,32 +4722,45 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showError(String reason) {
-        hideStartupLoading();
-        if (errorText == null) {
-            return;
-        }
-        ChannelItem current = getCurrentPlaybackChannelItem();
-        if (current != null && current.isVod) {
-            errorText.setVisibility(View.VISIBLE);
-            SurfaceBadgeComposeBinder.bind(errorText, new SurfaceBadgeUiModel(getString(
-                    R.string.error_vod_playback_details,
-                    reason == null ? getString(R.string.error_unknown_reason) : reason,
-                    displayName(current)
-            ), 0xCC000000, 0xFFFFFFFF, true, true));
-            return;
-        }
-        errorText.setVisibility(View.VISIBLE);
-        SurfaceBadgeComposeBinder.bind(errorText, new SurfaceBadgeUiModel(getString(
-            R.string.error_playback_details,
-            reason == null ? getString(R.string.error_unknown_reason) : reason,
-            baseUrl
-        ), 0xCC000000, 0xFFFFFFFF, true, true));
+        overlayUiController.showError(reason);
+    }
+
+    private OverlayUiController.Host createOverlayUiHost() {
+        return new OverlayUiController.Host() {
+            @Override
+            public boolean isRedundantPlaybackStatus(String text) {
+                return MainActivity.this.isRedundantPlaybackStatus(text);
+            }
+
+            @Override
+            public void onOverlayPanelInvalidated() {
+                MainActivity.this.updateOverlayPanel();
+            }
+
+            @Override
+            public void hideStartupLoading() {
+                MainActivity.this.hideStartupLoading();
+            }
+
+            @Override
+            public ChannelItem currentPlaybackChannelItem() {
+                return MainActivity.this.getCurrentPlaybackChannelItem();
+            }
+
+            @Override
+            public String displayName(ChannelItem item) {
+                return MainActivity.this.displayName(item);
+            }
+
+            @Override
+            public String baseUrl() {
+                return baseUrl;
+            }
+        };
     }
 
     private void hideError() {
-        if (errorText != null) {
-            errorText.setVisibility(View.GONE);
-        }
+        overlayUiController.hideError();
     }
 
     private RemoteInputRouter.Host createRemoteInputHost() {

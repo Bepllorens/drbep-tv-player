@@ -12,6 +12,11 @@ import java.util.List;
 final class ReminderStore {
     private static final String TAG = "ReminderStore";
 
+    // Constantes compartidas para que el Worker de WorkManager pueda abrir el
+    // mismo almacen de recordatorios sin depender de MainActivity.
+    static final String PREFS_NAME = "drbep_tv_prefs";
+    static final String PREF_KEY = "channel_reminders";
+
     static final class ReminderItem {
         final String channelId;
         final String channelName;
@@ -74,6 +79,33 @@ final class ReminderStore {
         }
         reminders.add(item);
         save();
+    }
+
+    /** Recordatorios aun no notificados, para reprogramarlos en WorkManager al arrancar. */
+    List<ReminderItem> getPendingReminders() {
+        List<ReminderItem> out = new ArrayList<>();
+        for (ReminderItem item : reminders) {
+            if (item != null && !item.notified) {
+                out.add(item);
+            }
+        }
+        return out;
+    }
+
+    /** Marca como notificado el recordatorio disparado por el Worker y persiste el cambio. */
+    void markNotified(String channelId, long startAtMillis) {
+        boolean changed = false;
+        for (ReminderItem item : reminders) {
+            if (item != null && !item.notified
+                    && channelId != null && channelId.equals(item.channelId)
+                    && item.startAtMillis == startAtMillis) {
+                item.notified = true;
+                changed = true;
+            }
+        }
+        if (changed) {
+            save();
+        }
     }
 
     List<ReminderItem> collectDueNotifications(long nowMillis) {

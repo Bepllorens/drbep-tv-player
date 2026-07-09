@@ -708,6 +708,9 @@ public class MainActivity extends FragmentActivity {
             favoriteChannelIds.addAll(storedFavorites);
         }
         reminderStore.load();
+        // Reprograma en WorkManager los recordatorios pendientes (sobreviven a cierres
+        // de la app y reinicios del dispositivo). Politica KEEP evita duplicados.
+        ReminderScheduler.reschedulePending(this, reminderStore);
         recentChannelsStore.load();
         favoriteOrderStore.load();
         playbackModeStore.load();
@@ -3386,7 +3389,24 @@ public class MainActivity extends FragmentActivity {
         String title = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title;
         ReminderStore.ReminderItem item = new ReminderStore.ReminderItem(ch.id, ch.name, title, startAt, false);
         reminderStore.addReminder(item);
+        ensureNotificationPermission();
+        ReminderScheduler.schedule(this, item);
         showStatus(getString(R.string.status_reminder_created));
+    }
+
+    /** Solicita permiso de notificaciones en Android 13+ para que los recordatorios avisen. */
+    private void ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        try {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 4501);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void openRecordingsBrowser() {

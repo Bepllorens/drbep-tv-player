@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -46,24 +45,14 @@ object TouchControlsComposeBinder {
 
 @Composable
 private fun TouchControlsBar(model: TouchControlsBarUiModel) {
-    // Ancho real disponible para la barra: el ComposeView padre (activity_main.xml)
-    // tiene layout_width="match_parent" + layout_marginStart/End = touch_controls_side_margin.
-    // ComposeView no siempre propaga esas constraints al contenido, asi que calculamos
-    // el ancho explicitamente desde LocalConfiguration (screenWidthDp - margen lateral)
-    // y lo aplicamos al Row. Esto garantiza un viewport de ancho conocido para
-    // horizontalScroll, de modo que al llegar al extremo derecho el ultimo chip
-    // (+30s, etc.) quede completamente visible.
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    val sideMarginDp = when {
-        screenWidthDp >= 840 -> 80
-        screenWidthDp >= 600 -> 48
-        else -> 0
-    }
-    val barWidthDp = (screenWidthDp - 2 * sideMarginDp).coerceAtLeast(200)
-
+    // fillMaxWidth() hace que la Column tome exactamente el ancho disponible
+    // en el ComposeView padre (match_parent + margin lateral en XML).
+    // fillMaxWidth() en el Row crea el viewport de horizontalScroll de ese
+    // mismo ancho menos el padding de la Column. Al scrollear al extremo
+    // derecho, el ultimo chip (+30s, etc.) queda completamente visible.
     Column(
         modifier = Modifier
-            .width(barWidthDp.dp)
+            .fillMaxWidth()
             .background(Color(0xD411161D), RoundedCornerShape(22.dp))
             .padding(horizontal = 8.dp, vertical = 7.dp)
     ) {

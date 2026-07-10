@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 239
-        versionName "2.0.239-beta-hls-crash-guard-touch-fit"
+        versionCode 240
+        versionName "2.0.240-beta-touch-hud-restore"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",

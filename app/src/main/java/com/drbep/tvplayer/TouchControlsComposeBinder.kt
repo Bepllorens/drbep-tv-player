@@ -46,42 +46,35 @@ object TouchControlsComposeBinder {
 
 @Composable
 private fun TouchControlsBar(model: TouchControlsBarUiModel) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val actionCount = model.actions.size.coerceAtLeast(1)
-        val desiredButtonWidth = if (maxWidth < 520.dp) 82.dp else 96.dp
-        val desiredContentWidth = desiredButtonWidth * actionCount + 8.dp * (actionCount - 1)
-        val panelMaxWidth = if (maxWidth >= 840.dp) 720.dp else maxWidth
-        val panelWidth = desiredContentWidth.coerceAtMost(panelMaxWidth).coerceAtMost(maxWidth)
-        val chipsFit = desiredContentWidth <= panelWidth
-
-        Column(
-            modifier = Modifier
-                .width(panelWidth)
-                .background(Color(0xD411161D), RoundedCornerShape(22.dp))
-                .padding(horizontal = 8.dp, vertical = 7.dp)
-        ) {
-            if (model.contextTitle.isNotBlank() || model.contextSubtitle.isNotBlank()) {
-                TouchContextHeader(model)
-            }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xD411161D), RoundedCornerShape(22.dp))
+            .padding(horizontal = 8.dp, vertical = 7.dp)
+    ) {
+        if (model.contextTitle.isNotBlank() || model.contextSubtitle.isNotBlank()) {
+            TouchContextHeader(model)
+        }
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val actionCount = model.actions.size.coerceAtLeast(1)
+            val minimumContentWidth =
+                (78.dp * actionCount) + (8.dp * (actionCount - 1).coerceAtLeast(0)) + 24.dp
+            val shouldCenter = minimumContentWidth <= maxWidth
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = if (chipsFit) Arrangement.Center else Arrangement.Start,
+                horizontalArrangement = if (shouldCenter) Arrangement.Center else Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Spacer(modifier = Modifier.width(8.dp))
                 model.actions.forEachIndexed { index, item ->
-                    TouchControlChip(
-                        item = item,
-                        modifier = if (chipsFit) Modifier.width(desiredButtonWidth) else Modifier
-                    )
+                    TouchControlChip(item = item)
                     if (index < model.actions.lastIndex) {
                         Spacer(modifier = Modifier.width(8.dp))
                     }
                 }
-                if (!chipsFit) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
+                Spacer(modifier = Modifier.width(16.dp))
             }
         }
     }

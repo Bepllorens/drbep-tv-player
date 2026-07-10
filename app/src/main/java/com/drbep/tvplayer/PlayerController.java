@@ -73,6 +73,9 @@ final class PlayerController {
     private static final int PLAYBACK_READ_TIMEOUT_MS = 30_000;
     private static final long TIMESHIFT_MAX_BACK_MS = 2L * 60L * 60L * 1000L;
     private static final long TIMESHIFT_SEEK_STEP_MS = 30_000L;
+    private static volatile boolean playbackCrashHandlerInstalled;
+    private static volatile Thread.UncaughtExceptionHandler previousUncaughtExceptionHandler;
+    private static volatile PlayerController activePlaybackController;
 
 
     interface Host {
@@ -309,6 +312,8 @@ final class PlayerController {
     }
 
     void initialize() {
+        installPlaybackCrashGuard();
+        activePlaybackController = this;
         trackSelector = new DefaultTrackSelector(context);
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .setForceHighestSupportedBitrate(true));
@@ -423,6 +428,84 @@ final class PlayerController {
                 updateSelectedPlaybackFormats();
             }
         });
+    }
+
+    private void installPlaybackCrashGuard() {
+        if (playbackCrashHandlerInstalled) {
+            return;
+        }
+        synchronized (PlayerController.class) {
+            if (playbackCrashHandlerInstalled) {
+                return;
+            }
+            previousUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
+            Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+                PlayerController controller = activePlaybackController;
+                if (controller != null && controller.handlePlaybackThreadCrash(thread, throwable)) {
+                    return;
+                }
+                Thread.UncaughtExceptionHandler previous = previousUncaughtExceptionHandler;
+                if (previous != null) {
+                    previous.uncaughtException(thread, throwable);
+                }
+            });
+            playbackCrashHandlerInstalled = true;
+        }
+    }
+
+    private boolean handlePlaybackThreadCrash(Thread thread, Throwable throwable) {
+        if (!isKnownHlsPlaybackThreadCrash(thread, throwable)) {
+            return false;
+        }
+        PlaybackRequest request = currentRequest;
+        PlaybackRouteResolver.Decision decision = currentPlaybackDecision;
+        StreamInfo streamInfo = currentStreamInfo;
+        Log.e(TAG, "guarded internal HLS playback crash channel=" + describeRequest(request)
+                + " decision=" + describeDecision(decision)
+                + " streamInfo=" + describeStreamInfo(streamInfo), throwable);
+        uiHandler.post(() -> recoverAfterInternalPlaybackThreadCrash(request, streamInfo));
+        return true;
+    }
+
+    private boolean isKnownHlsPlaybackThreadCrash(Thread thread, Throwable throwable) {
+        if (throwable == null || !(throwable instanceof ArrayIndexOutOfBoundsException)) {
+            return false;
+        }
+        String threadName = thread == null ? "" : thread.getName();
+        if (!threadName.toLowerCase(Locale.ROOT).contains("exoplayer")) {
+            return false;
+        }
+        for (StackTraceElement element : throwable.getStackTrace()) {
+            String className = element == null ? "" : element.getClassName();
+            if (className.contains("androidx.media3.exoplayer.hls")
+                    || className.contains("BaseTrackSelection")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void recoverAfterInternalPlaybackThreadCrash(PlaybackRequest request, StreamInfo streamInfo) {
+        if (request == null) {
+            host.showError(context.getString(R.string.error_playback_message, "Error interno HLS"));
+            return;
+        }
+        try {
+            if (player != null) {
+                playerView.setPlayer(null);
+                player.release();
+                player = null;
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "failed to release crashed player", e);
+        }
+        host.showStatus(context.getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(request.playbackMode)));
+        attemptedRecoveryRoutes.add(routeAttemptKey(currentPlaybackDecision) + "|internal-hls-crash");
+        usingVideoCompatibilityCap = true;
+        clearPlaybackQuality();
+        initialize();
+        markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_video_cap));
+        playChannelInternal(request, true, false, streamInfo, 0L);
     }
 
     private void clearPlaybackQuality() {
@@ -1365,7 +1448,7 @@ final class PlayerController {
         boolean capForCompatibility = usingVideoCompatibilityCap;
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                .setForceHighestSupportedBitrate(true);
+                .setForceHighestSupportedBitrate(!isHlsDecision(decision));
         if (capForCompatibility) {
             builder.setMaxVideoSize(1280, 720);
             Log.i(TAG, "using 720p video compatibility cap channel=" + describeRequest(request)
@@ -1374,6 +1457,17 @@ final class PlayerController {
             builder.clearVideoSizeConstraints();
         }
         trackSelector.setParameters(builder);
+    }
+
+    private boolean isHlsDecision(PlaybackRouteResolver.Decision decision) {
+        if (decision == null) {
+            return false;
+        }
+        String mimeType = safeLower(decision.mimeType);
+        String targetUrl = safeLower(decision.targetUrl);
+        return MimeTypes.APPLICATION_M3U8.equals(mimeType)
+                || mimeType.contains("mpegurl")
+                || targetUrl.contains(".m3u8");
     }
 
     private boolean isOrangePlayback(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,28 +46,42 @@ object TouchControlsComposeBinder {
 
 @Composable
 private fun TouchControlsBar(model: TouchControlsBarUiModel) {
-    // fillMaxWidth() hace que la Column tome exactamente el ancho disponible
-    // en el ComposeView padre (match_parent + margin lateral en XML).
-    // fillMaxWidth() en el Row crea el viewport de horizontalScroll de ese
-    // mismo ancho menos el padding de la Column. Al scrollear al extremo
-    // derecho, el ultimo chip (+30s, etc.) queda completamente visible.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xD411161D), RoundedCornerShape(22.dp))
-            .padding(horizontal = 8.dp, vertical = 7.dp)
-    ) {
-        if (model.contextTitle.isNotBlank() || model.contextSubtitle.isNotBlank()) {
-            TouchContextHeader(model)
-        }
-        Row(
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val actionCount = model.actions.size.coerceAtLeast(1)
+        val desiredButtonWidth = if (maxWidth < 520.dp) 82.dp else 96.dp
+        val desiredContentWidth = desiredButtonWidth * actionCount + 8.dp * (actionCount - 1)
+        val panelMaxWidth = if (maxWidth >= 840.dp) 720.dp else maxWidth
+        val panelWidth = desiredContentWidth.coerceAtMost(panelMaxWidth).coerceAtMost(maxWidth)
+        val chipsFit = desiredContentWidth <= panelWidth
+
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .width(panelWidth)
+                .background(Color(0xD411161D), RoundedCornerShape(22.dp))
+                .padding(horizontal = 8.dp, vertical = 7.dp)
         ) {
-            model.actions.forEach { item ->
-                TouchControlChip(item)
+            if (model.contextTitle.isNotBlank() || model.contextSubtitle.isNotBlank()) {
+                TouchContextHeader(model)
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = if (chipsFit) Arrangement.Center else Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                model.actions.forEachIndexed { index, item ->
+                    TouchControlChip(
+                        item = item,
+                        modifier = if (chipsFit) Modifier.width(desiredButtonWidth) else Modifier
+                    )
+                    if (index < model.actions.lastIndex) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                }
+                if (!chipsFit) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
             }
         }
     }
@@ -129,10 +144,10 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TouchControlChip(item: ZapActionItem) {
+private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier) {
     BasicText(
         text = item.label,
-        modifier = Modifier
+        modifier = modifier
             .alpha(if (item.enabled) 1f else 0.45f)
             .background(
                 color = if (item.selected) Color(0xFF2D6EA3) else Color(0xFF203246),

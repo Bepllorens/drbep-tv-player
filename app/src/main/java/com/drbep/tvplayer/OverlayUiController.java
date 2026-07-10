@@ -70,20 +70,28 @@ final class OverlayUiController {
     }
 
     void showStartupLoading(String step, String detail) {
+        showLoading(context.getString(R.string.startup_loading_title), step, detail);
+    }
+
+    void showLoading(String title, String step, String detail) {
         if (startupLoadingOverlay == null) {
             return;
         }
         StartupLoadingComposeBinder.bind(startupLoadingOverlay,
-                new StartupLoadingUiModel(context.getString(R.string.startup_loading_title), step, detail));
+                new StartupLoadingUiModel(title, step, detail));
         startupLoadingOverlay.setVisibility(View.VISIBLE);
     }
 
     void updateStartupLoading(String step, String detail) {
+        updateLoading(context.getString(R.string.startup_loading_title), step, detail);
+    }
+
+    void updateLoading(String title, String step, String detail) {
         if (startupLoadingOverlay == null || startupLoadingOverlay.getVisibility() != View.VISIBLE) {
             return;
         }
         StartupLoadingComposeBinder.bind(startupLoadingOverlay,
-                new StartupLoadingUiModel(context.getString(R.string.startup_loading_title), step, detail));
+                new StartupLoadingUiModel(title, step, detail));
     }
 
     void hideStartupLoading() {

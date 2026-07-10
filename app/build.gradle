@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 240
-        versionName "2.0.240-beta-touch-hud-restore"
+        versionCode 241
+        versionName "2.0.241-beta-vod-loading-progress"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",

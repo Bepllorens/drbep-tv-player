@@ -234,6 +234,14 @@ public class MainActivity extends FragmentActivity {
             uiHandler.postDelayed(this, 15_000L);
         }
     };
+    private String vodLoadingChannelId = "";
+    private long vodLoadingStartedAtMs;
+    private final Runnable vodLoadingProgressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            updateVodLoadingOverlay();
+        }
+    };
     private final Runnable offlineCatalogAutoRefreshRunnable = new Runnable() {
         @Override
         public void run() {
@@ -814,6 +822,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void onPlaybackReady(PlayerController.PlaybackRequest request) {
+                MainActivity.this.stopVodLoadingOverlay(request == null ? "" : request.channelId);
                 MainActivity.this.hideStartupLoading();
                 MainActivity.this.markPostUpdatePlaybackHealthy(request == null ? "" : request.channelId);
                 MainActivity.this.sendPlaybackHeartbeat("ready");
@@ -821,6 +830,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void onFirstVideoFrameRendered(String channelId) {
+                MainActivity.this.stopVodLoadingOverlay(channelId);
                 MainActivity.this.hideStartupLoading();
                 MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
                 MainActivity.this.markPostUpdatePlaybackHealthy(channelId);
@@ -1823,6 +1833,10 @@ public class MainActivity extends FragmentActivity {
             if (prefs != null) {
                 prefs.edit().putString(PREF_LAST_VOD_ID, ch.id).apply();
             }
+            startVodLoadingOverlay(ch);
+        } else {
+            stopVodLoadingOverlay("");
+            hideStartupLoading();
         }
         playerController.resetFallbackState();
         updateTimeshiftBar();
@@ -4508,8 +4522,107 @@ public class MainActivity extends FragmentActivity {
         overlayUiController.updateStartupLoading(step, detail);
     }
 
+    private void showLoading(String title, String step, String detail) {
+        overlayUiController.showLoading(title, step, detail);
+    }
+
+    private void updateLoading(String title, String step, String detail) {
+        overlayUiController.updateLoading(title, step, detail);
+    }
+
     private void hideStartupLoading() {
         overlayUiController.hideStartupLoading();
+    }
+
+    private void startVodLoadingOverlay(ChannelItem item) {
+        if (item == null || !item.isVod || item.id == null || item.id.trim().isEmpty()) {
+            return;
+        }
+        vodLoadingChannelId = item.id.trim();
+        vodLoadingStartedAtMs = System.currentTimeMillis();
+        uiHandler.removeCallbacks(vodLoadingProgressRunnable);
+        showLoading(
+                getVodLoadingTitle(item),
+                getString(R.string.vod_loading_step_preparing),
+                getString(R.string.vod_loading_detail_preparing, displayName(item))
+        );
+        uiHandler.postDelayed(vodLoadingProgressRunnable, 4_000L);
+    }
+
+    private void updateVodLoadingOverlay() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current == null || current.id == null || vodLoadingChannelId == null
+                || !current.id.equals(vodLoadingChannelId) || !current.isVod) {
+            stopVodLoadingOverlay("");
+            return;
+        }
+        long elapsedMs = Math.max(0L, System.currentTimeMillis() - vodLoadingStartedAtMs);
+        boolean movistarVod = isMovistarVodItem(current);
+        String title = getVodLoadingTitle(current);
+        String step;
+        String detail;
+        long nextDelayMs;
+        if (elapsedMs < 12_000L) {
+            step = movistarVod
+                    ? getString(R.string.vod_loading_step_manifest)
+                    : getString(R.string.vod_loading_step_stream);
+            detail = movistarVod
+                    ? getString(R.string.vod_loading_detail_manifest)
+                    : getString(R.string.vod_loading_detail_stream);
+            nextDelayMs = 8_000L;
+        } else if (elapsedMs < 30_000L) {
+            step = movistarVod
+                    ? getString(R.string.vod_loading_step_drm)
+                    : getString(R.string.vod_loading_step_buffering);
+            detail = movistarVod
+                    ? getString(R.string.vod_loading_detail_drm)
+                    : getString(R.string.vod_loading_detail_buffering);
+            nextDelayMs = 10_000L;
+        } else if (elapsedMs < 55_000L) {
+            step = movistarVod
+                    ? getString(R.string.vod_loading_step_backend)
+                    : getString(R.string.vod_loading_step_waiting);
+            detail = movistarVod
+                    ? getString(R.string.vod_loading_detail_backend)
+                    : getString(R.string.vod_loading_detail_waiting);
+            nextDelayMs = 12_000L;
+        } else {
+            step = getString(R.string.vod_loading_step_slow);
+            detail = getString(R.string.vod_loading_detail_slow);
+            nextDelayMs = 15_000L;
+        }
+        updateLoading(title, step, detail);
+        uiHandler.postDelayed(vodLoadingProgressRunnable, nextDelayMs);
+    }
+
+    private void stopVodLoadingOverlay(String channelId) {
+        boolean hadVodLoading = vodLoadingChannelId != null && !vodLoadingChannelId.isEmpty();
+        if (channelId != null && !channelId.trim().isEmpty()
+                && vodLoadingChannelId != null && !vodLoadingChannelId.isEmpty()
+                && !channelId.trim().equals(vodLoadingChannelId)) {
+            return;
+        }
+        uiHandler.removeCallbacks(vodLoadingProgressRunnable);
+        vodLoadingChannelId = "";
+        vodLoadingStartedAtMs = 0L;
+        if (hadVodLoading) {
+            hideStartupLoading();
+        }
+    }
+
+    private String getVodLoadingTitle(ChannelItem item) {
+        if (isMovistarVodItem(item)) {
+            return getString(R.string.vod_loading_title_movistar);
+        }
+        return getString(R.string.vod_loading_title);
+    }
+
+    private boolean isMovistarVodItem(ChannelItem item) {
+        if (item == null || !item.isVod) {
+            return false;
+        }
+        String source = safeLower(item.platformName) + " " + safeLower(item.vodFilterKey) + " " + safeLower(item.playUrl);
+        return source.contains("movistar");
     }
 
     private void showStatus(String text) {
@@ -13580,6 +13693,7 @@ public class MainActivity extends FragmentActivity {
         }
         ChannelItem item = findChannelItemById(request.channelId);
         if (item != null && item.isVod) {
+            stopVodLoadingOverlay(request.channelId);
             rememberCurrentVodPosition();
             showStatus(getString(R.string.vod_status_failed));
             uiHandler.postDelayed(() -> {

@@ -27,7 +27,7 @@
     <dimen name="recordings_header_text_size">24sp</dimen>
     <dimen name="touch_controls_margin_bottom">0dp</dimen>
     <dimen name="touch_controls_translation_y">8dp</dimen>
-    <dimen name="touch_controls_max_width">420dp</dimen>
+    <dimen name="touch_controls_side_margin">0dp</dimen>
     <dimen name="touch_controls_padding_horizontal">10dp</dimen>
     <dimen name="touch_controls_padding_vertical">8dp</dimen>
     <dimen name="touch_surface_panel_max_width">620dp</dimen>

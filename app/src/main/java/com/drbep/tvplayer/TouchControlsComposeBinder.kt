@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -35,40 +33,39 @@ import androidx.compose.ui.unit.sp
 
 object TouchControlsComposeBinder {
     @JvmStatic
-    fun bind(composeView: ComposeView?, model: TouchControlsBarUiModel, maxWidthDp: Int = 420) {
+    fun bind(composeView: ComposeView?, model: TouchControlsBarUiModel) {
         if (composeView == null) return
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         composeView.setContent {
-            TouchControlsBar(model, maxWidthDp)
+            TouchControlsBar(model)
         }
     }
 }
 
 @Composable
-private fun TouchControlsBar(model: TouchControlsBarUiModel, maxWidthDp: Int) {
-    // Contenedor de ancho completo para centrar la columna interna, que queda acotada a
-    // maxWidthDp. Esto evita que en tablet la barra se estreche dejando espacio sobrante
-    // a la derecha y que en movil la fila de botones se sature y quede cortada.
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.BottomCenter
+private fun TouchControlsBar(model: TouchControlsBarUiModel) {
+    // El XML padre (activity_main.xml) define el ancho disponible via match_parent
+    // + marginStart/End (0dp en movil, 100dp en tablet). El Compose se limita a
+    // envolver su contenido: en movil la Column llena todo el ancho disponible y
+    // los botones se distribuyen de borde a borde; en tablet la Column (wrap_content)
+    // se centra dentro del ComposeView gracias al layout_gravity="center_horizontal"
+    // del XML, sin dejar espacio sobrante a la derecha.
+    // Si la fila de botones supera el ancho disponible, horizontalScroll permite
+    // desplazamiento horizontal como ultimo recurso.
+    Column(
+        modifier = Modifier
+            .background(Color(0xD411161D), RoundedCornerShape(22.dp))
+            .padding(horizontal = 8.dp, vertical = 7.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .widthIn(max = maxWidthDp.dp)
-                .background(Color(0xD411161D), RoundedCornerShape(22.dp))
-                .padding(horizontal = 8.dp, vertical = 7.dp)
+        if (model.contextTitle.isNotBlank() || model.contextSubtitle.isNotBlank()) {
+            TouchContextHeader(model)
+        }
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (model.contextTitle.isNotBlank() || model.contextSubtitle.isNotBlank()) {
-                TouchContextHeader(model)
-            }
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                model.actions.forEach { item ->
-                    TouchControlChip(item)
-                }
+            model.actions.forEach { item ->
+                TouchControlChip(item)
             }
         }
     }

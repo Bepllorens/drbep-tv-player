@@ -330,7 +330,6 @@ public class MainActivity extends FragmentActivity {
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
     private boolean touchDeviceMode;
-    private int touchControlsMaxWidthDp = 420;
     private boolean playbackRepairEnabled = true;
     private long lastCatalogLoadDurationMs;
     private long lastEpgNowLoadDurationMs;
@@ -692,9 +691,6 @@ public class MainActivity extends FragmentActivity {
         playbackDiagnosticsStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
         touchDeviceMode = detectTouchDeviceMode();
-        touchControlsMaxWidthDp = (int) Math.round(
-                getResources().getDimensionPixelSize(R.dimen.touch_controls_max_width)
-                        / getResources().getDisplayMetrics().density);
         touchControlsController = new TouchControlsController(uiHandler, createTouchControlsHost(), TOUCH_CONTROLS_HIDE_MS, TV_TIMESHIFT_HUD_HIDE_MS);
         tabletOrientationLocked = prefs.getBoolean(PREF_TABLET_ORIENTATION_LOCK, false);
         initializeTabletBrightness();
@@ -1120,7 +1116,7 @@ public class MainActivity extends FragmentActivity {
         if (touchControlsComposeView == null) {
             return;
         }
-        TouchControlsComposeBinder.bind(touchControlsComposeView, buildTouchControlsBarUiModel(), touchControlsMaxWidthDp);
+        TouchControlsComposeBinder.bind(touchControlsComposeView, buildTouchControlsBarUiModel());
     }
 
     private TouchControlsBarUiModel buildTouchControlsBarUiModel() {

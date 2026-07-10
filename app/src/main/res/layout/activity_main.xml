@@ -278,9 +278,11 @@
 
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/touchControlsBar"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="@dimen/touch_controls_side_margin"
+        android:layout_marginEnd="@dimen/touch_controls_side_margin"
         android:layout_marginBottom="@dimen/touch_controls_margin_bottom"
         android:translationY="@dimen/touch_controls_translation_y"
         android:focusable="false"

@@ -11,6 +11,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -90,7 +92,7 @@ final class CatalogSnapshotStore {
     private static final String STARTUP_PLAYBACK_CACHE_FILE = "catalog_startup_playback.cache";
     private static final int STARTUP_PARSED_CACHE_VERSION = 1;
     private static final int STARTUP_PLAYBACK_CACHE_VERSION = 1;
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 1;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 2;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     private static final String SNAPSHOT_ENCRYPTION_ALIAS = "drbep_catalog_snapshot_aes_v1";
@@ -914,10 +916,18 @@ final class CatalogSnapshotStore {
     }
 
     // --- Serializacion binaria manual de la cache de catalogo de arranque (rapida, sin reflexion) ---
+    // La cache se guarda SOLO con gzip (sin cifrado AES-GCM) porque el fichero vive en
+    // /data/data/.../files/ (protegido por permisos de app) y los datos ya estan firmados
+    // por el snapshot. En el Fire Stick 4K Max, el descifrado AES-GCM por software tarda
+    // ~10-17s para ~30 MB, mientras que gzip+binario tarda ~1-2s. La integridad real la
+    // garantiza la firma del snapshot; si el fichero se corrompe, el try/catch lo borra y
+    // fuerza reconstruccion.
     private void writeStartupParsedCacheBinary(File file, SnapshotStatus status, CatalogLoadResult result) throws Exception {
-        ByteArrayOutputStream rawOutput = new ByteArrayOutputStream(256 * 1024);
-        try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(rawOutput);
-             DataOutputStream out = new DataOutputStream(gzipOutputStream)) {
+        File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
+        try (FileOutputStream fos = new FileOutputStream(tmp, false);
+             BufferedOutputStream bos = new BufferedOutputStream(fos, 1 << 16);
+             GZIPOutputStream gzipOutputStream = new GZIPOutputStream(bos, 1 << 16);
+             DataOutputStream out = new DataOutputStream(new BufferedOutputStream(gzipOutputStream, 1 << 16))) {
             out.writeInt(STARTUP_PARSED_BINARY_FORMAT_VERSION);
             writeStr(out, status == null ? "" : status.payloadFingerprint);
             writeStr(out, status == null ? "" : status.catalogFingerprint);
@@ -937,13 +947,17 @@ final class CatalogSnapshotStore {
                 writeChannel(out, channels.get(i));
             }
         }
-        encryptRawBytesToFile(file, rawOutput.toByteArray());
+        if (!tmp.renameTo(file)) {
+            copyFile(tmp, file);
+            //noinspection ResultOfMethodCallIgnored
+            tmp.delete();
+        }
     }
 
     private CatalogLoadResult readStartupParsedCacheBinary(File file, SnapshotStatus status) throws Exception {
-        try (InputStream inputStream = encryptedSnapshotInputStream(file);
-             GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream);
-             DataInputStream in = new DataInputStream(gzipInputStream)) {
+        try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file), 1 << 16);
+             GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1 << 16);
+             DataInputStream in = new DataInputStream(new BufferedInputStream(gzipInputStream, 1 << 16))) {
             int formatVersion = in.readInt();
             if (formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
                 throw new IllegalStateException("version de cache binaria invalida: " + formatVersion);

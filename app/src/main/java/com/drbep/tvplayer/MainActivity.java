@@ -223,6 +223,9 @@ public class MainActivity extends FragmentActivity {
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
+    // Executor dedicado a la carga inicial del catalogo para que NO espere en cola
+    // detras del arranque del reproductor (que comparte ioExecutor single-thread).
+    private final ExecutorService catalogLoadExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final Runnable vodProgressSaveRunnable = new Runnable() {
         @Override
@@ -1510,7 +1513,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.startup_loading_local_catalog),
                 getString(R.string.startup_loading_local_catalog_detail)
         );
-        ioExecutor.execute(() -> {
+        catalogLoadExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
                 long durationMs = System.currentTimeMillis() - startMs;
@@ -4889,6 +4892,7 @@ public class MainActivity extends FragmentActivity {
         if (!isChangingConfigurations()) {
             ioExecutor.shutdownNow();
             epgExecutor.shutdownNow();
+            catalogLoadExecutor.shutdownNow();
         }
         if (playerController != null) {
             playerController.release();

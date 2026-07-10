@@ -91,29 +91,19 @@ final class TouchControlsUiFactory {
                     }
                 }
         ));
-        actions.add(new ZapActionItem(
-                host.text(vod ? R.string.touch_button_vod_detail : R.string.touch_button_info),
-                true,
-                false,
-                false,
-                () -> {
-                    host.keepVisible();
-                    host.openProgramInfo();
-                },
-                () -> {
-                    host.keepVisible();
-                    host.showPlaybackDiagnostics();
-                }
-        ));
-        if (vod) {
+        if (!vod) {
             actions.add(new ZapActionItem(
-                    host.text(R.string.touch_button_vod_library),
+                    host.text(R.string.touch_button_info),
                     true,
                     false,
                     false,
                     () -> {
                         host.keepVisible();
-                        host.showVodLibrary();
+                        host.openProgramInfo();
+                    },
+                    () -> {
+                        host.keepVisible();
+                        host.showPlaybackDiagnostics();
                     }
             ));
         }

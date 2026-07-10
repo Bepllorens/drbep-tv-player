@@ -7,6 +7,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -67,6 +68,10 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel) {
             model.actions.forEach { item ->
                 TouchControlChip(item)
             }
+            // Espacio final para que, al hacer scroll hasta el extremo derecho,
+            // el ultimo chip (+30s, etc.) quede completamente visible y no lo
+            // tape el padding horizontal de la Column externa.
+            Spacer(modifier = Modifier.width(8.dp))
         }
     }
 }

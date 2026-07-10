@@ -62,16 +62,14 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel) {
             TouchContextHeader(model)
         }
         Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            modifier = Modifier
+                .padding(end = 8.dp)
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             model.actions.forEach { item ->
                 TouchControlChip(item)
             }
-            // Espacio final para que, al hacer scroll hasta el extremo derecho,
-            // el ultimo chip (+30s, etc.) quede completamente visible y no lo
-            // tape el padding horizontal de la Column externa.
-            Spacer(modifier = Modifier.width(8.dp))
         }
     }
 }

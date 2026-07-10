@@ -245,6 +245,32 @@ final class EpgRepository {
         return out;
     }
 
+    List<EpgProgram> fetchPastChannelPrograms(ChannelItem channel, int maxItems, int daysBack) throws Exception {
+        if (channel == null || channel.isVod) {
+            return new ArrayList<>();
+        }
+        if (!shouldUseOfflineEpg()) {
+            return new ArrayList<>();
+        }
+        long now = System.currentTimeMillis();
+        long since = now - Math.max(1, daysBack) * 24L * 60L * 60L * 1000L;
+        List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
+        List<EpgProgram> out = new ArrayList<>();
+        for (int i = rows.size() - 1; i >= 0; i--) {
+            EpgProgram program = rows.get(i);
+            long startMs = parseIsoMillis(program.startTime);
+            long endMs = parseIsoMillis(program.endTime);
+            if (endMs <= 0L || startMs <= 0L || endMs > now || endMs < since) {
+                continue;
+            }
+            out.add(programWithProgress(program, now));
+            if (maxItems > 0 && out.size() >= maxItems) {
+                break;
+            }
+        }
+        return out;
+    }
+
     EpgProgram fetchProgramForChannel(String channelId, boolean next) throws Exception {
         if (shouldUseOfflineEpg()) {
             long now = System.currentTimeMillis();

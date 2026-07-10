@@ -1,3 +1,8 @@
+## 2.0.243-beta-movistar-u7d
+- Offline beta: anade acceso U7D en el HUD tactil para canales Movistar ISM, mostrando los ultimos programas disponibles del canal.
+- Offline beta: reproduce U7D mediante endpoint seguro del backend sin transportar keys DRM en catalogo ni en la app.
+- Offline beta: las URLs U7D protegidas adjuntan `access_token` y `device_id` igual que el resto de streams offline.
+
 ## 2.0.209-beta-catalog-fingerprint-startup
 - Offline beta: valida una huella ligera del catalogo en el arranque y usa el snapshot local si no hay cambios, evitando descargar/parsing innecesario.
 - Offline beta: muestra y reporta el ultimo arranque con cache validada para comprobarlo desde app y dashboard.

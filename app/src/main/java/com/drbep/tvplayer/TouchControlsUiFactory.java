@@ -16,6 +16,8 @@ final class TouchControlsUiFactory {
         void showFilterPicker();
         void showVodLibrary();
         void openTimelineGuide();
+        boolean supportsU7d(ChannelItem item);
+        void openU7d(ChannelItem item);
         void showVodInfo(ChannelItem item);
         void tunePreviousChannel();
         void openProgramInfo();
@@ -77,6 +79,18 @@ final class TouchControlsUiFactory {
                     }
                 }
         ));
+        if (!vod && host.supportsU7d(current)) {
+            actions.add(new ZapActionItem(
+                    host.text(R.string.touch_button_u7d),
+                    true,
+                    false,
+                    false,
+                    () -> {
+                        host.keepVisible();
+                        host.openU7d(current);
+                    }
+            ));
+        }
         actions.add(new ZapActionItem(
                 host.text(vod ? R.string.touch_button_vod_detail : R.string.touch_button_previous),
                 true,

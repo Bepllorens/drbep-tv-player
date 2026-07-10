@@ -2241,6 +2241,8 @@ final class PlayerController {
                 || path.startsWith("/api/stream/")
                 || path.startsWith("/api/clearkey/")
                 || path.startsWith("/api/widevine/")
+                || path.startsWith("/api/u7d/")
+                || path.startsWith("/api/offline/u7d/")
                 || path.startsWith("/api/vod/");
     }
 

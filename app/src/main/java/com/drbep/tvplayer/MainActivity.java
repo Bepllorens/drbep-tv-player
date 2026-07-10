@@ -1187,6 +1187,16 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean supportsU7d(ChannelItem item) {
+                return isMovistarIsmChannel(item);
+            }
+
+            @Override
+            public void openU7d(ChannelItem item) {
+                openMovistarIsmU7d(item);
+            }
+
+            @Override
             public void showVodInfo(ChannelItem item) {
                 showVodInfoDialog(item);
             }
@@ -1894,6 +1904,26 @@ public class MainActivity extends FragmentActivity {
                 || fallbackUrl.contains("/hls/ism/")
                 || platform.contains("ism");
         return movistar && smooth;
+    }
+
+    private boolean isMovistarIsmChannel(ChannelItem channel) {
+        if (channel == null || channel.isVod) {
+            return false;
+        }
+        String platform = safeLower(channel.platformName);
+        String group = safeLower(channel.group);
+        String name = safeLower(displayName(channel));
+        String playUrl = safeLower(channel.playUrl);
+        String fallbackUrl = safeLower(channel.fallbackPlayUrl);
+        boolean movistar = platform.contains("movistar ism")
+                || (platform.contains("movistar") && group.contains("movistar"))
+                || playUrl.contains("movistarplus")
+                || fallbackUrl.contains("/hls/ism/");
+        boolean smooth = platform.contains("ism")
+                || playUrl.contains(".isml/manifest")
+                || playUrl.contains(".ism/manifest")
+                || fallbackUrl.contains("/hls/ism/");
+        return movistar && smooth && !name.trim().isEmpty();
     }
 
     private boolean isOrangePlaybackRequest(ChannelItem channel, PlayerController.PlaybackRequest request) {
@@ -2890,6 +2920,139 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
             }
         });
+    }
+
+    private void openMovistarIsmU7d(ChannelItem channel) {
+        if (!isMovistarIsmChannel(channel) || epgRepository == null) {
+            showStatus(getString(R.string.status_u7d_unavailable));
+            return;
+        }
+        showStatus(getString(R.string.status_loading_u7d));
+        epgExecutor.execute(() -> {
+            try {
+                List<EpgRepository.EpgProgram> programs = epgRepository.fetchPastChannelPrograms(channel, 80, 7);
+                uiHandler.post(() -> showMovistarIsmU7dMenu(channel, programs));
+            } catch (Exception e) {
+                Log.w(TAG, "failed to load Movistar ISM U7D programs channel=" + channel.id, e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_u7d_empty)));
+            }
+        });
+    }
+
+    private void showMovistarIsmU7dMenu(ChannelItem channel, List<EpgRepository.EpgProgram> programs) {
+        if (channel == null || programs == null || programs.isEmpty()) {
+            showStatus(getString(R.string.status_u7d_empty));
+            return;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (EpgRepository.EpgProgram program : programs) {
+            if (program == null || parseIsoMillis(program.startTime) <= 0L || parseIsoMillis(program.endTime) <= 0L) {
+                continue;
+            }
+            options.add(formatU7dProgramLabel(program));
+            actions.add(() -> playMovistarIsmU7dProgram(channel, program));
+        }
+        if (options.isEmpty()) {
+            showStatus(getString(R.string.status_u7d_empty));
+            return;
+        }
+        showTvOptionsDialog(
+                getString(R.string.u7d_menu_title, displayName(channel)),
+                getString(R.string.u7d_menu_message),
+                options,
+                actions
+        );
+    }
+
+    private String formatU7dProgramLabel(EpgRepository.EpgProgram program) {
+        long startMs = parseIsoMillis(program.startTime);
+        long endMs = parseIsoMillis(program.endTime);
+        String day = startMs <= 0L ? "" : new SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(new Date(startMs));
+        String title = program.title == null || program.title.trim().isEmpty()
+                ? getString(R.string.diagnostics_value_unknown)
+                : program.title.trim();
+        String duration = endMs > startMs ? " · " + formatDurationShort(endMs - startMs) : "";
+        return day + " · " + shortTime(program.startTime) + "  " + title + duration;
+    }
+
+    private void playMovistarIsmU7dProgram(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if (channel == null || program == null) {
+            showStatus(getString(R.string.status_u7d_unavailable));
+            return;
+        }
+        String replayUrl = buildMovistarIsmU7dUrl(channel, program);
+        if (replayUrl.isEmpty()) {
+            showStatus(getString(R.string.status_u7d_unavailable));
+            return;
+        }
+        long startMs = parseIsoMillis(program.startTime);
+        long endMs = parseIsoMillis(program.endTime);
+        String programTitle = program.title == null || program.title.trim().isEmpty()
+                ? displayName(channel)
+                : program.title.trim();
+        ChannelItem replayItem = new ChannelItem(
+                "u7d:" + channel.id + ":" + Math.max(0L, startMs),
+                programTitle,
+                channel.tvgId,
+                program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon,
+                getString(R.string.u7d_replay_group),
+                replayUrl,
+                "",
+                channel.originalOrder,
+                channel.dashboardOrder,
+                false,
+                false,
+                channel.platformId,
+                getString(R.string.u7d_replay_platform),
+                new ArrayList<>(),
+                "",
+                "",
+                "",
+                true,
+                program.description,
+                "",
+                endMs > startMs ? (endMs - startMs) / 1000L : 0L,
+                "u7d_proxy"
+        );
+        String previousLastChannelId = lastChannelId;
+        showStatus(getString(R.string.status_u7d_opening, programTitle));
+        playChannelItemInternal(replayItem, true, 0L);
+        if (previousLastChannelId != null && !previousLastChannelId.trim().isEmpty()) {
+            saveLastChannelId(previousLastChannelId);
+        } else if (channel.id != null && !channel.id.trim().isEmpty()) {
+            saveLastChannelId(channel.id);
+        }
+        showLoading(
+                getString(R.string.u7d_loading_title),
+                getString(R.string.u7d_loading_step_manifest),
+                getString(R.string.u7d_loading_detail_manifest)
+        );
+    }
+
+    private String buildMovistarIsmU7dUrl(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if (channel == null || program == null || baseUrl == null || baseUrl.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            return Uri.parse(baseUrl).buildUpon()
+                    .appendPath("api")
+                    .appendPath("offline")
+                    .appendPath("u7d")
+                    .appendPath("movistar-ism")
+                    .appendPath("stream")
+                    .appendQueryParameter("channel_id", channel.id)
+                    .appendQueryParameter("tvg_id", channel.tvgId)
+                    .appendQueryParameter("channel_name", displayName(channel))
+                    .appendQueryParameter("start_time", program.startTime)
+                    .appendQueryParameter("end_time", program.endTime)
+                    .appendQueryParameter("title", program.title)
+                    .build()
+                    .toString();
+        } catch (Exception e) {
+            Log.w(TAG, "failed to build Movistar ISM U7D url", e);
+            return "";
+        }
     }
 
     private void showAboutDialog() {

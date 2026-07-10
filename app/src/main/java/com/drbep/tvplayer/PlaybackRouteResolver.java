@@ -533,6 +533,9 @@ final class PlaybackRouteResolver {
         if (lower.contains("/api/vod/movistar/manifest/")) {
             return MimeTypes.APPLICATION_MPD;
         }
+        if (lower.contains("/api/offline/u7d/movistar-ism/stream")) {
+            return MimeTypes.VIDEO_MP2T;
+        }
         if (lower.contains(".mp4")) {
             return MimeTypes.VIDEO_MP4;
         }

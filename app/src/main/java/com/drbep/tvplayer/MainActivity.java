@@ -330,6 +330,7 @@ public class MainActivity extends FragmentActivity {
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
     private boolean touchDeviceMode;
+    private int touchControlsMaxWidthDp = 420;
     private boolean playbackRepairEnabled = true;
     private long lastCatalogLoadDurationMs;
     private long lastEpgNowLoadDurationMs;
@@ -691,6 +692,9 @@ public class MainActivity extends FragmentActivity {
         playbackDiagnosticsStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
         touchDeviceMode = detectTouchDeviceMode();
+        touchControlsMaxWidthDp = (int) Math.round(
+                getResources().getDimensionPixelSize(R.dimen.touch_controls_max_width)
+                        / getResources().getDisplayMetrics().density);
         touchControlsController = new TouchControlsController(uiHandler, createTouchControlsHost(), TOUCH_CONTROLS_HIDE_MS, TV_TIMESHIFT_HUD_HIDE_MS);
         tabletOrientationLocked = prefs.getBoolean(PREF_TABLET_ORIENTATION_LOCK, false);
         initializeTabletBrightness();
@@ -1116,7 +1120,7 @@ public class MainActivity extends FragmentActivity {
         if (touchControlsComposeView == null) {
             return;
         }
-        TouchControlsComposeBinder.bind(touchControlsComposeView, buildTouchControlsBarUiModel());
+        TouchControlsComposeBinder.bind(touchControlsComposeView, buildTouchControlsBarUiModel(), touchControlsMaxWidthDp);
     }
 
     private TouchControlsBarUiModel buildTouchControlsBarUiModel() {
@@ -1509,10 +1513,6 @@ public class MainActivity extends FragmentActivity {
         if (maybeShowOfflineFirstRunOnboarding(null)) {
             return;
         }
-        showStartupLoading(
-                getString(R.string.startup_loading_local_catalog),
-                getString(R.string.startup_loading_local_catalog_detail)
-        );
         catalogLoadExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
@@ -1523,10 +1523,6 @@ public class MainActivity extends FragmentActivity {
                         + " durationMs=" + durationMs);
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
-                    updateStartupLoading(
-                            getString(R.string.startup_loading_prepare_list),
-                            getString(R.string.startup_loading_prepare_list_detail)
-                    );
                     applyLoadedChannels(result);
                     maybeShowStartupCatalogCacheValidated();
                     runPostUpdateStartupHealthCheck("catalog-load", result);

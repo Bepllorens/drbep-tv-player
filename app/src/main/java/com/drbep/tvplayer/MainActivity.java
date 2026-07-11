@@ -48,6 +48,7 @@ import androidx.lifecycle.ViewTreeViewModelStoreOwner;
 import androidx.media3.ui.PlayerView;
 import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import com.caverock.androidsvg.SVG;
@@ -2923,20 +2924,190 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openMovistarIsmU7d(ChannelItem channel) {
-        if (!isMovistarIsmChannel(channel) || epgRepository == null) {
+        if (!isMovistarIsmChannel(channel)) {
             showStatus(getString(R.string.status_u7d_unavailable));
             return;
         }
         showStatus(getString(R.string.status_loading_u7d));
         epgExecutor.execute(() -> {
             try {
-                List<EpgRepository.EpgProgram> programs = epgRepository.fetchPastChannelPrograms(channel, 80, 7);
+                List<EpgRepository.EpgProgram> programs = fetchMovistarIsmU7dPrograms(channel);
                 uiHandler.post(() -> showMovistarIsmU7dMenu(channel, programs));
             } catch (Exception e) {
                 Log.w(TAG, "failed to load Movistar ISM U7D programs channel=" + channel.id, e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_u7d_empty)));
             }
         });
+    }
+
+    private List<EpgRepository.EpgProgram> fetchMovistarIsmU7dPrograms(ChannelItem channel) throws Exception {
+        List<EpgRepository.EpgProgram> programs = fetchMovistarIsmU7dProgramsFromBackend(channel);
+        if (!programs.isEmpty() || epgRepository == null) {
+            return programs;
+        }
+        Log.i(TAG, "Movistar ISM U7D backend returned no matches, falling back to offline EPG channel=" + channel.id);
+        return epgRepository.fetchPastChannelPrograms(channel, 80, 7);
+    }
+
+    private List<EpgRepository.EpgProgram> fetchMovistarIsmU7dProgramsFromBackend(ChannelItem channel) throws Exception {
+        List<EpgRepository.EpgProgram> result = new ArrayList<>();
+        if (channel == null || httpClient == null || baseUrl == null || baseUrl.trim().isEmpty()) {
+            return result;
+        }
+        HttpClient.Response response = httpClient.requireSuccess(httpClient.get(
+                Uri.parse(baseUrl).buildUpon().appendPath("api").appendPath("u7d").appendPath("movistar").build().toString(),
+                10000,
+                25000,
+                buildAuthenticatedJsonHeaders()
+        ), "cargando U7D Movistar");
+        String body = response.body == null ? "" : response.body.trim();
+        if (body.startsWith("[")) {
+            return parseFlatMovistarU7dPrograms(channel, new JSONArray(body));
+        }
+        JSONObject payload = new JSONObject(body);
+        JSONArray channelRows = payload.optJSONArray("channels");
+        JSONArray flatRows = payload.optJSONArray("programs");
+        if (flatRows != null) {
+            return parseFlatMovistarU7dPrograms(channel, flatRows);
+        }
+        if (channelRows == null) {
+            return result;
+        }
+        for (int i = 0; i < channelRows.length(); i++) {
+            JSONObject row = channelRows.optJSONObject(i);
+            if (!matchesMovistarU7dChannel(channel, row)) {
+                continue;
+            }
+            JSONArray programRows = row.optJSONArray("programs");
+            if (programRows == null) {
+                continue;
+            }
+            for (int j = 0; j < programRows.length(); j++) {
+                JSONObject program = programRows.optJSONObject(j);
+                if (program == null) {
+                    continue;
+                }
+                String start = firstNonEmpty(program.optString("start_dt", ""), program.optString("start_iso", ""));
+                String end = firstNonEmpty(program.optString("end_iso", ""), program.optString("end_dt", ""));
+                if (parseIsoMillis(start) <= 0L || parseIsoMillis(end) <= 0L) {
+                    continue;
+                }
+                String title = firstNonEmpty(program.optString("display_name", ""), program.optString("title", ""));
+                String icon = firstNonEmpty(program.optString("poster", ""), program.optString("logo", ""), row.optString("logo", ""), channel.logoUrl);
+                String description = firstNonEmpty(program.optString("description", ""), program.optString("genre", ""));
+                result.add(new EpgRepository.EpgProgram(
+                        channel.id,
+                        displayName(channel),
+                        channel.tvgId,
+                        title,
+                        icon,
+                        description,
+                        start,
+                        end,
+                        program.optString("genre", ""),
+                        0
+                ));
+            }
+            Log.i(TAG, "Movistar ISM U7D matched channel=" + displayName(channel) + " backend=" + row.optString("name", "") + " programs=" + result.size());
+            return result;
+        }
+        return result;
+    }
+
+    private List<EpgRepository.EpgProgram> parseFlatMovistarU7dPrograms(ChannelItem channel, JSONArray programRows) {
+        List<EpgRepository.EpgProgram> result = new ArrayList<>();
+        if (channel == null || programRows == null) {
+            return result;
+        }
+        for (int i = 0; i < programRows.length(); i++) {
+            JSONObject program = programRows.optJSONObject(i);
+            if (program == null || !matchesFlatMovistarU7dProgram(channel, program)) {
+                continue;
+            }
+            String start = firstNonEmpty(program.optString("start_dt", ""), program.optString("start_iso", ""));
+            String end = firstNonEmpty(program.optString("end_iso", ""), program.optString("end_dt", ""));
+            if (parseIsoMillis(start) <= 0L || parseIsoMillis(end) <= 0L) {
+                continue;
+            }
+            String title = firstNonEmpty(program.optString("display_name", ""), program.optString("title", ""));
+            String icon = firstNonEmpty(program.optString("poster", ""), program.optString("logo", ""), channel.logoUrl);
+            String description = firstNonEmpty(program.optString("description", ""), program.optString("genre", ""));
+            result.add(new EpgRepository.EpgProgram(
+                    channel.id,
+                    displayName(channel),
+                    channel.tvgId,
+                    title,
+                    icon,
+                    description,
+                    start,
+                    end,
+                    program.optString("genre", ""),
+                    0
+            ));
+        }
+        Log.i(TAG, "Movistar ISM U7D flat report matched channel=" + displayName(channel) + " programs=" + result.size());
+        return result;
+    }
+
+    private boolean matchesFlatMovistarU7dProgram(ChannelItem channel, JSONObject program) {
+        if (channel == null || program == null) {
+            return false;
+        }
+        String backendCode = normalizeU7dMatchText(program.optString("channel_code", ""));
+        String backendName = normalizeU7dMatchText(program.optString("channel_name", ""));
+        String channelTvg = normalizeU7dMatchText(channel.tvgId);
+        String channelName = normalizeU7dMatchText(displayName(channel));
+        String rawName = normalizeU7dMatchText(channel.name);
+        return u7dTextMatches(channelTvg, backendCode)
+                || u7dTextMatches(channelTvg, backendName)
+                || u7dTextMatches(channelName, backendName)
+                || u7dTextMatches(rawName, backendName)
+                || u7dTextMatches(channelName, backendCode)
+                || u7dTextMatches(rawName, backendCode);
+    }
+
+    private boolean matchesMovistarU7dChannel(ChannelItem channel, JSONObject row) {
+        if (channel == null || row == null) {
+            return false;
+        }
+        String backendCode = normalizeU7dMatchText(row.optString("code", ""));
+        String backendName = normalizeU7dMatchText(row.optString("name", ""));
+        String channelTvg = normalizeU7dMatchText(channel.tvgId);
+        String channelName = normalizeU7dMatchText(displayName(channel));
+        String rawName = normalizeU7dMatchText(channel.name);
+        return u7dTextMatches(channelTvg, backendCode)
+                || u7dTextMatches(channelTvg, backendName)
+                || u7dTextMatches(channelName, backendName)
+                || u7dTextMatches(rawName, backendName)
+                || u7dTextMatches(channelName, backendCode)
+                || u7dTextMatches(rawName, backendCode);
+    }
+
+    private boolean u7dTextMatches(String left, String right) {
+        if (left == null || right == null || left.isEmpty() || right.isEmpty()) {
+            return false;
+        }
+        return left.equals(right) || left.contains(right) || right.contains(left);
+    }
+
+    private String normalizeU7dMatchText(String value) {
+        String normalized = safeSearchText(value)
+                .replaceAll("\\b(uhd|fhd|hd|sd|movistar|ism|m|plus)\\b", " ")
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim();
+        return normalized.replaceAll("\\s+", " ");
+    }
+
+    private String firstNonEmpty(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private void showMovistarIsmU7dMenu(ChannelItem channel, List<EpgRepository.EpgProgram> programs) {
@@ -6820,6 +6991,16 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void openGuide() {
                 openTimelineGuideForCurrentPlayback();
+            }
+
+            @Override
+            public boolean supportsU7d(ChannelItem item) {
+                return isMovistarIsmChannel(item);
+            }
+
+            @Override
+            public void openU7d(ChannelItem item) {
+                openMovistarIsmU7d(item);
             }
 
             @Override

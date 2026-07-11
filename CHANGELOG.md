@@ -1,3 +1,8 @@
+## 2.0.244-beta-u7d-backend-fire-hud
+- Offline beta: anade el boton U7D al HUD inferior de Fire TV para canales Movistar ISM.
+- Offline beta: carga los programas U7D desde el informe del backend Movistar, con fallback al EPG local.
+- Offline beta: mejora el emparejamiento de canales U7D por nombre/codigo para casos como La 1 / TVE / HD / UHD.
+
 ## 2.0.243-beta-movistar-u7d
 - Offline beta: anade acceso U7D en el HUD tactil para canales Movistar ISM, mostrando los ultimos programas disponibles del canal.
 - Offline beta: reproduce U7D mediante endpoint seguro del backend sin transportar keys DRM en catalogo ni en la app.

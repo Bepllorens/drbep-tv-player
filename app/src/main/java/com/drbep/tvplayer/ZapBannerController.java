@@ -41,6 +41,8 @@ final class ZapBannerController {
         // Acciones del HUD.
         void showChannels();
         void openGuide();
+        boolean supportsU7d(ChannelItem item);
+        void openU7d(ChannelItem item);
         void scheduleCurrentProgram();
         void showParentalSettings();
         void showAudioTrack();
@@ -135,14 +137,17 @@ final class ZapBannerController {
         int selectedIndex = state.getSelectedActionIndex();
         boolean favorite = channelItem != null && host.isFavorite(channelItem);
         actionItems.clear();
-        actionItems.add(buildActionItem(R.string.zap_action_channels, true, false, selectedIndex == 0, host::showChannels));
-        actionItems.add(buildActionItem(R.string.zap_action_guide, true, false, selectedIndex == 1, host::openGuide));
-        actionItems.add(buildActionItem(R.string.zap_action_record, !host.offlineRecordingsDisabled(), false, selectedIndex == 2, host::scheduleCurrentProgram));
-        actionItems.add(buildActionItem(R.string.zap_action_family, true, host.isProtectedItem(channelItem), selectedIndex == 3, host::showParentalSettings));
-        actionItems.add(buildActionItem(R.string.zap_action_audio, true, false, selectedIndex == 4, host::showAudioTrack));
-        actionItems.add(buildActionItem(R.string.zap_action_quality, true, false, selectedIndex == 5, host::showPlaybackDiagnostics));
-        actionItems.add(buildActionItem(R.string.zap_action_favorite, true, favorite, selectedIndex == 6, host::toggleCurrentFavorite));
-        actionItems.add(buildActionItem(R.string.zap_action_more, true, false, selectedIndex == 7, host::showToolsMenu));
+        addActionItem(R.string.zap_action_channels, true, false, selectedIndex, host::showChannels);
+        addActionItem(R.string.zap_action_guide, true, false, selectedIndex, host::openGuide);
+        if (host.supportsU7d(channelItem)) {
+            addActionItem(R.string.zap_action_u7d, true, false, selectedIndex, () -> host.openU7d(channelItem));
+        }
+        addActionItem(R.string.zap_action_record, !host.offlineRecordingsDisabled(), false, selectedIndex, host::scheduleCurrentProgram);
+        addActionItem(R.string.zap_action_family, true, host.isProtectedItem(channelItem), selectedIndex, host::showParentalSettings);
+        addActionItem(R.string.zap_action_audio, true, false, selectedIndex, host::showAudioTrack);
+        addActionItem(R.string.zap_action_quality, true, false, selectedIndex, host::showPlaybackDiagnostics);
+        addActionItem(R.string.zap_action_favorite, true, favorite, selectedIndex, host::toggleCurrentFavorite);
+        addActionItem(R.string.zap_action_more, true, false, selectedIndex, host::showToolsMenu);
         state.ensureValidSelection(actionItems);
         int normalizedIndex = state.getSelectedActionIndex();
         for (int i = 0; i < actionItems.size(); i++) {
@@ -159,6 +164,11 @@ final class ZapBannerController {
                     item.onLongClick
             ));
         }
+    }
+
+    private void addActionItem(int labelRes, boolean enabled, boolean highlighted, int selectedIndex, Runnable action) {
+        int index = actionItems.size();
+        actionItems.add(buildActionItem(labelRes, enabled, highlighted, selectedIndex == index, action));
     }
 
     private ZapActionItem buildActionItem(int labelRes, boolean enabled, boolean highlighted, boolean selected, Runnable action) {

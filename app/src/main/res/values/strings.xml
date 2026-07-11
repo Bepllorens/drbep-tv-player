@@ -242,6 +242,7 @@
     <string name="zap_banner_epg_missing">Sin guia disponible para este canal</string>
     <string name="zap_action_guide">Guia</string>
     <string name="zap_action_channels">Canales</string>
+    <string name="zap_action_u7d">U7D</string>
     <string name="zap_action_record">Grabar</string>
     <string name="zap_action_family">Familia</string>
     <string name="zap_action_audio">Audio</string>

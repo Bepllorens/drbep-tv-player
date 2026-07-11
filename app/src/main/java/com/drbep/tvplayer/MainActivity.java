@@ -3265,7 +3265,7 @@ public class MainActivity extends FragmentActivity {
             return "";
         }
         try {
-            return Uri.parse(baseUrl).buildUpon()
+            Uri.Builder builder = Uri.parse(resolveMovistarU7dStreamBaseUrl()).buildUpon()
                     .appendPath("api")
                     .appendPath("offline")
                     .appendPath("u7d")
@@ -3276,13 +3276,32 @@ public class MainActivity extends FragmentActivity {
                     .appendQueryParameter("channel_name", displayName(channel))
                     .appendQueryParameter("start_time", program.startTime)
                     .appendQueryParameter("end_time", program.endTime)
-                    .appendQueryParameter("title", program.title)
-                    .build()
-                    .toString();
+                    .appendQueryParameter("title", program.title);
+            String token = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+            if (token != null && !token.trim().isEmpty()) {
+                builder.appendQueryParameter("access_token", token.trim());
+            }
+            String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
+            if (deviceId != null && !deviceId.trim().isEmpty()) {
+                builder.appendQueryParameter("device_id", deviceId.trim());
+            }
+            return builder.build().toString();
         } catch (Exception e) {
             Log.w(TAG, "failed to build Movistar ISM U7D url", e);
             return "";
         }
+    }
+
+    private String resolveMovistarU7dStreamBaseUrl() {
+        String normalized = normalizeBaseUrl(baseUrl);
+        try {
+            String host = Uri.parse(normalized).getHost();
+            if ("fire.tvbep.com".equalsIgnoreCase(host)) {
+                return "https://iptv.bepllorens.com";
+            }
+        } catch (Exception ignored) {
+        }
+        return normalized.isEmpty() ? "https://iptv.bepllorens.com" : normalized;
     }
 
     private void showAboutDialog() {

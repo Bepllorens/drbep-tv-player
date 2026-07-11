@@ -1,3 +1,7 @@
+## 2.0.247-beta-u7d-stream-host-fix
+- Offline beta: la reproduccion U7D de Movistar ISM usa el host principal cuando fire.tvbep.com no expone el endpoint de stream.
+- Offline beta: las URLs de stream U7D adjuntan access_token y device_id como el resto de rutas offline protegidas.
+
 ## 2.0.246-beta-u7d-host-fallback
 - Offline beta: U7D de Movistar ISM prueba el host offline y cae automaticamente a iptv.bepllorens.com si fire.tvbep.com no expone la ruta.
 - Offline beta: anade logs con host y codigo HTTP del listado U7D para diagnosticar rapido problemas de rutas.

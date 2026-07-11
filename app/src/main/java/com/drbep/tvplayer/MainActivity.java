@@ -2954,27 +2954,62 @@ public class MainActivity extends FragmentActivity {
         if (channel == null || httpClient == null || baseUrl == null || baseUrl.trim().isEmpty()) {
             return result;
         }
-        Uri.Builder uriBuilder = Uri.parse(baseUrl).buildUpon()
+        List<String> candidates = new ArrayList<>();
+        addUniqueU7dBaseUrl(candidates, baseUrl);
+        addUniqueU7dBaseUrl(candidates, "https://iptv.bepllorens.com");
+        String token = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+        String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
+        Exception lastError = null;
+        for (String candidateBaseUrl : candidates) {
+            String url = buildMovistarU7dProgramsUrl(candidateBaseUrl, token, deviceId);
+            try {
+                HttpClient.Response response = httpClient.get(url, 10000, 25000, buildAuthenticatedJsonHeaders());
+                if (response == null || !response.isSuccessful()) {
+                    int code = response == null ? 0 : response.code;
+                    Log.w(TAG, "Movistar ISM U7D programs endpoint failed host=" + safeLogHost(candidateBaseUrl) + " http=" + code);
+                    lastError = new IllegalStateException("cargando U7D Movistar: HTTP " + code);
+                    continue;
+                }
+                Log.i(TAG, "Movistar ISM U7D programs endpoint ok host=" + safeLogHost(candidateBaseUrl));
+                return parseMovistarU7dProgramsPayload(channel, response.body);
+            } catch (Exception e) {
+                Log.w(TAG, "Movistar ISM U7D programs endpoint exception host=" + safeLogHost(candidateBaseUrl), e);
+                lastError = e;
+            }
+        }
+        if (lastError != null) {
+            throw lastError;
+        }
+        return result;
+    }
+
+    private void addUniqueU7dBaseUrl(List<String> candidates, String value) {
+        String normalized = normalizeBaseUrl(value);
+        if (normalized.isEmpty() || candidates.contains(normalized)) {
+            return;
+        }
+        candidates.add(normalized);
+    }
+
+    private String buildMovistarU7dProgramsUrl(String candidateBaseUrl, String token, String deviceId) {
+        Uri.Builder uriBuilder = Uri.parse(candidateBaseUrl).buildUpon()
                 .appendPath("api")
                 .appendPath("offline")
                 .appendPath("u7d")
                 .appendPath("movistar-ism")
                 .appendPath("programs");
-        String token = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
         if (token != null && !token.trim().isEmpty()) {
             uriBuilder.appendQueryParameter("access_token", token.trim());
         }
-        String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
         if (deviceId != null && !deviceId.trim().isEmpty()) {
             uriBuilder.appendQueryParameter("device_id", deviceId.trim());
         }
-        HttpClient.Response response = httpClient.requireSuccess(httpClient.get(
-                uriBuilder.build().toString(),
-                10000,
-                25000,
-                buildAuthenticatedJsonHeaders()
-        ), "cargando U7D Movistar");
-        String body = response.body == null ? "" : response.body.trim();
+        return uriBuilder.build().toString();
+    }
+
+    private List<EpgRepository.EpgProgram> parseMovistarU7dProgramsPayload(ChannelItem channel, String responseBody) throws Exception {
+        List<EpgRepository.EpgProgram> result = new ArrayList<>();
+        String body = responseBody == null ? "" : responseBody.trim();
         if (body.startsWith("[")) {
             return parseFlatMovistarU7dPrograms(channel, new JSONArray(body));
         }
@@ -3026,6 +3061,16 @@ public class MainActivity extends FragmentActivity {
             return result;
         }
         return result;
+    }
+
+    private String safeLogHost(String value) {
+        try {
+            Uri uri = Uri.parse(value == null ? "" : value.trim());
+            String host = uri.getHost();
+            return host == null ? "" : host;
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private List<EpgRepository.EpgProgram> parseFlatMovistarU7dPrograms(ChannelItem channel, JSONArray programRows) {

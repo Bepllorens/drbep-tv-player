@@ -2954,8 +2954,22 @@ public class MainActivity extends FragmentActivity {
         if (channel == null || httpClient == null || baseUrl == null || baseUrl.trim().isEmpty()) {
             return result;
         }
+        Uri.Builder uriBuilder = Uri.parse(baseUrl).buildUpon()
+                .appendPath("api")
+                .appendPath("offline")
+                .appendPath("u7d")
+                .appendPath("movistar-ism")
+                .appendPath("programs");
+        String token = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+        if (token != null && !token.trim().isEmpty()) {
+            uriBuilder.appendQueryParameter("access_token", token.trim());
+        }
+        String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
+        if (deviceId != null && !deviceId.trim().isEmpty()) {
+            uriBuilder.appendQueryParameter("device_id", deviceId.trim());
+        }
         HttpClient.Response response = httpClient.requireSuccess(httpClient.get(
-                Uri.parse(baseUrl).buildUpon().appendPath("api").appendPath("u7d").appendPath("movistar").build().toString(),
+                uriBuilder.build().toString(),
                 10000,
                 25000,
                 buildAuthenticatedJsonHeaders()
@@ -3605,6 +3619,10 @@ public class MainActivity extends FragmentActivity {
         if (token != null && !token.trim().isEmpty()) {
             headers.put("Authorization", "Bearer " + token.trim());
             headers.put("X-DRBEP-Access-Token", token.trim());
+        }
+        String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
+        if (deviceId != null && !deviceId.trim().isEmpty()) {
+            headers.put("X-DRBEP-Device-Id", deviceId.trim());
         }
         return headers;
     }

@@ -5,7 +5,7 @@
     <dimen name="player_status_text_size">12sp</dimen>
     <dimen name="player_edge_margin">12dp</dimen>
     <dimen name="panel_compact_padding">6dp</dimen>
-    <dimen name="zap_banner_width">420dp</dimen>
+    <dimen name="zap_banner_width">960dp</dimen>
     <dimen name="zap_banner_logo_size">56dp</dimen>
     <dimen name="zap_banner_logo_padding">1dp</dimen>
     <dimen name="zap_channel_text_size">14sp</dimen>

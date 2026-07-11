@@ -1,3 +1,8 @@
+## 2.0.245-beta-u7d-offline-route-hud-width
+- Offline beta: U7D en Movistar ISM lista programas desde una ruta offline autenticada, sin depender de la sesion del dashboard.
+- Offline beta: envia token y device_id tambien al listado U7D para alinear permisos con stream/catalogo.
+- Offline beta: ensancha el HUD inferior de Fire TV para que los botones no corten el texto al anadir U7D.
+
 ## 2.0.244-beta-u7d-backend-fire-hud
 - Offline beta: anade el boton U7D al HUD inferior de Fire TV para canales Movistar ISM.
 - Offline beta: carga los programas U7D desde el informe del backend Movistar, con fallback al EPG local.

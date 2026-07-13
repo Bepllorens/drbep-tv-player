@@ -11748,12 +11748,18 @@ public class MainActivity extends FragmentActivity {
                 }
             }));
         }
+        Runnable closeAction = () -> {
+            if (dialogHolder[0] != null) {
+                dialogHolder[0].dismiss();
+            }
+        };
         TvMessagePanelComposeBinder.bind(
                 composeView,
                 new TvMessagePanelUiModel(
                         title == null || title.trim().isEmpty() ? getString(R.string.app_name) : title,
                         message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message,
-                        wrappedActions
+                        wrappedActions,
+                        closeAction
                 )
         );
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {

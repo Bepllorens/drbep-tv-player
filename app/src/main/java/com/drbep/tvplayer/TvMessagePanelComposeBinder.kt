@@ -57,6 +57,7 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
+            .tvPanelBackHandler(model.onBack)
             .background(Color(0xCC000000)),
         contentAlignment = Alignment.Center
     ) {

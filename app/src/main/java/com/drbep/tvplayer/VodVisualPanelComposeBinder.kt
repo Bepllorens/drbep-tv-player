@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -61,6 +63,7 @@ object VodVisualPanelComposeBinder {
 @Composable
 private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualPosterImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 720
+    val firstActionRequester = rememberTvInitialFocusRequester(!model.actions.isNullOrEmpty(), model)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -98,8 +101,8 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
             )
             Spacer(modifier = Modifier.height(if (compact) 10.dp else 12.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)) {
-                items(model.actions ?: emptyList()) { action ->
-                    VodVisualActionChip(action, compact)
+                items((model.actions ?: emptyList()).withIndex().toList()) { indexedAction ->
+                    VodVisualActionChip(indexedAction.value, compact, if (indexedAction.index == 0) firstActionRequester else null)
                 }
             }
             Spacer(modifier = Modifier.height(if (compact) 12.dp else 16.dp))
@@ -126,7 +129,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean) {
+private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean, focusRequester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
     val background = if (focused) Color(0xFFFFD782) else if (action.filter) Color(0xFF235D78) else Color(0xFF263645)
     val textColor = if (focused) Color(0xFF111820) else Color.White
@@ -136,6 +139,7 @@ private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean
             .width(if (compact) 138.dp else 170.dp)
             .clip(RoundedCornerShape(13.dp))
             .background(background)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(action.onClick != null)
             .combinedClickable(enabled = action.onClick != null, onClick = { action.onClick?.run() })

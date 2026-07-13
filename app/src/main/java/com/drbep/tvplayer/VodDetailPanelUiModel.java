@@ -14,6 +14,7 @@ public final class VodDetailPanelUiModel {
     public final String hint;
     public final List<VodPanelActionUiModel> primaryActions;
     public final List<VodPanelActionUiModel> secondaryActions;
+    public final Runnable onBack;
 
     public VodDetailPanelUiModel(
             String title,
@@ -27,6 +28,22 @@ public final class VodDetailPanelUiModel {
             List<VodPanelActionUiModel> primaryActions,
             List<VodPanelActionUiModel> secondaryActions
     ) {
+        this(title, meta, description, progressLabel, posterUrl, primaryTitle, secondaryTitle, hint, primaryActions, secondaryActions, null);
+    }
+
+    public VodDetailPanelUiModel(
+            String title,
+            String meta,
+            String description,
+            String progressLabel,
+            String posterUrl,
+            String primaryTitle,
+            String secondaryTitle,
+            String hint,
+            List<VodPanelActionUiModel> primaryActions,
+            List<VodPanelActionUiModel> secondaryActions,
+            Runnable onBack
+    ) {
         this.title = title == null ? "" : title;
         this.meta = meta == null ? "" : meta;
         this.description = description == null ? "" : description;
@@ -37,5 +54,6 @@ public final class VodDetailPanelUiModel {
         this.hint = hint == null ? "" : hint;
         this.primaryActions = primaryActions == null ? new ArrayList<>() : new ArrayList<>(primaryActions);
         this.secondaryActions = secondaryActions == null ? new ArrayList<>() : new ArrayList<>(secondaryActions);
+        this.onBack = onBack;
     }
 }

@@ -3713,6 +3713,11 @@ public class MainActivity extends FragmentActivity {
         prepareModalSurface();
         long resumeMs = getVodResumePosition(channel.id);
         final Dialog[] dialogHolder = new Dialog[1];
+        final boolean[] navigationHandled = {false};
+        Runnable panelBackAction = onBack == null ? null : () -> {
+            navigationHandled[0] = true;
+            dismissModalForNextAction(dialogHolder[0], onBack);
+        };
         List<VodPanelActionUiModel> primaryActions = new ArrayList<>();
         primaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_play), true, () -> {
             Dialog activeDialog = dialogHolder[0];
@@ -3763,7 +3768,8 @@ public class MainActivity extends FragmentActivity {
                         getString(R.string.vod_detail_secondary_actions),
                         getString(R.string.vod_detail_action_hint),
                         primaryActions,
-                        secondaryActions
+                        secondaryActions,
+                        panelBackAction
                 ),
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
@@ -3773,6 +3779,15 @@ public class MainActivity extends FragmentActivity {
             }
         }, this::handleModalDismissed);
         dialogHolder[0] = dialog;
+        if (onBack != null) {
+            dialog.setOnKeyListener((ignored, keyCode, event) -> {
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP && !navigationHandled[0]) {
+                    panelBackAction.run();
+                    return true;
+                }
+                return false;
+            });
+        }
         handleModalShown();
     }
 
@@ -3796,6 +3811,11 @@ public class MainActivity extends FragmentActivity {
         }
         prepareModalSurface();
         final Dialog[] dialogHolder = new Dialog[1];
+        final boolean[] navigationHandled = {false};
+        Runnable panelBackAction = onBack == null ? null : () -> {
+            navigationHandled[0] = true;
+            dismissModalForNextAction(dialogHolder[0], onBack);
+        };
         List<VodPanelActionUiModel> actionRows = new ArrayList<>();
         actionRows.add(new VodPanelActionUiModel(getString(R.string.vod_action_play_vod), false, () -> {
             dismissDialog(dialogHolder[0]);
@@ -3850,7 +3870,8 @@ public class MainActivity extends FragmentActivity {
                         getString(R.string.vod_detail_secondary_actions),
                         getString(R.string.vod_detail_action_hint),
                         new ArrayList<>(),
-                        actionRows
+                        actionRows,
+                        panelBackAction
                 ),
                 (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
         );
@@ -3860,6 +3881,15 @@ public class MainActivity extends FragmentActivity {
             }
         }, this::handleModalDismissed);
         dialogHolder[0] = dialog;
+        if (onBack != null) {
+            dialog.setOnKeyListener((ignored, keyCode, event) -> {
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP && !navigationHandled[0]) {
+                    panelBackAction.run();
+                    return true;
+                }
+                return false;
+            });
+        }
         handleModalShown();
     }
 

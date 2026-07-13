@@ -25,9 +25,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
@@ -54,10 +61,14 @@ object VodDetailPanelComposeBinder {
 @OptIn(ExperimentalLayoutApi::class)
 private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPosterBinder?) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
+    val primaryFocusEnabled = model.primaryActions.any { it.onClick != null }
+    val secondaryFocusEnabled = !primaryFocusEnabled && model.secondaryActions.any { it.onClick != null }
+    val firstActionRequester = rememberTvInitialFocusRequester(primaryFocusEnabled || secondaryFocusEnabled, model)
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xCC000000))
+            .tvPanelBackHandler(model.onBack)
             .padding(horizontal = if (compact) 12.dp else 56.dp, vertical = if (compact) 18.dp else 48.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -78,8 +89,8 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
                     horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
                 ) {
-                    model.primaryActions.forEach { action ->
-                        VodPanelAction(action, compact)
+                    model.primaryActions.forEachIndexed { index, action ->
+                        VodPanelAction(action, compact, if (index == 0) firstActionRequester else null)
                     }
                 }
             }
@@ -93,8 +104,8 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
                     )
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)) {
-                    model.secondaryActions.forEach { action ->
-                        VodPanelAction(action, compact)
+                    model.secondaryActions.forEachIndexed { index, action ->
+                        VodPanelAction(action, compact, if (secondaryFocusEnabled && index == 0) firstActionRequester else null)
                     }
                 }
             }
@@ -186,10 +197,19 @@ private fun SectionTitle(title: String, compact: Boolean) {
 }
 
 @Composable
-private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean) {
-    val fill = if (action.primary) Color(0xFFFFD782) else Color(0xFF172536)
-    val textColor = if (action.primary) Color(0xFF111820) else Color.White
-    val stroke = if (action.primary) Color.White else Color(0xFF2B4057)
+private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focusRequester: FocusRequester?) {
+    var focused by remember { mutableStateOf(false) }
+    val fill = when {
+        focused -> Color(0xFFFFD782)
+        action.primary -> Color(0xFF3A6EA5)
+        else -> Color(0xFF172536)
+    }
+    val textColor = if (focused) Color(0xFF111820) else Color.White
+    val stroke = when {
+        focused -> Color.White
+        action.primary -> Color(0xFFFFD782)
+        else -> Color(0xFF2B4057)
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth(if (action.primary) if (compact) 1f else 0.31f else 1f)
@@ -197,6 +217,8 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean) {
             .clip(RoundedCornerShape(if (action.primary) 12.dp else 10.dp))
             .background(fill)
             .border(1.dp, stroke, RoundedCornerShape(if (action.primary) 12.dp else 10.dp))
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(action.onClick != null)
             .clickable(enabled = action.onClick != null) { action.onClick?.run() }
             .padding(horizontal = if (compact) 12.dp else 16.dp),

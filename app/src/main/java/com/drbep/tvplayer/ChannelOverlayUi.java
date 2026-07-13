@@ -41,12 +41,13 @@ public final class ChannelOverlayUi {
             String contextLabel,
             PlayerController.PlaybackDiagnostics diagnostics,
             String compactQualityLabel,
+            EpgRepository.EpgProgramPair epgPair,
             List<RecentChannelsStore.RecentChannelItem> recentItems
     ) {
         String title = currentChannel == null
                 ? context.getString(R.string.status_ready)
                 : safeTrim(channelTitle);
-        String meta = buildProgramSummary(context, currentChannel);
+        String meta = buildProgramSummary(context, currentChannel, epgPair);
         if (!safeTrim(profileTag).isEmpty()) {
             meta = profileTag.trim() + "  ·  " + meta;
         }
@@ -77,13 +78,21 @@ public final class ChannelOverlayUi {
         return context.getString(R.string.overlay_count_chip, context.getString(labelRes), count);
     }
 
-    static String buildProgramSummary(Context context, ChannelItem channel) {
-        String currentLine = channel == null || safeTrim(channel.nowProgram).isEmpty()
+    static String buildProgramSummary(Context context, ChannelItem channel, EpgRepository.EpgProgramPair epgPair) {
+        EpgRepository.EpgProgram current = epgPair == null ? null : epgPair.current;
+        EpgRepository.EpgProgram next = epgPair == null ? null : epgPair.next;
+        String currentTitle = current == null || safeTrim(current.title).isEmpty()
+                ? (channel == null ? "" : safeTrim(channel.nowProgram))
+                : current.title.trim();
+        String nextTitle = next == null || safeTrim(next.title).isEmpty()
+                ? (channel == null ? "" : safeTrim(channel.nextProgram))
+                : next.title.trim();
+        String currentLine = safeTrim(currentTitle).isEmpty()
                 ? context.getString(R.string.overlay_current_program_empty)
-                : context.getString(R.string.overlay_current_program, channel.nowProgram.trim());
-        String nextLine = channel == null || safeTrim(channel.nextProgram).isEmpty()
+                : context.getString(R.string.overlay_current_program, currentTitle.trim());
+        String nextLine = safeTrim(nextTitle).isEmpty()
                 ? context.getString(R.string.overlay_next_program_empty)
-                : context.getString(R.string.overlay_next_program, channel.nextProgram.trim());
+                : context.getString(R.string.overlay_next_program, nextTitle.trim());
         return currentLine + "\n" + nextLine;
     }
 

@@ -1487,7 +1487,12 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String channelId = channel.id == null ? "" : channel.id.trim();
-        if (channelId.isEmpty() || epgProgramPairByChannelId.containsKey(channelId) || touchControlsEpgFetchInFlight.contains(channelId)) {
+        EpgRepository.EpgProgramPair existingPair = epgProgramPairByChannelId.get(channelId);
+        boolean hasCurrent = hasProgramTitle(existingPair == null ? null : existingPair.current)
+                || (channel.nowProgram != null && !channel.nowProgram.trim().isEmpty());
+        boolean hasNext = hasProgramTitle(existingPair == null ? null : existingPair.next)
+                || (channel.nextProgram != null && !channel.nextProgram.trim().isEmpty());
+        if (channelId.isEmpty() || (hasCurrent && hasNext) || touchControlsEpgFetchInFlight.contains(channelId)) {
             return;
         }
         touchControlsEpgFetchInFlight.add(channelId);
@@ -1515,11 +1520,15 @@ public class MainActivity extends FragmentActivity {
             EpgRepository.EpgProgram finalNext = next;
             uiHandler.post(() -> {
                 touchControlsEpgFetchInFlight.remove(channelId);
-                if (finalCurrent != null || finalNext != null) {
-                    epgProgramPairByChannelId.put(channelId, new EpgRepository.EpgProgramPair(finalCurrent, finalNext));
+                EpgRepository.EpgProgramPair previousPair = epgProgramPairByChannelId.get(channelId);
+                EpgRepository.EpgProgram mergedCurrent = finalCurrent != null ? finalCurrent : (previousPair == null ? null : previousPair.current);
+                EpgRepository.EpgProgram mergedNext = finalNext != null ? finalNext : (previousPair == null ? null : previousPair.next);
+                if (mergedCurrent != null || mergedNext != null) {
+                    epgProgramPairByChannelId.put(channelId, new EpgRepository.EpgProgramPair(mergedCurrent, mergedNext));
+                    applySingleProgramPairToChannelLists(channelId, mergedCurrent, mergedNext);
                     Log.w(TAG, "Touch HUD EPG hydrated channel=" + channelId
-                            + " current=" + (finalCurrent == null ? "" : finalCurrent.title)
-                            + " next=" + (finalNext == null ? "" : finalNext.title));
+                            + " current=" + (mergedCurrent == null ? "" : mergedCurrent.title)
+                            + " next=" + (mergedNext == null ? "" : mergedNext.title));
                 }
                 ChannelItem active = getCurrentPlaybackChannelItem();
                 boolean stillActive = active != null && channelId.equals(active.id);
@@ -1527,8 +1536,16 @@ public class MainActivity extends FragmentActivity {
                 if (stillActive && hudVisible) {
                     refreshTouchControlsBar();
                 }
+                if (stillActive && isOverlayVisible()) {
+                    refreshOverlayChannelList();
+                    updateOverlayPanel();
+                }
             });
         });
+    }
+
+    private boolean hasProgramTitle(EpgRepository.EpgProgram program) {
+        return program != null && program.title != null && !program.title.trim().isEmpty();
     }
 
     private String formatPlaybackPreviewLabel(PlayerController.PlaybackSeekState state, long targetMs) {
@@ -2196,10 +2213,10 @@ public class MainActivity extends FragmentActivity {
         boolean movistar = platform.contains("movistar ism")
                 || (platform.contains("movistar") && (group.contains("movistar") || name.contains("dazn")))
                 || playUrl.contains("movistarplus")
-                || fallbackUrl.contains("/hls/ism/");
+                || isMovistarIsmBackendUrl(fallbackUrl);
         boolean smooth = playUrl.contains(".isml/manifest")
                 || playUrl.contains(".ism/manifest")
-                || fallbackUrl.contains("/hls/ism/")
+                || isMovistarIsmBackendUrl(fallbackUrl)
                 || platform.contains("ism");
         return movistar && smooth;
     }
@@ -2216,12 +2233,18 @@ public class MainActivity extends FragmentActivity {
         boolean movistar = platform.contains("movistar ism")
                 || (platform.contains("movistar") && group.contains("movistar"))
                 || playUrl.contains("movistarplus")
-                || fallbackUrl.contains("/hls/ism/");
+                || isMovistarIsmBackendUrl(fallbackUrl);
         boolean smooth = platform.contains("ism")
                 || playUrl.contains(".isml/manifest")
                 || playUrl.contains(".ism/manifest")
-                || fallbackUrl.contains("/hls/ism/");
+                || isMovistarIsmBackendUrl(fallbackUrl);
         return movistar && smooth && !name.trim().isEmpty();
+    }
+
+    private boolean isMovistarIsmBackendUrl(String url) {
+        return url != null
+                && (url.contains("/hls/ism/")
+                || url.contains("/hls/ism-mux/"));
     }
 
     private boolean isOrangePlaybackRequest(ChannelItem channel, PlayerController.PlaybackRequest request) {
@@ -2638,6 +2661,33 @@ public class MainActivity extends FragmentActivity {
             }
         }
         return filled;
+    }
+
+    private void applySingleProgramPairToChannelLists(String channelId, EpgRepository.EpgProgram current, EpgRepository.EpgProgram next) {
+        if (channelId == null || channelId.trim().isEmpty()) {
+            return;
+        }
+        applySingleProgramPairToChannelList(channels, channelId.trim(), current, next);
+        applySingleProgramPairToChannelList(allChannels, channelId.trim(), current, next);
+    }
+
+    private void applySingleProgramPairToChannelList(List<ChannelItem> items, String channelId, EpgRepository.EpgProgram current, EpgRepository.EpgProgram next) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        String currentTitle = hasProgramTitle(current) ? current.title.trim() : "";
+        String nextTitle = hasProgramTitle(next) ? next.title.trim() : "";
+        for (ChannelItem item : items) {
+            if (item == null || item.id == null || !channelId.equals(item.id.trim())) {
+                continue;
+            }
+            if (!currentTitle.isEmpty()) {
+                item.nowProgram = currentTitle;
+            }
+            if (!nextTitle.isEmpty()) {
+                item.nextProgram = nextTitle;
+            }
+        }
     }
 
     private void showChannelActionMenu() {
@@ -7489,8 +7539,10 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         ChannelItem currentChannel = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : findChannelItemById(lastChannelId);
+        ensureTouchControlsEpgPair(currentChannel);
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
+        EpgRepository.EpgProgramPair epgPair = currentChannel == null ? null : epgProgramPairByChannelId.get(currentChannel.id);
         ChannelOverlayUi.NowPlayingModel model = ChannelOverlayUi.buildNowPlayingModel(
                 this,
                 currentChannel,
@@ -7499,6 +7551,7 @@ public class MainActivity extends FragmentActivity {
                 overlayContextLabel(currentChannel),
                 diagnostics,
                 formatPlaybackQualityCompact(diagnostics),
+                epgPair,
                 items
         );
         OverlayNowPlayingComposeBinder.bind(overlayNowPlayingComposeView, model);

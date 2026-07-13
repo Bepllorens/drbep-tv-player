@@ -1319,10 +1319,11 @@ final class PlayerController {
         lastErrorSummary = null;
         lastHdrBadgeChannelId = null;
         uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
+        PlaybackRouteResolver.Decision decision = buildPlaybackDecision(request, useFallback, streamInfo);
         forceLiveEdgeOnNextReady = request != null
                 && request.platformName != null
-                && request.platformName.toLowerCase(Locale.ROOT).contains("movistar");
-        PlaybackRouteResolver.Decision decision = buildPlaybackDecision(request, useFallback, streamInfo);
+                && request.platformName.toLowerCase(Locale.ROOT).contains("movistar")
+                && !isMovistarIsmHlsDecision(decision);
         if (!request.vod
                 && !useFallback
                 && resumePositionMs <= 0L
@@ -1351,7 +1352,15 @@ final class PlayerController {
 
         String mediaTargetUrl = appendOfflineAccessToken(decision.targetUrl);
         MediaItem.Builder builder = new MediaItem.Builder().setUri(mediaTargetUrl);
-        if (isHevcHlsDecision(decision)) {
+        if (isMovistarIsmHlsDecision(decision)) {
+            builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(12_000)
+                    .setMinOffsetMs(8_000)
+                    .setMaxOffsetMs(30_000)
+                    .setMinPlaybackSpeed(0.97f)
+                    .setMaxPlaybackSpeed(1.02f)
+                    .build());
+        } else if (isHevcHlsDecision(decision)) {
             builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
                     .setTargetOffsetMs(18_000)
                     .setMinOffsetMs(12_000)
@@ -1605,6 +1614,14 @@ final class PlayerController {
                 && decision.targetUrl != null
                 && decision.targetUrl.contains("/proxy/manifest/")
                 && MimeTypes.APPLICATION_MPD.equals(decision.mimeType);
+    }
+
+    private boolean isMovistarIsmHlsDecision(PlaybackRouteResolver.Decision decision) {
+        return decision != null
+                && decision.targetUrl != null
+                && (decision.targetUrl.contains("/hls/ism/")
+                || decision.targetUrl.contains("/hls/ism-mux/"))
+                && isHlsDecision(decision);
     }
 
     private void maybeShowHdrBadge() {

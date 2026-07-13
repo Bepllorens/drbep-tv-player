@@ -19,6 +19,7 @@ final class VodVisualUiFactory {
         List<ChannelItem> filteredItems(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query);
         List<ChannelItem> continueItems();
         List<ChannelItem> recentItems();
+        List<ChannelItem> movistarItems();
         List<ChannelItem> runtimeItems();
         List<ChannelItem> tivifyItems();
         List<ChannelItem> progressItems();
@@ -114,6 +115,7 @@ final class VodVisualUiFactory {
         } else if (host.defaultFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
             addSection(sections, host.text(R.string.vod_library_continue), host.continueItems(), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, host.text(R.string.vod_library_recent), host.recentItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, host.text(R.string.vod_library_movistar), host.movistarItems(), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, host.text(R.string.vod_library_runtime), host.runtimeItems(), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, host.text(R.string.vod_library_tivify), host.tivifyItems(), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, host.text(R.string.vod_library_with_progress), host.progressItems(), host, DEFAULT_SECTION_LIMIT);
@@ -146,7 +148,10 @@ final class VodVisualUiFactory {
             ));
         }
         if (!mapped.isEmpty()) {
-            sections.add(new VodVisualSectionUiModel(host.text(R.string.vod_visual_section_title, title, mapped.size()), mapped));
+            String sectionTitle = items.size() > mapped.size()
+                    ? host.text(R.string.vod_visual_section_title_limited, title, mapped.size(), items.size())
+                    : host.text(R.string.vod_visual_section_title, title, mapped.size());
+            sections.add(new VodVisualSectionUiModel(sectionTitle, mapped));
         }
     }
 }

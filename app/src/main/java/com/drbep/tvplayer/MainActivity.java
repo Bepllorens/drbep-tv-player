@@ -7974,6 +7974,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public List<ChannelItem> movistarItems() {
+                return buildMovistarVodItems();
+            }
+
+            @Override
             public List<ChannelItem> runtimeItems() {
                 return buildVodItemsByFilter("vod:runtime:movies", false);
             }
@@ -12265,6 +12270,7 @@ public class MainActivity extends FragmentActivity {
 
     enum VodVisualPlatformFilter {
         ALL("Todo"),
+        MOVISTAR("Movistar"),
         TIVIFY("Tivify"),
         RUNTIME("Runtime"),
         OTHER("Otros");
@@ -12358,6 +12364,7 @@ public class MainActivity extends FragmentActivity {
 
     private String buildVodSearchSummary(String query) {
         List<ChannelItem> all = buildVodVisualFilteredItems(VodVisualTypeFilter.ALL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, query);
+        int movistar = 0;
         int tivify = 0;
         int runtime = 0;
         int adult = 0;
@@ -12369,7 +12376,9 @@ public class MainActivity extends FragmentActivity {
             if (item.isAdultVod) {
                 adult++;
             }
-            if (matchesVodVisualPlatform(item, VodVisualPlatformFilter.TIVIFY)) {
+            if (matchesVodVisualPlatform(item, VodVisualPlatformFilter.MOVISTAR)) {
+                movistar++;
+            } else if (matchesVodVisualPlatform(item, VodVisualPlatformFilter.TIVIFY)) {
                 tivify++;
             } else if (matchesVodVisualPlatform(item, VodVisualPlatformFilter.RUNTIME)) {
                 runtime++;
@@ -12378,7 +12387,7 @@ public class MainActivity extends FragmentActivity {
                 progress++;
             }
         }
-        return getString(R.string.vod_search_visual_summary, all.size(), tivify, runtime, adult, progress);
+        return getString(R.string.vod_search_visual_summary, all.size(), movistar, tivify, runtime, adult, progress);
     }
 
     private boolean matchesVodVisualType(ChannelItem item, VodVisualTypeFilter typeFilter) {
@@ -12394,15 +12403,19 @@ public class MainActivity extends FragmentActivity {
         }
         String filterKey = item.vodFilterKey == null ? "" : item.vodFilterKey.toLowerCase(Locale.ROOT);
         String platform = item.platformName == null ? "" : item.platformName.toLowerCase(Locale.ROOT);
+        boolean isMovistar = filterKey.contains("movistar") || platform.contains("movistar");
         boolean isTivify = filterKey.contains("tivify") || platform.contains("tivify");
         boolean isRuntime = filterKey.contains("runtime") || platform.contains("runtime");
+        if (platformFilter == VodVisualPlatformFilter.MOVISTAR) {
+            return isMovistar;
+        }
         if (platformFilter == VodVisualPlatformFilter.TIVIFY) {
             return isTivify;
         }
         if (platformFilter == VodVisualPlatformFilter.RUNTIME) {
             return isRuntime;
         }
-        return !isTivify && !isRuntime;
+        return !isMovistar && !isTivify && !isRuntime;
     }
 
     private boolean matchesVodVisualStatus(ChannelItem item, VodVisualStatusFilter statusFilter) {
@@ -12629,6 +12642,23 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             items.add(item);
+        }
+        sortVodLibraryItems(items);
+        return items;
+    }
+
+    private List<ChannelItem> buildMovistarVodItems() {
+        List<ChannelItem> items = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        for (ChannelItem item : allChannels) {
+            if (item == null || !item.isVod || item.isAdultVod || shouldHideProtectedItem(item)) {
+                continue;
+            }
+            String filterKey = item.vodFilterKey == null ? "" : item.vodFilterKey.toLowerCase(Locale.ROOT);
+            String platform = item.platformName == null ? "" : item.platformName.toLowerCase(Locale.ROOT);
+            if ((filterKey.contains("movistar") || platform.contains("movistar")) && added.add(item.id)) {
+                items.add(item);
+            }
         }
         sortVodLibraryItems(items);
         return items;

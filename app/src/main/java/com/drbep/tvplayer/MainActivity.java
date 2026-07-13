@@ -280,6 +280,8 @@ public class MainActivity extends FragmentActivity {
     };
     private final List<ChannelItem> channels = new ArrayList<>();
     private final List<ChannelItem> allChannels = new ArrayList<>();
+    private final List<ChannelItem> cachedMovistarVodItems = new ArrayList<>();
+    private boolean cachedMovistarVodItemsValid = false;
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
@@ -1951,6 +1953,7 @@ public class MainActivity extends FragmentActivity {
         epgFullLoadScheduledForChannelId = "";
         epgLoadedFilterKeys.clear();
         epgQueuedFilterKeys.clear();
+        invalidateVodDerivedCaches();
         uiHandler.removeCallbacks(progressiveEpgRunnable);
         long coordinatorStartMs = System.currentTimeMillis();
         channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
@@ -6708,7 +6711,7 @@ public class MainActivity extends FragmentActivity {
                 return;
             }
             if (item.vod) {
-                bindRecordingPoster(imageView, item.logoUrl);
+                bindVodPosterList(imageView, item.logoUrl);
             } else {
                 bindChannelLogo(imageView, item.logoUrl, item.name, 38, 38);
             }
@@ -7904,7 +7907,7 @@ public class MainActivity extends FragmentActivity {
         VodVisualPanelComposeBinder.bind(
                 composeView,
                 buildVodVisualPanelModel(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, dialogHolder, onBack),
-                (imageView, item) -> bindRecordingPoster(imageView, item == null ? "" : item.posterUrl)
+                (imageView, item) -> bindVodPosterThumbnail(imageView, item == null ? "" : item.posterUrl)
         );
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onBack != null) {
@@ -12687,6 +12690,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> buildMovistarVodItems() {
+        if (cachedMovistarVodItemsValid) {
+            return new ArrayList<>(cachedMovistarVodItems);
+        }
         List<ChannelItem> items = new ArrayList<>();
         Set<String> added = new HashSet<>();
         for (ChannelItem item : allChannels) {
@@ -12700,7 +12706,15 @@ public class MainActivity extends FragmentActivity {
             }
         }
         sortVodLibraryItems(items);
+        cachedMovistarVodItems.clear();
+        cachedMovistarVodItems.addAll(items);
+        cachedMovistarVodItemsValid = true;
         return items;
+    }
+
+    private void invalidateVodDerivedCaches() {
+        cachedMovistarVodItems.clear();
+        cachedMovistarVodItemsValid = false;
     }
 
     private List<ChannelItem> buildVodProgressItems() {
@@ -13037,7 +13051,7 @@ public class MainActivity extends FragmentActivity {
                 return;
             }
             if (item.vod) {
-                bindRecordingPoster(imageView, item.logoUrl);
+                bindVodPosterList(imageView, item.logoUrl);
             } else {
                 bindChannelLogo(imageView, item.logoUrl, item.channelName, 42, 42);
             }
@@ -14177,7 +14191,7 @@ public class MainActivity extends FragmentActivity {
                 return;
             }
             if (item.vod) {
-                bindRecordingPoster(imageView, item.logoUrl);
+                bindVodPosterList(imageView, item.logoUrl);
             } else {
                 bindChannelLogo(imageView, item.logoUrl, item.channelName, 42, 42);
             }
@@ -15365,6 +15379,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         vodResumePositions.put(currentPlaybackVodId, positionMs);
+        invalidateVodDerivedCaches();
         saveVodResumePositions();
     }
 
@@ -15381,12 +15396,14 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         if (vodResumePositions.remove(vodId) != null) {
+            invalidateVodDerivedCaches();
             saveVodResumePositions();
         }
     }
 
     private void loadVodResumePositions() {
         vodResumePositions.clear();
+        invalidateVodDerivedCaches();
         if (prefs == null) {
             return;
         }
@@ -15864,10 +15881,22 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void bindRecordingPoster(ImageView imageView, String posterUrl) {
-        bindPoster(imageView, posterUrl, false);
+        bindPoster(imageView, posterUrl, false, 360, 540);
+    }
+
+    private void bindVodPosterThumbnail(ImageView imageView, String posterUrl) {
+        bindPoster(imageView, posterUrl, false, 180, 270);
+    }
+
+    private void bindVodPosterList(ImageView imageView, String posterUrl) {
+        bindPoster(imageView, posterUrl, false, 120, 180);
     }
 
     private void bindPoster(ImageView imageView, String posterUrl, boolean fitInside) {
+        bindPoster(imageView, posterUrl, fitInside, 360, 540);
+    }
+
+    private void bindPoster(ImageView imageView, String posterUrl, boolean fitInside, int widthDp, int heightDp) {
         if (imageView == null) {
             return;
         }
@@ -15886,7 +15915,7 @@ public class MainActivity extends FragmentActivity {
                     .load(trimmedPosterUrl)
                     .fitCenter()
                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                    .override(dp(360), dp(540))
+                    .override(dp(widthDp), dp(heightDp))
                     .into(imageView);
             return;
         }
@@ -15895,7 +15924,7 @@ public class MainActivity extends FragmentActivity {
                 .load(trimmedPosterUrl)
                 .centerCrop()
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .override(dp(360), dp(540))
+                .override(dp(widthDp), dp(heightDp))
                 .into(imageView);
     }
 

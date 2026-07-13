@@ -2014,7 +2014,8 @@ public class MainActivity extends FragmentActivity {
                 playChannelItem(channel, true);
             }, 120L);
             uiHandler.postDelayed(this::prefetchCurrentChannelLogos, 2400L);
-            scheduleVisibleEpgLoad(OFFLINE_EPG_INITIAL_DELAY_MS);
+            scheduleCurrentChannelEpgLoad(1500L);
+            scheduleVisibleEpgLoad(8000L);
         } else {
             tuneToIndex(startIndex, true);
             uiHandler.postDelayed(this::prefetchCurrentChannelLogos, 1800L);
@@ -2389,7 +2390,32 @@ public class MainActivity extends FragmentActivity {
         if (!BuildConfig.STANDALONE_MODE || channels.isEmpty()) {
             return;
         }
-        uiHandler.postDelayed(() -> loadEpgForChannels(currentEpgFilterKey(), "visible", new ArrayList<>(channels), false, true), Math.max(0L, delayMs));
+        long safeDelay = Math.max(0L, delayMs);
+        Log.i(TAG, "EPG visible scheduled delayMs=" + safeDelay + " channels=" + channels.size() + " filter=" + currentEpgFilterKey());
+        uiHandler.postDelayed(() -> {
+            Log.i(TAG, "EPG visible trigger channels=" + channels.size() + " filter=" + currentEpgFilterKey());
+            loadEpgForChannels(currentEpgFilterKey(), "visible", new ArrayList<>(channels), false, true);
+        }, safeDelay);
+    }
+
+    private void scheduleCurrentChannelEpgLoad(long delayMs) {
+        if (!BuildConfig.STANDALONE_MODE || channels.isEmpty()) {
+            return;
+        }
+        long safeDelay = Math.max(0L, delayMs);
+        Log.i(TAG, "EPG current scheduled delayMs=" + safeDelay + " currentIndex=" + overlayNavigationState.currentIndex);
+        uiHandler.postDelayed(() -> {
+            ChannelItem current = getCurrentPlaybackChannelItem();
+            if (current == null && overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+                current = channels.get(overlayNavigationState.currentIndex);
+            }
+            if (current == null || current.isVod) {
+                Log.i(TAG, "EPG current skipped no live channel");
+                return;
+            }
+            Log.i(TAG, "EPG current trigger channel=" + current.id + " name=" + displayName(current));
+            loadEpgForChannels("current:" + current.id, displayName(current), java.util.Collections.singletonList(current), false, false);
+        }, safeDelay);
     }
 
     private void scheduleNextProgressiveEpgLoad(long delayMs) {
@@ -2424,12 +2450,14 @@ public class MainActivity extends FragmentActivity {
 
     private void loadEpgForChannels(String filterKey, String label, List<ChannelItem> snapshot, boolean fullCatalog, boolean continueProgressive) {
         if (epgLoadInFlight) {
+            Log.i(TAG, "EPG partial skipped inFlight filter=" + filterKey + " continueProgressive=" + continueProgressive);
             if (continueProgressive) {
                 scheduleNextProgressiveEpgLoad(OFFLINE_EPG_BUSY_RETRY_MS);
             }
             return;
         }
         if (snapshot == null || snapshot.isEmpty()) {
+            Log.i(TAG, "EPG partial skipped empty snapshot filter=" + filterKey);
             if (continueProgressive) {
                 scheduleNextProgressiveEpgLoad(OFFLINE_EPG_PROGRESSIVE_DELAY_MS);
             }
@@ -2441,6 +2469,7 @@ public class MainActivity extends FragmentActivity {
         epgQueuedFilterKeys.add(cleanFilterKey);
         epgLoadInFlight = true;
         long startMs = System.currentTimeMillis();
+        Log.i(TAG, "EPG partial start filter=" + cleanFilterKey + " label=" + cleanLabel + " channels=" + epgChannelsSnapshot.size());
         epgExecutor.execute(() -> {
             try {
                 Map<String, EpgRepository.EpgProgramPair> pairs = epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot);

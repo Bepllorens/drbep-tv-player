@@ -1,3 +1,7 @@
+## 2.0.259-beta-priority-epg-load
+- Offline beta: carga EPG del canal actual casi al arrancar y adelanta la carga del grupo visible para evitar quedarse sin guia en Movistar ISM.
+- Offline beta: anade trazas claras de programacion, arranque y resultado de la carga EPG para diagnosticar movil/Fire TV.
+
 ## 2.0.258-beta-remote-epg-fallback
 - Offline beta: el fallback EPG remoto evita volver a la EPG local cuando el snapshot no trae un canal concreto.
 - Offline beta: Movistar ISM recupera programa actual/siguiente desde endpoints remotos autenticados si la EPG local no tiene ese canal.

@@ -1495,10 +1495,21 @@ public class MainActivity extends FragmentActivity {
             EpgRepository.EpgProgram current = null;
             EpgRepository.EpgProgram next = null;
             try {
-                current = epgRepository.fetchProgramForChannel(channel, false);
-                next = epgRepository.fetchProgramForChannel(channel, true);
+                EpgRepository.EpgProgramPair pair = epgRepository
+                        .fetchProgramPairsForChannels(Collections.singletonList(channel))
+                        .get(channelId);
+                if (pair != null) {
+                    current = pair.current;
+                    next = pair.next;
+                }
+                if (current == null) {
+                    current = epgRepository.fetchProgramForChannel(channel, false);
+                }
+                if (next == null) {
+                    next = epgRepository.fetchProgramForChannel(channel, true);
+                }
             } catch (Exception e) {
-                Log.d(TAG, "Touch HUD EPG hydrate failed for " + channelId, e);
+                Log.w(TAG, "Touch HUD EPG hydrate failed for " + channelId + " " + displayName(channel), e);
             }
             EpgRepository.EpgProgram finalCurrent = current;
             EpgRepository.EpgProgram finalNext = next;
@@ -1506,6 +1517,9 @@ public class MainActivity extends FragmentActivity {
                 touchControlsEpgFetchInFlight.remove(channelId);
                 if (finalCurrent != null || finalNext != null) {
                     epgProgramPairByChannelId.put(channelId, new EpgRepository.EpgProgramPair(finalCurrent, finalNext));
+                    Log.w(TAG, "Touch HUD EPG hydrated channel=" + channelId
+                            + " current=" + (finalCurrent == null ? "" : finalCurrent.title)
+                            + " next=" + (finalNext == null ? "" : finalNext.title));
                 }
                 ChannelItem active = getCurrentPlaybackChannelItem();
                 boolean stillActive = active != null && channelId.equals(active.id);

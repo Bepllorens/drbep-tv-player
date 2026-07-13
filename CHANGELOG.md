@@ -1,3 +1,7 @@
+## 2.0.261-beta-touch-epg-hydrate
+- Offline beta: el HUD tactil hidrata el EPG usando la misma carga por lotes que el arranque de Fire TV, con fallback individual si hace falta.
+- Offline beta: anade trazas visibles de hidratacion EPG tactil para diagnosticar telefono/tablet.
+
 ## 2.0.260-beta-startup-epg-trace
 - Offline beta: asegura que la carga EPG prioritaria del canal actual se programe al aplicar el catalogo inicial.
 - Offline beta: eleva las trazas de EPG de arranque a nivel visible en Fire TV para diagnosticar telefono/Fire sin ruido del sistema.

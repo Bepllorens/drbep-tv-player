@@ -22,7 +22,7 @@
     <dimen name="visual_epg_detail_meta_text_size">12sp</dimen>
     <dimen name="touch_surface_panel_side_margin">0dp</dimen>
     <dimen name="touch_surface_panel_top_margin">0dp</dimen>
-    <dimen name="touch_surface_panel_bottom_margin">188dp</dimen>
+    <dimen name="touch_surface_panel_bottom_margin">210dp</dimen>
     <dimen name="touch_controls_side_margin">48dp</dimen>
     <dimen name="touch_home_hub_side_margin">0dp</dimen>
     <dimen name="touch_home_hub_bottom_margin">138dp</dimen>

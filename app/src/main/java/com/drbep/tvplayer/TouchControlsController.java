@@ -22,6 +22,8 @@ final class TouchControlsController {
 
         boolean hasSeekablePlayback();
 
+        boolean isTimeshiftSeekInProgress();
+
         void setTouchControlsVisible(boolean visible);
 
         void hideTouchHomeHub();
@@ -121,6 +123,10 @@ final class TouchControlsController {
     }
 
     private void hideTouchControlsFromTimer() {
+        if (host.isTimeshiftSeekInProgress()) {
+            scheduler.postDelayed(hideTouchControlsRunnable, touchControlsHideMs);
+            return;
+        }
         if (!host.isOverlayVisible() && !host.isRecordingsPanelVisible()) {
             host.setTouchControlsVisible(false);
             host.hideTouchHomeHub();

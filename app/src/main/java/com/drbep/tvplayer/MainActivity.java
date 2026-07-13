@@ -984,6 +984,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean isTimeshiftSeekInProgress() {
+                return timeshiftSeekUserDragging;
+            }
+
+            @Override
             public void setTouchControlsVisible(boolean visible) {
                 if (touchDeviceMode) {
                     touchSurfaceHudVisible = visible;

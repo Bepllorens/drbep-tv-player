@@ -116,6 +116,7 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
                             val progress = seekBar?.progress ?: displayedProgress
                             latestModel.seekCommitHandler?.seekTo(progress)
                             dragging = false
+                            latestModel.onSeekEnd?.run()
                         }
                     })
                 }

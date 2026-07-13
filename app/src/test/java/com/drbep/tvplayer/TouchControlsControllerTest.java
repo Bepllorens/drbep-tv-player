@@ -86,6 +86,23 @@ public class TouchControlsControllerTest {
         assertFalse(controller.isTvTimeshiftHudActive());
     }
 
+    @Test
+    public void autoHideWaitsWhileTimeshiftIsBeingDragged() {
+        FakeScheduler scheduler = new FakeScheduler();
+        FakeHost host = new FakeHost();
+        host.touchDeviceMode = true;
+        host.touchControlsVisible = true;
+        host.timeshiftDragging = true;
+        TouchControlsController controller = new TouchControlsController(scheduler, host, 3000L, 3500L);
+
+        controller.scheduleTouchControlsAutoHide();
+        scheduler.runLast();
+
+        assertTrue(host.touchControlsVisible);
+        assertFalse(host.timeshiftHidden);
+        assertEquals(3000L, scheduler.lastDelayMs);
+    }
+
     private static final class FakeScheduler implements TouchControlsController.Scheduler {
         Runnable lastRunnable;
         long lastDelayMs;
@@ -119,6 +136,7 @@ public class TouchControlsControllerTest {
         boolean recordingsVisible;
         boolean multiViewVisible;
         boolean seekablePlayback;
+        boolean timeshiftDragging;
         boolean homeHidden;
         boolean timeshiftHidden;
         int homeUpdates;
@@ -152,6 +170,11 @@ public class TouchControlsControllerTest {
         @Override
         public boolean hasSeekablePlayback() {
             return seekablePlayback;
+        }
+
+        @Override
+        public boolean isTimeshiftSeekInProgress() {
+            return timeshiftDragging;
         }
 
         @Override

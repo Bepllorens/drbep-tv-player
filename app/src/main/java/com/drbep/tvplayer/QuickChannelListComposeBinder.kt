@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -64,9 +66,10 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp
-            )
+        )
     ) {
         PanelHeader(model.title, model.subtitle, compact)
+        QuickChannelActions(model.actions, compact)
         LazyColumn(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -74,6 +77,59 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
                 QuickChannelRow(item, imageBinder, if (index == 0) firstRowRequester else null)
             }
         }
+    }
+}
+
+@Composable
+private fun QuickChannelActions(actions: List<ZapActionItem>, compact: Boolean) {
+    if (actions.isEmpty()) return
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = if (compact) 10.dp else 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
+    ) {
+        items(actions) { action ->
+            QuickChannelActionChip(action, compact)
+        }
+    }
+}
+
+@Composable
+private fun QuickChannelActionChip(action: ZapActionItem, compact: Boolean) {
+    var focused by remember { mutableStateOf(false) }
+    val enabled = action.enabled && action.onClick != null
+    val background = when {
+        focused -> Color(0xFFFFD47A)
+        action.selected || action.highlighted -> Color(0xFF2B5D9E)
+        enabled -> Color(0xFF1B3554)
+        else -> Color(0xFF182230)
+    }
+    val textColor = when {
+        focused -> Color(0xFF101722)
+        enabled -> Color.White
+        else -> Color(0xFF7F8EA1)
+    }
+    Box(
+        modifier = Modifier
+            .background(background, RoundedCornerShape(if (compact) 16.dp else 18.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .tvButtonSemantics(enabled)
+            .clickable(enabled = enabled) { action.onClick?.run() }
+            .padding(
+                horizontal = if (compact) 14.dp else 18.dp,
+                vertical = if (compact) 8.dp else 10.dp
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicText(
+            text = action.label,
+            style = TextStyle(
+                color = textColor,
+                fontSize = if (compact) 12.sp else 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+        )
     }
 }
 

@@ -104,6 +104,7 @@ public class MainActivity extends FragmentActivity {
     private static final int OFFLINE_SYNC_HISTORY_LIMIT = 8;
     private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
     private static final int SEARCH_LOGO_PREFETCH_LIMIT = 18;
+    private static final int VOD_DENSE_PAGE_SIZE = 160;
     private static final String PREFS = "drbep_tv_prefs";
     private static final String PREF_LAST_CHANNEL_ID = "last_channel_id";
     private static final String PREF_LAST_FILTER_KEY = "last_filter_key";
@@ -12208,16 +12209,60 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodLibraryList(int titleResId, List<ChannelItem> items, boolean progressFirst, Runnable onBack) {
+        showVodLibraryList(titleResId, items, progressFirst, onBack, 0);
+    }
+
+    private void showVodLibraryList(int titleResId, List<ChannelItem> items, boolean progressFirst, Runnable onBack, int pageIndex) {
         if (progressFirst) {
             sortVodLibraryItems(items);
         }
-        Runnable returnToList = () -> showVodLibraryList(titleResId, items, false, onBack);
+        showPagedVodLibraryList(getString(titleResId), items, onBack, pageIndex);
+    }
+
+    private void showPagedVodLibraryList(String title, List<ChannelItem> items, Runnable onBack, int pageIndex) {
+        List<ChannelItem> sourceItems = items == null ? new ArrayList<>() : items;
+        int total = sourceItems.size();
+        if (total <= VOD_DENSE_PAGE_SIZE) {
+            Runnable returnToList = () -> showPagedVodLibraryList(title, sourceItems, onBack, 0);
+            showQuickChannelListDialog(
+                    title,
+                    sourceItems,
+                    getString(R.string.vod_library_empty),
+                    item -> showVodInfoDialog(item, returnToList),
+                    onBack
+            );
+            return;
+        }
+        int totalPages = Math.max(1, (int) Math.ceil(total / (double) VOD_DENSE_PAGE_SIZE));
+        int safePage = Math.max(0, Math.min(pageIndex, totalPages - 1));
+        int start = safePage * VOD_DENSE_PAGE_SIZE;
+        int end = Math.min(total, start + VOD_DENSE_PAGE_SIZE);
+        List<ChannelItem> pageItems = new ArrayList<>(sourceItems.subList(start, end));
+        Runnable returnToPage = () -> showPagedVodLibraryList(title, sourceItems, onBack, safePage);
+        List<ZapActionItem> actions = new ArrayList<>();
+        actions.add(new ZapActionItem(
+                getString(R.string.vod_dense_prev_page),
+                safePage > 0,
+                false,
+                false,
+                safePage > 0 ? () -> showPagedVodLibraryList(title, sourceItems, onBack, safePage - 1) : null
+        ));
+        actions.add(new ZapActionItem(
+                getString(R.string.vod_dense_next_page),
+                safePage < totalPages - 1,
+                false,
+                false,
+                safePage < totalPages - 1 ? () -> showPagedVodLibraryList(title, sourceItems, onBack, safePage + 1) : null
+        ));
+        String subtitle = getString(R.string.vod_dense_page_subtitle, start + 1, end, total, safePage + 1, totalPages);
         showQuickChannelListDialog(
-                getString(titleResId),
-                items,
+                title,
+                subtitle,
+                pageItems,
                 getString(R.string.vod_library_empty),
-                item -> showVodInfoDialog(item, returnToList),
-                onBack
+                item -> showVodInfoDialog(item, returnToPage),
+                onBack,
+                actions
         );
     }
 
@@ -12565,13 +12610,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openCategory(String title, List<ChannelItem> items) {
-                showQuickChannelListDialog(
-                        title,
-                        items,
-                        getString(R.string.vod_library_empty),
-                        item -> showVodInfoDialog(item, () -> showQuickChannelListDialog(title, items, getString(R.string.vod_library_empty), selected -> showVodInfoDialog(selected), returnToCategories)),
-                        returnToCategories
-                );
+                showPagedVodLibraryList(title, items, returnToCategories, 0);
             }
 
             @Override
@@ -14109,6 +14148,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showQuickChannelListDialog(String title, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action, Runnable onBack) {
+        showQuickChannelListDialog(title, null, items, emptyMessage, action, onBack, null);
+    }
+
+    private void showQuickChannelListDialog(String title, String subtitle, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action, Runnable onBack, List<ZapActionItem> panelActions) {
         QuickChannelDialogUiFactory.Host dialogHost = buildQuickChannelDialogUiHost();
         if (!QuickChannelDialogUiFactory.hasItems(items)) {
             showStatus(QuickChannelDialogUiFactory.emptyMessage(emptyMessage, dialogHost));
@@ -14124,7 +14167,8 @@ public class MainActivity extends FragmentActivity {
         final Dialog[] dialogHolder = new Dialog[1];
         QuickChannelListComposeBinder.bind(quickChannelListComposeView, buildQuickChannelListUiModel(
                 title,
-                QuickChannelDialogUiFactory.subtitle(items, dialogHost),
+                subtitle == null ? QuickChannelDialogUiFactory.subtitle(items, dialogHost) : subtitle,
+                panelActions,
                 items,
                 dialogHolder,
                 action
@@ -14162,11 +14206,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
-        return buildQuickChannelListUiModel(null, null, items, dialogHolder, action);
+        return buildQuickChannelListUiModel(null, null, null, items, dialogHolder, action);
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(String title, String subtitle, List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
-        return QuickChannelListUiFactory.build(title, subtitle, items, new QuickChannelListUiFactory.Host() {
+        return buildQuickChannelListUiModel(title, subtitle, null, items, dialogHolder, action);
+    }
+
+    private QuickChannelListUiModel buildQuickChannelListUiModel(String title, String subtitle, List<ZapActionItem> panelActions, List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
+        return QuickChannelListUiFactory.build(title, subtitle, panelActions, items, new QuickChannelListUiFactory.Host() {
             @Override
             public String text(int resId) {
                 return getString(resId);

@@ -19,6 +19,10 @@ final class QuickChannelListUiFactory {
     }
 
     static QuickChannelListUiModel build(String title, String subtitle, List<ChannelItem> items, Host host) {
+        return build(title, subtitle, null, items, host);
+    }
+
+    static QuickChannelListUiModel build(String title, String subtitle, List<ZapActionItem> actions, List<ChannelItem> items, Host host) {
         List<QuickChannelRowUiModel> rows = new ArrayList<>();
         if (host != null && items != null) {
             for (ChannelItem item : items) {
@@ -28,7 +32,7 @@ final class QuickChannelListUiFactory {
                 rows.add(buildRow(host, item));
             }
         }
-        return new QuickChannelListUiModel(title, subtitle, rows);
+        return new QuickChannelListUiModel(title, subtitle, actions, rows);
     }
 
     private static QuickChannelRowUiModel buildRow(Host host, ChannelItem item) {

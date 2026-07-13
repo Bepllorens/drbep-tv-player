@@ -540,6 +540,9 @@
     <string name="vod_visual_filter_clear_search">Biblioteca</string>
     <string name="vod_library_sort_year">Ordenar por ano</string>
     <string name="vod_library_sort_duration">Ordenar por duracion</string>
+    <string name="vod_dense_prev_page">Pagina anterior</string>
+    <string name="vod_dense_next_page">Pagina siguiente</string>
+    <string name="vod_dense_page_subtitle">%1$d-%2$d de %3$d  ·  pagina %4$d/%5$d</string>
     <string name="vod_library_uncategorized">Sin categoria</string>
     <string name="vod_library_manage_progress">Gestionar progreso VOD</string>
     <string name="vod_library_empty">No hay contenidos VOD en esta seccion</string>

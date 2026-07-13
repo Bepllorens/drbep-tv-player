@@ -1,3 +1,7 @@
+## 2.0.258-beta-remote-epg-fallback
+- Offline beta: el fallback EPG remoto evita volver a la EPG local cuando el snapshot no trae un canal concreto.
+- Offline beta: Movistar ISM recupera programa actual/siguiente desde endpoints remotos autenticados si la EPG local no tiene ese canal.
+
 ## 2.0.257-beta-epg-u7d-fallback
 - Offline beta: si el snapshot EPG local no trae programas para un canal concreto, la app vuelve a consultar el EPG remoto autenticado.
 - Offline beta: U7D de Movistar ISM envia identificadores del canal al backend para recuperar programas aunque el informe global no matchee por nombre.

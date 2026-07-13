@@ -204,24 +204,7 @@ final class EpgRepository {
             programsCache.put(cacheKey, new CachedPrograms(now, programs));
             return programs;
         }
-        HttpClient.Response response = getRemoteEpg("/api/epg/channel/" + channelId);
-        if (!response.isSuccessful()) {
-            return new ArrayList<>();
-        }
-        String body = response.body == null ? "" : response.body.trim();
-        if (body.isEmpty() || "null".equals(body)) {
-            return new ArrayList<>();
-        }
-        JSONArray arr = httpClient.parseArray(body, "cargando guia EPG del canal");
-        List<EpgProgram> programs = new ArrayList<>();
-        int limit = Math.min(arr.length(), maxItems);
-        for (int i = 0; i < limit; i++) {
-            JSONObject item = arr.optJSONObject(i);
-            if (item == null) {
-                continue;
-            }
-            programs.add(fromJson(item));
-        }
+        List<EpgProgram> programs = fetchRemoteChannelPrograms(channelId, maxItems);
         programsCache.put(cacheKey, new CachedPrograms(now, programs));
         return programs;
     }
@@ -231,7 +214,7 @@ final class EpgRepository {
             return new ArrayList<>();
         }
         if (!shouldUseOfflineEpg()) {
-            List<EpgProgram> programs = fetchChannelPrograms(channel.id, maxItems);
+            List<EpgProgram> programs = fetchRemoteChannelPrograms(channel.id, maxItems);
             if (!programs.isEmpty()) {
                 return programs;
             }
@@ -240,6 +223,10 @@ final class EpgRepository {
         long now = System.currentTimeMillis();
         List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
         if (rows.isEmpty()) {
+            List<EpgProgram> programs = fetchRemoteChannelPrograms(channel.id, maxItems);
+            if (!programs.isEmpty()) {
+                return programs;
+            }
             return fetchRemoteProgramsForChannel(channel, maxItems);
         }
         List<EpgProgram> out = new ArrayList<>();
@@ -297,11 +284,7 @@ final class EpgRepository {
             }
             return null;
         }
-        HttpClient.Response response = getRemoteEpg("/api/epg/channel/" + channelId + (next ? "/next" : "/current"));
-        if (response.code == 404) {
-            return null;
-        }
-        return fromJson(httpClient.parseObject(httpClient.requireSuccess(response, "cargando programa EPG").body, "cargando programa EPG"));
+        return fetchRemoteProgramForChannel(channelId, next);
     }
 
     EpgProgram fetchProgramForChannel(ChannelItem channel, boolean next) throws Exception {
@@ -309,7 +292,7 @@ final class EpgRepository {
             return null;
         }
         if (!shouldUseOfflineEpg()) {
-            EpgProgram direct = fetchProgramForChannel(channel.id, next);
+            EpgProgram direct = fetchRemoteProgramForChannel(channel.id, next);
             if (direct != null) {
                 return direct;
             }
@@ -322,7 +305,7 @@ final class EpgRepository {
         long now = System.currentTimeMillis();
         List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
         if (rows.isEmpty()) {
-            EpgProgram direct = fetchProgramForChannel(channel.id, next);
+            EpgProgram direct = fetchRemoteProgramForChannel(channel.id, next);
             if (direct != null) {
                 return direct;
             }
@@ -513,7 +496,7 @@ final class EpgRepository {
         if (channelItems == null || channelItems.isEmpty()) {
             return out;
         }
-        RemoteProgramIndex index = buildRemoteProgramIndex(fetchNowProgramsDetailed());
+        RemoteProgramIndex index = buildRemoteProgramIndex(fetchRemoteNowProgramsDetailed());
         for (ChannelItem channel : channelItems) {
             if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
                 continue;
@@ -524,6 +507,52 @@ final class EpgRepository {
             }
         }
         return out;
+    }
+
+    private List<EpgProgram> fetchRemoteChannelPrograms(String channelId, int maxItems) throws Exception {
+        String cleanChannelId = channelId == null ? "" : channelId.trim();
+        if (cleanChannelId.isEmpty()) {
+            return new ArrayList<>();
+        }
+        HttpClient.Response response = getRemoteEpg("/api/epg/channel/" + cleanChannelId);
+        if (!response.isSuccessful()) {
+            return new ArrayList<>();
+        }
+        String body = response.body == null ? "" : response.body.trim();
+        if (body.isEmpty() || "null".equalsIgnoreCase(body)) {
+            return new ArrayList<>();
+        }
+        JSONArray arr = httpClient.parseArray(body, "cargando guia EPG del canal");
+        List<EpgProgram> programs = new ArrayList<>();
+        int limit = maxItems <= 0 ? arr.length() : Math.min(arr.length(), maxItems);
+        for (int i = 0; i < limit; i++) {
+            JSONObject item = arr.optJSONObject(i);
+            if (item == null) {
+                continue;
+            }
+            programs.add(fromJson(item));
+        }
+        return programs;
+    }
+
+    private EpgProgram fetchRemoteProgramForChannel(String channelId, boolean next) throws Exception {
+        String cleanChannelId = channelId == null ? "" : channelId.trim();
+        if (cleanChannelId.isEmpty()) {
+            return null;
+        }
+        HttpClient.Response response = getRemoteEpg("/api/epg/channel/" + cleanChannelId + (next ? "/next" : "/current"));
+        if (response.code == 404) {
+            return null;
+        }
+        return fromJson(httpClient.parseObject(httpClient.requireSuccess(response, "cargando programa EPG").body, "cargando programa EPG"));
+    }
+
+    private List<EpgProgram> fetchRemoteNowProgramsDetailed() throws Exception {
+        HttpClient.Response response = getRemoteEpg("/api/epg/now");
+        if (!response.isSuccessful()) {
+            return new ArrayList<>();
+        }
+        return parseProgramsArray(response.body, "cargando EPG actual");
     }
 
     private List<EpgProgram> fetchRemoteProgramsForChannel(ChannelItem channel, int maxItems) throws Exception {

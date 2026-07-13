@@ -62,6 +62,7 @@ object TouchControlsComposeBinder {
 
 @Composable
 private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
+    val compact = LocalConfiguration.current.screenWidthDp < 600
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -86,6 +87,12 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: Touc
             val minimumContentWidth =
                 (78.dp * actionCount) + (8.dp * (actionCount - 1).coerceAtLeast(0)) + 24.dp
             val shouldCenter = minimumContentWidth <= maxWidth
+            val chipWidth = if (shouldCenter) {
+                ((maxWidth - 24.dp - (8.dp * (actionCount - 1).coerceAtLeast(0))) / actionCount)
+                    .coerceIn(78.dp, if (compact) 116.dp else 136.dp)
+            } else {
+                0.dp
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -97,6 +104,7 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: Touc
                 model.actions.forEachIndexed { index, item ->
                     TouchControlChip(
                         item = item,
+                        modifier = if (shouldCenter) Modifier.width(chipWidth) else Modifier.defaultMinSize(minWidth = if (compact) 86.dp else 92.dp),
                         focused = index == focusedIndex,
                         focusRequester = if (index == focusedIndex) firstButtonFocusRequester else null
                     )
@@ -364,6 +372,7 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier, focused: Boolean = false, focusRequester: FocusRequester? = null) {
+    val compact = LocalConfiguration.current.screenWidthDp < 600
     BasicText(
         text = item.label,
         modifier = modifier
@@ -383,11 +392,10 @@ private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier,
                 onClick = { item.onClick?.run() },
                 onLongClick = item.onLongClick?.let { { it.run() } }
             )
-            .defaultMinSize(minWidth = 78.dp)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = if (compact) 9.dp else 8.dp),
         style = TextStyle(
             color = if (focused) Color(0xFF101722) else Color.White,
-            fontSize = 13.sp,
+            fontSize = if (compact) 12.sp else 13.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )

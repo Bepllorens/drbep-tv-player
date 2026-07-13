@@ -3,6 +3,10 @@
     <string name="channels_title">Canales</string>
     <string name="filter_all_label">Todos</string>
     <string name="filter_navigation_hint">Plataforma / grupo</string>
+    <string name="touch_filter_picker_title">Cambiar plataforma</string>
+    <string name="touch_filter_picker_subtitle">Elige una plataforma o grupo. La lista de canales se actualiza al momento.</string>
+    <string name="touch_filter_picker_selected">Ahora: %1$s</string>
+    <string name="touch_filter_picker_count">%1$d canales</string>
     <string name="filter_prev_button">Ant.</string>
     <string name="filter_next_button">Sig.</string>
     <string name="filter_search_button">Buscar</string>

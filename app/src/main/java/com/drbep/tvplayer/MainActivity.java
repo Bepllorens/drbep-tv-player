@@ -4648,7 +4648,104 @@ public class MainActivity extends FragmentActivity {
             }
             actions.add(() -> applySelectedFilterFromPicker(selected));
         }
+        if (touchDeviceMode) {
+            showTouchFilterPickerDialog(selectableFilters, checkedIndex);
+            return;
+        }
         showTvOptionsDialog(R.string.filter_navigation_hint, null, labels, actions);
+    }
+
+    private void showTouchFilterPickerDialog(List<ChannelFilter> selectableFilters, int checkedIndex) {
+        if (selectableFilters == null || selectableFilters.isEmpty()) {
+            showStatus(getString(R.string.status_no_channels_for_filter));
+            return;
+        }
+        prepareModalSurface();
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        final Dialog[] dialogHolder = new Dialog[1];
+        List<TouchFilterPickerRowUiModel> rows = new ArrayList<>();
+        for (int i = 0; i < selectableFilters.size(); i++) {
+            final ChannelFilter filter = selectableFilters.get(i);
+            boolean selected = i == checkedIndex;
+            rows.add(new TouchFilterPickerRowUiModel(
+                    cleanFilterLabel(filter),
+                    getString(R.string.touch_filter_picker_count, countChannelsForFilter(filter)),
+                    selected,
+                    isProtectedFilter(filter),
+                    () -> {
+                        Dialog dialog = dialogHolder[0];
+                        if (dialog != null) {
+                            dismissModalForNextAction(dialog, () -> applySelectedFilterFromPicker(filter));
+                        } else {
+                            applySelectedFilterFromPicker(filter);
+                        }
+                    }
+            ));
+        }
+        Runnable close = () -> {
+            Dialog dialog = dialogHolder[0];
+            if (dialog != null) {
+                dialog.dismiss();
+            }
+        };
+        TouchFilterPickerComposeBinder.bind(composeView, new TouchFilterPickerUiModel(
+                getString(R.string.touch_filter_picker_title),
+                getString(R.string.touch_filter_picker_subtitle),
+                getString(R.string.touch_filter_picker_selected, buildCurrentFilterLabel()),
+                rows,
+                close
+        ));
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
+        handleModalShown();
+    }
+
+    private String cleanFilterLabel(ChannelFilter filter) {
+        String label = decorateProtectedFilterLabel(filter);
+        if (label == null || label.trim().isEmpty()) {
+            return getString(R.string.filter_all_label);
+        }
+        return label
+                .replace("Plataforma activa: ", "")
+                .replace("Plataforma: ", "")
+                .replace("Grupo: ", "")
+                .trim();
+    }
+
+    private int countChannelsForFilter(ChannelFilter filter) {
+        if (filter == null) {
+            return allChannels.size();
+        }
+        if ("favorites".equals(filter.key) || filter.type == FILTER_FAVORITES) {
+            return buildFavoriteQuickChannels().size();
+        }
+        int count = 0;
+        for (ChannelItem item : allChannels) {
+            if (item == null) {
+                continue;
+            }
+            if (filter.type == FILTER_ALL || "all".equals(filter.key)) {
+                count++;
+            } else if (filter.type == FILTER_PLATFORM && item.platformId == filter.platformId && !item.isVod) {
+                count++;
+            } else if (filter.type == FILTER_CUSTOM_GROUP && item.customGroups != null) {
+                for (String group : item.customGroups) {
+                    if (group != null && group.equalsIgnoreCase(filter.groupName)) {
+                        count++;
+                        break;
+                    }
+                }
+            } else if (filter.type == FILTER_VOD && item.isVod && !item.isAdultVod) {
+                count++;
+            } else if (filter.type == FILTER_VOD_ADULT && item.isVod && item.isAdultVod) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void applySelectedFilterFromPicker(ChannelFilter filter) {

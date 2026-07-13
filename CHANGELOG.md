@@ -1,3 +1,8 @@
+## 2.0.256-beta-vod-compose-polish
+- Offline beta: la vista lista/densa de VOD pagina las secciones grandes para trabajar mejor con bibliotecas Movistar extensas.
+- Offline beta: optimiza las caratulas VOD en carruseles y listas usando miniaturas mas ligeras, manteniendo calidad alta en la ficha.
+- Offline beta: mejora el foco inicial y el comportamiento de Atras en biblioteca visual, fichas VOD, acciones VOD y listas rapidas.
+
 ## 2.0.255-beta-rich-hud-spacing
 - Offline beta: sube la barra de timeshift para que no se pise con el HUD inferior enriquecido.
 - Offline beta: estrecha la imagen EPG del HUD inferior para reducir espacio vacio.

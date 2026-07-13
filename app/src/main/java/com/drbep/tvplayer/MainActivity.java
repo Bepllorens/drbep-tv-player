@@ -14209,13 +14209,19 @@ public class MainActivity extends FragmentActivity {
         ComposeView quickChannelListComposeView = new ComposeView(this);
         attachDialogViewTreeOwners(quickChannelListComposeView);
         final Dialog[] dialogHolder = new Dialog[1];
+        final boolean[] navigationHandled = {false};
+        Runnable panelBackAction = onBack == null ? null : () -> {
+            navigationHandled[0] = true;
+            dismissModalForNextAction(dialogHolder[0], onBack);
+        };
         QuickChannelListComposeBinder.bind(quickChannelListComposeView, buildQuickChannelListUiModel(
                 title,
                 subtitle == null ? QuickChannelDialogUiFactory.subtitle(items, dialogHost) : subtitle,
                 panelActions,
                 items,
                 dialogHolder,
-                action
+                action,
+                panelBackAction
         ), (imageView, item) -> {
             if (imageView == null || item == null) {
                 return;
@@ -14232,6 +14238,15 @@ public class MainActivity extends FragmentActivity {
             }
         }, this::handleModalDismissed);
         dialogHolder[0] = dialog;
+        if (onBack != null) {
+            dialog.setOnKeyListener((ignored, keyCode, event) -> {
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP && !navigationHandled[0]) {
+                    panelBackAction.run();
+                    return true;
+                }
+                return false;
+            });
+        }
         handleModalShown();
     }
 
@@ -14250,15 +14265,19 @@ public class MainActivity extends FragmentActivity {
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
-        return buildQuickChannelListUiModel(null, null, null, items, dialogHolder, action);
+        return buildQuickChannelListUiModel(null, null, null, items, dialogHolder, action, null);
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(String title, String subtitle, List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
-        return buildQuickChannelListUiModel(title, subtitle, null, items, dialogHolder, action);
+        return buildQuickChannelListUiModel(title, subtitle, null, items, dialogHolder, action, null);
     }
 
     private QuickChannelListUiModel buildQuickChannelListUiModel(String title, String subtitle, List<ZapActionItem> panelActions, List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action) {
-        return QuickChannelListUiFactory.build(title, subtitle, panelActions, items, new QuickChannelListUiFactory.Host() {
+        return buildQuickChannelListUiModel(title, subtitle, panelActions, items, dialogHolder, action, null);
+    }
+
+    private QuickChannelListUiModel buildQuickChannelListUiModel(String title, String subtitle, List<ZapActionItem> panelActions, List<ChannelItem> items, Dialog[] dialogHolder, QuickChannelSelectionAction action, Runnable onBack) {
+        return QuickChannelListUiFactory.build(title, subtitle, panelActions, items, onBack, new QuickChannelListUiFactory.Host() {
             @Override
             public String text(int resId) {
                 return getString(resId);

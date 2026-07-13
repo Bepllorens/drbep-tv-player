@@ -63,6 +63,7 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xF20B111A))
+            .tvPanelBackHandler(model.onBack)
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp

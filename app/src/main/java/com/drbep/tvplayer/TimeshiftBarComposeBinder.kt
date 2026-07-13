@@ -3,6 +3,7 @@ package com.drbep.tvplayer
 import android.widget.SeekBar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,6 +63,11 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xC8121820), RoundedCornerShape(16.dp))
+            .border(
+                width = if (model.focused) 2.dp else 0.dp,
+                color = if (model.focused) Color(0xFF66A7FF) else Color.Transparent,
+                shape = RoundedCornerShape(16.dp)
+            )
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row(

@@ -66,6 +66,18 @@ public class RemoteInputRouterTest {
     }
 
     @Test
+    public void confirmOnTvSeekablePlaybackShowsBottomControls() {
+        FakeHost host = new FakeHost();
+        host.seekablePlayback = true;
+        host.touchDeviceMode = false;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0));
+
+        assertEquals("controls:show", host.lastAction);
+    }
+
+    @Test
     public void repeatedFastForwardJumpsToLiveWhenPossible() {
         FakeHost host = new FakeHost();
         host.resumeTimeshiftLive = true;
@@ -90,6 +102,56 @@ public class RemoteInputRouterTest {
         assertEquals("multi:move:-1,0", host.lastAction);
     }
 
+    @Test
+    public void touchControlsVisibleConsumesDpadNavigation() {
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0, 0));
+        assertEquals("controls:move:1", host.lastAction);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0, 0));
+        assertEquals("controls:timeshift", host.lastAction);
+    }
+
+    @Test
+    public void touchControlsTimeshiftFocusConsumesSeekKeys() {
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        host.touchControlsTimeshiftFocused = true;
+        host.seekTimeshiftForward = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0, 0));
+
+        assertEquals("controls:timeshift", host.lastAction);
+        assertEquals(1, host.seekForwardCalls);
+    }
+
+    @Test
+    public void touchControlsDownReturnsToActionsFromTimeshift() {
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        host.touchControlsTimeshiftFocused = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0, 0));
+
+        assertEquals("controls:actions", host.lastAction);
+    }
+
+    @Test
+    public void confirmActivatesVisibleTouchControls() {
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0));
+
+        assertEquals("controls:activate", host.lastAction);
+    }
+
     private static final class FakeHost implements RemoteInputRouter.Host {
         boolean recordingsVisible;
         boolean quickSearchVisible;
@@ -102,6 +164,8 @@ public class RemoteInputRouterTest {
         boolean playingRecordingWithReturnTarget;
         boolean seekablePlayback;
         boolean touchDeviceMode;
+        boolean touchControlsVisible;
+        boolean touchControlsTimeshiftFocused;
         boolean selectedOverlayChannel = true;
         boolean currentChannel = true;
         int resumeLiveCalls;
@@ -136,6 +200,16 @@ public class RemoteInputRouterTest {
         @Override
         public boolean isTvTimeshiftHudActive() {
             return tvTimeshiftHudActive;
+        }
+
+        @Override
+        public boolean isTouchControlsVisible() {
+            return touchControlsVisible;
+        }
+
+        @Override
+        public boolean isTouchControlsTimeshiftFocused() {
+            return touchControlsTimeshiftFocused;
         }
 
         @Override
@@ -247,6 +321,31 @@ public class RemoteInputRouterTest {
         }
 
         @Override
+        public void hideTouchControls() {
+            lastAction = "controls:hide";
+        }
+
+        @Override
+        public void moveTouchControlsFocus(int delta) {
+            lastAction = "controls:move:" + delta;
+        }
+
+        @Override
+        public void focusTouchControlsTimeshift() {
+            lastAction = "controls:timeshift";
+        }
+
+        @Override
+        public void focusTouchControlsActions() {
+            lastAction = "controls:actions";
+        }
+
+        @Override
+        public void activateTouchControlsFocus() {
+            lastAction = "controls:activate";
+        }
+
+        @Override
         public void showLeaveRecordingPrompt() {
             lastAction = "recording:leave";
         }
@@ -289,6 +388,11 @@ public class RemoteInputRouterTest {
         @Override
         public void tuneRelative(int delta) {
             lastAction = "tune:" + delta;
+        }
+
+        @Override
+        public void showTouchControlsTemporarily() {
+            lastAction = "controls:show";
         }
 
         @Override

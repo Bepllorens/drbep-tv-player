@@ -71,9 +71,6 @@ final class TouchControlsController {
     }
 
     void showTouchControlsTemporarily() {
-        if (!host.isTouchDeviceMode()) {
-            return;
-        }
         host.setTouchControlsVisible(true);
         host.updateTouchHomeHub();
         host.updateTimeshiftBar();
@@ -101,7 +98,7 @@ final class TouchControlsController {
     void scheduleTouchControlsAutoHide() {
         scheduler.removeCallbacks(hideTouchControlsRunnable);
         host.updateTimeshiftBar();
-        if (host.isTouchDeviceMode() && host.isTouchControlsVisible()) {
+        if (host.isTouchControlsVisible()) {
             scheduler.postDelayed(hideTouchControlsRunnable, touchControlsHideMs);
         }
     }
@@ -124,7 +121,7 @@ final class TouchControlsController {
     }
 
     private void hideTouchControlsFromTimer() {
-        if (host.isTouchDeviceMode() && !host.isOverlayVisible() && !host.isRecordingsPanelVisible()) {
+        if (!host.isOverlayVisible() && !host.isRecordingsPanelVisible()) {
             host.setTouchControlsVisible(false);
             host.hideTouchHomeHub();
         }

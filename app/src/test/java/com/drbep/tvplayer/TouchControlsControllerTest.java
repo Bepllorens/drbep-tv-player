@@ -39,6 +39,24 @@ public class TouchControlsControllerTest {
     }
 
     @Test
+    public void showTouchControlsAlsoSchedulesAutoHideOnTvDevices() {
+        FakeScheduler scheduler = new FakeScheduler();
+        FakeHost host = new FakeHost();
+        host.touchDeviceMode = false;
+        TouchControlsController controller = new TouchControlsController(scheduler, host, 3000L, 3500L);
+
+        controller.showTouchControlsTemporarily();
+
+        assertTrue(host.touchControlsVisible);
+        assertEquals(3000L, scheduler.lastDelayMs);
+
+        scheduler.runLast();
+
+        assertFalse(host.touchControlsVisible);
+        assertTrue(host.timeshiftHidden);
+    }
+
+    @Test
     public void showTimeshiftHudRequiresTvModeAndSeekablePlayback() {
         FakeScheduler scheduler = new FakeScheduler();
         FakeHost host = new FakeHost();

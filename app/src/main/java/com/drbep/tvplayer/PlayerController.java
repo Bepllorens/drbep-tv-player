@@ -2336,6 +2336,9 @@ final class PlayerController {
         if (isRuntimeManifestOnlyRoute(decision)) {
             return context.getString(R.string.diagnostics_route_direct_hls);
         }
+        if (isBackendVideoRoute(decision)) {
+            return context.getString(R.string.diagnostics_route_server_hls);
+        }
         if ("widevine".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
             return context.getString(R.string.diagnostics_route_proxy_drm);
         }
@@ -2370,6 +2373,19 @@ final class PlayerController {
         return platform.contains("runtime") || name.contains("runtime");
     }
 
+    private boolean isBackendVideoRoute(PlaybackRouteResolver.Decision decision) {
+        if (decision == null || decision.targetUrl == null) {
+            return false;
+        }
+        String target = decision.targetUrl.trim().toLowerCase(Locale.ROOT);
+        return target.contains("/hls/")
+                || target.contains("/live/")
+                || target.contains("/drm/")
+                || target.contains("/api/vod/movistar/")
+                || target.contains("/api/u7d/movistar/")
+                || target.contains("/api/offline/u7d/");
+    }
+
     private boolean isDirectDecisionTarget(PlaybackRouteResolver.Decision decision) {
         if (decision == null || decision.targetUrl == null || decision.targetUrl.trim().isEmpty()) {
             return false;
@@ -2391,7 +2407,11 @@ final class PlayerController {
                 && !target.contains("/api/remux/")
                 && !target.contains("/api/proxy/")
                 && !target.contains("/live/")
-                && !target.contains("/hls/");
+                && !target.contains("/hls/")
+                && !target.contains("/drm/")
+                && !target.contains("/api/vod/movistar/")
+                && !target.contains("/api/u7d/movistar/")
+                && !target.contains("/api/offline/u7d/");
     }
 
     private static String playbackStateToString(int state) {

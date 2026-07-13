@@ -10,6 +10,7 @@ final class TouchControlsUiFactory {
         ChannelItem currentChannel();
         boolean isOverlayVisible();
         boolean isTabletOrientationLocked();
+        boolean supportsOrientationLock();
         void keepVisible();
         void hideOverlay();
         void showOverlay();
@@ -35,6 +36,14 @@ final class TouchControlsUiFactory {
     }
 
     static TouchControlsBarUiModel build(Host host) {
+        return build(host, 0);
+    }
+
+    static TouchControlsBarUiModel build(Host host, int focusedActionIndex) {
+        return build(host, focusedActionIndex, TouchControlsNowPlayingUiModel.EMPTY);
+    }
+
+    static TouchControlsBarUiModel build(Host host, int focusedActionIndex, TouchControlsNowPlayingUiModel nowPlaying) {
         if (host == null) {
             return new TouchControlsBarUiModel(new ArrayList<>());
         }
@@ -135,16 +144,18 @@ final class TouchControlsUiFactory {
                     host.showToolsMenu();
                 }
         ));
-        actions.add(new ZapActionItem(
-                host.text(host.isTabletOrientationLocked() ? R.string.touch_button_rotate_locked : R.string.touch_button_rotate_free),
-                true,
-                false,
-                host.isTabletOrientationLocked(),
-                () -> {
-                    host.keepVisible();
-                    host.toggleTabletOrientationLock();
-                }
-        ));
+        if (host.supportsOrientationLock()) {
+            actions.add(new ZapActionItem(
+                    host.text(host.isTabletOrientationLocked() ? R.string.touch_button_rotate_locked : R.string.touch_button_rotate_free),
+                    true,
+                    false,
+                    host.isTabletOrientationLocked(),
+                    () -> {
+                        host.keepVisible();
+                        host.toggleTabletOrientationLock();
+                    }
+            ));
+        }
         actions.add(new ZapActionItem(
                 host.text(R.string.touch_button_rewind),
                 true,
@@ -186,7 +197,9 @@ final class TouchControlsUiFactory {
                     host.keepVisible();
                     host.showFilterPicker();
                 },
-                actions
+                actions,
+                focusedActionIndex,
+                nowPlaying
         );
     }
 }

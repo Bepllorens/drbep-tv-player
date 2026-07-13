@@ -16,6 +16,10 @@ final class RemoteInputRouter {
 
         boolean isTvTimeshiftHudActive();
 
+        boolean isTouchControlsVisible();
+
+        boolean isTouchControlsTimeshiftFocused();
+
         boolean canResumeTimeshiftLive();
 
         boolean canSeekTimeshiftBack();
@@ -58,6 +62,16 @@ final class RemoteInputRouter {
 
         void hideTvTimeshiftHud();
 
+        void hideTouchControls();
+
+        void moveTouchControlsFocus(int delta);
+
+        void focusTouchControlsTimeshift();
+
+        void focusTouchControlsActions();
+
+        void activateTouchControlsFocus();
+
         void showLeaveRecordingPrompt();
 
         void hideOverlay();
@@ -75,6 +89,8 @@ final class RemoteInputRouter {
         void moveRecordingsSelection(int delta);
 
         void tuneRelative(int delta);
+
+        void showTouchControlsTemporarily();
 
         void showTimeshiftHudTemporarily();
 
@@ -314,6 +330,10 @@ final class RemoteInputRouter {
             host.hideRecordingsPanel();
             return true;
         }
+        if (host.isTouchControlsVisible()) {
+            host.hideTouchControls();
+            return true;
+        }
         if (host.isTvTimeshiftHudActive()) {
             host.hideTvTimeshiftHud();
             return true;
@@ -356,6 +376,10 @@ final class RemoteInputRouter {
             host.moveRecordingsSelection(-1);
             return true;
         }
+        if (host.isTouchControlsVisible()) {
+            host.focusTouchControlsTimeshift();
+            return true;
+        }
         if (host.isTvTimeshiftHudActive() && host.canResumeTimeshiftLive()) {
             host.showTimeshiftHudTemporarily();
             return true;
@@ -377,6 +401,10 @@ final class RemoteInputRouter {
             host.moveRecordingsSelection(1);
             return true;
         }
+        if (host.isTouchControlsVisible()) {
+            host.focusTouchControlsActions();
+            return true;
+        }
         if (host.isTvTimeshiftHudActive()) {
             host.hideTvTimeshiftHud();
             return true;
@@ -396,6 +424,16 @@ final class RemoteInputRouter {
         }
         if (host.isRecordingsPanelVisible()) {
             host.moveRecordingsHeaderFocus(-1);
+            return true;
+        }
+        if (host.isTouchControlsVisible()) {
+            if (host.isTouchControlsTimeshiftFocused()) {
+                if (host.canSeekTimeshiftBack()) {
+                    host.focusTouchControlsTimeshift();
+                }
+                return true;
+            }
+            host.moveTouchControlsFocus(-1);
             return true;
         }
         if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftBack()) {
@@ -421,6 +459,16 @@ final class RemoteInputRouter {
         }
         if (host.isRecordingsPanelVisible()) {
             host.moveRecordingsHeaderFocus(1);
+            return true;
+        }
+        if (host.isTouchControlsVisible()) {
+            if (host.isTouchControlsTimeshiftFocused()) {
+                if (host.canSeekTimeshiftForward()) {
+                    host.focusTouchControlsTimeshift();
+                }
+                return true;
+            }
+            host.moveTouchControlsFocus(1);
             return true;
         }
         if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftForward()) {
@@ -455,10 +503,18 @@ final class RemoteInputRouter {
             host.activateZapBannerSelection();
             return true;
         }
+        if (host.isTouchControlsVisible()) {
+            if (host.isTouchControlsTimeshiftFocused()) {
+                host.togglePlayback();
+                return true;
+            }
+            host.activateTouchControlsFocus();
+            return true;
+        }
         if (host.isOverlayVisible()) {
             host.tuneOverlaySelectionAndHide();
-        } else if (!host.isTouchDeviceMode() && host.hasSeekablePlayback()) {
-            host.showTimeshiftHudTemporarily();
+        } else if (host.hasSeekablePlayback()) {
+            host.showTouchControlsTemporarily();
         } else {
             host.togglePlayback();
         }

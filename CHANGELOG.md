@@ -1,3 +1,20 @@
+## 2.0.255-beta-rich-hud-spacing
+- Offline beta: sube la barra de timeshift para que no se pise con el HUD inferior enriquecido.
+- Offline beta: estrecha la imagen EPG del HUD inferior para reducir espacio vacio.
+
+## 2.0.254-beta-rich-touch-hud
+- Offline beta: el HUD inferior muestra logo, canal, programa actual, siguiente programa, progreso e imagen del programa cuando hay EPG.
+- Offline beta: hidrata la EPG del canal activo al abrir el HUD si aun no estaba cargada, sin bloquear el zapping.
+
+## 2.0.253-beta-ism-timeshift-focus
+- Offline beta: conserva el foco en la barra de timeshift al retroceder/avanzar varias veces con el mando.
+- Backend: Movistar ISM deja de recortar el HLS a 30 segmentos y expone hasta 3600 segmentos (~2h) cuando el manifest original los trae.
+
+## 2.0.252-beta-u7d-raw-time-tv-hud-seek
+- Offline beta: U7D de Movistar ISM conserva `start_time/end_time` sin escapar para evitar 403 del CDN al servir desde ffmpeg.
+- Offline beta: el HUD inferior de Fire TV deja de mostrar el boton de giro, sube para no quedar cortado y permite saltar a la barra de timeshift con el mando.
+- Backend: limita los refresh automaticos de token U7D para que varios 403 simultaneos no pisen `u7d_report.json` ni disparen 429.
+
 ## 2.0.247-beta-u7d-stream-host-fix
 - Offline beta: la reproduccion U7D de Movistar ISM usa el host principal cuando fire.tvbep.com no expone el endpoint de stream.
 - Offline beta: las URLs de stream U7D adjuntan access_token y device_id como el resto de rutas offline protegidas.

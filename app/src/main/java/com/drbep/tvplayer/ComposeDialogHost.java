@@ -24,6 +24,8 @@ final class ComposeDialogHost {
 
     static Dialog showFullscreen(Context context, View content, CancelHandler onCancel, DismissHandler onDismiss) {
         Dialog dialog = new Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        content.setFocusable(true);
+        content.setFocusableInTouchMode(true);
         dialog.setContentView(content);
         if (onCancel != null) {
             dialog.setOnCancelListener(d -> onCancel.onCancel());
@@ -37,6 +39,7 @@ final class ComposeDialogHost {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
             window.setDimAmount(0f);
         }
+        content.post(content::requestFocus);
         return dialog;
     }
 }

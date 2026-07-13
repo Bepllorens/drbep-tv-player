@@ -38,6 +38,10 @@
     <string name="startup_loading_title">Arrancando DRBEP TV</string>
     <string name="startup_loading_local_catalog">Leyendo catalogo local</string>
     <string name="startup_loading_local_catalog_detail">Usando el ultimo catalogo valido para abrir la TV cuanto antes.</string>
+    <string name="startup_loading_fast_playback">Abriendo ultimo canal</string>
+    <string name="startup_loading_fast_playback_detail">Usando la cache segura mientras comprobamos si hay cambios en tu catalogo.</string>
+    <string name="startup_loading_validate_catalog">Validando catalogo</string>
+    <string name="startup_loading_validate_catalog_detail">Comprobando permisos, plataformas y cambios recientes antes de dejar la app lista.</string>
     <string name="startup_loading_prepare_list">Preparando canales</string>
     <string name="startup_loading_prepare_list_detail">Ordenando tus plataformas, grupos y permisos.</string>
     <string name="startup_loading_refresh_catalog">Actualizando catalogo</string>
@@ -46,6 +50,8 @@
     <string name="startup_loading_last_good_detail">El catalogo principal no cargo, probando la copia segura.</string>
     <string name="startup_loading_open_channel">Abriendo canal</string>
     <string name="startup_loading_open_channel_detail">Catalogo listo. Preparando la reproduccion.</string>
+    <string name="startup_loading_empty_filter">Buscando canales disponibles</string>
+    <string name="startup_loading_empty_filter_detail">El filtro restaurado no tiene canales visibles; probando una vista segura.</string>
     <string name="status_channels_ready">%1$d canales listos en %2$d ms</string>
     <string name="status_channels_ready_filtered">%1$d de %2$d canales visibles en %3$d ms</string>
     <string name="startup_hub_title">Inicio DRBEP TV</string>
@@ -451,6 +457,7 @@
     <string name="diagnostics_route_proxy_drm">Proxy DRM</string>
     <string name="diagnostics_route_proxy_clear">Proxy sin DRM</string>
     <string name="diagnostics_route_proxy_auto">Proxy auto</string>
+    <string name="diagnostics_route_server_hls">Servidor HLS</string>
     <string name="diagnostics_route_direct_hls">Directo HLS</string>
     <string name="diagnostics_route_direct_dash">Directo DASH</string>
     <string name="diagnostics_route_direct_generic">Directo</string>

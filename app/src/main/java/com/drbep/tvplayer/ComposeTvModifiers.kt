@@ -39,6 +39,7 @@ fun rememberTvInitialFocusRequester(
     LaunchedEffect(enabled, *keys) {
         if (enabled) {
             awaitFrame()
+            awaitFrame()
             runCatching { requester.requestFocus() }
         }
     }
@@ -68,6 +69,7 @@ fun TvRequestFocus(
 ) {
     LaunchedEffect(enabled, *keys) {
         if (enabled) {
+            awaitFrame()
             awaitFrame()
             runCatching { requester.requestFocus() }
         }

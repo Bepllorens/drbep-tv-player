@@ -195,6 +195,9 @@ public class MainActivity extends FragmentActivity {
     private ComposeView touchControlsComposeView;
     private ComposeView timeshiftComposeView;
     private boolean touchSurfaceHudVisible;
+    private TouchControlsBarUiModel currentTouchControlsBarModel;
+    private int touchControlsFocusedActionIndex;
+    private boolean touchControlsTimeshiftFocused;
     private View playbackGestureLayer;
     private android.app.Dialog activeTimelineDialog;
     private List<TimelineChannelPrograms> activeTimelineRows = new ArrayList<>();
@@ -211,6 +214,11 @@ public class MainActivity extends FragmentActivity {
     private String currentPlaybackRecordingId;
     private String currentPlaybackReturnChannelId;
     private String currentPlaybackVodId;
+    private ChannelItem currentPlaybackTransientItem;
+    private ChannelItem currentPlaybackU7dItem;
+    private String currentPlaybackU7dBaseUrl;
+    private long currentPlaybackU7dDurationMs;
+    private long currentPlaybackU7dOffsetMs;
     private String lastVodId;
     private final Map<String, Long> recordingResumePositions = new HashMap<>();
     private final Map<String, Long> vodResumePositions = new HashMap<>();
@@ -274,6 +282,7 @@ public class MainActivity extends FragmentActivity {
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
+    private final Set<String> touchControlsEpgFetchInFlight = new HashSet<>();
     private volatile boolean epgLoadInFlight = false;
     // Cache de logos dimensionada por memoria real (KB) en vez de por numero fijo de
     // entradas, evitando OOM en Fire Stick de gama baja con bitmaps grandes.
@@ -529,6 +538,10 @@ public class MainActivity extends FragmentActivity {
         ComposeView hdrBadgeText = findViewById(R.id.hdrBadgeText);
         overlayUiController = new OverlayUiController(this, uiHandler, createOverlayUiHost());
         overlayUiController.attachViews(statusText, errorText, hdrBadgeText, startupLoadingOverlay);
+        showStartupLoading(
+                getString(R.string.startup_loading_local_catalog),
+                getString(R.string.startup_loading_local_catalog_detail)
+        );
         liveStateBadgeText = findViewById(R.id.liveStateBadgeText);
         touchControlsBar = findViewById(R.id.touchControlsBar);
         timeshiftBarContainer = findViewById(R.id.timeshiftBarContainer);
@@ -945,7 +958,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hasSeekablePlayback() {
-                return playerController != null && playerController.getPlaybackSeekState() != null;
+                return playerController != null && (playerController.getPlaybackSeekState() != null || getCurrentU7dSeekState() != null);
             }
 
             @Override
@@ -1026,13 +1039,18 @@ public class MainActivity extends FragmentActivity {
         updateVodTouchControlsState();
         boolean showForTouch = touchDeviceMode
                 && touchSurfaceHudVisible;
-        boolean showForTv = !touchDeviceMode && touchControlsController != null && touchControlsController.isTvTimeshiftHudVisible();
+        boolean showForTv = !touchDeviceMode
+                && ((touchControlsController != null && touchControlsController.isTvTimeshiftHudVisible())
+                || (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE));
         if ((!showForTouch && !showForTv) || isOverlayVisible() || isRecordingsPanelVisible() || isMultiViewVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
             updatePlaybackStateBadge(playerController.getTimeshiftState());
             return;
         }
         PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
+        if (state == null) {
+            state = getCurrentU7dSeekState();
+        }
         if (state == null) {
             timeshiftBarContainer.setVisibility(View.GONE);
             updatePlaybackStateBadge(null);
@@ -1082,7 +1100,9 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void seekTo(long targetMs) {
-                if (playerController != null) {
+                if (isCurrentU7dPlayback()) {
+                    seekCurrentU7dPlaybackTo(targetMs);
+                } else if (playerController != null) {
                     playerController.seekTimeshiftTo(targetMs);
                 }
             }
@@ -1093,7 +1113,19 @@ public class MainActivity extends FragmentActivity {
             }
         });
         if (!touchDeviceMode || model == null || !model.liveVisible) {
-            return model;
+            if (model == null || !touchControlsTimeshiftFocused) {
+                return model;
+            }
+            return new TimeshiftBarUiModel(
+                    model.statusLabel,
+                    model.progress,
+                    model.liveVisible,
+                    model.onLiveClick,
+                    model.onSeekStart,
+                    model.previewLabelProvider,
+                    model.seekCommitHandler,
+                    true
+            );
         }
         return new TimeshiftBarUiModel(
                 model.statusLabel,
@@ -1102,7 +1134,8 @@ public class MainActivity extends FragmentActivity {
                 null,
                 model.onSeekStart,
                 model.previewLabelProvider,
-                model.seekCommitHandler
+                model.seekCommitHandler,
+                touchControlsTimeshiftFocused
         );
     }
 
@@ -1117,6 +1150,96 @@ public class MainActivity extends FragmentActivity {
         return state.label;
     }
 
+    private boolean isCurrentU7dPlayback() {
+        return currentPlaybackU7dItem != null
+                && currentPlaybackU7dDurationMs > 0L
+                && currentPlaybackU7dBaseUrl != null
+                && !currentPlaybackU7dBaseUrl.trim().isEmpty();
+    }
+
+    private boolean isU7dReplayItem(ChannelItem item) {
+        return item != null && "u7d_proxy".equals(safeLower(item.playbackProfile));
+    }
+
+    private void clearCurrentU7dPlayback() {
+        currentPlaybackU7dItem = null;
+        currentPlaybackU7dBaseUrl = "";
+        currentPlaybackU7dDurationMs = 0L;
+        currentPlaybackU7dOffsetMs = 0L;
+    }
+
+    private PlayerController.PlaybackSeekState getCurrentU7dSeekState() {
+        if (!isCurrentU7dPlayback()) {
+            return null;
+        }
+        long localPositionMs = playerController == null ? 0L : Math.max(0L, playerController.getCurrentPlaybackPosition());
+        long currentMs = Math.max(0L, Math.min(currentPlaybackU7dDurationMs, currentPlaybackU7dOffsetMs + localPositionMs));
+        return new PlayerController.PlaybackSeekState(
+                0L,
+                currentPlaybackU7dDurationMs,
+                currentMs,
+                formatDurationLabel(currentMs) + " / " + formatDurationLabel(currentPlaybackU7dDurationMs),
+                false
+        );
+    }
+
+    private void seekCurrentU7dPlaybackTo(long targetMs) {
+        if (!isCurrentU7dPlayback()) {
+            showStatus(getString(R.string.timeshift_status_unavailable));
+            return;
+        }
+        long offsetMs = Math.max(0L, Math.min(currentPlaybackU7dDurationMs, targetMs));
+        currentPlaybackU7dOffsetMs = offsetMs;
+        ChannelItem source = currentPlaybackU7dItem;
+        String seekUrl = buildU7dUrlWithOffset(currentPlaybackU7dBaseUrl, offsetMs);
+        ChannelItem seekItem = clonePlaybackItemWithUrl(source, seekUrl);
+        currentPlaybackU7dItem = seekItem;
+        currentPlaybackTransientItem = seekItem;
+        showStatus(formatDurationLabel(offsetMs) + " / " + formatDurationLabel(currentPlaybackU7dDurationMs));
+        playChannelItemInternal(seekItem, true, 0L);
+    }
+
+    private String buildU7dUrlWithOffset(String baseReplayUrl, long offsetMs) {
+        String clean = baseReplayUrl == null ? "" : baseReplayUrl.trim();
+        if (clean.isEmpty() || offsetMs <= 0L) {
+            return clean;
+        }
+        return Uri.parse(clean).buildUpon()
+                .appendQueryParameter("offset_ms", String.valueOf(offsetMs))
+                .build()
+                .toString();
+    }
+
+    private ChannelItem clonePlaybackItemWithUrl(ChannelItem source, String playUrl) {
+        if (source == null) {
+            return null;
+        }
+        return new ChannelItem(
+                source.id,
+                source.name,
+                source.tvgId,
+                source.logoUrl,
+                source.group,
+                playUrl,
+                source.fallbackPlayUrl,
+                source.originalOrder,
+                source.dashboardOrder,
+                source.isVod,
+                source.isAdultVod,
+                source.platformId,
+                source.platformName,
+                source.customGroups == null ? new ArrayList<>() : new ArrayList<>(source.customGroups),
+                source.drmScheme,
+                source.drmLicenseUrl,
+                source.vodFilterKey,
+                source.directPlayback,
+                source.vodDescription,
+                source.vodYear,
+                source.vodDurationSeconds,
+                source.playbackProfile
+        );
+    }
+
     private void updateVodTouchControlsState() {
         if (touchControlsComposeView != null) {
             refreshTouchControlsBar();
@@ -1127,10 +1250,22 @@ public class MainActivity extends FragmentActivity {
         if (touchControlsComposeView == null) {
             return;
         }
-        TouchControlsComposeBinder.bind(touchControlsComposeView, buildTouchControlsBarUiModel());
+        currentTouchControlsBarModel = buildTouchControlsBarUiModel();
+        TouchControlsComposeBinder.bind(touchControlsComposeView, currentTouchControlsBarModel, new TouchControlsArtworkBinder() {
+            @Override
+            public void bindLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
+                bindChannelLogo(imageView, logoUrl, channelName, widthDp, heightDp);
+            }
+
+            @Override
+            public void bindPoster(ImageView imageView, String posterUrl) {
+                bindProgramPoster(imageView, posterUrl);
+            }
+        });
     }
 
     private TouchControlsBarUiModel buildTouchControlsBarUiModel() {
+        TouchControlsNowPlayingUiModel nowPlaying = buildTouchControlsNowPlayingUiModel(getCurrentPlaybackChannelItem());
         return TouchControlsUiFactory.build(new TouchControlsUiFactory.Host() {
             @Override
             public String text(int resId) {
@@ -1155,6 +1290,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public boolean isTabletOrientationLocked() {
                 return tabletOrientationLocked;
+            }
+
+            @Override
+            public boolean supportsOrientationLock() {
+                return touchDeviceMode;
             }
 
             @Override
@@ -1234,11 +1374,27 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean seekBack() {
+                if (isCurrentU7dPlayback()) {
+                    PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
+                    if (state == null) {
+                        return false;
+                    }
+                    seekCurrentU7dPlaybackTo(state.currentMs - 30_000L);
+                    return true;
+                }
                 return playerController != null && playerController.seekTimeshiftBack();
             }
 
             @Override
             public boolean seekForward() {
+                if (isCurrentU7dPlayback()) {
+                    PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
+                    if (state == null) {
+                        return false;
+                    }
+                    seekCurrentU7dPlaybackTo(state.currentMs + 30_000L);
+                    return true;
+                }
                 return playerController != null && playerController.seekTimeshiftForward();
             }
 
@@ -1253,6 +1409,80 @@ public class MainActivity extends FragmentActivity {
                     playerController.togglePlayback();
                 }
             }
+        }, touchControlsFocusedActionIndex, nowPlaying);
+    }
+
+    private TouchControlsNowPlayingUiModel buildTouchControlsNowPlayingUiModel(ChannelItem channel) {
+        if (channel == null || channel.isVod) {
+            return TouchControlsNowPlayingUiModel.EMPTY;
+        }
+        EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channel.id);
+        EpgRepository.EpgProgram currentProgram = pair == null ? null : pair.current;
+        EpgRepository.EpgProgram nextProgram = pair == null ? null : pair.next;
+        String currentTitle = currentProgram != null && currentProgram.title != null && !currentProgram.title.trim().isEmpty()
+                ? currentProgram.title.trim()
+                : (channel.nowProgram == null ? "" : channel.nowProgram.trim());
+        String nextTitle = nextProgram != null && nextProgram.title != null && !nextProgram.title.trim().isEmpty()
+                ? nextProgram.title.trim()
+                : (channel.nextProgram == null ? "" : channel.nextProgram.trim());
+        int progress = currentProgram == null ? 0 : Math.max(0, Math.min(100, currentProgram.progress));
+        boolean progressVisible = currentProgram != null && currentProgram.progress >= 0;
+        long endMs = currentProgram == null ? 0L : parseIsoMillis(currentProgram.endTime);
+        long nowMs = System.currentTimeMillis();
+        String remainingText = progressVisible && endMs > nowMs
+                ? getString(R.string.zap_banner_remaining, formatDurationShort(endMs - nowMs))
+                : "";
+        String endTimeText = currentProgram == null ? "" : shortTime(currentProgram.endTime);
+        String nextLabel = nextTitle.isEmpty() ? "" : getString(R.string.zap_banner_next_prefix) + ": " + nextTitle;
+        return new TouchControlsNowPlayingUiModel(
+                true,
+                channel.logoUrl,
+                buildZapChannelBadge(channel),
+                displayName(channel),
+                currentTitle.isEmpty() ? getString(R.string.zap_banner_epg_missing) : currentTitle,
+                buildZapProgramMeta(channel, currentProgram),
+                nextLabel,
+                !nextLabel.isEmpty(),
+                currentProgram == null ? "" : currentProgram.icon,
+                remainingText,
+                progress,
+                progressVisible,
+                endTimeText
+        );
+    }
+
+    private void ensureTouchControlsEpgPair(ChannelItem channel) {
+        if (channel == null || channel.isVod || epgRepository == null) {
+            return;
+        }
+        String channelId = channel.id == null ? "" : channel.id.trim();
+        if (channelId.isEmpty() || epgProgramPairByChannelId.containsKey(channelId) || touchControlsEpgFetchInFlight.contains(channelId)) {
+            return;
+        }
+        touchControlsEpgFetchInFlight.add(channelId);
+        epgExecutor.execute(() -> {
+            EpgRepository.EpgProgram current = null;
+            EpgRepository.EpgProgram next = null;
+            try {
+                current = epgRepository.fetchProgramForChannel(channel, false);
+                next = epgRepository.fetchProgramForChannel(channel, true);
+            } catch (Exception e) {
+                Log.d(TAG, "Touch HUD EPG hydrate failed for " + channelId, e);
+            }
+            EpgRepository.EpgProgram finalCurrent = current;
+            EpgRepository.EpgProgram finalNext = next;
+            uiHandler.post(() -> {
+                touchControlsEpgFetchInFlight.remove(channelId);
+                if (finalCurrent != null || finalNext != null) {
+                    epgProgramPairByChannelId.put(channelId, new EpgRepository.EpgProgramPair(finalCurrent, finalNext));
+                }
+                ChannelItem active = getCurrentPlaybackChannelItem();
+                boolean stillActive = active != null && channelId.equals(active.id);
+                boolean hudVisible = touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE;
+                if (stillActive && hudVisible) {
+                    refreshTouchControlsBar();
+                }
+            });
         });
     }
 
@@ -1295,6 +1525,10 @@ public class MainActivity extends FragmentActivity {
     private void showTouchControlsTemporarily() {
         if (touchControlsController != null) {
             touchControlsController.showTouchControlsTemporarily();
+            ensureTouchControlsEpgPair(getCurrentPlaybackChannelItem());
+            if (!touchDeviceMode) {
+                resetTouchControlsFocus();
+            }
         }
     }
 
@@ -1526,6 +1760,10 @@ public class MainActivity extends FragmentActivity {
 
     private void loadChannels() {
         showStatus(getString(R.string.status_loading_channels));
+        showStartupLoading(
+                getString(R.string.startup_loading_validate_catalog),
+                getString(R.string.startup_loading_validate_catalog_detail)
+        );
         long startMs = System.currentTimeMillis();
         if (maybeShowOfflineFirstRunOnboarding(null)) {
             return;
@@ -1645,6 +1883,10 @@ public class MainActivity extends FragmentActivity {
             }
             startupFastPlaybackStarted = true;
             startupFastPlaybackChannelId = cached.id;
+            updateStartupLoading(
+                    getString(R.string.startup_loading_fast_playback),
+                    getString(R.string.startup_loading_fast_playback_detail)
+            );
             Log.w(TAG, "startup fast playback start channel=" + cached.id
                     + " loadMs=" + (System.currentTimeMillis() - startMs));
             playChannelItemInternal(cached, true, 0L);
@@ -1694,6 +1936,10 @@ public class MainActivity extends FragmentActivity {
         long overlayMs = System.currentTimeMillis() - overlayStartMs;
 
         if (channels.isEmpty()) {
+            updateStartupLoading(
+                    getString(R.string.startup_loading_empty_filter),
+                    getString(R.string.startup_loading_empty_filter_detail)
+            );
             showError(getString(R.string.error_no_channels_for_filter));
             return;
         }
@@ -1829,6 +2075,10 @@ public class MainActivity extends FragmentActivity {
         }
         stopPlaybackHeartbeat("stop");
         saveLastChannelId(ch.id);
+        currentPlaybackTransientItem = findChannelIndexById(ch.id) < 0 ? ch : null;
+        if (!isU7dReplayItem(ch)) {
+            clearCurrentU7dPlayback();
+        }
         if (startupFastPlaybackStarted
                 && ch.id != null
                 && !ch.id.equals(startupFastPlaybackChannelId)) {
@@ -3195,6 +3445,104 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private boolean isTouchControlsVisibleForRemote() {
+        return !touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE;
+    }
+
+    private void hideTouchControlsForRemote() {
+        if (touchControlsController != null) {
+            touchControlsController.hideAllTransientControls();
+        } else if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        touchControlsFocusedActionIndex = 0;
+        touchControlsTimeshiftFocused = false;
+        currentTouchControlsBarModel = null;
+    }
+
+    private void resetTouchControlsFocus() {
+        touchControlsTimeshiftFocused = false;
+        touchControlsFocusedActionIndex = firstEnabledTouchActionIndex();
+        refreshTouchControlsBar();
+        updateTimeshiftBar();
+    }
+
+    private int firstEnabledTouchActionIndex() {
+        TouchControlsBarUiModel model = currentTouchControlsBarModel;
+        if (model == null || model.actions == null || model.actions.isEmpty()) {
+            return 0;
+        }
+        for (int i = 0; i < model.actions.size(); i++) {
+            ZapActionItem item = model.actions.get(i);
+            if (item != null && item.enabled) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private void moveTouchControlsFocus(int delta) {
+        touchControlsTimeshiftFocused = false;
+        TouchControlsBarUiModel model = currentTouchControlsBarModel;
+        if (model == null || model.actions == null || model.actions.isEmpty()) {
+            refreshTouchControlsBar();
+            return;
+        }
+        int size = model.actions.size();
+        int start = Math.max(0, Math.min(size - 1, touchControlsFocusedActionIndex));
+        int next = start;
+        for (int step = 0; step < size; step++) {
+            next = (next + delta + size) % size;
+            ZapActionItem item = model.actions.get(next);
+            if (item != null && item.enabled) {
+                touchControlsFocusedActionIndex = next;
+                refreshTouchControlsBar();
+                scheduleTouchControlsAutoHide();
+                return;
+            }
+        }
+    }
+
+    private boolean isTouchControlsTimeshiftFocused() {
+        return touchControlsTimeshiftFocused;
+    }
+
+    private void focusTouchControlsTimeshift() {
+        if (playerController == null || (playerController.getPlaybackSeekState() == null && getCurrentU7dSeekState() == null)) {
+            scheduleTouchControlsAutoHide();
+            return;
+        }
+        touchControlsTimeshiftFocused = true;
+        updateTimeshiftBar();
+        scheduleTouchControlsAutoHide();
+    }
+
+    private void focusTouchControlsActions() {
+        if (!touchControlsTimeshiftFocused) {
+            scheduleTouchControlsAutoHide();
+            return;
+        }
+        touchControlsTimeshiftFocused = false;
+        refreshTouchControlsBar();
+        updateTimeshiftBar();
+        scheduleTouchControlsAutoHide();
+    }
+
+    private void activateTouchControlsFocus() {
+        TouchControlsBarUiModel model = currentTouchControlsBarModel;
+        if (model == null || model.actions == null || model.actions.isEmpty()) {
+            refreshTouchControlsBar();
+            return;
+        }
+        int index = Math.max(0, Math.min(model.actions.size() - 1, touchControlsFocusedActionIndex));
+        ZapActionItem item = model.actions.get(index);
+        if (item != null && item.enabled && item.onClick != null) {
+            item.onClick.run();
+        } else {
+            scheduleTouchControlsAutoHide();
+        }
+    }
+
     private String formatU7dProgramLabel(EpgRepository.EpgProgram program) {
         long startMs = parseIsoMillis(program.startTime);
         long endMs = parseIsoMillis(program.endTime);
@@ -3231,7 +3579,7 @@ public class MainActivity extends FragmentActivity {
                 "",
                 channel.originalOrder,
                 channel.dashboardOrder,
-                false,
+                true,
                 false,
                 channel.platformId,
                 getString(R.string.u7d_replay_platform),
@@ -3245,6 +3593,11 @@ public class MainActivity extends FragmentActivity {
                 endMs > startMs ? (endMs - startMs) / 1000L : 0L,
                 "u7d_proxy"
         );
+        currentPlaybackU7dBaseUrl = replayUrl;
+        currentPlaybackU7dDurationMs = Math.max(0L, endMs - startMs);
+        currentPlaybackU7dOffsetMs = 0L;
+        currentPlaybackU7dItem = replayItem;
+        currentPlaybackTransientItem = replayItem;
         String previousLastChannelId = lastChannelId;
         showStatus(getString(R.string.status_u7d_opening, programTitle));
         playChannelItemInternal(replayItem, true, 0L);
@@ -5129,6 +5482,16 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean isTouchControlsVisible() {
+                return MainActivity.this.isTouchControlsVisibleForRemote();
+            }
+
+            @Override
+            public boolean isTouchControlsTimeshiftFocused() {
+                return MainActivity.this.isTouchControlsTimeshiftFocused();
+            }
+
+            @Override
             public boolean canResumeTimeshiftLive() {
                 return playerController != null && playerController.resumeTimeshiftLive();
             }
@@ -5150,7 +5513,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hasSeekablePlayback() {
-                return playerController != null && playerController.getPlaybackSeekState() != null;
+                return playerController != null && (playerController.getPlaybackSeekState() != null || getCurrentU7dSeekState() != null);
             }
 
             @Override
@@ -5234,6 +5597,31 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public void hideTouchControls() {
+                MainActivity.this.hideTouchControlsForRemote();
+            }
+
+            @Override
+            public void moveTouchControlsFocus(int delta) {
+                MainActivity.this.moveTouchControlsFocus(delta);
+            }
+
+            @Override
+            public void focusTouchControlsTimeshift() {
+                MainActivity.this.focusTouchControlsTimeshift();
+            }
+
+            @Override
+            public void focusTouchControlsActions() {
+                MainActivity.this.focusTouchControlsActions();
+            }
+
+            @Override
+            public void activateTouchControlsFocus() {
+                MainActivity.this.activateTouchControlsFocus();
+            }
+
+            @Override
             public void showLeaveRecordingPrompt() {
                 MainActivity.this.showLeaveRecordingPrompt();
             }
@@ -5276,6 +5664,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void tuneRelative(int delta) {
                 MainActivity.this.tuneRelative(delta);
+            }
+
+            @Override
+            public void showTouchControlsTemporarily() {
+                MainActivity.this.showTouchControlsTemporarily();
             }
 
             @Override
@@ -5469,6 +5862,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private ChannelItem getCurrentPlaybackChannelItem() {
+        if (currentPlaybackTransientItem != null) {
+            return currentPlaybackTransientItem;
+        }
         if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
             return channels.get(overlayNavigationState.currentIndex);
         }
@@ -9482,7 +9878,12 @@ public class MainActivity extends FragmentActivity {
             return true;
         }
         return target.contains("/proxy/")
-                || target.contains("/recordings/");
+                || target.contains("/recordings/")
+                || target.contains("/hls/")
+                || target.contains("/drm/")
+                || target.contains("/api/vod/movistar/")
+                || target.contains("/api/u7d/movistar/")
+                || target.contains("/api/offline/u7d/");
     }
 
     private boolean isDirectPlaybackHeartbeat(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {
@@ -9549,7 +9950,12 @@ public class MainActivity extends FragmentActivity {
                 || normalizedTarget.contains("/recordings/")
                 || normalizedTarget.contains("/api/remux/")
                 || normalizedTarget.contains("/api/proxy/")
-                || normalizedTarget.contains("/live/");
+                || normalizedTarget.contains("/live/")
+                || normalizedTarget.contains("/hls/")
+                || normalizedTarget.contains("/drm/")
+                || normalizedTarget.contains("/api/vod/movistar/")
+                || normalizedTarget.contains("/api/u7d/movistar/")
+                || normalizedTarget.contains("/api/offline/u7d/");
     }
 
     private boolean isBackendHostedTrafficTarget(String target) {

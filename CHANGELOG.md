@@ -1,3 +1,7 @@
+## 2.0.260-beta-startup-epg-trace
+- Offline beta: asegura que la carga EPG prioritaria del canal actual se programe al aplicar el catalogo inicial.
+- Offline beta: eleva las trazas de EPG de arranque a nivel visible en Fire TV para diagnosticar telefono/Fire sin ruido del sistema.
+
 ## 2.0.259-beta-priority-epg-load
 - Offline beta: carga EPG del canal actual casi al arrancar y adelanta la carga del grupo visible para evitar quedarse sin guia en Movistar ISM.
 - Offline beta: anade trazas claras de programacion, arranque y resultado de la carga EPG para diagnosticar movil/Fire TV.

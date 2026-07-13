@@ -158,11 +158,16 @@ final class EpgRepository {
             return fetchRemoteProgramPairsForChannels(channelItems);
         }
         long now = System.currentTimeMillis();
+        List<ChannelItem> remoteFallbackChannels = new ArrayList<>();
         for (ChannelItem channel : channelItems) {
             if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
                 continue;
             }
             List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
+            if (rows.isEmpty()) {
+                remoteFallbackChannels.add(channel);
+                continue;
+            }
             EpgProgram current = null;
             EpgProgram next = null;
             for (EpgProgram row : rows) {
@@ -180,6 +185,9 @@ final class EpgRepository {
             if (current != null || next != null) {
                 out.put(channel.id.trim(), new EpgProgramPair(current, next));
             }
+        }
+        if (!remoteFallbackChannels.isEmpty()) {
+            out.putAll(fetchRemoteProgramPairsForChannels(remoteFallbackChannels));
         }
         return out;
     }
@@ -231,6 +239,9 @@ final class EpgRepository {
         }
         long now = System.currentTimeMillis();
         List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
+        if (rows.isEmpty()) {
+            return fetchRemoteProgramsForChannel(channel, maxItems);
+        }
         List<EpgProgram> out = new ArrayList<>();
         int limit = maxItems <= 0 ? rows.size() : maxItems;
         for (EpgProgram program : rows) {
@@ -309,7 +320,19 @@ final class EpgRepository {
             return next && fallbackPrograms.size() > 1 ? fallbackPrograms.get(1) : fallbackPrograms.get(0);
         }
         long now = System.currentTimeMillis();
-        for (EpgProgram program : resolveOfflinePrograms(channel.id, channel.name, channel.tvgId)) {
+        List<EpgProgram> rows = resolveOfflinePrograms(channel.id, channel.name, channel.tvgId);
+        if (rows.isEmpty()) {
+            EpgProgram direct = fetchProgramForChannel(channel.id, next);
+            if (direct != null) {
+                return direct;
+            }
+            List<EpgProgram> fallbackPrograms = fetchRemoteProgramsForChannel(channel, next ? 2 : 1);
+            if (fallbackPrograms.isEmpty()) {
+                return null;
+            }
+            return next && fallbackPrograms.size() > 1 ? fallbackPrograms.get(1) : fallbackPrograms.get(0);
+        }
+        for (EpgProgram program : rows) {
             long startMs = parseIsoMillis(program.startTime);
             long endMs = parseIsoMillis(program.endTime);
             if (!next && startMs <= now && endMs > now) {

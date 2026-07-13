@@ -1,3 +1,7 @@
+## 2.0.257-beta-epg-u7d-fallback
+- Offline beta: si el snapshot EPG local no trae programas para un canal concreto, la app vuelve a consultar el EPG remoto autenticado.
+- Offline beta: U7D de Movistar ISM envia identificadores del canal al backend para recuperar programas aunque el informe global no matchee por nombre.
+
 ## 2.0.256-beta-vod-compose-polish
 - Offline beta: la vista lista/densa de VOD pagina las secciones grandes para trabajar mejor con bibliotecas Movistar extensas.
 - Offline beta: optimiza las caratulas VOD en carruseles y listas usando miniaturas mas ligeras, manteniendo calidad alta en la ficha.

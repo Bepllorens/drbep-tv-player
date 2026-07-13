@@ -3242,7 +3242,7 @@ public class MainActivity extends FragmentActivity {
         String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
         Exception lastError = null;
         for (String candidateBaseUrl : candidates) {
-            String url = buildMovistarU7dProgramsUrl(candidateBaseUrl, token, deviceId);
+            String url = buildMovistarU7dProgramsUrl(candidateBaseUrl, token, deviceId, channel);
             try {
                 HttpClient.Response response = httpClient.get(url, 10000, 25000, buildAuthenticatedJsonHeaders());
                 if (response == null || !response.isSuccessful()) {
@@ -3272,13 +3272,25 @@ public class MainActivity extends FragmentActivity {
         candidates.add(normalized);
     }
 
-    private String buildMovistarU7dProgramsUrl(String candidateBaseUrl, String token, String deviceId) {
+    private String buildMovistarU7dProgramsUrl(String candidateBaseUrl, String token, String deviceId, ChannelItem channel) {
         Uri.Builder uriBuilder = Uri.parse(candidateBaseUrl).buildUpon()
                 .appendPath("api")
                 .appendPath("offline")
                 .appendPath("u7d")
                 .appendPath("movistar-ism")
                 .appendPath("programs");
+        if (channel != null) {
+            if (channel.id != null && !channel.id.trim().isEmpty()) {
+                uriBuilder.appendQueryParameter("channel_id", channel.id.trim());
+            }
+            if (channel.tvgId != null && !channel.tvgId.trim().isEmpty()) {
+                uriBuilder.appendQueryParameter("tvg_id", channel.tvgId.trim());
+            }
+            String channelName = displayName(channel);
+            if (channelName != null && !channelName.trim().isEmpty()) {
+                uriBuilder.appendQueryParameter("channel_name", channelName.trim());
+            }
+        }
         if (token != null && !token.trim().isEmpty()) {
             uriBuilder.appendQueryParameter("access_token", token.trim());
         }

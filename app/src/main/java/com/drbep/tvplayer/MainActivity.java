@@ -879,7 +879,7 @@ public class MainActivity extends FragmentActivity {
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         applyBoundedPanelWidth(zapBanner, screenWidth, R.dimen.zap_banner_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin) * 2);
         applyBoundedPanelWidth(quickSearchOverlay, screenWidth, R.dimen.quick_search_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin) * 2);
-        applyBoundedPanelWidth(channelOverlay, screenWidth, R.dimen.channel_overlay_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin));
+        applyChannelOverlayWidth(screenWidth);
         applyBoundedPanelWidth(recordingsPanel, screenWidth, R.dimen.recordings_panel_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin));
         applyBoundedPanelWidth(timeshiftBarContainer, screenWidth, R.dimen.touch_surface_panel_max_width, getResources().getDimensionPixelSize(R.dimen.touch_surface_panel_side_margin) * 2);
         applyBoundedPanelWidth(touchHomeHub, screenWidth, R.dimen.touch_home_hub_max_width, getResources().getDimensionPixelSize(R.dimen.touch_home_hub_side_margin) * 2);
@@ -887,12 +887,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void applyOverlayPanelMode() {
-        boolean tvListMode = !touchDeviceMode;
         if (overlayNowPlayingSection != null) {
             overlayNowPlayingSection.setVisibility(View.VISIBLE);
         }
         if (overlayExploreSection != null) {
-            overlayExploreSection.setVisibility(tvListMode ? View.GONE : View.VISIBLE);
+            overlayExploreSection.setVisibility(View.GONE);
         }
         if (overlayListSection != null) {
             ViewGroup.LayoutParams params = overlayListSection.getLayoutParams();
@@ -903,6 +902,29 @@ public class MainActivity extends FragmentActivity {
                 overlayListSection.setLayoutParams(linearParams);
             }
         }
+    }
+
+    private void applyChannelOverlayWidth(int screenWidthPx) {
+        if (channelOverlay == null) {
+            return;
+        }
+        if (!touchDeviceMode) {
+            applyBoundedPanelWidth(channelOverlay, screenWidthPx, R.dimen.channel_overlay_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin));
+            return;
+        }
+        int maxWidth = getResources().getDimensionPixelSize(R.dimen.channel_overlay_width);
+        int preferredWidth = Math.round(screenWidthPx * (isLargeTouchScreen() ? 0.40f : 0.48f));
+        int minWidth = Math.min(dp(320), Math.max(dp(260), screenWidthPx - dp(48)));
+        int targetWidth = Math.max(minWidth, Math.min(maxWidth, preferredWidth));
+        ViewGroup.LayoutParams params = channelOverlay.getLayoutParams();
+        if (params != null && params.width != targetWidth) {
+            params.width = targetWidth;
+            channelOverlay.setLayoutParams(params);
+        }
+    }
+
+    private boolean isLargeTouchScreen() {
+        return touchDeviceMode && getResources().getConfiguration().smallestScreenWidthDp >= 600;
     }
 
     private void applyBoundedPanelWidth(View view, int screenWidthPx, int maxWidthDimenRes, int reservedHorizontalPx) {

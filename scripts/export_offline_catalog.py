@@ -187,6 +187,15 @@ def match_now_program(channel, now_index):
     return None
 
 
+def program_title(program):
+    if not isinstance(program, dict):
+        return ""
+    title = str(program.get("title", "") or "").strip()
+    if not title:
+        return ""
+    return title
+
+
 def build_epg_snapshot(base_url, channels, timeout, max_items_per_channel):
     now_rows = optional_fetch(base_url, "/api/epg/now", timeout, [])
     now_index = build_now_index(now_rows if isinstance(now_rows, list) else [])
@@ -204,6 +213,12 @@ def build_epg_snapshot(base_url, channels, timeout, max_items_per_channel):
         if not rows:
             continue
         trimmed = rows[:max(1, max_items_per_channel)]
+        current_title = program_title(trimmed[0] if trimmed else None)
+        next_title = program_title(trimmed[1] if len(trimmed) > 1 else None)
+        if current_title:
+            channel["now_program"] = current_title
+        if next_title:
+            channel["next_program"] = next_title
         programs[channel_id] = trimmed
         program_count += len(trimmed)
         for item in trimmed:

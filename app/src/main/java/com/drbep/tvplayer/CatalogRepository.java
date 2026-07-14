@@ -195,6 +195,8 @@ final class CatalogRepository {
                     directPlayback,
                     playbackProfile
             );
+            item.nowProgram = safeCatalogText(channel.optString("now_program", ""));
+            item.nextProgram = safeCatalogText(channel.optString("next_program", ""));
             JSONObject groupOrder = channel.optJSONObject("group_order");
             if (groupOrder != null) {
                 java.util.Iterator<String> keys = groupOrder.keys();

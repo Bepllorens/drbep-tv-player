@@ -73,6 +73,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 import androidx.fragment.app.FragmentActivity;
 
@@ -96,10 +97,13 @@ public class MainActivity extends FragmentActivity {
     private static final long OFFLINE_STARTUP_MAINTENANCE_GRACE_MS = 5L * 60L * 1000L;
     private static final long OFFLINE_APP_UPDATE_STARTUP_DELAY_MS = 2L * 60L * 1000L;
     private static final long OFFLINE_APP_UPDATE_RESUME_CHECK_MS = 15L * 60L * 1000L;
-    private static final long OFFLINE_EPG_INITIAL_DELAY_MS = 60L * 1000L;
-    private static final long OFFLINE_EPG_PROGRESSIVE_DELAY_MS = 90L * 1000L;
-    private static final long OFFLINE_EPG_PRIORITY_DELAY_MS = 5L * 1000L;
-    private static final long OFFLINE_EPG_BUSY_RETRY_MS = 15L * 1000L;
+    private static final long OFFLINE_EPG_INITIAL_DELAY_MS = 20L * 1000L;
+    private static final long OFFLINE_EPG_PROGRESSIVE_DELAY_MS = 45L * 1000L;
+    private static final long OFFLINE_EPG_PRIORITY_DELAY_MS = 2L * 1000L;
+    private static final long OFFLINE_EPG_BUSY_RETRY_MS = 5L * 1000L;
+    private static final long OFFLINE_EPG_LOAD_TIMEOUT_MS = 25L * 1000L;
+    private static final int OFFLINE_EPG_VISIBLE_BATCH_LIMIT = 48;
+    private static final int OFFLINE_EPG_COMPACT_BATCH_LIMIT = 12;
     private static final long PLAYBACK_HEARTBEAT_INTERVAL_MS = 30L * 1000L;
     private static final int OFFLINE_SYNC_HISTORY_LIMIT = 8;
     private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
@@ -287,6 +291,9 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
     private final Set<String> touchControlsEpgFetchInFlight = new HashSet<>();
     private volatile boolean epgLoadInFlight = false;
+    private volatile boolean epgWorkerBusy = false;
+    private int epgLoadGeneration;
+    private long epgLoadStartedAtMs;
     // Cache de logos dimensionada por memoria real (KB) en vez de por numero fijo de
     // entradas, evitando OOM en Fire Stick de gama baja con bitmaps grandes.
     private final LruCache<String, Drawable> channelLogoCache = new LruCache<String, Drawable>(
@@ -834,6 +841,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean isCompactTouchDeviceMode() {
+                return MainActivity.this.useCompactTouchEpgMode();
+            }
+
+            @Override
             public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
                 MainActivity.this.recordPlaybackError(request, diagnostics);
             }
@@ -929,6 +941,10 @@ public class MainActivity extends FragmentActivity {
 
     private boolean isLargeTouchScreen() {
         return touchDeviceMode && getResources().getConfiguration().smallestScreenWidthDp >= 600;
+    }
+
+    private boolean useCompactTouchEpgMode() {
+        return BuildConfig.STANDALONE_MODE && touchDeviceMode && !isLargeTouchScreen();
     }
 
     private void applyBoundedPanelWidth(View view, int screenWidthPx, int maxWidthDimenRes, int reservedHorizontalPx) {
@@ -1447,6 +1463,7 @@ public class MainActivity extends FragmentActivity {
         if (channel == null || channel.isVod) {
             return TouchControlsNowPlayingUiModel.EMPTY;
         }
+        ensureTouchControlsEpgPair(channel);
         EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channel.id);
         EpgRepository.EpgProgram currentProgram = pair == null ? null : pair.current;
         EpgRepository.EpgProgram nextProgram = pair == null ? null : pair.next;
@@ -1492,26 +1509,21 @@ public class MainActivity extends FragmentActivity {
                 || (channel.nowProgram != null && !channel.nowProgram.trim().isEmpty());
         boolean hasNext = hasProgramTitle(existingPair == null ? null : existingPair.next)
                 || (channel.nextProgram != null && !channel.nextProgram.trim().isEmpty());
-        if (channelId.isEmpty() || (hasCurrent && hasNext) || touchControlsEpgFetchInFlight.contains(channelId)) {
+        boolean hasRichCurrent = hasRichProgramDetails(existingPair == null ? null : existingPair.current);
+        if (channelId.isEmpty() || (hasCurrent && hasNext && hasRichCurrent) || touchControlsEpgFetchInFlight.contains(channelId)) {
             return;
         }
         touchControlsEpgFetchInFlight.add(channelId);
-        epgExecutor.execute(() -> {
+        submitEpgTask("touch-hud-epg", () -> {
             EpgRepository.EpgProgram current = null;
             EpgRepository.EpgProgram next = null;
             try {
                 EpgRepository.EpgProgramPair pair = epgRepository
-                        .fetchProgramPairsForChannels(Collections.singletonList(channel))
+                        .fetchProgramPairsForChannels(Collections.singletonList(channel), true, true, false)
                         .get(channelId);
                 if (pair != null) {
                     current = pair.current;
                     next = pair.next;
-                }
-                if (current == null) {
-                    current = epgRepository.fetchProgramForChannel(channel, false);
-                }
-                if (next == null) {
-                    next = epgRepository.fetchProgramForChannel(channel, true);
                 }
             } catch (Exception e) {
                 Log.w(TAG, "Touch HUD EPG hydrate failed for " + channelId + " " + displayName(channel), e);
@@ -1546,6 +1558,16 @@ public class MainActivity extends FragmentActivity {
 
     private boolean hasProgramTitle(EpgRepository.EpgProgram program) {
         return program != null && program.title != null && !program.title.trim().isEmpty();
+    }
+
+    private boolean hasRichProgramDetails(EpgRepository.EpgProgram program) {
+        if (!hasProgramTitle(program)) {
+            return false;
+        }
+        boolean hasTiming = program.startTime != null && !program.startTime.trim().isEmpty()
+                && program.endTime != null && !program.endTime.trim().isEmpty();
+        boolean hasArtwork = program.icon != null && !program.icon.trim().isEmpty();
+        return hasTiming || hasArtwork;
     }
 
     private String formatPlaybackPreviewLabel(PlayerController.PlaybackSeekState state, long targetMs) {
@@ -1830,7 +1852,7 @@ public class MainActivity extends FragmentActivity {
         if (maybeShowOfflineFirstRunOnboarding(null)) {
             return;
         }
-        catalogLoadExecutor.execute(() -> {
+        submitCatalogTask("load-channels", () -> {
             try {
                 CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
                 long durationMs = System.currentTimeMillis() - startMs;
@@ -2357,7 +2379,7 @@ public class MainActivity extends FragmentActivity {
 
     private void loadEpgNow(boolean fullCatalog) {
         if (BuildConfig.STANDALONE_MODE && !fullCatalog) {
-            loadEpgForChannels(currentEpgFilterKey(), "visible", new ArrayList<>(channels), false, true);
+            loadEpgForChannels(currentEpgFilterKey(), "visible", buildPriorityVisibleEpgSnapshot(), false, true);
             return;
         }
         if (epgLoadInFlight) {
@@ -2395,7 +2417,7 @@ public class MainActivity extends FragmentActivity {
                         epgProgramPairByChannelId.clear();
                     }
                     epgNowByChannelId.putAll(updates);
-                    epgProgramPairByChannelId.putAll(finalPairs);
+                    mergeEpgProgramPairs(epgProgramPairByChannelId, finalPairs);
                     int filled = fullCatalog
                             ? applyProgramPairUpdates(allChannels, epgNowByChannelId, epgProgramPairByChannelId)
                             : applyProgramPairUpdates(epgChannelsSnapshot, updates, finalPairs);
@@ -2429,11 +2451,81 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         long safeDelay = Math.max(0L, delayMs);
-        Log.w(TAG, "EPG visible scheduled delayMs=" + safeDelay + " channels=" + channels.size() + " filter=" + currentEpgFilterKey());
+        List<ChannelItem> scheduledSnapshot = buildPriorityVisibleEpgSnapshot();
+        Log.w(TAG, "EPG visible scheduled delayMs=" + safeDelay
+                + " channels=" + scheduledSnapshot.size()
+                + " totalVisible=" + channels.size()
+                + " filter=" + currentEpgFilterKey());
         uiHandler.postDelayed(() -> {
-            Log.w(TAG, "EPG visible trigger channels=" + channels.size() + " filter=" + currentEpgFilterKey());
-            loadEpgForChannels(currentEpgFilterKey(), "visible", new ArrayList<>(channels), false, true);
+            List<ChannelItem> snapshot = buildPriorityVisibleEpgSnapshot();
+            Log.w(TAG, "EPG visible trigger channels=" + snapshot.size()
+                    + " totalVisible=" + channels.size()
+                    + " filter=" + currentEpgFilterKey());
+            loadEpgForChannels(currentEpgFilterKey(), "visible", snapshot, false, true);
         }, safeDelay);
+    }
+
+    private List<ChannelItem> buildPriorityVisibleEpgSnapshot() {
+        List<ChannelItem> out = new ArrayList<>();
+        if (channels.isEmpty()) {
+            return out;
+        }
+        if (!useCompactTouchEpgMode()) {
+            return new ArrayList<>(channels);
+        }
+        int limit = Math.max(1, OFFLINE_EPG_COMPACT_BATCH_LIMIT);
+        if (channels.size() <= limit) {
+            return new ArrayList<>(channels);
+        }
+        int center = resolveCurrentVisibleChannelIndex();
+        int before = limit / 3;
+        int start = Math.max(0, center - before);
+        int end = Math.min(channels.size(), start + limit);
+        start = Math.max(0, end - limit);
+        for (int i = start; i < end; i++) {
+            ChannelItem channel = channels.get(i);
+            if (channel != null && !channel.isVod) {
+                out.add(channel);
+            }
+        }
+        return out;
+    }
+
+    private List<ChannelItem> limitEpgSnapshot(List<ChannelItem> source, int limit) {
+        List<ChannelItem> out = new ArrayList<>();
+        if (source == null || source.isEmpty()) {
+            return out;
+        }
+        if (!useCompactTouchEpgMode()) {
+            return new ArrayList<>(source);
+        }
+        int max = Math.max(1, limit);
+        for (ChannelItem channel : source) {
+            if (channel == null || channel.isVod) {
+                continue;
+            }
+            out.add(channel);
+            if (out.size() >= max) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private int resolveCurrentVisibleChannelIndex() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current != null && current.id != null) {
+            for (int i = 0; i < channels.size(); i++) {
+                ChannelItem item = channels.get(i);
+                if (item != null && current.id.equals(item.id)) {
+                    return i;
+                }
+            }
+        }
+        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            return overlayNavigationState.currentIndex;
+        }
+        return 0;
     }
 
     private void scheduleStartupEpgLoads() {
@@ -2445,8 +2537,8 @@ public class MainActivity extends FragmentActivity {
                 + " totalChannels=" + allChannels.size()
                 + " filter=" + currentEpgFilterKey()
                 + " currentIndex=" + overlayNavigationState.currentIndex);
-        scheduleCurrentChannelEpgLoad(1500L);
-        scheduleVisibleEpgLoad(8000L);
+        scheduleCurrentChannelEpgLoad(800L);
+        scheduleVisibleEpgLoad(3500L);
     }
 
     private void scheduleCurrentChannelEpgLoad(long delayMs) {
@@ -2481,7 +2573,10 @@ public class MainActivity extends FragmentActivity {
         if (!BuildConfig.STANDALONE_MODE || allChannels.isEmpty()) {
             return;
         }
-        if (epgLoadInFlight) {
+        if (useCompactTouchEpgMode()) {
+            return;
+        }
+        if (epgLoadInFlight || (useCompactTouchEpgMode() && epgWorkerBusy)) {
             scheduleNextProgressiveEpgLoad(OFFLINE_EPG_BUSY_RETRY_MS);
             return;
         }
@@ -2490,7 +2585,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String key = epgFilterKey(nextFilter);
-        List<ChannelItem> items = channelsForEpgFilter(nextFilter);
+        List<ChannelItem> items = limitEpgSnapshot(channelsForEpgFilter(nextFilter), OFFLINE_EPG_VISIBLE_BATCH_LIMIT);
         if (items.isEmpty()) {
             epgLoadedFilterKeys.add(key);
             scheduleNextProgressiveEpgLoad(1000L);
@@ -2500,8 +2595,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void loadEpgForChannels(String filterKey, String label, List<ChannelItem> snapshot, boolean fullCatalog, boolean continueProgressive) {
-        if (epgLoadInFlight) {
-            Log.w(TAG, "EPG partial skipped inFlight filter=" + filterKey + " continueProgressive=" + continueProgressive);
+        if (epgLoadInFlight || (useCompactTouchEpgMode() && epgWorkerBusy)) {
+            Log.w(TAG, "EPG partial skipped inFlight filter=" + filterKey
+                    + " workerBusy=" + epgWorkerBusy
+                    + " continueProgressive=" + continueProgressive);
             if (continueProgressive) {
                 scheduleNextProgressiveEpgLoad(OFFLINE_EPG_BUSY_RETRY_MS);
             }
@@ -2516,16 +2613,46 @@ public class MainActivity extends FragmentActivity {
         }
         final String cleanFilterKey = filterKey == null || filterKey.trim().isEmpty() ? "visible" : filterKey.trim();
         final String cleanLabel = label == null || label.trim().isEmpty() ? cleanFilterKey : label.trim();
-        final List<ChannelItem> epgChannelsSnapshot = new ArrayList<>(snapshot);
+        final boolean compactEpgMode = useCompactTouchEpgMode();
+        final int batchLimit = compactEpgMode ? OFFLINE_EPG_COMPACT_BATCH_LIMIT : OFFLINE_EPG_VISIBLE_BATCH_LIMIT;
+        final List<ChannelItem> epgChannelsSnapshot = limitEpgSnapshot(snapshot, batchLimit);
         epgQueuedFilterKeys.add(cleanFilterKey);
         epgLoadInFlight = true;
+        epgWorkerBusy = true;
+        epgLoadStartedAtMs = System.currentTimeMillis();
+        final int loadGeneration = ++epgLoadGeneration;
         long startMs = System.currentTimeMillis();
         Log.w(TAG, "EPG partial start filter=" + cleanFilterKey + " label=" + cleanLabel + " channels=" + epgChannelsSnapshot.size());
-        epgExecutor.execute(() -> {
+        uiHandler.postDelayed(() -> {
+            if (!epgLoadInFlight || loadGeneration != epgLoadGeneration) {
+                return;
+            }
+            long elapsedMs = System.currentTimeMillis() - epgLoadStartedAtMs;
+            if (elapsedMs < OFFLINE_EPG_LOAD_TIMEOUT_MS) {
+                return;
+            }
+            epgLoadInFlight = false;
+            epgLoadGeneration++;
+            epgQueuedFilterKeys.remove(cleanFilterKey);
+            Log.w(TAG, "EPG partial timeout filter=" + cleanFilterKey
+                    + " label=" + cleanLabel
+                    + " channels=" + epgChannelsSnapshot.size()
+                    + " elapsedMs=" + elapsedMs
+                    + " workerStillBusy=" + epgWorkerBusy);
+        }, OFFLINE_EPG_LOAD_TIMEOUT_MS + 500L);
+        if (!submitEpgTask("load-epg-partial", () -> {
             try {
-                Map<String, EpgRepository.EpgProgramPair> pairs = epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot);
+                Map<String, EpgRepository.EpgProgramPair> pairs = epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, compactEpgMode, false);
                 Map<String, String> updates = buildNowProgramUpdatesFromPairs(pairs);
                 uiHandler.post(() -> {
+                    epgWorkerBusy = false;
+                    if (loadGeneration != epgLoadGeneration) {
+                        Log.w(TAG, "EPG partial stale result ignored filter=" + cleanFilterKey
+                                + " label=" + cleanLabel
+                                + " updates=" + updates.size()
+                                + " durationMs=" + (System.currentTimeMillis() - startMs));
+                        return;
+                    }
                     epgLoadInFlight = false;
                     lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                     epgFullCatalogLoadRequested = false;
@@ -2535,7 +2662,8 @@ public class MainActivity extends FragmentActivity {
                         epgProgramPairByChannelId.clear();
                     }
                     epgNowByChannelId.putAll(updates);
-                    epgProgramPairByChannelId.putAll(pairs);
+                    mergeEpgProgramPairs(epgProgramPairByChannelId, pairs);
+                    epgQueuedFilterKeys.remove(cleanFilterKey);
                     epgLoadedFilterKeys.add(cleanFilterKey);
                     int filled = applyProgramPairUpdates(epgChannelsSnapshot, updates, pairs);
                     applyProgramPairUpdates(channels, epgNowByChannelId, epgProgramPairByChannelId);
@@ -2551,20 +2679,27 @@ public class MainActivity extends FragmentActivity {
                     if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
                         showZapBanner(currentChannel);
                     }
-                    if (continueProgressive) {
+                    if (continueProgressive && !compactEpgMode) {
                         scheduleNextProgressiveEpgLoad(OFFLINE_EPG_PROGRESSIVE_DELAY_MS);
                     }
                 });
             } catch (Exception e) {
                 epgLoadInFlight = false;
+                epgWorkerBusy = false;
                 epgFullCatalogLoadRequested = false;
                 lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
+                epgQueuedFilterKeys.remove(cleanFilterKey);
                 Log.w(TAG, "load epg partial failed filter=" + cleanFilterKey, e);
-                if (continueProgressive) {
+                if (continueProgressive && !compactEpgMode) {
                     scheduleNextProgressiveEpgLoad(OFFLINE_EPG_PROGRESSIVE_DELAY_MS);
                 }
             }
-        });
+        })) {
+            epgLoadInFlight = false;
+            epgWorkerBusy = false;
+            epgFullCatalogLoadRequested = false;
+            epgQueuedFilterKeys.remove(cleanFilterKey);
+        }
     }
 
     private ChannelFilter nextProgressiveEpgFilter() {
@@ -2652,15 +2787,66 @@ public class MainActivity extends FragmentActivity {
             if (item == null) {
                 continue;
             }
-            item.nowProgram = updates == null ? "" : updates.getOrDefault(item.id, "");
+            String previousNow = item.nowProgram == null ? "" : item.nowProgram.trim();
+            String previousNext = item.nextProgram == null ? "" : item.nextProgram.trim();
+            String updatedNow = updates == null ? "" : updates.getOrDefault(item.id, "");
             EpgRepository.EpgProgramPair pair = pairs == null ? null : pairs.get(item.id);
             EpgRepository.EpgProgram next = pair == null ? null : pair.next;
-            item.nextProgram = next == null || next.title == null ? "" : next.title.trim();
+            String updatedNext = next == null || next.title == null ? "" : next.title.trim();
+            item.nowProgram = updatedNow == null || updatedNow.trim().isEmpty() ? previousNow : updatedNow.trim();
+            item.nextProgram = updatedNext.isEmpty() ? previousNext : updatedNext;
             if (item.nowProgram != null && !item.nowProgram.trim().isEmpty()) {
                 filled++;
             }
         }
         return filled;
+    }
+
+    private void mergeEpgProgramPairs(Map<String, EpgRepository.EpgProgramPair> target, Map<String, EpgRepository.EpgProgramPair> incoming) {
+        if (target == null || incoming == null || incoming.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, EpgRepository.EpgProgramPair> entry : incoming.entrySet()) {
+            String channelId = entry.getKey() == null ? "" : entry.getKey().trim();
+            EpgRepository.EpgProgramPair nextPair = entry.getValue();
+            if (channelId.isEmpty() || nextPair == null) {
+                continue;
+            }
+            EpgRepository.EpgProgramPair previous = target.get(channelId);
+            if (previous == null) {
+                target.put(channelId, nextPair);
+                continue;
+            }
+            target.put(channelId, new EpgRepository.EpgProgramPair(
+                    chooseBetterProgram(previous.current, nextPair.current),
+                    chooseBetterProgram(previous.next, nextPair.next)
+            ));
+        }
+    }
+
+    private EpgRepository.EpgProgram chooseBetterProgram(EpgRepository.EpgProgram previous, EpgRepository.EpgProgram incoming) {
+        if (incoming == null) {
+            return previous;
+        }
+        if (previous == null) {
+            return incoming;
+        }
+        boolean incomingRich = hasRichProgramDetails(incoming);
+        boolean previousRich = hasRichProgramDetails(previous);
+        long previousEndMs = parseIsoMillis(previous.endTime);
+        if (previousEndMs > 0L && previousEndMs <= System.currentTimeMillis() && hasProgramTitle(incoming)) {
+            return incoming;
+        }
+        if (incomingRich && !previousRich) {
+            return incoming;
+        }
+        if (!incomingRich && previousRich) {
+            return previous;
+        }
+        if (hasProgramTitle(incoming) && !hasProgramTitle(previous)) {
+            return incoming;
+        }
+        return incomingRich == previousRich ? incoming : previous;
     }
 
     private void applySingleProgramPairToChannelLists(String channelId, EpgRepository.EpgProgram current, EpgRepository.EpgProgram next) {
@@ -6071,6 +6257,35 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private boolean submitIoTask(String label, Runnable task) {
+        return submitExecutorTask(ioExecutor, label, task);
+    }
+
+    private boolean submitEpgTask(String label, Runnable task) {
+        return submitExecutorTask(epgExecutor, label, task);
+    }
+
+    private boolean submitCatalogTask(String label, Runnable task) {
+        return submitExecutorTask(catalogLoadExecutor, label, task);
+    }
+
+    private boolean submitExecutorTask(ExecutorService executor, String label, Runnable task) {
+        if (executor == null || task == null) {
+            return false;
+        }
+        if (executor.isShutdown() || executor.isTerminated()) {
+            Log.w(TAG, "executor task skipped after shutdown label=" + label);
+            return false;
+        }
+        try {
+            executor.execute(task);
+            return true;
+        } catch (RejectedExecutionException e) {
+            Log.w(TAG, "executor task rejected label=" + label, e);
+            return false;
+        }
+    }
+
     @Override
     protected void onDestroy() {
         rememberCurrentVodPosition();
@@ -6141,6 +6356,13 @@ public class MainActivity extends FragmentActivity {
     private ChannelItem getCurrentPlaybackChannelItem() {
         if (currentPlaybackTransientItem != null) {
             return currentPlaybackTransientItem;
+        }
+        String playbackChannelId = playerController == null ? "" : playerController.getCurrentRequestChannelId();
+        if (!playbackChannelId.isEmpty()) {
+            ChannelItem playbackChannel = findChannelItemById(playbackChannelId);
+            if (playbackChannel != null) {
+                return playbackChannel;
+            }
         }
         if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
             return channels.get(overlayNavigationState.currentIndex);
@@ -7538,7 +7760,7 @@ public class MainActivity extends FragmentActivity {
         if (overlayNowPlayingComposeView == null) {
             return;
         }
-        ChannelItem currentChannel = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : findChannelItemById(lastChannelId);
+        ChannelItem currentChannel = getCurrentPlaybackChannelItem();
         ensureTouchControlsEpgPair(currentChannel);
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
@@ -9901,7 +10123,7 @@ public class MainActivity extends FragmentActivity {
         }
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         JSONObject extra = buildOfflineDeviceStatusExtra();
-        ioExecutor.execute(() -> {
+        submitIoTask("offline-device-status", () -> {
             try {
                 JSONObject response = catalogSnapshotStore.reportDeviceStatus(BuildConfig.OFFLINE_BASE_URL, status, event, success, durationMs, detail, extra);
                 if (response != null && response.optBoolean("diagnostic_requested", false)) {
@@ -10113,7 +10335,7 @@ public class MainActivity extends FragmentActivity {
             Log.d(TAG, "playback heartbeat payload failed", e);
             return;
         }
-        ioExecutor.execute(() -> {
+        submitIoTask("playback-heartbeat", () -> {
             try {
                 catalogSnapshotStore.reportPlaybackHeartbeat(BuildConfig.OFFLINE_BASE_URL, payload);
             } catch (Exception e) {
@@ -15354,11 +15576,33 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showZapBanner(ChannelItem channelItem) {
+        ensureTouchControlsEpgPair(channelItem);
+        logHudEpgState("showZapBanner", channelItem);
         zapBannerController.show(channelItem);
     }
 
     private void updateZapBannerContent(ChannelItem channelItem) {
+        ensureTouchControlsEpgPair(channelItem);
+        logHudEpgState("updateZapBanner", channelItem);
         zapBannerController.updateContent(channelItem);
+    }
+
+    private void logHudEpgState(String source, ChannelItem channelItem) {
+        if (channelItem == null || channelItem.id == null) {
+            return;
+        }
+        EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channelItem.id);
+        EpgRepository.EpgProgram current = pair == null ? null : pair.current;
+        EpgRepository.EpgProgram next = pair == null ? null : pair.next;
+        Log.w(TAG, "HUD EPG state source=" + source
+                + " playbackId=" + (playerController == null ? "" : playerController.getCurrentRequestChannelId())
+                + " channel=" + channelItem.id
+                + " name=" + displayName(channelItem)
+                + " current=" + (current == null ? "" : current.title)
+                + " start=" + (current == null ? "" : current.startTime)
+                + " end=" + (current == null ? "" : current.endTime)
+                + " icon=" + (current != null && current.icon != null && !current.icon.trim().isEmpty())
+                + " next=" + (next == null ? "" : next.title));
     }
 
     private String buildGuideMeta(EpgRepository.EpgProgram program) {
@@ -15476,6 +15720,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String getCurrentChannelId() {
+        String playbackChannelId = playerController == null ? "" : playerController.getCurrentRequestChannelId();
+        if (!playbackChannelId.isEmpty()) {
+            return playbackChannelId;
+        }
         if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
             ChannelItem item = channels.get(overlayNavigationState.currentIndex);
             if (item != null && item.id != null && !item.id.trim().isEmpty()) {

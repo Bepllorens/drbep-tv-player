@@ -71,6 +71,7 @@ final class PlayerController {
     private static final String SECURE_STREAM_LICENSE_PREFIX = "drbep-secure-stream:";
     private static final int PLAYBACK_CONNECT_TIMEOUT_MS = 20_000;
     private static final int PLAYBACK_READ_TIMEOUT_MS = 30_000;
+    private static final long MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS = 12_000L;
     private static final long TIMESHIFT_MAX_BACK_MS = 2L * 60L * 60L * 1000L;
     private static final long TIMESHIFT_SEEK_STEP_MS = 30_000L;
     private static volatile boolean playbackCrashHandlerInstalled;
@@ -90,6 +91,10 @@ final class PlayerController {
         void showHdrBadge(String label);
 
         boolean isPlaybackRepairEnabled();
+
+        default boolean isCompactTouchDeviceMode() {
+            return false;
+        }
 
         void recordPlaybackError(PlaybackRequest request, PlaybackDiagnostics diagnostics);
 
@@ -273,6 +278,7 @@ final class PlayerController {
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
     private boolean forceLiveEdgeOnNextReady;
+    private boolean movistarIsmFastZapOffsetPending;
     private boolean usingVideoCompatibilityCap;
     private int lastVideoWidth;
     private int lastVideoHeight;
@@ -286,6 +292,9 @@ final class PlayerController {
     private boolean firstFrameRenderedForCurrentItem;
     private long currentPrepareStartedMs;
     private long currentReadyElapsedMs;
+    private long currentBufferingStartedMs;
+    private int currentBufferingCount;
+    private long currentBufferingTotalMs;
     private final Runnable firstFrameRecoveryRunnable;
     private final Runnable forceLiveEdgeRunnable = () -> {
         if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
@@ -327,9 +336,13 @@ final class PlayerController {
         player = new ExoPlayer.Builder(context)
                 .setTrackSelector(trackSelector)
                 .setLoadControl(new DefaultLoadControl.Builder()
-                        // Zapping mas rapido en Fire TV: menor buffer minimo para arrancar
-                        // y recuperar rebuffer antes, priorizando tiempo sobre tamano.
-                        .setBufferDurationsMs(10_000, 45_000, 600, 1_500)
+                        // Keep TV zapping fast, but hold a small extra cushion before
+                        // resume to avoid short rebuffer loops on live HLS edges.
+                        .setBufferDurationsMs(
+                                host.isCompactTouchDeviceMode() ? 14_000 : 18_000,
+                                host.isCompactTouchDeviceMode() ? 60_000 : 50_000,
+                                host.isCompactTouchDeviceMode() ? 1_500 : 1_500,
+                                host.isCompactTouchDeviceMode() ? 3_000 : 6_000)
                         .setPrioritizeTimeOverSizeThresholds(true)
                         .build())
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)
@@ -339,6 +352,7 @@ final class PlayerController {
                 .build();
         playerView.setPlayer(player);
         playerView.setUseController(false);
+        playerView.setKeepContentOnPlayerReset(false);
         playerView.setKeepScreenOn(true);
         playerView.setFocusable(true);
         playerView.setFocusableInTouchMode(true);
@@ -373,10 +387,35 @@ final class PlayerController {
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " playWhenReady=" + (player != null && player.getPlayWhenReady())
                         + " elapsedMs=" + elapsedMs);
+                if (playbackState == Player.STATE_BUFFERING) {
+                    currentBufferingCount++;
+                    currentBufferingStartedMs = SystemClock.elapsedRealtime();
+                    Log.w(TAG, "playbackBufferingStart channel=" + describeRequest(currentRequest)
+                            + " count=" + currentBufferingCount
+                            + " elapsedMs=" + elapsedMs
+                            + " compactTouch=" + host.isCompactTouchDeviceMode()
+                            + playbackBufferDebugSuffix());
+                } else if (currentBufferingStartedMs > 0L) {
+                    long bufferingMs = Math.max(0L, SystemClock.elapsedRealtime() - currentBufferingStartedMs);
+                    currentBufferingTotalMs += bufferingMs;
+                    currentBufferingStartedMs = 0L;
+                    Log.w(TAG, "playbackBufferingEnd channel=" + describeRequest(currentRequest)
+                            + " state=" + playbackStateToString(playbackState)
+                            + " lastBufferMs=" + bufferingMs
+                            + " totalBufferMs=" + currentBufferingTotalMs
+                            + " count=" + currentBufferingCount
+                            + playbackBufferDebugSuffix());
+                }
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 if (playbackState == Player.STATE_READY) {
                     currentReadyElapsedMs = elapsedMs;
+                    Log.w(TAG, "playbackReady channel=" + describeRequest(currentRequest)
+                            + " readyElapsedMs=" + elapsedMs
+                            + " bufferCount=" + currentBufferingCount
+                            + " bufferTotalMs=" + currentBufferingTotalMs
+                            + " compactTouch=" + host.isCompactTouchDeviceMode());
                     updateSelectedPlaybackFormats();
+                    applyMovistarIsmFastZapOffsetIfNeeded();
                     if (forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
                         player.seekToDefaultPosition();
                         player.play();
@@ -405,10 +444,12 @@ final class PlayerController {
                 firstFrameRenderedForCurrentItem = true;
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
-                Log.d(TAG, "firstFrame channel=" + describeRequest(request)
+                Log.w(TAG, "firstFrame channel=" + describeRequest(request)
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " readyElapsedMs=" + currentReadyElapsedMs
-                        + " firstFrameElapsedMs=" + elapsedMs);
+                        + " firstFrameElapsedMs=" + elapsedMs
+                        + " bufferCount=" + currentBufferingCount
+                        + " bufferTotalMs=" + currentBufferingTotalMs);
                 host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
             }
 
@@ -1011,6 +1052,14 @@ final class PlayerController {
         );
     }
 
+    String getCurrentRequestChannelId() {
+        return currentRequest == null || currentRequest.channelId == null ? "" : currentRequest.channelId.trim();
+    }
+
+    String getCurrentRequestChannelName() {
+        return currentRequest == null || currentRequest.channelName == null ? "" : currentRequest.channelName.trim();
+    }
+
     void clearLastError() {
         lastErrorSummary = null;
     }
@@ -1316,6 +1365,10 @@ final class PlayerController {
             clearPlaybackQuality();
         }
         firstFrameRenderedForCurrentItem = false;
+        currentBufferingStartedMs = 0L;
+        currentBufferingCount = 0;
+        currentBufferingTotalMs = 0L;
+        movistarIsmFastZapOffsetPending = false;
         lastErrorSummary = null;
         lastHdrBadgeChannelId = null;
         uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
@@ -1324,6 +1377,10 @@ final class PlayerController {
                 && request.platformName != null
                 && request.platformName.toLowerCase(Locale.ROOT).contains("movistar")
                 && !isMovistarIsmHlsDecision(decision);
+        movistarIsmFastZapOffsetPending = request != null
+                && !request.vod
+                && resumePositionMs <= 0L
+                && isMovistarIsmHlsDecision(decision);
         if (!request.vod
                 && !useFallback
                 && resumePositionMs <= 0L
@@ -1337,11 +1394,12 @@ final class PlayerController {
             return;
         }
         currentPlaybackDecision = decision;
-        Log.d(TAG, "playChannelInternal channel=" + describeRequest(request)
+        Log.w(TAG, "zapPrepare channel=" + describeRequest(request)
             + " autoPlay=" + autoPlay
             + " requestedFallback=" + useFallback
             + " decision=" + describeDecision(decision)
-            + " streamInfo=" + describeStreamInfo(streamInfo));
+            + " streamInfo=" + describeStreamInfo(streamInfo)
+            + " compactTouch=" + host.isCompactTouchDeviceMode());
 
         if (decision.targetUrl == null || decision.targetUrl.trim().isEmpty()) {
             host.showError(context.getString(R.string.error_empty_playback_url));
@@ -1354,11 +1412,11 @@ final class PlayerController {
         MediaItem.Builder builder = new MediaItem.Builder().setUri(mediaTargetUrl);
         if (isMovistarIsmHlsDecision(decision)) {
             builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(12_000)
-                    .setMinOffsetMs(8_000)
-                    .setMaxOffsetMs(30_000)
-                    .setMinPlaybackSpeed(0.97f)
-                    .setMaxPlaybackSpeed(1.02f)
+                    .setTargetOffsetMs(35_000)
+                    .setMinOffsetMs(24_000)
+                    .setMaxOffsetMs(75_000)
+                    .setMinPlaybackSpeed(0.98f)
+                    .setMaxPlaybackSpeed(1.01f)
                     .build());
         } else if (isHevcHlsDecision(decision)) {
             builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
@@ -1377,6 +1435,14 @@ final class PlayerController {
                     .setTargetOffsetMs(30_000)
                     .setMinOffsetMs(15_000)
                     .setMaxOffsetMs(60_000)
+                    .build());
+        } else if (!request.vod && host.isCompactTouchDeviceMode()) {
+            builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(18_000)
+                    .setMinOffsetMs(10_000)
+                    .setMaxOffsetMs(45_000)
+                    .setMinPlaybackSpeed(0.97f)
+                    .setMaxPlaybackSpeed(1.02f)
                     .build());
         }
         if (decision.mimeType != null && !decision.mimeType.trim().isEmpty()) {
@@ -1667,6 +1733,55 @@ final class PlayerController {
                 && currentRequest != null
                 && safeLower(currentRequest.platformName).contains("movistar")
                 && player.isCurrentMediaItemSeekable();
+    }
+
+    private String playbackBufferDebugSuffix() {
+        if (player == null) {
+            return "";
+        }
+        long positionMs = Math.max(0L, player.getCurrentPosition());
+        long bufferedPositionMs = Math.max(0L, player.getBufferedPosition());
+        long bufferedMs = Math.max(0L, bufferedPositionMs - positionMs);
+        long liveOffsetMs = player.getCurrentLiveOffset();
+        long durationMs = player.getDuration();
+        return " positionMs=" + positionMs
+                + " bufferedMs=" + bufferedMs
+                + " bufferedPositionMs=" + bufferedPositionMs
+                + " durationMs=" + durationMs
+                + " liveOffsetMs=" + liveOffsetMs;
+    }
+
+    private void applyMovistarIsmFastZapOffsetIfNeeded() {
+        if (!movistarIsmFastZapOffsetPending || player == null || !isMovistarIsmHlsDecision(currentPlaybackDecision)) {
+            return;
+        }
+        movistarIsmFastZapOffsetPending = false;
+        long durationMs = player.getDuration();
+        if (durationMs == C.TIME_UNSET || durationMs <= MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS + 3_000L) {
+            Log.w(TAG, "fastZapLiveOffset skipped channel=" + describeRequest(currentRequest)
+                    + " durationMs=" + durationMs
+                    + playbackBufferDebugSuffix());
+            return;
+        }
+        long currentPositionMs = Math.max(0L, player.getCurrentPosition());
+        long bufferedMs = Math.max(0L, player.getBufferedPosition() - currentPositionMs);
+        long currentOffsetMs = Math.max(0L, durationMs - currentPositionMs);
+        if (currentOffsetMs >= MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS - 1_000L && bufferedMs >= 4_000L) {
+            Log.w(TAG, "fastZapLiveOffset not needed channel=" + describeRequest(currentRequest)
+                    + " currentOffsetMs=" + currentOffsetMs
+                    + playbackBufferDebugSuffix());
+            return;
+        }
+        long targetPositionMs = Math.max(0L, durationMs - MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS);
+        if (Math.abs(targetPositionMs - currentPositionMs) >= 1_000L) {
+            player.seekTo(targetPositionMs);
+        }
+        player.play();
+        Log.w(TAG, "fastZapLiveOffset applied channel=" + describeRequest(currentRequest)
+                + " currentOffsetMs=" + currentOffsetMs
+                + " targetOffsetMs=" + MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS
+                + " targetPositionMs=" + targetPositionMs
+                + playbackBufferDebugSuffix());
     }
 
     private String getTimeshiftStatusLabel() {

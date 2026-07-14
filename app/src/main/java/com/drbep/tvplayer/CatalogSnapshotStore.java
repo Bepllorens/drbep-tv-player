@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
+import android.util.JsonReader;
+import android.util.JsonToken;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -20,6 +22,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
@@ -90,8 +93,10 @@ final class CatalogSnapshotStore {
     private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
     private static final String STARTUP_PARSED_CACHE_FILE = "catalog_startup_parsed.cache";
     private static final String STARTUP_PLAYBACK_CACHE_FILE = "catalog_startup_playback.cache";
+    private static final String EPG_CHANNEL_CACHE_FILE = "catalog_epg_channels.cache";
     private static final int STARTUP_PARSED_CACHE_VERSION = 1;
     private static final int STARTUP_PLAYBACK_CACHE_VERSION = 1;
+    private static final int EPG_CHANNEL_CACHE_VERSION = 1;
     private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 2;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
@@ -122,6 +127,116 @@ final class CatalogSnapshotStore {
             throw new IllegalStateException("catalogo local caducado");
         }
         return readSnapshotObject(snapshotFile(), "catalogo local guardado", false);
+    }
+
+    Map<String, List<EpgRepository.EpgProgram>> loadEpgProgramsForChannelIds(Set<String> channelIds) throws Exception {
+        Map<String, List<EpgRepository.EpgProgram>> out = new LinkedHashMap<>();
+        if (channelIds == null || channelIds.isEmpty()) {
+            return out;
+        }
+        Set<String> requestedIds = new java.util.LinkedHashSet<>();
+        for (String channelId : channelIds) {
+            String clean = channelId == null ? "" : channelId.trim();
+            if (!clean.isEmpty()) {
+                requestedIds.add(clean);
+            }
+        }
+        if (requestedIds.isEmpty()) {
+            return out;
+        }
+        SnapshotStatus status = getStatus("");
+        String fingerprint = buildEpgCacheFingerprint(status);
+        EpgChannelCache cached = readEpgChannelCache(fingerprint);
+        Set<String> missingIds = new java.util.LinkedHashSet<>();
+        for (String requestedId : requestedIds) {
+            if (cached.rowsByChannelId.containsKey(requestedId)) {
+                out.put(requestedId, copyProgramList(cached.rowsByChannelId.get(requestedId)));
+            } else {
+                missingIds.add(requestedId);
+            }
+        }
+        if (missingIds.isEmpty()) {
+            Log.i(TAG, "target EPG cache hit requested=" + requestedIds.size()
+                    + " matched=" + out.size()
+                    + " cachedChannels=" + cached.rowsByChannelId.size());
+            return out;
+        }
+        File file = snapshotFile();
+        if (!file.exists() || file.length() <= 0L) {
+            throw new IllegalStateException("no hay catalogo local guardado");
+        }
+        long startMs = System.currentTimeMillis();
+        Map<String, List<EpgRepository.EpgProgram>> loaded = new LinkedHashMap<>();
+        boolean scannedAllPrograms = true;
+        try (InputStream inputStream = snapshotInputStream(file);
+             JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            try {
+                reader.beginObject();
+                while (reader.hasNext()) {
+                    String name = reader.nextName();
+                    if ("epg".equals(name)) {
+                        readTargetEpgObject(reader, missingIds, loaded);
+                    } else if ("catalog".equals(name)) {
+                        readTargetCatalogObject(reader, missingIds, loaded);
+                    } else {
+                        reader.skipValue();
+                    }
+                }
+                reader.endObject();
+            } catch (TargetEpgComplete ignored) {
+                scannedAllPrograms = false;
+                // Closing the stream is enough once every requested channel has been read.
+            }
+        }
+        if (scannedAllPrograms) {
+            for (String missingId : missingIds) {
+                if (!loaded.containsKey(missingId)) {
+                    loaded.put(missingId, new ArrayList<>());
+                }
+            }
+        }
+        for (Map.Entry<String, List<EpgRepository.EpgProgram>> entry : loaded.entrySet()) {
+            out.put(entry.getKey(), copyProgramList(entry.getValue()));
+        }
+        if (!loaded.isEmpty()) {
+            mergeEpgChannelCache(fingerprint, loaded);
+        }
+        Log.i(TAG, "target EPG read requested=" + requestedIds.size()
+                + " matched=" + out.size()
+                + " cacheHits=" + (requestedIds.size() - missingIds.size())
+                + " loaded=" + loaded.size()
+                + " bytes=" + file.length()
+                + " totalMs=" + (System.currentTimeMillis() - startMs));
+        return out;
+    }
+
+    Map<String, List<EpgRepository.EpgProgram>> loadCachedEpgProgramsForChannelIds(Set<String> channelIds) throws Exception {
+        Map<String, List<EpgRepository.EpgProgram>> out = new LinkedHashMap<>();
+        if (channelIds == null || channelIds.isEmpty()) {
+            return out;
+        }
+        Set<String> requestedIds = new java.util.LinkedHashSet<>();
+        for (String channelId : channelIds) {
+            String clean = channelId == null ? "" : channelId.trim();
+            if (!clean.isEmpty()) {
+                requestedIds.add(clean);
+            }
+        }
+        if (requestedIds.isEmpty()) {
+            return out;
+        }
+        SnapshotStatus status = getStatus("");
+        String fingerprint = buildEpgCacheFingerprint(status);
+        EpgChannelCache cached = readEpgChannelCache(fingerprint);
+        for (String requestedId : requestedIds) {
+            if (cached.rowsByChannelId.containsKey(requestedId)) {
+                out.put(requestedId, copyProgramList(cached.rowsByChannelId.get(requestedId)));
+            }
+        }
+        Log.i(TAG, "target EPG cache-only requested=" + requestedIds.size()
+                + " matched=" + out.size()
+                + " cachedChannels=" + cached.rowsByChannelId.size());
+        return out;
     }
 
     JSONObject loadStartupSnapshotObject(String fallbackUrl) throws Exception {
@@ -480,6 +595,7 @@ final class CatalogSnapshotStore {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
         }
+        deleteFileQuietly(epgChannelCacheFile());
         prefs.edit()
                 .putString(PREF_SOURCE_URL, sourceUrl == null ? "" : sourceUrl.trim())
                 .putLong(PREF_UPDATED_AT_MS, System.currentTimeMillis())
@@ -531,6 +647,10 @@ final class CatalogSnapshotStore {
             File playbackCache = startupPlaybackCacheFile();
             if (playbackCache.exists()) {
                 playbackCache.delete();
+            }
+            File epgCache = epgChannelCacheFile();
+            if (epgCache.exists()) {
+                epgCache.delete();
             }
         } catch (Exception ignored) {
         }
@@ -746,6 +866,10 @@ final class CatalogSnapshotStore {
         return new File(context.getFilesDir(), STARTUP_PLAYBACK_CACHE_FILE);
     }
 
+    private File epgChannelCacheFile() {
+        return new File(context.getFilesDir(), EPG_CHANNEL_CACHE_FILE);
+    }
+
     private static final long STARTUP_LITE_REFRESH_THRESHOLD_BYTES = 12L * 1024L * 1024L;
 
     // Minimum file size considered a valid catalog (1 MB). A real catalog with
@@ -837,6 +961,16 @@ final class CatalogSnapshotStore {
         }
     }
 
+    private static void deleteFileQuietly(File file) {
+        try {
+            if (file != null && file.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                file.delete();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private static void writeUtf8String(FileOutputStream outputStream, String value) throws Exception {
         try (OutputStreamWriter writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
             writer.write(value == null ? "" : value);
@@ -855,6 +989,162 @@ final class CatalogSnapshotStore {
             }
             return sb;
         }
+    }
+
+    private InputStream snapshotInputStream(File file) throws Exception {
+        return isEncryptedSnapshotFile(file) ? encryptedSnapshotInputStream(file) : new FileInputStream(file);
+    }
+
+    private static void readTargetCatalogObject(JsonReader reader, Set<String> requestedIds, Map<String, List<EpgRepository.EpgProgram>> out) throws Exception {
+        reader.beginObject();
+        while (reader.hasNext()) {
+            String name = reader.nextName();
+            if ("epg".equals(name)) {
+                readTargetEpgObject(reader, requestedIds, out);
+            } else {
+                reader.skipValue();
+            }
+        }
+        reader.endObject();
+    }
+
+    private static void readTargetEpgObject(JsonReader reader, Set<String> requestedIds, Map<String, List<EpgRepository.EpgProgram>> out) throws Exception {
+        reader.beginObject();
+        while (reader.hasNext()) {
+            String name = reader.nextName();
+            if ("programs".equals(name)) {
+                readTargetProgramsObject(reader, requestedIds, out);
+            } else {
+                reader.skipValue();
+            }
+        }
+        reader.endObject();
+    }
+
+    private static void readTargetProgramsObject(JsonReader reader, Set<String> requestedIds, Map<String, List<EpgRepository.EpgProgram>> out) throws Exception {
+        reader.beginObject();
+        while (reader.hasNext()) {
+            String channelId = reader.nextName();
+            String cleanChannelId = channelId == null ? "" : channelId.trim();
+            if (requestedIds.contains(cleanChannelId)) {
+                List<EpgRepository.EpgProgram> rows = readProgramArray(reader, cleanChannelId);
+                if (!rows.isEmpty()) {
+                    out.put(cleanChannelId, rows);
+                    if (out.size() >= requestedIds.size()) {
+                        throw new TargetEpgComplete();
+                    }
+                }
+            } else {
+                reader.skipValue();
+            }
+        }
+        reader.endObject();
+    }
+
+    private static List<EpgRepository.EpgProgram> readProgramArray(JsonReader reader, String fallbackChannelId) throws Exception {
+        List<EpgRepository.EpgProgram> rows = new ArrayList<>();
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue();
+            return rows;
+        }
+        reader.beginArray();
+        while (reader.hasNext()) {
+            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                rows.add(readProgramObject(reader, fallbackChannelId));
+            } else {
+                reader.skipValue();
+            }
+        }
+        reader.endArray();
+        return rows;
+    }
+
+    private static EpgRepository.EpgProgram readProgramObject(JsonReader reader, String fallbackChannelId) throws Exception {
+        String channelId = "";
+        String channelName = "";
+        String tvgId = "";
+        String title = "Sin titulo";
+        String icon = "";
+        String description = "";
+        String startTime = "";
+        String endTime = "";
+        String category = "";
+        int progress = -1;
+        reader.beginObject();
+        while (reader.hasNext()) {
+            String name = reader.nextName();
+            if ("channel_id".equals(name)) {
+                channelId = readJsonString(reader);
+            } else if ("channel_name".equals(name)) {
+                channelName = readJsonString(reader);
+            } else if ("tvg_id".equals(name)) {
+                tvgId = readJsonString(reader);
+            } else if ("title".equals(name)) {
+                title = readJsonString(reader);
+                if (title.trim().isEmpty()) {
+                    title = "Sin titulo";
+                }
+            } else if ("icon".equals(name)) {
+                icon = readJsonString(reader);
+            } else if ("description".equals(name)) {
+                description = readJsonString(reader);
+            } else if ("start_time".equals(name)) {
+                startTime = readJsonString(reader);
+            } else if ("end_time".equals(name)) {
+                endTime = readJsonString(reader);
+            } else if ("category".equals(name)) {
+                category = readJsonString(reader);
+            } else if ("progress".equals(name)) {
+                progress = readJsonInt(reader, -1);
+            } else {
+                reader.skipValue();
+            }
+        }
+        reader.endObject();
+        String cleanChannelId = channelId == null ? "" : channelId.trim();
+        if (cleanChannelId.isEmpty()) {
+            cleanChannelId = fallbackChannelId == null ? "" : fallbackChannelId.trim();
+        }
+        return new EpgRepository.EpgProgram(cleanChannelId, channelName, tvgId, title, icon, description, startTime, endTime, category, progress);
+    }
+
+    private static String readJsonString(JsonReader reader) throws Exception {
+        JsonToken token = reader.peek();
+        if (token == JsonToken.NULL) {
+            reader.nextNull();
+            return "";
+        }
+        if (token == JsonToken.STRING || token == JsonToken.NUMBER) {
+            return reader.nextString();
+        }
+        if (token == JsonToken.BOOLEAN) {
+            return String.valueOf(reader.nextBoolean());
+        }
+        reader.skipValue();
+        return "";
+    }
+
+    private static int readJsonInt(JsonReader reader, int fallback) throws Exception {
+        JsonToken token = reader.peek();
+        if (token == JsonToken.NULL) {
+            reader.nextNull();
+            return fallback;
+        }
+        if (token == JsonToken.NUMBER) {
+            return reader.nextInt();
+        }
+        if (token == JsonToken.STRING) {
+            try {
+                return Integer.parseInt(reader.nextString());
+            } catch (Exception ignored) {
+                return fallback;
+            }
+        }
+        reader.skipValue();
+        return fallback;
+    }
+
+    private static final class TargetEpgComplete extends RuntimeException {
     }
 
     private void writeSnapshotString(File file, String value) throws Exception {
@@ -891,6 +1181,81 @@ final class CatalogSnapshotStore {
             objectOutputStream.writeObject(value);
         }
         encryptRawBytesToFile(file, rawOutput.toByteArray());
+    }
+
+    private synchronized EpgChannelCache readEpgChannelCache(String fingerprint) {
+        String cleanFingerprint = fingerprint == null ? "" : fingerprint.trim();
+        if (cleanFingerprint.isEmpty()) {
+            return new EpgChannelCache(cleanFingerprint, new LinkedHashMap<>());
+        }
+        File file = epgChannelCacheFile();
+        if (!file.exists() || file.length() <= 0L) {
+            return new EpgChannelCache(cleanFingerprint, new LinkedHashMap<>());
+        }
+        try {
+            Object decoded = readEncryptedObject(file);
+            if (!(decoded instanceof EpgChannelCache)) {
+                throw new IllegalStateException("tipo de cache EPG invalido");
+            }
+            EpgChannelCache cache = (EpgChannelCache) decoded;
+            if (!cache.matches(cleanFingerprint)) {
+                return new EpgChannelCache(cleanFingerprint, new LinkedHashMap<>());
+            }
+            return cache;
+        } catch (Exception e) {
+            Log.w(TAG, "target EPG cache ignored", e);
+            deleteFileQuietly(file);
+            return new EpgChannelCache(cleanFingerprint, new LinkedHashMap<>());
+        }
+    }
+
+    private synchronized void mergeEpgChannelCache(String fingerprint, Map<String, List<EpgRepository.EpgProgram>> loaded) {
+        if (loaded == null || loaded.isEmpty()) {
+            return;
+        }
+        String cleanFingerprint = fingerprint == null ? "" : fingerprint.trim();
+        if (cleanFingerprint.isEmpty()) {
+            return;
+        }
+        try {
+            EpgChannelCache cache = readEpgChannelCache(cleanFingerprint);
+            cache.rowsByChannelId.putAll(copyProgramMap(loaded));
+            writeEncryptedObject(epgChannelCacheFile(), cache);
+            Log.i(TAG, "target EPG cache saved channels=" + loaded.size()
+                    + " totalCached=" + cache.rowsByChannelId.size());
+        } catch (Exception e) {
+            Log.w(TAG, "target EPG cache save failed channels=" + loaded.size(), e);
+            deleteFileQuietly(epgChannelCacheFile());
+        }
+    }
+
+    private static String buildEpgCacheFingerprint(SnapshotStatus status) {
+        if (status == null) {
+            return "";
+        }
+        String payload = status.payloadFingerprint == null ? "" : status.payloadFingerprint.trim();
+        if (!payload.isEmpty()) {
+            return payload;
+        }
+        return status.updatedAtMs + ":" + status.sizeBytes + ":" + status.expiresAtMs + ":" + status.epgProgramCount;
+    }
+
+    private static Map<String, List<EpgRepository.EpgProgram>> copyProgramMap(Map<String, List<EpgRepository.EpgProgram>> input) {
+        Map<String, List<EpgRepository.EpgProgram>> out = new LinkedHashMap<>();
+        if (input == null) {
+            return out;
+        }
+        for (Map.Entry<String, List<EpgRepository.EpgProgram>> entry : input.entrySet()) {
+            String key = entry.getKey() == null ? "" : entry.getKey().trim();
+            if (!key.isEmpty()) {
+                out.put(key, copyProgramList(entry.getValue()));
+            }
+        }
+        return out;
+    }
+
+    private static List<EpgRepository.EpgProgram> copyProgramList(List<EpgRepository.EpgProgram> input) {
+        return input == null ? new ArrayList<>() : new ArrayList<>(input);
     }
 
     private void encryptRawBytesToFile(File file, byte[] rawBytes) throws Exception {
@@ -1804,6 +2169,25 @@ final class CatalogSnapshotStore {
             return StartupParsedCatalogCache.safeEquals(payloadFingerprint, status.payloadFingerprint)
                     && StartupParsedCatalogCache.safeEquals(catalogFingerprint, status.catalogFingerprint)
                     && StartupParsedCatalogCache.safeEquals(permissionsFingerprint, status.permissionsFingerprint);
+        }
+    }
+
+    private static final class EpgChannelCache implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        final int version;
+        final String snapshotFingerprint;
+        final Map<String, List<EpgRepository.EpgProgram>> rowsByChannelId;
+
+        EpgChannelCache(String snapshotFingerprint, Map<String, List<EpgRepository.EpgProgram>> rowsByChannelId) {
+            this.version = EPG_CHANNEL_CACHE_VERSION;
+            this.snapshotFingerprint = snapshotFingerprint == null ? "" : snapshotFingerprint.trim();
+            this.rowsByChannelId = rowsByChannelId == null ? new LinkedHashMap<>() : rowsByChannelId;
+        }
+
+        boolean matches(String fingerprint) {
+            return version == EPG_CHANNEL_CACHE_VERSION
+                    && StartupParsedCatalogCache.safeEquals(snapshotFingerprint, fingerprint);
         }
     }
 

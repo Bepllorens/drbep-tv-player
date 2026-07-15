@@ -311,6 +311,69 @@ final class EpgRepository {
         return new EpgProgramPair(current, next);
     }
 
+    private List<EpgProgram> buildInlineProgramsForChannel(ChannelItem channel, int maxItems, long nowMs) {
+        List<EpgProgram> out = new ArrayList<>();
+        if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
+            return out;
+        }
+        String currentTitle = channel.nowProgram == null ? "" : channel.nowProgram.trim();
+        String nextTitle = channel.nextProgram == null ? "" : channel.nextProgram.trim();
+        if (currentTitle.isEmpty() && nextTitle.isEmpty()) {
+            return out;
+        }
+        String channelId = channel.id.trim();
+        long roundedNow = Math.max(0L, (nowMs / 60000L) * 60000L);
+        long currentStartMs = Math.max(0L, roundedNow - 30L * 60L * 1000L);
+        long currentEndMs = roundedNow + 30L * 60L * 1000L;
+        long nextEndMs = currentEndMs + 60L * 60L * 1000L;
+        if (!currentTitle.isEmpty()) {
+            out.add(new EpgProgram(
+                    channelId,
+                    channel.name,
+                    channel.tvgId,
+                    currentTitle,
+                    channel.logoUrl == null ? "" : channel.logoUrl,
+                    "",
+                    java.time.Instant.ofEpochMilli(currentStartMs).toString(),
+                    java.time.Instant.ofEpochMilli(currentEndMs).toString(),
+                    "",
+                    50
+            ));
+        }
+        if (!nextTitle.isEmpty() && (maxItems <= 0 || out.size() < maxItems)) {
+            out.add(new EpgProgram(
+                    channelId,
+                    channel.name,
+                    channel.tvgId,
+                    nextTitle,
+                    channel.logoUrl == null ? "" : channel.logoUrl,
+                    "",
+                    java.time.Instant.ofEpochMilli(currentEndMs).toString(),
+                    java.time.Instant.ofEpochMilli(nextEndMs).toString(),
+                    "",
+                    -1
+            ));
+        }
+        if (maxItems > 0 && out.size() > maxItems) {
+            return new ArrayList<>(out.subList(0, maxItems));
+        }
+        return out;
+    }
+
+    private EpgProgram selectInlineProgram(ChannelItem channel, List<EpgProgram> inlinePrograms, boolean next) {
+        if (inlinePrograms == null || inlinePrograms.isEmpty()) {
+            return null;
+        }
+        if (!next) {
+            return inlinePrograms.get(0);
+        }
+        if (inlinePrograms.size() > 1) {
+            return inlinePrograms.get(1);
+        }
+        String currentTitle = channel == null || channel.nowProgram == null ? "" : channel.nowProgram.trim();
+        return currentTitle.isEmpty() ? inlinePrograms.get(0) : null;
+    }
+
     List<EpgProgram> fetchChannelPrograms(String channelId, int maxItems) throws Exception {
         String cacheKey = String.valueOf(channelId).trim() + "|" + maxItems;
         long now = System.currentTimeMillis();
@@ -337,7 +400,11 @@ final class EpgRepository {
             if (!programs.isEmpty()) {
                 return programs;
             }
-            return fetchRemoteProgramsForChannel(channel, maxItems);
+            programs = fetchRemoteProgramsForChannel(channel, maxItems);
+            if (!programs.isEmpty()) {
+                return programs;
+            }
+            return buildInlineProgramsForChannel(channel, maxItems, System.currentTimeMillis());
         }
         long now = System.currentTimeMillis();
         List<EpgProgram> rows = loadOfflineProgramsForRequestedChannel(channel);
@@ -347,13 +414,16 @@ final class EpgRepository {
                 if (!programs.isEmpty()) {
                     return programs;
                 }
-                return fetchRemoteProgramsForChannel(channel, maxItems);
+                programs = fetchRemoteProgramsForChannel(channel, maxItems);
+                if (!programs.isEmpty()) {
+                    return programs;
+                }
             } catch (Exception e) {
                 Log.w(TAG, "offline EPG channel fallback failed channel="
                         + safeChannelLabel(channel)
                         + " maxItems=" + maxItems, e);
-                return new ArrayList<>();
             }
+            return buildInlineProgramsForChannel(channel, maxItems, now);
         }
         List<EpgProgram> out = new ArrayList<>();
         int limit = maxItems <= 0 ? rows.size() : maxItems;
@@ -437,16 +507,16 @@ final class EpgRepository {
                     return direct;
                 }
                 List<EpgProgram> fallbackPrograms = fetchRemoteProgramsForChannel(channel, next ? 2 : 1);
-                if (fallbackPrograms.isEmpty()) {
-                    return null;
+                if (!fallbackPrograms.isEmpty()) {
+                    return next && fallbackPrograms.size() > 1 ? fallbackPrograms.get(1) : fallbackPrograms.get(0);
                 }
-                return next && fallbackPrograms.size() > 1 ? fallbackPrograms.get(1) : fallbackPrograms.get(0);
             } catch (Exception e) {
                 Log.w(TAG, "offline EPG single-program fallback failed channel="
                         + safeChannelLabel(channel)
                         + " next=" + next, e);
-                return null;
             }
+            List<EpgProgram> inlinePrograms = buildInlineProgramsForChannel(channel, next ? 2 : 1, now);
+            return selectInlineProgram(channel, inlinePrograms, next);
         }
         for (EpgProgram program : rows) {
             long startMs = parseIsoMillis(program.startTime);
@@ -458,7 +528,8 @@ final class EpgRepository {
                 return programWithProgress(program, now);
             }
         }
-        return null;
+        List<EpgProgram> inlinePrograms = buildInlineProgramsForChannel(channel, next ? 2 : 1, now);
+        return selectInlineProgram(channel, inlinePrograms, next);
     }
 
     List<EpgProgram> fetchNowProgramsDetailed() throws Exception {

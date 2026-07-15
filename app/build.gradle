@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 284
-        versionName "2.0.284-beta-overlay-compose-surface"
+        versionCode 285
+        versionName "2.0.285-beta-epg-button-fallback"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",

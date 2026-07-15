@@ -40,6 +40,7 @@ final class RecordingsPanelController {
 
     private final Handler uiHandler;
     private final RecordingsController recordingsController;
+    private final OfflineComposeSurfaceRenderer composeSurfaceRenderer;
     private final Host host;
 
     private ComposeView panel;
@@ -59,9 +60,10 @@ final class RecordingsPanelController {
         }
     };
 
-    RecordingsPanelController(Handler uiHandler, RecordingsController recordingsController, Host host) {
+    RecordingsPanelController(Handler uiHandler, RecordingsController recordingsController, OfflineComposeSurfaceRenderer composeSurfaceRenderer, Host host) {
         this.uiHandler = uiHandler;
         this.recordingsController = recordingsController;
+        this.composeSurfaceRenderer = composeSurfaceRenderer;
         this.host = host;
     }
 
@@ -181,7 +183,7 @@ final class RecordingsPanelController {
         if (panel == null) {
             return;
         }
-        RecordingsSurfaceComposeBinder.bind(
+        composeSurfaceRenderer.bindRecordingsSurface(
                 panel,
                 buildSurfaceUiModel(),
                 host::bindPoster

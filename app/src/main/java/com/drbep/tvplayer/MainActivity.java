@@ -353,7 +353,7 @@ public class MainActivity extends FragmentActivity {
     private final PlaybackRecoveryCoordinator playbackRecoveryCoordinator = new PlaybackRecoveryCoordinator(temporaryPlaybackModesByChannelId, learnedPlaybackModesByChannelId, playbackRepairAttemptsByChannelId);
     private final Map<String, PlayerController.StreamInfo> streamInfoByChannelId = new HashMap<>();
     private final RecordingsController recordingsController = new RecordingsController();
-    private final RecordingsPanelController recordingsPanelController = new RecordingsPanelController(uiHandler, recordingsController, createRecordingsPanelHost());
+    private final RecordingsPanelController recordingsPanelController = new RecordingsPanelController(uiHandler, recordingsController, composeSurfaceRenderer, createRecordingsPanelHost());
     private final ZapBannerController zapBannerController = new ZapBannerController(uiHandler, createZapBannerHost());
     private final QuickSearchController quickSearchController = new QuickSearchController(uiHandler, createQuickSearchHost());
     private OfflinePermissions currentOfflinePermissions = new OfflinePermissions();

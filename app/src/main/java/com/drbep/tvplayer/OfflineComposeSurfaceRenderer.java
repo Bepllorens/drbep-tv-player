@@ -37,4 +37,8 @@ final class OfflineComposeSurfaceRenderer {
         bindOverlayControls(controlsView, model.controls);
         bindOverlayChannelList(listView, model.channelList, imageBinder);
     }
+
+    void bindRecordingsSurface(ComposeView view, RecordingsSurfaceUiModel model, RecordingPosterBinder posterBinder) {
+        RecordingsSurfaceComposeBinder.bind(view, model, posterBinder);
+    }
 }

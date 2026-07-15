@@ -499,16 +499,16 @@ final class RemoteInputRouter {
             host.playSelectedRecording();
             return true;
         }
-        if (host.isZapBannerVisible()) {
-            host.activateZapBannerSelection();
-            return true;
-        }
         if (host.isTouchControlsVisible()) {
             if (host.isTouchControlsTimeshiftFocused()) {
                 host.togglePlayback();
                 return true;
             }
             host.activateTouchControlsFocus();
+            return true;
+        }
+        if (host.isZapBannerVisible()) {
+            host.activateZapBannerSelection();
             return true;
         }
         if (host.isOverlayVisible()) {

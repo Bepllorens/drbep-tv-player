@@ -1614,6 +1614,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showTouchControlsTemporarily() {
+        hideZapBanner();
         if (touchControlsController != null) {
             touchControlsController.showTouchControlsTemporarily();
             ensureTouchControlsEpgPair(getCurrentPlaybackChannelItem());

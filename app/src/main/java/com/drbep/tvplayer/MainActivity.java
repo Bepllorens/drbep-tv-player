@@ -337,6 +337,7 @@ public class MainActivity extends FragmentActivity {
     private long playbackHeartbeatStartedAtMs;
 
     private final OverlayNavigationState overlayNavigationState = new OverlayNavigationState();
+    private final OfflineOverlayState overlaySurfaceState = new OfflineOverlayState();
     private int overlaySearchFocusRequestToken;
     private int overlaySearchClearFocusRequestToken;
     private boolean startupHubShown;
@@ -1018,6 +1019,7 @@ public class MainActivity extends FragmentActivity {
                 } else if (touchControlsBar != null) {
                     touchControlsBar.setVisibility(visible ? View.VISIBLE : View.GONE);
                 }
+                overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, visible);
             }
 
             @Override
@@ -1032,6 +1034,7 @@ public class MainActivity extends FragmentActivity {
                 if (timeshiftBarContainer != null) {
                     timeshiftBarContainer.setVisibility(View.GONE);
                 }
+                overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
             }
 
             @Override
@@ -1091,6 +1094,7 @@ public class MainActivity extends FragmentActivity {
                 || (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE));
         if ((!showForTouch && !showForTv) || isOverlayVisible() || isRecordingsPanelVisible() || isMultiViewVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
+            overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
             updatePlaybackStateBadge(playerController.getTimeshiftState());
             return;
         }
@@ -1100,10 +1104,12 @@ public class MainActivity extends FragmentActivity {
         }
         if (state == null) {
             timeshiftBarContainer.setVisibility(View.GONE);
+            overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
             updatePlaybackStateBadge(null);
             return;
         }
         timeshiftBarContainer.setVisibility(View.VISIBLE);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, true);
         TimeshiftBarComposeBinder.bind(timeshiftComposeView, buildTimeshiftBarUiModel(state));
         updatePlaybackStateBadge(playerController.getTimeshiftState());
     }
@@ -5270,15 +5276,21 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isOverlayVisible() {
-        return channelOverlayCoordinator.isOverlayVisible(channelOverlay);
+        boolean visible = channelOverlayCoordinator.isOverlayVisible(channelOverlay);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, visible);
+        return visible;
     }
 
     private boolean isRecordingsPanelVisible() {
-        return recordingsPanelController.isVisible();
+        boolean visible = recordingsPanelController.isVisible();
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.RECORDINGS, visible);
+        return visible;
     }
 
     private boolean isMultiViewVisible() {
-        return multiViewContainer != null && multiViewContainer.getVisibility() == View.VISIBLE;
+        boolean visible = multiViewContainer != null && multiViewContainer.getVisibility() == View.VISIBLE;
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, visible);
+        return visible;
     }
 
     private boolean isZapBannerVisible() {
@@ -5297,16 +5309,19 @@ public class MainActivity extends FragmentActivity {
             if (touchControlsBar != null) touchControlsBar.setVisibility(View.GONE);
             if (touchHomeHub != null) touchHomeHub.setVisibility(View.GONE);
             if (timeshiftBarContainer != null) timeshiftBarContainer.setVisibility(View.GONE);
+            overlaySurfaceState.clearTransientPlaybackSurfaces();
         }
         updateOverlayPanel();
         updateOverlaySearchState();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, touchDeviceMode ? 0L : OVERLAY_HIDE_MS);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, true);
     }
 
     private void hideOverlay() {
         uiHandler.removeCallbacks(hideOverlayRunnable);
         clearOverlaySearchQuery();
         channelOverlayCoordinator.hideOverlay(channelOverlay);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, false);
         if (touchDeviceMode) {
             if (touchControlsController != null) {
                 touchControlsController.cancelTimers();
@@ -5314,23 +5329,28 @@ public class MainActivity extends FragmentActivity {
             if (touchControlsBar != null) touchControlsBar.setVisibility(View.GONE);
             if (touchHomeHub != null) touchHomeHub.setVisibility(View.GONE);
             if (timeshiftBarContainer != null) timeshiftBarContainer.setVisibility(View.GONE);
+            overlaySurfaceState.clearTransientPlaybackSurfaces();
         }
     }
 
     private void hideZapBanner() {
         zapBannerController.hide();
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.ZAP_BANNER, false);
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result) {
         recordingsPanelController.show(result);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.RECORDINGS, true);
     }
 
     private void showRecordingsPanel(RecordingsRepository.RecordingsResult result, String preferredId) {
         recordingsPanelController.show(result, preferredId);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.RECORDINGS, true);
     }
 
     private void hideRecordingsPanel() {
         recordingsPanelController.hide();
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.RECORDINGS, false);
     }
 
     private void scheduleRecordingsAutoRefresh() {
@@ -7263,6 +7283,7 @@ public class MainActivity extends FragmentActivity {
         if (multiViewContainer != null) {
             multiViewContainer.setVisibility(View.VISIBLE);
         }
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, true);
         showStatus(getString(R.string.multiview_title));
     }
 
@@ -7273,6 +7294,7 @@ public class MainActivity extends FragmentActivity {
         if (multiViewContainer != null) {
             multiViewContainer.setVisibility(View.GONE);
         }
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, false);
         releaseMultiViewControllers();
         multiViewChannels.clear();
         for (int i = 0; i < multiViewChannelIds.length; i++) {

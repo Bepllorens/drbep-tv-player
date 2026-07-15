@@ -2884,9 +2884,52 @@ public class MainActivity extends FragmentActivity {
     private void openTimelineGuideForChannel(ChannelItem channel) {
         int anchorIndex = channel == null ? -1 : findChannelIndexById(channel.id);
         if (anchorIndex < 0) {
-            anchorIndex = overlayNavigationState.currentIndex;
+            openTimelineGuideForExplicitChannel(channel, System.currentTimeMillis());
+            return;
         }
         openTimelineGuide(anchorIndex, System.currentTimeMillis());
+    }
+
+    private void openTimelineGuideForExplicitChannel(ChannelItem anchorChannel, long windowStartMs) {
+        if (anchorChannel == null) {
+            showOverlay();
+            return;
+        }
+        final long selectedWindowStartMs = windowStartMs;
+        showStatus(getString(R.string.status_loading_guide));
+        Log.w(TAG, "timeline guide explicit start channel=" + anchorChannel.id + " name=" + displayName(anchorChannel));
+        ioExecutor.execute(() -> {
+            try {
+                List<ChannelItem> timelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
+                List<TimelineChannelPrograms> rows = new ArrayList<>();
+                int selectedTimelineIndex = 0;
+                for (int i = 0; i < timelineChannels.size(); i++) {
+                    ChannelItem channel = timelineChannels.get(i);
+                    if (channel != null && anchorChannel.id != null && anchorChannel.id.equals(channel.id)) {
+                        selectedTimelineIndex = i;
+                    }
+                    List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel, 12);
+                    rows.add(new TimelineChannelPrograms(channel, programs));
+                }
+                final int selectedRowIndex = selectedTimelineIndex;
+                List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely("timeline explicit");
+                uiHandler.post(() -> {
+                    Log.w(TAG, "timeline guide explicit ready channel=" + anchorChannel.id
+                            + " rows=" + rows.size()
+                            + " selectedRow=" + selectedRowIndex
+                            + " selectedPrograms=" + (rows.isEmpty() || rows.get(selectedRowIndex).programs == null ? 0 : rows.get(selectedRowIndex).programs.size()));
+                    if (rows.isEmpty()) {
+                        showStatus(getString(R.string.status_no_epg_for_channel));
+                        return;
+                    }
+                    ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
+                    showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorChannel.id : selectedChannel.id, scheduledItems);
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "timeline guide explicit failed channel=" + anchorChannel.id, e);
+                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+            }
+        });
     }
 
     private void openTimelineGuideNextForAnchor() {
@@ -2963,6 +3006,9 @@ public class MainActivity extends FragmentActivity {
         final int selectedIndex = anchorIndex;
         final long selectedWindowStartMs = windowStartMs;
         showStatus(getString(R.string.status_loading_guide));
+        Log.w(TAG, "timeline guide start selectedIndex=" + selectedIndex
+                + " channel=" + (channels.get(selectedIndex) == null ? "" : channels.get(selectedIndex).id)
+                + " name=" + (channels.get(selectedIndex) == null ? "" : displayName(channels.get(selectedIndex))));
         ioExecutor.execute(() -> {
             try {
                 List<ChannelItem> timelineChannels = selectTimelineChannels(selectedIndex);
@@ -2978,18 +3024,12 @@ public class MainActivity extends FragmentActivity {
                     rows.add(new TimelineChannelPrograms(channel, programs));
                 }
                 final int selectedRowIndex = selectedTimelineIndex;
-                List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
-                if (!isOfflineRecordingsDisabled()) {
-                    try {
-                        RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
-                        if (scheduledResult != null && scheduledResult.items != null) {
-                            scheduledItems.addAll(scheduledResult.items);
-                        }
-                    } catch (Exception scheduledErr) {
-                        Log.w(TAG, "timeline scheduled recordings fetch failed", scheduledErr);
-                    }
-                }
+                List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely("timeline");
                 uiHandler.post(() -> {
+                    Log.w(TAG, "timeline guide ready selectedChannel=" + selectedChannelId
+                            + " rows=" + rows.size()
+                            + " selectedRow=" + selectedRowIndex
+                            + " selectedPrograms=" + (rows.isEmpty() || rows.get(selectedRowIndex).programs == null ? 0 : rows.get(selectedRowIndex).programs.size()));
                     if (rows.isEmpty()) {
                         showStatus(getString(R.string.status_no_epg_for_channel));
                         return;
@@ -3031,6 +3071,60 @@ public class MainActivity extends FragmentActivity {
         int end = Math.min(liveChannels.size(), start + TIMELINE_MAX_RENDERED_CHANNELS);
         start = Math.max(0, end - TIMELINE_MAX_RENDERED_CHANNELS);
         return new ArrayList<>(liveChannels.subList(start, end));
+    }
+
+    private List<ChannelItem> selectTimelineChannelsAroundChannel(ChannelItem anchorChannel) {
+        List<ChannelItem> liveChannels = new ArrayList<>();
+        if (anchorChannel == null || anchorChannel.isVod) {
+            return liveChannels;
+        }
+        String anchorPlatform = anchorChannel.platformName == null ? "" : anchorChannel.platformName.trim();
+        String anchorGroup = anchorChannel.group == null ? "" : anchorChannel.group.trim();
+        for (ChannelItem channel : allChannels) {
+            if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
+                continue;
+            }
+            boolean samePlatform = anchorChannel.platformId > 0 && channel.platformId == anchorChannel.platformId;
+            if (!samePlatform && !anchorPlatform.isEmpty()) {
+                samePlatform = anchorPlatform.equalsIgnoreCase(channel.platformName == null ? "" : channel.platformName.trim());
+            }
+            boolean sameGroup = !anchorGroup.isEmpty() && anchorGroup.equalsIgnoreCase(channel.group == null ? "" : channel.group.trim());
+            if (anchorChannel.id.equals(channel.id) || samePlatform || sameGroup) {
+                liveChannels.add(channel);
+            }
+        }
+        if (liveChannels.isEmpty()) {
+            liveChannels.add(anchorChannel);
+            return liveChannels;
+        }
+        int anchorIndex = 0;
+        for (int i = 0; i < liveChannels.size(); i++) {
+            if (anchorChannel.id.equals(liveChannels.get(i).id)) {
+                anchorIndex = i;
+                break;
+            }
+        }
+        int half = TIMELINE_MAX_RENDERED_CHANNELS / 2;
+        int start = Math.max(0, anchorIndex - half);
+        int end = Math.min(liveChannels.size(), start + TIMELINE_MAX_RENDERED_CHANNELS);
+        start = Math.max(0, end - TIMELINE_MAX_RENDERED_CHANNELS);
+        return new ArrayList<>(liveChannels.subList(start, end));
+    }
+
+    private List<RecordingsRepository.RecordingItem> fetchScheduledRecordingsSafely(String source) {
+        List<RecordingsRepository.RecordingItem> scheduledItems = new ArrayList<>();
+        if (isOfflineRecordingsDisabled()) {
+            return scheduledItems;
+        }
+        try {
+            RecordingsRepository.RecordingsResult scheduledResult = recordingsRepository.fetchScheduledRecordings();
+            if (scheduledResult != null && scheduledResult.items != null) {
+                scheduledItems.addAll(scheduledResult.items);
+            }
+        } catch (Exception scheduledErr) {
+            Log.w(TAG, source + " scheduled recordings fetch failed", scheduledErr);
+        }
+        return scheduledItems;
     }
 
 
@@ -3434,10 +3528,15 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         final ChannelItem targetChannel = channel;
+        Log.w(TAG, "touch info start channel=" + targetChannel.id + " name=" + displayName(targetChannel));
         showStatus(getString(R.string.status_searching_current_program));
         ioExecutor.execute(() -> {
             try {
                 EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(targetChannel, false);
+                Log.w(TAG, "touch info result channel=" + targetChannel.id
+                        + " program=" + (program == null ? "" : program.title)
+                        + " start=" + (program == null ? "" : program.startTime)
+                        + " end=" + (program == null ? "" : program.endTime));
                 if (program == null) {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;

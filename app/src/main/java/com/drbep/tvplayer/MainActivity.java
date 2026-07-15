@@ -1093,7 +1093,7 @@ public class MainActivity extends FragmentActivity {
         boolean showForTv = !touchDeviceMode
                 && ((touchControlsController != null && touchControlsController.isTvTimeshiftHudVisible())
                 || (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE));
-        if ((!showForTouch && !showForTv) || isOverlayVisible() || isRecordingsPanelVisible() || isMultiViewVisible()) {
+        if ((!showForTouch && !showForTv) || hasBlockingOverlaySurfaceVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
             overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
             updatePlaybackStateBadge(playerController.getTimeshiftState());
@@ -5296,6 +5296,20 @@ public class MainActivity extends FragmentActivity {
 
     private boolean isZapBannerVisible() {
         return zapBannerController.isVisible();
+    }
+
+    private void syncOverlaySurfaceVisibilityFromViews() {
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, channelOverlayCoordinator.isOverlayVisible(channelOverlay));
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.RECORDINGS, recordingsPanelController.isVisible());
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, multiViewContainer != null && multiViewContainer.getVisibility() == View.VISIBLE);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, timeshiftBarContainer != null && timeshiftBarContainer.getVisibility() == View.VISIBLE);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.ZAP_BANNER, isZapBannerVisible());
+    }
+
+    private boolean hasBlockingOverlaySurfaceVisible() {
+        syncOverlaySurfaceVisibilityFromViews();
+        return overlaySurfaceState.hasBlockingPanelVisible();
     }
 
     private void showOverlay() {

@@ -1,3 +1,9 @@
+## 2.0.283-beta-compose-overlay-foundation
+- Offline beta: introduce estado central de superficies de overlay para preparar una migracion Compose mas ordenada.
+- Offline beta: enruta los binders principales del HUD/overlay por una capa comun de render Compose.
+- Offline beta: extrae y testea la navegacion de foco del overlay lateral para proteger el movimiento con mando.
+- Offline beta: anade tokens visuales compartidos para empezar a unificar color, foco y radios del HUD.
+
 ## 2.0.282-beta-playback-observability
 - Offline beta: blinda los zaps y replays para que respuestas antiguas de stream info no puedan pisar la reproduccion actual.
 - Offline beta: extrae y testea la politica de resolucion previa de stream info para Orange, Movistar ISM y DRM directo.

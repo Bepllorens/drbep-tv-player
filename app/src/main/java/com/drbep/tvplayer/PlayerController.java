@@ -61,6 +61,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -271,6 +272,7 @@ final class PlayerController {
     private PlaybackRequest currentRequest;
     private StreamInfo currentStreamInfo;
     private PlaybackRouteResolver.Decision currentPlaybackDecision;
+    private final AtomicInteger playbackAttemptGeneration = new AtomicInteger();
     private boolean usingPlaybackFallback;
     private final Set<String> attemptedRecoveryRoutes = new HashSet<>();
     private String currentRecordingUrl;
@@ -1105,7 +1107,8 @@ final class PlayerController {
                 + " autoPlay=" + autoPlay
                 + " initialStreamInfo=" + describeStreamInfo(streamInfo)
                 + " resumeMs=" + resumePositionMs);
-        playChannelInternal(request, autoPlay, false, streamInfo, resumePositionMs);
+        int generation = beginPlaybackAttempt(request, "playChannel");
+        playChannelInternal(request, autoPlay, false, streamInfo, resumePositionMs, generation);
     }
 
     void resolveStreamInfoAndReplayIfNeeded(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache) {
@@ -1118,6 +1121,7 @@ final class PlayerController {
         }
 
         final String channelId = request.channelId.trim();
+        final int generation = playbackAttemptGeneration.get();
         ioExecutor.execute(() -> {
             StreamInfo info = streamInfoCache.get(channelId);
             boolean fromCache = info != null;
@@ -1145,8 +1149,10 @@ final class PlayerController {
                     || info.encrypted;
             StreamInfo resolved = info;
             uiHandler.post(() -> {
-                if (!host.isChannelCurrent(channelId)) {
-                    Log.d(TAG, "resolveStreamInfo ignored because channel changed: channelId=" + channelId);
+                if (!isPlaybackAttemptCurrent(generation, request)) {
+                    Log.d(TAG, "resolveStreamInfo ignored because playback attempt changed: channelId=" + channelId
+                            + " generation=" + generation
+                            + " currentGeneration=" + playbackAttemptGeneration.get());
                     return;
                 }
                 PlaybackRouteResolver.Decision resolvedDecision = buildPlaybackDecision(request, false, resolved);
@@ -1156,17 +1162,19 @@ final class PlayerController {
                     return;
                 }
                 Log.i(TAG, "resolveStreamInfo replaying channel=" + describeRequest(request)
+                        + " generation=" + generation
                         + " requiresReplay=" + requiresReplay
                         + " previousDecision=" + describeDecision(currentPlaybackDecision)
                         + " resolvedDecision=" + describeDecision(resolvedDecision));
-                playChannelInternal(request, autoPlay, false, resolved, resumePositionMs);
+                playChannelInternal(request, autoPlay, false, resolved, resumePositionMs, generation);
             });
         });
     }
 
     void playChannelAfterResolvingStreamInfo(PlaybackRequest request, boolean autoPlay, Map<String, StreamInfo> streamInfoCache, long resumePositionMs) {
+        final int generation = beginPlaybackAttempt(request, "playChannelAfterResolvingStreamInfo");
         if (request == null || request.channelId == null || request.channelId.trim().isEmpty() || (request.directPlayback && !hasLocalDrmInfo(request))) {
-            playChannel(request, autoPlay, null, resumePositionMs);
+            playChannelInternal(request, autoPlay, false, null, resumePositionMs, generation);
             return;
         }
         final String channelId = request.channelId.trim();
@@ -1185,14 +1193,17 @@ final class PlayerController {
             info = ensurePatchedClearKeyManifests(request, info);
             StreamInfo resolved = info;
             Log.d(TAG, "playChannelAfterResolvingStreamInfo channelId=" + channelId
+                    + " generation=" + generation
                     + " fromCache=" + fromCache
                     + " streamInfo=" + describeStreamInfo(resolved));
             uiHandler.post(() -> {
-                if (!host.isChannelCurrent(channelId)) {
-                    Log.d(TAG, "playChannelAfterResolvingStreamInfo ignored because channel changed: channelId=" + channelId);
+                if (!isPlaybackAttemptCurrent(generation, request)) {
+                    Log.d(TAG, "playChannelAfterResolvingStreamInfo ignored because playback attempt changed: channelId=" + channelId
+                            + " generation=" + generation
+                            + " currentGeneration=" + playbackAttemptGeneration.get());
                     return;
                 }
-                playChannelInternal(request, autoPlay, false, resolved, resumePositionMs);
+                playChannelInternal(request, autoPlay, false, resolved, resumePositionMs, generation);
             });
         });
     }
@@ -1215,6 +1226,7 @@ final class PlayerController {
 
         currentRequest = null;
         currentStreamInfo = null;
+        beginPlaybackAttempt(null, "playRecording");
         currentRecordingUrl = recordingUrl;
         usingPlaybackFallback = false;
         clearPlaybackQuality();
@@ -1341,11 +1353,21 @@ final class PlayerController {
     }
 
     private void playChannelInternal(PlaybackRequest request, boolean autoPlay, boolean useFallback, StreamInfo streamInfo) {
-        playChannelInternal(request, autoPlay, useFallback, streamInfo, 0L);
+        playChannelInternal(request, autoPlay, useFallback, streamInfo, 0L, playbackAttemptGeneration.get());
     }
 
     private void playChannelInternal(PlaybackRequest request, boolean autoPlay, boolean useFallback, StreamInfo streamInfo, long resumePositionMs) {
+        playChannelInternal(request, autoPlay, useFallback, streamInfo, resumePositionMs, playbackAttemptGeneration.get());
+    }
+
+    private void playChannelInternal(PlaybackRequest request, boolean autoPlay, boolean useFallback, StreamInfo streamInfo, long resumePositionMs, int generation) {
         if (request == null || player == null) {
+            return;
+        }
+        if (!isPlaybackAttemptCurrent(generation, request)) {
+            Log.d(TAG, "playChannelInternal ignored because playback attempt changed: channel=" + describeRequest(request)
+                    + " generation=" + generation
+                    + " currentGeneration=" + playbackAttemptGeneration.get());
             return;
         }
 
@@ -1395,6 +1417,7 @@ final class PlayerController {
         }
         currentPlaybackDecision = decision;
         Log.w(TAG, "zapPrepare channel=" + describeRequest(request)
+            + " generation=" + generation
             + " autoPlay=" + autoPlay
             + " requestedFallback=" + useFallback
             + " decision=" + describeDecision(decision)
@@ -1486,6 +1509,7 @@ final class PlayerController {
         }
 
         Log.d(TAG, "preparePlayback channel=" + describeRequest(request)
+            + " generation=" + generation
             + " decision=" + describeDecision(decision)
             + " streamInfo=" + describeStreamInfo(streamInfo)
             + " resumeMs=" + resumePositionMs);
@@ -1498,6 +1522,24 @@ final class PlayerController {
         player.prepare();
         player.setPlayWhenReady(autoPlay);
 
+    }
+
+    private int beginPlaybackAttempt(PlaybackRequest request, String origin) {
+        int generation = playbackAttemptGeneration.incrementAndGet();
+        Log.d(TAG, "playbackAttempt begin generation=" + generation
+                + " origin=" + safeLogValue(origin)
+                + " channel=" + describeRequest(request));
+        return generation;
+    }
+
+    private boolean isPlaybackAttemptCurrent(int generation, PlaybackRequest request) {
+        if (generation != playbackAttemptGeneration.get()) {
+            return false;
+        }
+        if (request == null || request.channelId == null || request.channelId.trim().isEmpty()) {
+            return true;
+        }
+        return host.isChannelCurrent(request.channelId.trim());
     }
 
     private String resolveWidevineLicenseUrl(PlaybackRequest request) {

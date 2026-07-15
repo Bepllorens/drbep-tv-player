@@ -376,14 +376,6 @@ final class RemoteInputRouter {
             host.moveRecordingsSelection(-1);
             return true;
         }
-        if (host.isTouchControlsVisible()) {
-            host.tuneRelative(-1);
-            return true;
-        }
-        if (host.isTvTimeshiftHudActive() && host.canResumeTimeshiftLive()) {
-            host.showTimeshiftHudTemporarily();
-            return true;
-        }
         if (host.isOverlayVisible()) {
             host.moveOverlaySelection(-1);
         } else {
@@ -399,14 +391,6 @@ final class RemoteInputRouter {
         }
         if (host.isRecordingsPanelVisible()) {
             host.moveRecordingsSelection(1);
-            return true;
-        }
-        if (host.isTouchControlsVisible()) {
-            host.tuneRelative(1);
-            return true;
-        }
-        if (host.isTvTimeshiftHudActive()) {
-            host.hideTvTimeshiftHud();
             return true;
         }
         if (host.isOverlayVisible()) {
@@ -508,7 +492,7 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isZapBannerVisible()) {
-            host.activateZapBannerSelection();
+            host.showTouchControlsTemporarily();
             return true;
         }
         if (host.isOverlayVisible()) {

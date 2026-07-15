@@ -237,6 +237,7 @@ public class MainActivity extends FragmentActivity {
     private PlayerController playerController;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService interactiveExecutor = Executors.newCachedThreadPool();
     // Executor dedicado a la carga inicial del catalogo para que NO espere en cola
     // detras del arranque del reproductor (que comparte ioExecutor single-thread).
     private final ExecutorService catalogLoadExecutor = Executors.newSingleThreadExecutor();
@@ -1378,6 +1379,8 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openTimelineGuide() {
+                hideTouchControlsForRemote();
+                hideZapBanner();
                 openTimelineGuideForCurrentPlayback();
             }
 
@@ -1403,6 +1406,8 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openProgramInfo() {
+                hideTouchControlsForRemote();
+                hideZapBanner();
                 openCurrentProgramInfoFromTouch();
             }
 
@@ -1413,6 +1418,8 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openRecordings() {
+                hideTouchControlsForRemote();
+                hideZapBanner();
                 openRecordingsBrowser();
             }
 
@@ -2839,7 +2846,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         showStatus(getString(R.string.status_loading_guide));
-        ioExecutor.execute(() -> {
+        interactiveExecutor.execute(() -> {
             try {
                 List<EpgRepository.EpgProgram> items = epgRepository.fetchChannelPrograms(ch, 8);
                 uiHandler.post(() -> {
@@ -2898,7 +2905,26 @@ public class MainActivity extends FragmentActivity {
         final long selectedWindowStartMs = windowStartMs;
         showStatus(getString(R.string.status_loading_guide));
         Log.w(TAG, "timeline guide explicit start channel=" + anchorChannel.id + " name=" + displayName(anchorChannel));
-        ioExecutor.execute(() -> {
+        List<ChannelItem> fastTimelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
+        List<TimelineChannelPrograms> fastRows = buildTimelineRowsFromCachedPrograms(fastTimelineChannels);
+        if (!fastRows.isEmpty()) {
+            int fastSelectedRowIndex = 0;
+            for (int i = 0; i < fastRows.size(); i++) {
+                ChannelItem channel = fastRows.get(i).channel;
+                if (channel != null && anchorChannel.id != null && anchorChannel.id.equals(channel.id)) {
+                    fastSelectedRowIndex = i;
+                    break;
+                }
+            }
+            ChannelItem selectedChannel = fastRows.get(fastSelectedRowIndex).channel;
+            Log.w(TAG, "timeline guide explicit ready cached channel=" + anchorChannel.id
+                    + " rows=" + fastRows.size()
+                    + " selectedRow=" + fastSelectedRowIndex
+                    + " selectedPrograms=" + (fastRows.get(fastSelectedRowIndex).programs == null ? 0 : fastRows.get(fastSelectedRowIndex).programs.size()));
+            showTimelineGuideDialog(fastRows, selectedWindowStartMs, selectedChannel == null ? anchorChannel.id : selectedChannel.id, new ArrayList<>());
+            return;
+        }
+        interactiveExecutor.execute(() -> {
             try {
                 List<ChannelItem> timelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
                 List<TimelineChannelPrograms> rows = new ArrayList<>();
@@ -3009,7 +3035,27 @@ public class MainActivity extends FragmentActivity {
         Log.w(TAG, "timeline guide start selectedIndex=" + selectedIndex
                 + " channel=" + (channels.get(selectedIndex) == null ? "" : channels.get(selectedIndex).id)
                 + " name=" + (channels.get(selectedIndex) == null ? "" : displayName(channels.get(selectedIndex))));
-        ioExecutor.execute(() -> {
+        List<ChannelItem> fastTimelineChannels = selectTimelineChannels(selectedIndex);
+        List<TimelineChannelPrograms> fastRows = buildTimelineRowsFromCachedPrograms(fastTimelineChannels);
+        if (!fastRows.isEmpty()) {
+            String selectedChannelId = channels.get(selectedIndex).id;
+            int fastSelectedRowIndex = 0;
+            for (int i = 0; i < fastRows.size(); i++) {
+                ChannelItem channel = fastRows.get(i).channel;
+                if (channel != null && selectedChannelId != null && selectedChannelId.equals(channel.id)) {
+                    fastSelectedRowIndex = i;
+                    break;
+                }
+            }
+            ChannelItem selectedChannel = fastRows.get(fastSelectedRowIndex).channel;
+            Log.w(TAG, "timeline guide ready cached selectedChannel=" + selectedChannelId
+                    + " rows=" + fastRows.size()
+                    + " selectedRow=" + fastSelectedRowIndex
+                    + " selectedPrograms=" + (fastRows.get(fastSelectedRowIndex).programs == null ? 0 : fastRows.get(fastSelectedRowIndex).programs.size()));
+            showTimelineGuideDialog(fastRows, selectedWindowStartMs, selectedChannel == null ? selectedChannelId : selectedChannel.id, new ArrayList<>());
+            return;
+        }
+        interactiveExecutor.execute(() -> {
             try {
                 List<ChannelItem> timelineChannels = selectTimelineChannels(selectedIndex);
                 List<TimelineChannelPrograms> rows = new ArrayList<>();
@@ -3042,6 +3088,72 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
+    }
+
+    private List<TimelineChannelPrograms> buildTimelineRowsFromCachedPrograms(List<ChannelItem> timelineChannels) {
+        List<TimelineChannelPrograms> rows = new ArrayList<>();
+        if (timelineChannels == null || timelineChannels.isEmpty()) {
+            return rows;
+        }
+        long now = System.currentTimeMillis();
+        for (ChannelItem channel : timelineChannels) {
+            if (channel == null || channel.isVod) {
+                continue;
+            }
+            List<EpgRepository.EpgProgram> programs = new ArrayList<>();
+            EpgRepository.EpgProgramPair pair = channel.id == null ? null : epgProgramPairByChannelId.get(channel.id);
+            if (pair != null) {
+                if (pair.current != null) {
+                    programs.add(pair.current);
+                }
+                if (pair.next != null) {
+                    programs.add(pair.next);
+                }
+            }
+            if (programs.isEmpty()) {
+                programs.addAll(buildInlineTimelinePrograms(channel, now));
+            }
+            rows.add(new TimelineChannelPrograms(channel, programs));
+        }
+        return rows;
+    }
+
+    private List<EpgRepository.EpgProgram> buildInlineTimelinePrograms(ChannelItem channel, long now) {
+        List<EpgRepository.EpgProgram> programs = new ArrayList<>();
+        if (channel == null) {
+            return programs;
+        }
+        String currentTitle = channel.nowProgram == null ? "" : channel.nowProgram.trim();
+        String nextTitle = channel.nextProgram == null ? "" : channel.nextProgram.trim();
+        if (!currentTitle.isEmpty()) {
+            programs.add(new EpgRepository.EpgProgram(
+                    channel.id,
+                    displayName(channel),
+                    channel.tvgId,
+                    currentTitle,
+                    channel.logoUrl,
+                    "",
+                    formatIsoMillis(now - 30L * 60L * 1000L),
+                    formatIsoMillis(now + 30L * 60L * 1000L),
+                    "",
+                    -1
+            ));
+        }
+        if (!nextTitle.isEmpty()) {
+            programs.add(new EpgRepository.EpgProgram(
+                    channel.id,
+                    displayName(channel),
+                    channel.tvgId,
+                    nextTitle,
+                    channel.logoUrl,
+                    "",
+                    formatIsoMillis(now + 30L * 60L * 1000L),
+                    formatIsoMillis(now + 90L * 60L * 1000L),
+                    "",
+                    -1
+            ));
+        }
+        return programs;
     }
 
     private List<ChannelItem> selectTimelineChannels(int anchorIndex) {
@@ -3143,7 +3255,7 @@ public class MainActivity extends FragmentActivity {
                 ? getString(R.string.visual_epg_platform_visible)
                 : anchorChannel.platformName.trim();
         showStatus(getString(R.string.status_loading_visual_epg));
-        ioExecutor.execute(() -> {
+        interactiveExecutor.execute(() -> {
             try {
                 List<ChannelItem> platformChannels = new ArrayList<>();
                 java.util.Map<String, ChannelItem> byId = new java.util.HashMap<>();
@@ -3529,8 +3641,17 @@ public class MainActivity extends FragmentActivity {
         }
         final ChannelItem targetChannel = channel;
         Log.w(TAG, "touch info start channel=" + targetChannel.id + " name=" + displayName(targetChannel));
+        EpgRepository.EpgProgram cachedProgram = findCachedProgramForChannel(targetChannel, false);
+        if (cachedProgram != null) {
+            Log.w(TAG, "touch info cached channel=" + targetChannel.id
+                    + " program=" + cachedProgram.title
+                    + " start=" + cachedProgram.startTime
+                    + " end=" + cachedProgram.endTime);
+            showCurrentProgramInfoDialog(targetChannel, cachedProgram);
+            return;
+        }
         showStatus(getString(R.string.status_searching_current_program));
-        ioExecutor.execute(() -> {
+        interactiveExecutor.execute(() -> {
             try {
                 EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(targetChannel, false);
                 Log.w(TAG, "touch info result channel=" + targetChannel.id
@@ -3555,7 +3676,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         showStatus(getString(R.string.status_loading_u7d));
-        epgExecutor.execute(() -> {
+        interactiveExecutor.execute(() -> {
             try {
                 List<EpgRepository.EpgProgram> programs = fetchMovistarIsmU7dPrograms(channel);
                 uiHandler.post(() -> showMovistarIsmU7dMenu(channel, programs));
@@ -3924,6 +4045,9 @@ public class MainActivity extends FragmentActivity {
         }
         int index = Math.max(0, Math.min(model.actions.size() - 1, touchControlsFocusedActionIndex));
         ZapActionItem item = model.actions.get(index);
+        Log.w(TAG, "touch controls activate index=" + index
+                + " label=" + (item == null ? "null" : item.label)
+                + " enabled=" + (item != null && item.enabled));
         if (item != null && item.enabled && item.onClick != null) {
             item.onClick.run();
         } else {
@@ -4380,8 +4504,17 @@ public class MainActivity extends FragmentActivity {
         if (ch == null) {
             return;
         }
+        EpgRepository.EpgProgram cachedProgram = findCachedProgramForChannel(ch, next);
+        if (cachedProgram != null) {
+            if (reminderOnly) {
+                createReminder(ch, cachedProgram);
+            } else {
+                scheduleProgram(ch, cachedProgram);
+            }
+            return;
+        }
         showStatus(getString(next ? R.string.status_searching_next_program : R.string.status_searching_current_program));
-        ioExecutor.execute(() -> {
+        interactiveExecutor.execute(() -> {
             try {
                 EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(ch, next);
                 if (program == null) {
@@ -4400,6 +4533,27 @@ public class MainActivity extends FragmentActivity {
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
             }
         });
+    }
+
+    private EpgRepository.EpgProgram findCachedProgramForChannel(ChannelItem channel, boolean next) {
+        if (channel == null || channel.isVod) {
+            return null;
+        }
+        EpgRepository.EpgProgramPair pair = channel.id == null ? null : epgProgramPairByChannelId.get(channel.id);
+        if (pair != null) {
+            EpgRepository.EpgProgram program = next ? pair.next : pair.current;
+            if (program != null && program.title != null && !program.title.trim().isEmpty()) {
+                return program;
+            }
+        }
+        List<EpgRepository.EpgProgram> inlinePrograms = buildInlineTimelinePrograms(channel, System.currentTimeMillis());
+        if (inlinePrograms.isEmpty()) {
+            return null;
+        }
+        if (next) {
+            return inlinePrograms.size() > 1 ? inlinePrograms.get(1) : null;
+        }
+        return inlinePrograms.get(0);
     }
 
     private void scheduleProgram(ChannelItem ch, EpgRepository.EpgProgram program) {
@@ -6378,6 +6532,7 @@ public class MainActivity extends FragmentActivity {
         if (!isChangingConfigurations()) {
             ioExecutor.shutdownNow();
             epgExecutor.shutdownNow();
+            interactiveExecutor.shutdownNow();
             catalogLoadExecutor.shutdownNow();
         }
         if (playerController != null) {

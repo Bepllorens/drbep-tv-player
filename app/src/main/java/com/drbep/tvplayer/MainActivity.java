@@ -1378,7 +1378,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openTimelineGuide() {
-                openTimelineGuideAroundSelection();
+                openTimelineGuideForCurrentPlayback();
             }
 
             @Override
@@ -3421,7 +3421,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openCurrentProgramInfoFromTouch() {
-        ChannelItem channel = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : null;
+        ChannelItem channel = getCurrentPlaybackChannelItem();
+        if (channel == null && overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            channel = channels.get(overlayNavigationState.currentIndex);
+        }
         if (channel == null) {
             showStatus(getString(R.string.status_no_program_in_epg));
             return;
@@ -3430,15 +3433,16 @@ public class MainActivity extends FragmentActivity {
             showVodInfoDialog(channel);
             return;
         }
+        final ChannelItem targetChannel = channel;
         showStatus(getString(R.string.status_searching_current_program));
         ioExecutor.execute(() -> {
             try {
-                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(channel, false);
+                EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(targetChannel, false);
                 if (program == null) {
                     uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;
                 }
-                uiHandler.post(() -> showCurrentProgramInfoDialog(channel, program));
+                uiHandler.post(() -> showCurrentProgramInfoDialog(targetChannel, program));
             } catch (Exception e) {
                 Log.w(TAG, "touch info current program failed", e);
                 uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
@@ -8020,8 +8024,12 @@ public class MainActivity extends FragmentActivity {
             createScheduleFromEndpoint(channels.get(overlayNavigationState.selectedOverlayIndex), false);
             return;
         }
-        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
-            createScheduleFromEndpoint(channels.get(overlayNavigationState.currentIndex), false);
+        ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+        if (currentChannel == null && overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+            currentChannel = channels.get(overlayNavigationState.currentIndex);
+        }
+        if (currentChannel != null) {
+            createScheduleFromEndpoint(currentChannel, false);
         }
     }
 

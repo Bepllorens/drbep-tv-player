@@ -436,6 +436,9 @@ final class EpgRepository {
                 break;
             }
         }
+        if (out.isEmpty()) {
+            return buildInlineProgramsForChannel(channel, maxItems, now);
+        }
         return out;
     }
 

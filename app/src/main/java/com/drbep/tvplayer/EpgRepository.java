@@ -446,6 +446,49 @@ final class EpgRepository {
         return out;
     }
 
+    Map<String, List<EpgProgram>> fetchChannelProgramsForChannels(List<ChannelItem> channelItems, int maxItems) throws Exception {
+        Map<String, List<EpgProgram>> out = new LinkedHashMap<>();
+        if (channelItems == null || channelItems.isEmpty()) {
+            return out;
+        }
+        if (!canReadOfflineEpgSnapshot()) {
+            for (ChannelItem channel : channelItems) {
+                if (channel == null || channel.id == null || channel.id.trim().isEmpty()) {
+                    continue;
+                }
+                out.put(channel.id.trim(), fetchChannelPrograms(channel, maxItems));
+            }
+            return out;
+        }
+        long now = System.currentTimeMillis();
+        Map<String, List<EpgProgram>> targetedPrograms = loadOfflineProgramsForRequestedChannels(channelItems);
+        for (ChannelItem channel : channelItems) {
+            if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
+                continue;
+            }
+            String channelId = channel.id.trim();
+            List<EpgProgram> rows = targetedPrograms.get(channelId);
+            List<EpgProgram> programs = new ArrayList<>();
+            if (rows != null && !rows.isEmpty()) {
+                int limit = maxItems <= 0 ? rows.size() : maxItems;
+                for (EpgProgram program : rows) {
+                    if (parseIsoMillis(program.endTime) <= now) {
+                        continue;
+                    }
+                    programs.add(programWithProgress(program, now));
+                    if (programs.size() >= limit) {
+                        break;
+                    }
+                }
+            }
+            if (programs.isEmpty()) {
+                programs.addAll(buildInlineProgramsForChannel(channel, maxItems, now));
+            }
+            out.put(channelId, programs);
+        }
+        return out;
+    }
+
     List<EpgProgram> fetchPastChannelPrograms(ChannelItem channel, int maxItems, int daysBack) throws Exception {
         if (channel == null || channel.isVod) {
             return new ArrayList<>();

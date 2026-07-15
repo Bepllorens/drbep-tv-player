@@ -2907,6 +2907,7 @@ public class MainActivity extends FragmentActivity {
         Log.w(TAG, "timeline guide explicit start channel=" + anchorChannel.id + " name=" + displayName(anchorChannel));
         List<ChannelItem> fastTimelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
         List<TimelineChannelPrograms> fastRows = buildTimelineRowsFromCachedPrograms(fastTimelineChannels);
+        boolean fastShown = false;
         if (!fastRows.isEmpty()) {
             int fastSelectedRowIndex = 0;
             for (int i = 0; i < fastRows.size(); i++) {
@@ -2922,40 +2923,9 @@ public class MainActivity extends FragmentActivity {
                     + " selectedRow=" + fastSelectedRowIndex
                     + " selectedPrograms=" + (fastRows.get(fastSelectedRowIndex).programs == null ? 0 : fastRows.get(fastSelectedRowIndex).programs.size()));
             showTimelineGuideDialog(fastRows, selectedWindowStartMs, selectedChannel == null ? anchorChannel.id : selectedChannel.id, new ArrayList<>());
-            return;
+            fastShown = true;
         }
-        interactiveExecutor.execute(() -> {
-            try {
-                List<ChannelItem> timelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
-                List<TimelineChannelPrograms> rows = new ArrayList<>();
-                int selectedTimelineIndex = 0;
-                for (int i = 0; i < timelineChannels.size(); i++) {
-                    ChannelItem channel = timelineChannels.get(i);
-                    if (channel != null && anchorChannel.id != null && anchorChannel.id.equals(channel.id)) {
-                        selectedTimelineIndex = i;
-                    }
-                    List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel, 12);
-                    rows.add(new TimelineChannelPrograms(channel, programs));
-                }
-                final int selectedRowIndex = selectedTimelineIndex;
-                List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely("timeline explicit");
-                uiHandler.post(() -> {
-                    Log.w(TAG, "timeline guide explicit ready channel=" + anchorChannel.id
-                            + " rows=" + rows.size()
-                            + " selectedRow=" + selectedRowIndex
-                            + " selectedPrograms=" + (rows.isEmpty() || rows.get(selectedRowIndex).programs == null ? 0 : rows.get(selectedRowIndex).programs.size()));
-                    if (rows.isEmpty()) {
-                        showStatus(getString(R.string.status_no_epg_for_channel));
-                        return;
-                    }
-                    ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
-                    showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorChannel.id : selectedChannel.id, scheduledItems);
-                });
-            } catch (Exception e) {
-                Log.w(TAG, "timeline guide explicit failed channel=" + anchorChannel.id, e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
-            }
-        });
+        loadTimelineGuideRowsAsync(fastTimelineChannels, anchorChannel.id, selectedWindowStartMs, "timeline explicit", !fastShown);
     }
 
     private void openTimelineGuideNextForAnchor() {
@@ -3037,6 +3007,7 @@ public class MainActivity extends FragmentActivity {
                 + " name=" + (channels.get(selectedIndex) == null ? "" : displayName(channels.get(selectedIndex))));
         List<ChannelItem> fastTimelineChannels = selectTimelineChannels(selectedIndex);
         List<TimelineChannelPrograms> fastRows = buildTimelineRowsFromCachedPrograms(fastTimelineChannels);
+        boolean fastShown = false;
         if (!fastRows.isEmpty()) {
             String selectedChannelId = channels.get(selectedIndex).id;
             int fastSelectedRowIndex = 0;
@@ -3053,26 +3024,42 @@ public class MainActivity extends FragmentActivity {
                     + " selectedRow=" + fastSelectedRowIndex
                     + " selectedPrograms=" + (fastRows.get(fastSelectedRowIndex).programs == null ? 0 : fastRows.get(fastSelectedRowIndex).programs.size()));
             showTimelineGuideDialog(fastRows, selectedWindowStartMs, selectedChannel == null ? selectedChannelId : selectedChannel.id, new ArrayList<>());
-            return;
+            fastShown = true;
         }
+        loadTimelineGuideRowsAsync(fastTimelineChannels, channels.get(selectedIndex).id, selectedWindowStartMs, "timeline", !fastShown);
+    }
+
+    private void loadTimelineGuideRowsAsync(List<ChannelItem> timelineChannels, String selectedChannelId, long selectedWindowStartMs, String source, boolean showWhenReady) {
+        final List<ChannelItem> channelsSnapshot = timelineChannels == null ? new ArrayList<>() : new ArrayList<>(timelineChannels);
+        final String anchorId = selectedChannelId == null ? "" : selectedChannelId;
+        Log.w(TAG, source + " enriched queued selectedChannel=" + anchorId
+                + " channels=" + channelsSnapshot.size()
+                + " showWhenReady=" + showWhenReady
+                + " activeDialog=" + (activeTimelineDialog != null && activeTimelineDialog.isShowing()));
         interactiveExecutor.execute(() -> {
             try {
-                List<ChannelItem> timelineChannels = selectTimelineChannels(selectedIndex);
+                Log.w(TAG, source + " enriched start selectedChannel=" + anchorId
+                        + " channels=" + channelsSnapshot.size());
                 List<TimelineChannelPrograms> rows = new ArrayList<>();
                 int selectedTimelineIndex = 0;
-                String selectedChannelId = channels.get(selectedIndex).id;
-                for (int i = 0; i < timelineChannels.size(); i++) {
-                    ChannelItem channel = timelineChannels.get(i);
-                    if (channel != null && selectedChannelId != null && selectedChannelId.equals(channel.id)) {
+                java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannels(channelsSnapshot, 12);
+                for (int i = 0; i < channelsSnapshot.size(); i++) {
+                    ChannelItem channel = channelsSnapshot.get(i);
+                    if (channel != null && !anchorId.isEmpty() && anchorId.equals(channel.id)) {
                         selectedTimelineIndex = i;
                     }
-                    List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel, 12);
+                    List<EpgRepository.EpgProgram> programs = channel == null || channel.id == null
+                            ? new ArrayList<>()
+                            : programsByChannel.get(channel.id.trim());
+                    if (programs == null) {
+                        programs = new ArrayList<>();
+                    }
                     rows.add(new TimelineChannelPrograms(channel, programs));
                 }
                 final int selectedRowIndex = selectedTimelineIndex;
-                List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely("timeline");
+                List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely(source);
                 uiHandler.post(() -> {
-                    Log.w(TAG, "timeline guide ready selectedChannel=" + selectedChannelId
+                    Log.w(TAG, source + " enriched ready selectedChannel=" + anchorId
                             + " rows=" + rows.size()
                             + " selectedRow=" + selectedRowIndex
                             + " selectedPrograms=" + (rows.isEmpty() || rows.get(selectedRowIndex).programs == null ? 0 : rows.get(selectedRowIndex).programs.size()));
@@ -3081,11 +3068,25 @@ public class MainActivity extends FragmentActivity {
                         return;
                     }
                     ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
-                    showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? selectedChannelId : selectedChannel.id, scheduledItems);
+                    boolean canRefreshActiveDialog = activeTimelineDialog != null
+                            && activeTimelineDialog.isShowing()
+                            && activeTimelineWindowStartMs == selectedWindowStartMs
+                            && (activeTimelineAnchorChannelId == null || anchorId.isEmpty() || anchorId.equals(activeTimelineAnchorChannelId));
+                    if (!showWhenReady && !canRefreshActiveDialog) {
+                        return;
+                    }
+                    if (canRefreshActiveDialog) {
+                        refreshingTimelineDialog = true;
+                        activeTimelineDialog.dismiss();
+                        refreshingTimelineDialog = false;
+                    }
+                    showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorId : selectedChannel.id, scheduledItems);
                 });
             } catch (Exception e) {
-                Log.w(TAG, "timeline guide failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+                Log.w(TAG, source + " enriched failed", e);
+                if (showWhenReady) {
+                    uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+                }
             }
         });
     }

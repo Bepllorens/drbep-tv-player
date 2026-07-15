@@ -7036,19 +7036,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshOverlayChannelList() {
-        if (channelListComposeView == null) {
-            return;
-        }
-        composeSurfaceRenderer.bindOverlayChannelList(channelListComposeView, buildOverlayChannelListUiModel(), (imageView, item) -> {
-            if (item == null || imageView == null) {
-                return;
-            }
-            if (item.vod) {
-                bindVodPosterList(imageView, item.logoUrl);
-            } else {
-                bindChannelLogo(imageView, item.logoUrl, item.name, 38, 38);
-            }
-        });
+        renderChannelOverlaySurface();
     }
 
     private void scrollOverlayChannelListToPosition(int position) {
@@ -7073,14 +7061,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateQuickAccessButtons() {
-        if (overlayControlsComposeView == null) {
-            return;
-        }
-        String activeTvKey = findPreferredTvFilterKey();
-        boolean tvActive = !overlayNavigationState.favoritesOnly && (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.equals(activeTvKey) || ("all".equals(overlayNavigationState.selectedFilterKey) && "all".equals(activeTvKey)));
-        boolean vodActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(false);
-        boolean adultActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(true);
-        composeSurfaceRenderer.bindOverlayControls(overlayControlsComposeView, buildOverlayControlsModel(tvActive, vodActive, adultActive));
+        renderChannelOverlaySurface();
     }
 
     private void updateTouchHomeHub() {
@@ -7721,15 +7702,16 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateOverlayPanel() {
-        if (overlayNowPlayingComposeView == null) {
-            return;
-        }
+        renderChannelOverlaySurface();
+    }
+
+    private ChannelOverlaySurfaceUiModel buildChannelOverlaySurfaceModel() {
         ChannelItem currentChannel = getCurrentPlaybackChannelItem();
         ensureTouchControlsEpgPair(currentChannel);
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
         EpgRepository.EpgProgramPair epgPair = currentChannel == null ? null : epgProgramPairByChannelId.get(currentChannel.id);
-        ChannelOverlayUi.NowPlayingModel model = ChannelOverlayUi.buildNowPlayingModel(
+        ChannelOverlayUi.NowPlayingModel nowPlayingModel = ChannelOverlayUi.buildNowPlayingModel(
                 this,
                 currentChannel,
                 currentChannel == null ? "" : displayName(currentChannel),
@@ -7740,7 +7722,37 @@ public class MainActivity extends FragmentActivity {
                 epgPair,
                 items
         );
-        composeSurfaceRenderer.bindOverlayNowPlaying(overlayNowPlayingComposeView, model);
+        String activeTvKey = findPreferredTvFilterKey();
+        boolean tvActive = !overlayNavigationState.favoritesOnly && (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.equals(activeTvKey) || ("all".equals(overlayNavigationState.selectedFilterKey) && "all".equals(activeTvKey)));
+        boolean vodActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(false);
+        boolean adultActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(true);
+        return new ChannelOverlaySurfaceUiModel(
+                nowPlayingModel,
+                buildOverlayControlsModel(tvActive, vodActive, adultActive),
+                buildOverlayChannelListUiModel()
+        );
+    }
+
+    private void renderChannelOverlaySurface() {
+        if (overlayNowPlayingComposeView == null && overlayControlsComposeView == null && channelListComposeView == null) {
+            return;
+        }
+        composeSurfaceRenderer.bindChannelOverlaySurface(
+                overlayNowPlayingComposeView,
+                overlayControlsComposeView,
+                channelListComposeView,
+                buildChannelOverlaySurfaceModel(),
+                (imageView, item) -> {
+                    if (item == null || imageView == null) {
+                        return;
+                    }
+                    if (item.vod) {
+                        bindVodPosterList(imageView, item.logoUrl);
+                    } else {
+                        bindChannelLogo(imageView, item.logoUrl, item.name, 38, 38);
+                    }
+                }
+        );
     }
 
     private String overlayContextLabel(ChannelItem channel) {

@@ -22,4 +22,19 @@ final class OfflineComposeSurfaceRenderer {
     void bindOverlayNowPlaying(ComposeView view, ChannelOverlayUi.NowPlayingModel model) {
         OverlayNowPlayingComposeBinder.bind(view, model);
     }
+
+    void bindChannelOverlaySurface(
+            ComposeView nowPlayingView,
+            ComposeView controlsView,
+            ComposeView listView,
+            ChannelOverlaySurfaceUiModel model,
+            OverlayChannelImageBinder imageBinder
+    ) {
+        if (model == null) {
+            return;
+        }
+        bindOverlayNowPlaying(nowPlayingView, model.nowPlaying);
+        bindOverlayControls(controlsView, model.controls);
+        bindOverlayChannelList(listView, model.channelList, imageBinder);
+    }
 }

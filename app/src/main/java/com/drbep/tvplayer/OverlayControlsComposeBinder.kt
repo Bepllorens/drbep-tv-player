@@ -1,7 +1,6 @@
 package com.drbep.tvplayer
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -185,28 +183,15 @@ private fun OverlayActionRow(items: List<ZapActionItem>, compact: Boolean) {
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun OverlayActionChip(item: ZapActionItem, modifier: Modifier, centered: Boolean, compact: Boolean) {
-    val background = if (item.selected) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.chip
-    val textColor = if (item.highlighted) OfflineTvTheme.Colors.textWarning else OfflineTvTheme.Colors.textPrimary
-    BasicText(
-        text = item.label,
-        modifier = modifier
-            .height(if (compact) 36.dp else 40.dp)
-            .alpha(if (item.enabled) 1f else 0.45f)
-            .background(background, RoundedCornerShape(OfflineTvTheme.Radius.chip))
-            .tvButtonSemantics(item.enabled)
-            .combinedClickable(
-                enabled = item.enabled,
-                onClick = { item.onClick?.run() },
-                onLongClick = item.onLongClick?.let { { it.run() } }
-            )
-            .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = if (compact) 8.dp else 10.dp),
-        style = TextStyle(
-            color = textColor,
-            fontSize = if (compact) 11.sp else 12.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = if (centered) TextAlign.Center else TextAlign.Start
-        ),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
+    TvActionChip(
+        label = item.label,
+        enabled = item.enabled,
+        selected = item.selected,
+        highlighted = item.highlighted,
+        modifier = modifier,
+        centered = centered,
+        compact = compact,
+        onClick = item.onClick,
+        onLongClick = item.onLongClick
     )
 }

@@ -2211,36 +2211,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean shouldResolveStreamInfoBeforePlayback(ChannelItem channel, PlayerController.PlaybackRequest request) {
-        if (!BuildConfig.STANDALONE_MODE || request == null || channel == null || channel.isVod) {
-            return false;
-        }
-        if (request.directPlayback) {
-            return shouldResolveDirectDrmBeforePlayback(channel, request);
-        }
-        if (isOrangePlaybackRequest(channel, request)) {
-            return true;
-        }
-        if (isMovistarIsmPlaybackRequest(channel, request)) {
-            return true;
-        }
-        return false;
-    }
-
-    private boolean isMovistarIsmPlaybackRequest(ChannelItem channel, PlayerController.PlaybackRequest request) {
-        String platform = channel == null ? "" : safeLower(channel.platformName);
-        String group = channel == null ? "" : safeLower(channel.group);
-        String name = channel == null ? "" : safeLower(displayName(channel));
-        String playUrl = request == null ? "" : safeLower(request.playUrl);
-        String fallbackUrl = request == null ? "" : safeLower(request.fallbackPlayUrl);
-        boolean movistar = platform.contains("movistar ism")
-                || (platform.contains("movistar") && (group.contains("movistar") || name.contains("dazn")))
-                || playUrl.contains("movistarplus")
-                || isMovistarIsmBackendUrl(fallbackUrl);
-        boolean smooth = playUrl.contains(".isml/manifest")
-                || playUrl.contains(".ism/manifest")
-                || isMovistarIsmBackendUrl(fallbackUrl)
-                || platform.contains("ism");
-        return movistar && smooth;
+        return PlaybackStreamInfoPolicy.shouldResolveBeforePlayback(BuildConfig.STANDALONE_MODE, channel, request, displayName(channel));
     }
 
     private boolean isMovistarIsmChannel(ChannelItem channel) {
@@ -2267,36 +2238,6 @@ public class MainActivity extends FragmentActivity {
         return url != null
                 && (url.contains("/hls/ism/")
                 || url.contains("/hls/ism-mux/"));
-    }
-
-    private boolean isOrangePlaybackRequest(ChannelItem channel, PlayerController.PlaybackRequest request) {
-        String platform = channel == null ? "" : safeLower(channel.platformName);
-        String group = channel == null ? "" : safeLower(channel.group);
-        String playUrl = request == null ? "" : safeLower(request.playUrl);
-        String fallbackUrl = request == null ? "" : safeLower(request.fallbackPlayUrl);
-        return platform.contains("orange")
-                || group.contains("orange")
-                || playUrl.contains("/orange/")
-                || fallbackUrl.contains("/orange/");
-    }
-
-    private boolean shouldResolveDirectDrmBeforePlayback(ChannelItem channel, PlayerController.PlaybackRequest request) {
-        if (channel == null || request == null || !request.directPlayback) {
-            return false;
-        }
-        String drm = safeLower(channel.drmScheme);
-        String playUrl = safeLower(request.playUrl);
-        if (!"clearkey".equals(drm) && !"widevine".equals(drm)) {
-            return false;
-        }
-        if (PlayerController.isSecureDrmReference(request.drmLicenseUrl)) {
-            return true;
-        }
-        if ("clearkey".equals(drm) && playUrl.contains(".mpd")) {
-            return true;
-        }
-        return "widevine".equals(drm)
-                && (request.drmLicenseUrl == null || request.drmLicenseUrl.trim().isEmpty());
     }
 
     private String displayName(ChannelItem channelItem) {

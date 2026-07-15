@@ -1,3 +1,8 @@
+## 2.0.282-beta-playback-observability
+- Offline beta: blinda los zaps y replays para que respuestas antiguas de stream info no puedan pisar la reproduccion actual.
+- Offline beta: extrae y testea la politica de resolucion previa de stream info para Orange, Movistar ISM y DRM directo.
+- Offline beta: anade fase, tiempos, bufferings y primer frame al diagnostico local, remoto y heartbeats de reproduccion.
+
 ## 2.0.261-beta-touch-epg-hydrate
 - Offline beta: el HUD tactil hidrata el EPG usando la misma carga por lotes que el arranque de Fire TV, con fallback individual si hace falta.
 - Offline beta: anade trazas visibles de hidratacion EPG tactil para diagnosticar telefono/tablet.

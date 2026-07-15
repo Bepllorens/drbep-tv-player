@@ -62,11 +62,11 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xC8121820), RoundedCornerShape(16.dp))
+            .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(OfflineTvTheme.Radius.bar))
             .border(
                 width = if (model.focused) 2.dp else 0.dp,
-                color = if (model.focused) Color(0xFF66A7FF) else Color.Transparent,
-                shape = RoundedCornerShape(16.dp)
+                color = if (model.focused) OfflineTvTheme.Colors.focus else Color.Transparent,
+                shape = RoundedCornerShape(OfflineTvTheme.Radius.bar)
             )
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
@@ -78,13 +78,13 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
             BasicText(
                 text = displayLabel,
                 modifier = Modifier.weight(1f),
-                style = TextStyle(color = Color(0xFFDFF0FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             )
             if (model.liveVisible) {
                 BasicText(
                     text = stringResource(R.string.timeshift_live_button),
                     modifier = Modifier
-                        .background(Color(0xFF203246), RoundedCornerShape(14.dp))
+                        .background(OfflineTvTheme.Colors.card, RoundedCornerShape(OfflineTvTheme.Radius.chip))
                         .tvButtonSemantics(model.onLiveClick != null)
                         .clickable(enabled = model.onLiveClick != null) { model.onLiveClick?.run() }
                         .padding(horizontal = 10.dp, vertical = 4.dp),

@@ -60,12 +60,12 @@ private fun OverlayControlsCard(model: OverlayControlsUiModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0x78222A34), RoundedCornerShape(18.dp))
+            .background(OfflineTvTheme.Colors.panelSoft, RoundedCornerShape(OfflineTvTheme.Radius.panel))
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         BasicText(
             text = model.sectionTitle,
-            style = TextStyle(color = Color(0xFF8FB5D4), fontSize = if (compact) 9.sp else 10.sp, fontWeight = FontWeight.Bold)
+            style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 9.sp else 10.sp, fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(2.dp))
         Row(
@@ -128,14 +128,14 @@ private fun OverlaySearchField(model: OverlayControlsUiModel, compact: Boolean) 
         modifier = Modifier
             .fillMaxWidth()
             .height(if (compact) 38.dp else 42.dp)
-            .background(Color(0xFF24394D), RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Colors.card, RoundedCornerShape(OfflineTvTheme.Radius.chip))
             .padding(horizontal = 10.dp, vertical = if (compact) 8.dp else 9.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         if (text.isBlank()) {
             BasicText(
                 text = model.searchHint,
-                style = TextStyle(color = Color(0xFF8FB5D4), fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold),
+                style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -185,14 +185,14 @@ private fun OverlayActionRow(items: List<ZapActionItem>, compact: Boolean) {
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun OverlayActionChip(item: ZapActionItem, modifier: Modifier, centered: Boolean, compact: Boolean) {
-    val background = if (item.selected) Color(0xFF2A7C86) else Color(0xFF2A3440)
-    val textColor = if (item.highlighted) Color(0xFFFFE08A) else Color.White
+    val background = if (item.selected) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.chip
+    val textColor = if (item.highlighted) OfflineTvTheme.Colors.textWarning else OfflineTvTheme.Colors.textPrimary
     BasicText(
         text = item.label,
         modifier = modifier
             .height(if (compact) 36.dp else 40.dp)
             .alpha(if (item.enabled) 1f else 0.45f)
-            .background(background, RoundedCornerShape(14.dp))
+            .background(background, RoundedCornerShape(OfflineTvTheme.Radius.chip))
             .tvButtonSemantics(item.enabled)
             .combinedClickable(
                 enabled = item.enabled,

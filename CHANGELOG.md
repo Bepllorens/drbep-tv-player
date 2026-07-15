@@ -1,3 +1,9 @@
+## 2.0.284-beta-overlay-compose-surface
+- Offline beta: unifica el overlay lateral en un modelo/superficie logica comun para cabecera, controles y lista.
+- Offline beta: usa el estado central de overlays para decidir si timeshift debe ocultarse ante paneles bloqueantes.
+- Offline beta: anade componentes Compose compartidos para chips/acciones de TV y los aplica al overlay.
+- Offline beta: enruta el panel de grabaciones por el renderer Compose comun para preparar la siguiente migracion.
+
 ## 2.0.283-beta-compose-overlay-foundation
 - Offline beta: introduce estado central de superficies de overlay para preparar una migracion Compose mas ordenada.
 - Offline beta: enruta los binders principales del HUD/overlay por una capa comun de render Compose.

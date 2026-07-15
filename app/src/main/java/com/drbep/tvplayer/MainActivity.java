@@ -10155,6 +10155,13 @@ public class MainActivity extends FragmentActivity {
             }
             if (playbackDiagnostics != null) {
                 payload.put("playback_state", playbackDiagnostics.playbackState)
+                        .put("playback_phase", playbackDiagnostics.playbackPhase)
+                        .put("playback_attempt_generation", playbackDiagnostics.attemptGeneration)
+                        .put("playback_prepare_elapsed_ms", playbackDiagnostics.prepareElapsedMs)
+                        .put("playback_ready_elapsed_ms", playbackDiagnostics.readyElapsedMs)
+                        .put("playback_buffering_count", playbackDiagnostics.bufferingCount)
+                        .put("playback_buffering_total_ms", playbackDiagnostics.bufferingTotalMs)
+                        .put("playback_first_frame_rendered", playbackDiagnostics.firstFrameRendered)
                         .put("playback_route", playbackDiagnostics.routeLabel)
                         .put("playback_mode", playbackDiagnostics.playbackMode)
                         .put("playback_mime", playbackDiagnostics.mimeType)
@@ -10254,6 +10261,13 @@ public class MainActivity extends FragmentActivity {
                     .put("startup_ms", "ready".equalsIgnoreCase(normalizedState) ? startupMs : 0L);
             if (diagnostics != null) {
                 payload.put("playback_mode", diagnostics.playbackMode == null ? "" : diagnostics.playbackMode)
+                        .put("playback_phase", diagnostics.playbackPhase == null ? "" : diagnostics.playbackPhase)
+                        .put("playback_attempt_generation", diagnostics.attemptGeneration)
+                        .put("playback_prepare_elapsed_ms", diagnostics.prepareElapsedMs)
+                        .put("playback_ready_elapsed_ms", diagnostics.readyElapsedMs)
+                        .put("playback_buffering_count", diagnostics.bufferingCount)
+                        .put("playback_buffering_total_ms", diagnostics.bufferingTotalMs)
+                        .put("playback_first_frame_rendered", diagnostics.firstFrameRendered)
                         .put("route_label", diagnostics.routeLabel == null ? "" : diagnostics.routeLabel)
                         .put("target_url", diagnostics.targetUrl == null ? "" : diagnostics.targetUrl)
                         .put("mime_type", diagnostics.mimeType == null ? "" : diagnostics.mimeType)

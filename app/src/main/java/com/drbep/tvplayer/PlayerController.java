@@ -184,6 +184,7 @@ final class PlayerController {
     static final class PlaybackDiagnostics {
         final String channelName;
         final String playbackState;
+        final String playbackPhase;
         final String routeLabel;
         final String targetUrl;
         final String mimeType;
@@ -198,10 +199,17 @@ final class PlayerController {
         final int videoBitrate;
         final float videoFrameRate;
         final String audioCodec;
+        final int attemptGeneration;
+        final long prepareElapsedMs;
+        final long readyElapsedMs;
+        final int bufferingCount;
+        final long bufferingTotalMs;
+        final boolean firstFrameRendered;
 
-        PlaybackDiagnostics(String channelName, String playbackState, String routeLabel, String targetUrl, String mimeType, String drmType, String playbackMode, boolean encrypted, boolean usingFallback, String lastError, int videoWidth, int videoHeight, String videoCodec, int videoBitrate, float videoFrameRate, String audioCodec) {
+        PlaybackDiagnostics(String channelName, String playbackState, String playbackPhase, String routeLabel, String targetUrl, String mimeType, String drmType, String playbackMode, boolean encrypted, boolean usingFallback, String lastError, int videoWidth, int videoHeight, String videoCodec, int videoBitrate, float videoFrameRate, String audioCodec, int attemptGeneration, long prepareElapsedMs, long readyElapsedMs, int bufferingCount, long bufferingTotalMs, boolean firstFrameRendered) {
             this.channelName = channelName;
             this.playbackState = playbackState;
+            this.playbackPhase = playbackPhase;
             this.routeLabel = routeLabel;
             this.targetUrl = targetUrl;
             this.mimeType = mimeType;
@@ -216,6 +224,12 @@ final class PlayerController {
             this.videoBitrate = videoBitrate;
             this.videoFrameRate = videoFrameRate;
             this.audioCodec = audioCodec;
+            this.attemptGeneration = Math.max(0, attemptGeneration);
+            this.prepareElapsedMs = Math.max(0L, prepareElapsedMs);
+            this.readyElapsedMs = Math.max(0L, readyElapsedMs);
+            this.bufferingCount = Math.max(0, bufferingCount);
+            this.bufferingTotalMs = Math.max(0L, bufferingTotalMs);
+            this.firstFrameRendered = firstFrameRendered;
         }
 
         boolean hasVideoQuality() {
@@ -277,6 +291,7 @@ final class PlayerController {
     private final Set<String> attemptedRecoveryRoutes = new HashSet<>();
     private String currentRecordingUrl;
     private String lastPlaybackState = "IDLE";
+    private String lastPlaybackPhase = "idle";
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
     private boolean forceLiveEdgeOnNextReady;
@@ -375,6 +390,7 @@ final class PlayerController {
 
                 String message = context.getString(R.string.error_playback_message, error.getMessage());
                 lastErrorSummary = message;
+                lastPlaybackPhase = "error";
                 host.showError(message);
                 host.recordPlaybackError(request, getPlaybackDiagnostics());
                 Log.w(TAG, message, error);
@@ -390,6 +406,7 @@ final class PlayerController {
                         + " playWhenReady=" + (player != null && player.getPlayWhenReady())
                         + " elapsedMs=" + elapsedMs);
                 if (playbackState == Player.STATE_BUFFERING) {
+                    lastPlaybackPhase = firstFrameRenderedForCurrentItem ? "rebuffering" : "buffering";
                     currentBufferingCount++;
                     currentBufferingStartedMs = SystemClock.elapsedRealtime();
                     Log.w(TAG, "playbackBufferingStart channel=" + describeRequest(currentRequest)
@@ -411,6 +428,7 @@ final class PlayerController {
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 if (playbackState == Player.STATE_READY) {
                     currentReadyElapsedMs = elapsedMs;
+                    lastPlaybackPhase = firstFrameRenderedForCurrentItem ? "playing" : "ready_waiting_first_frame";
                     Log.w(TAG, "playbackReady channel=" + describeRequest(currentRequest)
                             + " readyElapsedMs=" + elapsedMs
                             + " bufferCount=" + currentBufferingCount
@@ -444,6 +462,7 @@ final class PlayerController {
             public void onRenderedFirstFrame() {
                 PlaybackRequest request = currentRequest;
                 firstFrameRenderedForCurrentItem = true;
+                lastPlaybackPhase = "playing";
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
                 Log.w(TAG, "firstFrame channel=" + describeRequest(request)
@@ -1034,9 +1053,12 @@ final class PlayerController {
         String drmType = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.drmType);
         String playbackMode = currentPlaybackDecision == null ? PlaybackModeStore.MODE_AUTO : safeLogValue(currentPlaybackDecision.playbackMode);
         boolean encrypted = currentStreamInfo != null && currentStreamInfo.encrypted;
+        long elapsedSincePrepareMs = currentPrepareStartedMs <= 0L ? 0L : Math.max(0L, SystemClock.elapsedRealtime() - currentPrepareStartedMs);
+        long prepareElapsedMs = currentReadyElapsedMs > 0L ? currentReadyElapsedMs : elapsedSincePrepareMs;
         return new PlaybackDiagnostics(
                 channelName,
                 lastPlaybackState,
+                safeLogValue(lastPlaybackPhase),
                 routeLabel,
                 targetUrl,
                 mimeType,
@@ -1050,7 +1072,13 @@ final class PlayerController {
                 safeLogValue(lastVideoCodec),
                 lastVideoBitrate,
                 lastVideoFrameRate,
-                safeLogValue(lastAudioCodec)
+                safeLogValue(lastAudioCodec),
+                playbackAttemptGeneration.get(),
+                prepareElapsedMs,
+                currentReadyElapsedMs,
+                currentBufferingCount,
+                currentBufferingTotalMs,
+                firstFrameRenderedForCurrentItem
         );
     }
 
@@ -1387,6 +1415,7 @@ final class PlayerController {
             clearPlaybackQuality();
         }
         firstFrameRenderedForCurrentItem = false;
+        lastPlaybackPhase = "preparing";
         currentBufferingStartedMs = 0L;
         currentBufferingCount = 0;
         currentBufferingTotalMs = 0L;
@@ -1526,6 +1555,7 @@ final class PlayerController {
 
     private int beginPlaybackAttempt(PlaybackRequest request, String origin) {
         int generation = playbackAttemptGeneration.incrementAndGet();
+        lastPlaybackPhase = "playChannelAfterResolvingStreamInfo".equals(origin) ? "resolving_stream_info" : "starting";
         Log.d(TAG, "playbackAttempt begin generation=" + generation
                 + " origin=" + safeLogValue(origin)
                 + " channel=" + describeRequest(request));

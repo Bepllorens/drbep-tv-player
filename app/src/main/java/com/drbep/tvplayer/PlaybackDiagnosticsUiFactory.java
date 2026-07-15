@@ -64,6 +64,12 @@ final class PlaybackDiagnosticsUiFactory {
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Canal", host.safeText(diagnostics.channelName), ""));
         appendLine(message, host.text(R.string.diagnostics_state, host.safeText(diagnostics.playbackState)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Estado", host.safeText(diagnostics.playbackState), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Fase", host.fallbackUnknown(diagnostics.playbackPhase), phaseTone(diagnostics.playbackPhase)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Intento", String.valueOf(diagnostics.attemptGeneration), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Prepare", diagnostics.prepareElapsedMs + " ms", timingTone(diagnostics.prepareElapsedMs, 8_000L)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Ready", diagnostics.readyElapsedMs + " ms", timingTone(diagnostics.readyElapsedMs, 5_000L)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Buffering", diagnostics.bufferingCount + " / " + diagnostics.bufferingTotalMs + " ms", diagnostics.bufferingCount > 1 ? "warn" : ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Primer frame", diagnostics.firstFrameRendered ? "Si" : "No", diagnostics.firstFrameRendered ? "ok" : "warn"));
         appendLine(message, host.text(R.string.diagnostics_route, host.safeText(diagnostics.routeLabel)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "Ruta activa", host.safeText(diagnostics.routeLabel), host.routeTone(diagnostics.routeLabel)));
         appendLine(message, host.text(R.string.diagnostics_target, host.safeText(diagnostics.targetUrl)));
@@ -225,5 +231,23 @@ final class PlaybackDiagnosticsUiFactory {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static String phaseTone(String phase) {
+        String normalized = phase == null ? "" : phase.trim().toLowerCase();
+        if (normalized.contains("playing")) {
+            return "ok";
+        }
+        if (normalized.contains("error")) {
+            return "error";
+        }
+        if (normalized.contains("buffer") || normalized.contains("waiting")) {
+            return "warn";
+        }
+        return "";
+    }
+
+    private static String timingTone(long elapsedMs, long warnAfterMs) {
+        return elapsedMs > warnAfterMs ? "warn" : "";
     }
 }

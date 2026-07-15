@@ -152,19 +152,7 @@ final class ChannelOverlayCoordinator {
     }
 
     void moveOverlaySelection(int delta) {
-        if (channels.isEmpty()) {
-            return;
-        }
-        if (selectedOverlayIndex < 0 || selectedOverlayIndex >= channels.size()) {
-            selectedOverlayIndex = currentIndex >= 0 ? currentIndex : 0;
-        }
-        selectedOverlayIndex += delta;
-        if (selectedOverlayIndex < 0) {
-            selectedOverlayIndex = channels.size() - 1;
-        }
-        if (selectedOverlayIndex >= channels.size()) {
-            selectedOverlayIndex = 0;
-        }
+        selectedOverlayIndex = OverlayFocusNavigator.nextSelection(channels.size(), selectedOverlayIndex, currentIndex, delta);
     }
 
     ChannelFilter cycleFilter(int delta) {

@@ -338,6 +338,7 @@ public class MainActivity extends FragmentActivity {
 
     private final OverlayNavigationState overlayNavigationState = new OverlayNavigationState();
     private final OfflineOverlayState overlaySurfaceState = new OfflineOverlayState();
+    private final OfflineComposeSurfaceRenderer composeSurfaceRenderer = new OfflineComposeSurfaceRenderer();
     private int overlaySearchFocusRequestToken;
     private int overlaySearchClearFocusRequestToken;
     private boolean startupHubShown;
@@ -1110,7 +1111,7 @@ public class MainActivity extends FragmentActivity {
         }
         timeshiftBarContainer.setVisibility(View.VISIBLE);
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, true);
-        TimeshiftBarComposeBinder.bind(timeshiftComposeView, buildTimeshiftBarUiModel(state));
+        composeSurfaceRenderer.bindTimeshift(timeshiftComposeView, buildTimeshiftBarUiModel(state));
         updatePlaybackStateBadge(playerController.getTimeshiftState());
     }
 
@@ -1304,7 +1305,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         currentTouchControlsBarModel = buildTouchControlsBarUiModel();
-        TouchControlsComposeBinder.bind(touchControlsComposeView, currentTouchControlsBarModel, new TouchControlsArtworkBinder() {
+        composeSurfaceRenderer.bindTouchControls(touchControlsComposeView, currentTouchControlsBarModel, new TouchControlsArtworkBinder() {
             @Override
             public void bindLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
                 bindChannelLogo(imageView, logoUrl, channelName, widthDp, heightDp);
@@ -7038,7 +7039,7 @@ public class MainActivity extends FragmentActivity {
         if (channelListComposeView == null) {
             return;
         }
-        OverlayChannelListComposeBinder.bind(channelListComposeView, buildOverlayChannelListUiModel(), (imageView, item) -> {
+        composeSurfaceRenderer.bindOverlayChannelList(channelListComposeView, buildOverlayChannelListUiModel(), (imageView, item) -> {
             if (item == null || imageView == null) {
                 return;
             }
@@ -7079,7 +7080,7 @@ public class MainActivity extends FragmentActivity {
         boolean tvActive = !overlayNavigationState.favoritesOnly && (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.equals(activeTvKey) || ("all".equals(overlayNavigationState.selectedFilterKey) && "all".equals(activeTvKey)));
         boolean vodActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(false);
         boolean adultActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(true);
-        OverlayControlsComposeBinder.bind(overlayControlsComposeView, buildOverlayControlsModel(tvActive, vodActive, adultActive));
+        composeSurfaceRenderer.bindOverlayControls(overlayControlsComposeView, buildOverlayControlsModel(tvActive, vodActive, adultActive));
     }
 
     private void updateTouchHomeHub() {
@@ -7739,7 +7740,7 @@ public class MainActivity extends FragmentActivity {
                 epgPair,
                 items
         );
-        OverlayNowPlayingComposeBinder.bind(overlayNowPlayingComposeView, model);
+        composeSurfaceRenderer.bindOverlayNowPlaying(overlayNowPlayingComposeView, model);
     }
 
     private String overlayContextLabel(ChannelItem channel) {

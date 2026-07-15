@@ -409,6 +409,10 @@ final class EpgRepository {
         long now = System.currentTimeMillis();
         List<EpgProgram> rows = loadOfflineProgramsForRequestedChannel(channel);
         if (rows.isEmpty()) {
+            List<EpgProgram> inlinePrograms = buildInlineProgramsForChannel(channel, maxItems, now);
+            if (!inlinePrograms.isEmpty()) {
+                return inlinePrograms;
+            }
             try {
                 List<EpgProgram> programs = fetchRemoteChannelPrograms(channel.id, maxItems);
                 if (!programs.isEmpty()) {
@@ -423,7 +427,7 @@ final class EpgRepository {
                         + safeChannelLabel(channel)
                         + " maxItems=" + maxItems, e);
             }
-            return buildInlineProgramsForChannel(channel, maxItems, now);
+            return new ArrayList<>();
         }
         List<EpgProgram> out = new ArrayList<>();
         int limit = maxItems <= 0 ? rows.size() : maxItems;
@@ -504,6 +508,11 @@ final class EpgRepository {
         long now = System.currentTimeMillis();
         List<EpgProgram> rows = loadOfflineProgramsForRequestedChannel(channel);
         if (rows.isEmpty()) {
+            List<EpgProgram> inlinePrograms = buildInlineProgramsForChannel(channel, next ? 2 : 1, now);
+            EpgProgram inlineProgram = selectInlineProgram(channel, inlinePrograms, next);
+            if (inlineProgram != null) {
+                return inlineProgram;
+            }
             try {
                 EpgProgram direct = fetchRemoteProgramForChannel(channel.id, next);
                 if (direct != null) {
@@ -518,8 +527,7 @@ final class EpgRepository {
                         + safeChannelLabel(channel)
                         + " next=" + next, e);
             }
-            List<EpgProgram> inlinePrograms = buildInlineProgramsForChannel(channel, next ? 2 : 1, now);
-            return selectInlineProgram(channel, inlinePrograms, next);
+            return null;
         }
         for (EpgProgram program : rows) {
             long startMs = parseIsoMillis(program.startTime);

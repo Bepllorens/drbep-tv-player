@@ -377,7 +377,7 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isTouchControlsVisible()) {
-            host.focusTouchControlsTimeshift();
+            host.tuneRelative(-1);
             return true;
         }
         if (host.isTvTimeshiftHudActive() && host.canResumeTimeshiftLive()) {
@@ -402,7 +402,7 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isTouchControlsVisible()) {
-            host.focusTouchControlsActions();
+            host.tuneRelative(1);
             return true;
         }
         if (host.isTvTimeshiftHudActive()) {

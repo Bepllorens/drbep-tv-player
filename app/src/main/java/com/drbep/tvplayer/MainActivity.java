@@ -2967,8 +2967,7 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_loading_guide));
         Log.w(TAG, "timeline guide explicit start channel=" + anchorChannel.id + " name=" + displayName(anchorChannel));
         List<ChannelItem> timelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
-        showTimelineGuideDialog(buildFastTimelineRows(timelineChannels), selectedWindowStartMs, anchorChannel.id, new ArrayList<>());
-        loadTimelineGuideRowsAsync(timelineChannels, anchorChannel.id, selectedWindowStartMs, "timeline explicit", false);
+        loadTimelineGuideRowsAsync(timelineChannels, anchorChannel.id, selectedWindowStartMs, "timeline explicit", true);
     }
 
     private void openTimelineGuideNextForAnchor() {
@@ -3050,8 +3049,7 @@ public class MainActivity extends FragmentActivity {
                 + " name=" + (channels.get(selectedIndex) == null ? "" : displayName(channels.get(selectedIndex))));
         List<ChannelItem> timelineChannels = selectTimelineChannels(selectedIndex);
         String selectedChannelId = channels.get(selectedIndex).id;
-        showTimelineGuideDialog(buildFastTimelineRows(timelineChannels), selectedWindowStartMs, selectedChannelId, new ArrayList<>());
-        loadTimelineGuideRowsAsync(timelineChannels, selectedChannelId, selectedWindowStartMs, "timeline", false);
+        loadTimelineGuideRowsAsync(timelineChannels, selectedChannelId, selectedWindowStartMs, "timeline", true);
     }
 
     private void loadTimelineGuideRowsAsync(List<ChannelItem> timelineChannels, String selectedChannelId, long selectedWindowStartMs, String source, boolean showWhenReady) {
@@ -3083,12 +3081,10 @@ public class MainActivity extends FragmentActivity {
             List<RecordingsRepository.RecordingItem> scheduledItems
     ) {
         try {
-            Thread.sleep(650L);
             Log.w(TAG, source + " full guide scan start selectedChannel=" + anchorId
                     + " channels=" + channelsSnapshot.size());
-            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = BuildConfig.STANDALONE_MODE
-                    ? epgRepository.fetchRemoteChannelProgramsForChannels(channelsSnapshot, 18, true)
-                    : epgRepository.fetchChannelProgramsForChannelsDirect(channelsSnapshot, 18);
+            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel =
+                    epgRepository.fetchChannelProgramsForChannelsDirect(channelsSnapshot, 18);
             List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
             final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
             uiHandler.post(() -> {
@@ -3113,8 +3109,6 @@ public class MainActivity extends FragmentActivity {
                 }
                 showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorId : selectedChannel.id, scheduledItems);
             });
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         } catch (Exception e) {
             Log.w(TAG, source + " full guide scan failed", e);
         }

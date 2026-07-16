@@ -498,7 +498,7 @@ final class EpgRepository {
         if (channelItems == null || channelItems.isEmpty()) {
             return out;
         }
-        if (!canReadOfflineEpgSnapshot()) {
+        if (!(directSnapshotRead ? canReadOfflineEpgTargetedSnapshot() : canReadOfflineEpgSnapshot())) {
             for (ChannelItem channel : channelItems) {
                 if (channel == null || channel.id == null || channel.id.trim().isEmpty()) {
                     continue;

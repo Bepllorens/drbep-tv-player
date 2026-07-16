@@ -399,7 +399,7 @@ final class CatalogSnapshotStore {
             if (result.channels == null || result.channels.isEmpty() || result.filters == null || result.filters.isEmpty()) {
                 throw new IllegalStateException("cache de arranque vacia");
             }
-            if (result.channels.size() > 5000) {
+            if (result.channels.size() > 50000) {
                 prefs.edit().putBoolean(PREF_FORCE_STARTUP_SNAPSHOT_REFRESH, true).apply();
                 throw new IllegalStateException("cache de arranque sobredimensionada: canales=" + result.channels.size());
             }

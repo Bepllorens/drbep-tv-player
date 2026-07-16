@@ -395,6 +395,7 @@ public class MainActivity extends FragmentActivity {
     private boolean startupEpgLoadsScheduled;
     private final Set<String> epgLoadedFilterKeys = new HashSet<>();
     private final Set<String> epgQueuedFilterKeys = new HashSet<>();
+    private final Map<String, Integer> epgFilterOffsets = new HashMap<>();
     private int offlineCatalogRetryCount;
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
@@ -410,6 +411,20 @@ public class MainActivity extends FragmentActivity {
         TimelineChannelPrograms(ChannelItem channel, List<EpgRepository.EpgProgram> programs) {
             this.channel = channel;
             this.programs = programs;
+        }
+    }
+
+    private static final class EpgBatchSnapshot {
+        final List<ChannelItem> items;
+        final int nextOffset;
+        final int totalLiveChannels;
+        final boolean complete;
+
+        EpgBatchSnapshot(List<ChannelItem> items, int nextOffset, int totalLiveChannels, boolean complete) {
+            this.items = items == null ? new ArrayList<>() : items;
+            this.nextOffset = nextOffset;
+            this.totalLiveChannels = totalLiveChannels;
+            this.complete = complete;
         }
     }
 
@@ -2023,6 +2038,7 @@ public class MainActivity extends FragmentActivity {
         epgFullLoadScheduledForChannelId = "";
         epgLoadedFilterKeys.clear();
         epgQueuedFilterKeys.clear();
+        epgFilterOffsets.clear();
         invalidateVodDerivedCaches();
         uiHandler.removeCallbacks(progressiveEpgRunnable);
         long coordinatorStartMs = System.currentTimeMillis();
@@ -2448,16 +2464,28 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> limitEpgSnapshot(List<ChannelItem> source, int limit) {
+        return buildEpgBatchSnapshot(source, limit, 0).items;
+    }
+
+    private EpgBatchSnapshot buildEpgBatchSnapshot(List<ChannelItem> source, int limit, int offset) {
         List<ChannelItem> out = new ArrayList<>();
         if (source == null || source.isEmpty()) {
-            return out;
+            return new EpgBatchSnapshot(out, 0, 0, true);
         }
-        if (!useCompactTouchEpgMode()) {
-            return new ArrayList<>(source);
+        int liveTotal = 0;
+        for (ChannelItem channel : source) {
+            if (channel != null && !channel.isVod) {
+                liveTotal++;
+            }
         }
         int max = Math.max(1, limit);
+        int safeOffset = Math.max(0, Math.min(offset, liveTotal));
+        int liveIndex = 0;
         for (ChannelItem channel : source) {
             if (channel == null || channel.isVod) {
+                continue;
+            }
+            if (liveIndex++ < safeOffset) {
                 continue;
             }
             out.add(channel);
@@ -2465,7 +2493,8 @@ public class MainActivity extends FragmentActivity {
                 break;
             }
         }
-        return out;
+        int nextOffset = Math.min(liveTotal, safeOffset + out.size());
+        return new EpgBatchSnapshot(out, nextOffset, liveTotal, nextOffset >= liveTotal);
     }
 
     private int resolveCurrentVisibleChannelIndex() {
@@ -2541,7 +2570,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String key = epgFilterKey(nextFilter);
-        List<ChannelItem> items = limitEpgSnapshot(channelsForEpgFilter(nextFilter), OFFLINE_EPG_VISIBLE_BATCH_LIMIT);
+        List<ChannelItem> items = channelsForEpgFilter(nextFilter);
         if (items.isEmpty()) {
             epgLoadedFilterKeys.add(key);
             scheduleNextProgressiveEpgLoad(1000L);
@@ -2571,14 +2600,34 @@ public class MainActivity extends FragmentActivity {
         final String cleanLabel = label == null || label.trim().isEmpty() ? cleanFilterKey : label.trim();
         final boolean compactEpgMode = useCompactTouchEpgMode();
         final int batchLimit = compactEpgMode ? OFFLINE_EPG_COMPACT_BATCH_LIMIT : OFFLINE_EPG_VISIBLE_BATCH_LIMIT;
-        final List<ChannelItem> epgChannelsSnapshot = limitEpgSnapshot(snapshot, batchLimit);
+        final List<ChannelItem> sourceSnapshot = new ArrayList<>(snapshot);
+        final int batchOffset = continueProgressive ? Math.max(0, epgFilterOffsets.getOrDefault(cleanFilterKey, 0)) : 0;
+        final EpgBatchSnapshot batchSnapshot = buildEpgBatchSnapshot(sourceSnapshot, batchLimit, batchOffset);
+        final List<ChannelItem> epgChannelsSnapshot = batchSnapshot.items;
+        if (epgChannelsSnapshot.isEmpty()) {
+            Log.w(TAG, "EPG partial skipped empty batch filter=" + cleanFilterKey
+                    + " offset=" + batchOffset
+                    + " totalLive=" + batchSnapshot.totalLiveChannels);
+            epgQueuedFilterKeys.remove(cleanFilterKey);
+            epgFilterOffsets.remove(cleanFilterKey);
+            epgLoadedFilterKeys.add(cleanFilterKey);
+            if (continueProgressive && !compactEpgMode) {
+                scheduleNextProgressiveEpgLoad(OFFLINE_EPG_PROGRESSIVE_DELAY_MS);
+            }
+            return;
+        }
         epgQueuedFilterKeys.add(cleanFilterKey);
         epgLoadInFlight = true;
         epgWorkerBusy = true;
         epgLoadStartedAtMs = System.currentTimeMillis();
         final int loadGeneration = ++epgLoadGeneration;
         long startMs = System.currentTimeMillis();
-        Log.w(TAG, "EPG partial start filter=" + cleanFilterKey + " label=" + cleanLabel + " channels=" + epgChannelsSnapshot.size());
+        Log.w(TAG, "EPG partial start filter=" + cleanFilterKey
+                + " label=" + cleanLabel
+                + " channels=" + epgChannelsSnapshot.size()
+                + " offset=" + batchOffset
+                + " nextOffset=" + batchSnapshot.nextOffset
+                + " totalLive=" + batchSnapshot.totalLiveChannels);
         uiHandler.postDelayed(() -> {
             if (!epgLoadInFlight || loadGeneration != epgLoadGeneration) {
                 return;
@@ -2598,7 +2647,9 @@ public class MainActivity extends FragmentActivity {
         }, OFFLINE_EPG_LOAD_TIMEOUT_MS + 500L);
         if (!submitEpgTask("load-epg-partial", () -> {
             try {
-                Map<String, EpgRepository.EpgProgramPair> pairs = epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, compactEpgMode, false);
+                Map<String, EpgRepository.EpgProgramPair> pairs = BuildConfig.STANDALONE_MODE
+                        ? epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, true, false)
+                        : epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, compactEpgMode, false);
                 Map<String, String> updates = buildNowProgramUpdatesFromPairs(pairs);
                 uiHandler.post(() -> {
                     epgWorkerBusy = false;
@@ -2620,7 +2671,12 @@ public class MainActivity extends FragmentActivity {
                     epgNowByChannelId.putAll(updates);
                     mergeEpgProgramPairs(epgProgramPairByChannelId, pairs);
                     epgQueuedFilterKeys.remove(cleanFilterKey);
-                    epgLoadedFilterKeys.add(cleanFilterKey);
+                    if (batchSnapshot.complete || !continueProgressive) {
+                        epgFilterOffsets.remove(cleanFilterKey);
+                        epgLoadedFilterKeys.add(cleanFilterKey);
+                    } else {
+                        epgFilterOffsets.put(cleanFilterKey, batchSnapshot.nextOffset);
+                    }
                     int filled = applyProgramPairUpdates(epgChannelsSnapshot, updates, pairs);
                     applyProgramPairUpdates(channels, epgNowByChannelId, epgProgramPairByChannelId);
                     Log.w(TAG, "EPG partial loaded filter=" + cleanFilterKey
@@ -2628,6 +2684,9 @@ public class MainActivity extends FragmentActivity {
                             + " updates=" + updates.size()
                             + " filledChannels=" + filled
                             + " snapshotChannels=" + epgChannelsSnapshot.size()
+                            + " nextOffset=" + batchSnapshot.nextOffset
+                            + " totalLive=" + batchSnapshot.totalLiveChannels
+                            + " complete=" + batchSnapshot.complete
                             + " durationMs=" + lastEpgNowLoadDurationMs);
                     refreshOverlayChannelList();
                     updateOverlayPanel();
@@ -2636,7 +2695,9 @@ public class MainActivity extends FragmentActivity {
                         showZapBanner(currentChannel);
                     }
                     if (continueProgressive && !compactEpgMode) {
-                        scheduleNextProgressiveEpgLoad(OFFLINE_EPG_PROGRESSIVE_DELAY_MS);
+                        scheduleNextProgressiveEpgLoad(batchSnapshot.complete
+                                ? OFFLINE_EPG_PROGRESSIVE_DELAY_MS
+                                : OFFLINE_EPG_BUSY_RETRY_MS);
                     }
                 });
             } catch (Exception e) {

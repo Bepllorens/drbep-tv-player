@@ -88,6 +88,7 @@ final class CatalogSnapshotStore {
     private static final String PREF_LAST_REJECTED_CANDIDATE_CHANNELS = "last_rejected_candidate_channels";
     private static final String PREF_LAST_REJECTED_PREVIOUS_TOTAL = "last_rejected_previous_total";
     private static final String PREF_LAST_REJECTED_CANDIDATE_TOTAL = "last_rejected_candidate_total";
+    private static final String PREF_FORCE_STARTUP_SNAPSHOT_REFRESH = "force_startup_snapshot_refresh";
     private static final String SNAPSHOT_FILE = "catalog_snapshot.json";
     private static final String LAST_GOOD_SNAPSHOT_FILE = "catalog_snapshot.last_good.json";
     private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
@@ -298,6 +299,27 @@ final class CatalogSnapshotStore {
     JSONObject loadStartupSnapshotObject(String fallbackUrl) throws Exception {
         File file = snapshotFile();
         SnapshotStatus status = getStatus(fallbackUrl);
+        if (prefs.getBoolean(PREF_FORCE_STARTUP_SNAPSHOT_REFRESH, false)) {
+            if (hasRefreshCredentials(fallbackUrl)) {
+                try {
+                    Log.w(TAG, "startup forced snapshot refresh after oversized parsed cache");
+                    return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
+                } catch (Exception e) {
+                    Log.w(TAG, "startup forced snapshot refresh failed; falling back to stored snapshot", e);
+                }
+            } else {
+                Log.w(TAG, "startup forced snapshot refresh skipped; missing credentials");
+            }
+        }
+        if (status != null && status.channelCount > 5000 && !getAccessToken().trim().isEmpty()) {
+            try {
+                Log.w(TAG, "startup snapshot overgrown; forcing configured snapshot URL before refresh channels=" + status.channelCount);
+                setSourceUrl(fallbackUrl);
+                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
+            } catch (Exception e) {
+                Log.w(TAG, "startup overgrown snapshot refresh failed; falling back to stored snapshot", e);
+            }
+        }
         if (file.exists() && file.length() > STARTUP_LITE_REFRESH_THRESHOLD_BYTES && hasRefreshCredentials(fallbackUrl)) {
             try {
                 Log.i(TAG, "startup snapshot is large; refreshing lite catalog before local parse bytes=" + file.length());
@@ -357,6 +379,18 @@ final class CatalogSnapshotStore {
         if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
             return null;
         }
+        if (hasRefreshCredentials(fallbackUrl)) {
+            try {
+                if (!remoteCatalogFingerprintMatches(fallbackUrl)) {
+                    Log.w(TAG, "startup parsed catalog cache invalidated by remote fingerprint change");
+                    //noinspection ResultOfMethodCallIgnored
+                    file.delete();
+                    return null;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "startup parsed catalog remote fingerprint check failed; using local cache if valid", e);
+            }
+        }
         try {
             CatalogLoadResult result = readStartupParsedCacheBinary(file, status);
             if (result == null) {
@@ -364,6 +398,16 @@ final class CatalogSnapshotStore {
             }
             if (result.channels == null || result.channels.isEmpty() || result.filters == null || result.filters.isEmpty()) {
                 throw new IllegalStateException("cache de arranque vacia");
+            }
+            if (result.channels.size() > 5000) {
+                prefs.edit().putBoolean(PREF_FORCE_STARTUP_SNAPSHOT_REFRESH, true).apply();
+                throw new IllegalStateException("cache de arranque sobredimensionada: canales=" + result.channels.size());
+            }
+            int lastRejectedCandidateChannels = prefs.getInt(PREF_LAST_REJECTED_CANDIDATE_CHANNELS, 0);
+            if (lastRejectedCandidateChannels > 0 && result.channels.size() != lastRejectedCandidateChannels) {
+                throw new IllegalStateException("cache de arranque obsoleta: canales="
+                        + result.channels.size()
+                        + " candidato_remoto=" + lastRejectedCandidateChannels);
             }
             prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
             Log.w(TAG, "startup parsed catalog cache hit channels=" + result.channels.size() + " filters=" + result.filters.size());
@@ -678,6 +722,7 @@ final class CatalogSnapshotStore {
                 .remove(PREF_LAST_REJECTED_CANDIDATE_CHANNELS)
                 .remove(PREF_LAST_REJECTED_PREVIOUS_TOTAL)
                 .remove(PREF_LAST_REJECTED_CANDIDATE_TOTAL)
+                .remove(PREF_FORCE_STARTUP_SNAPSHOT_REFRESH)
                 .apply();
         backupCurrentSnapshotIfUseful(current);
     }
@@ -736,6 +781,7 @@ final class CatalogSnapshotStore {
                 .remove(PREF_LAST_REJECTED_CANDIDATE_CHANNELS)
                 .remove(PREF_LAST_REJECTED_PREVIOUS_TOTAL)
                 .remove(PREF_LAST_REJECTED_CANDIDATE_TOTAL)
+                .remove(PREF_FORCE_STARTUP_SNAPSHOT_REFRESH)
                 .apply();
     }
 
@@ -980,6 +1026,21 @@ final class CatalogSnapshotStore {
         boolean liveDrop = isSuspiciousCatalogDrop(previousLive, candidateLive, 20, 10);
         boolean totalDrop = isSuspiciousCatalogDrop(previousTotal, candidateTotal, 30, 15);
         if (!liveDrop || !totalDrop) {
+            return;
+        }
+        int lastRejectedCandidateLive = prefs.getInt(PREF_LAST_REJECTED_CANDIDATE_CHANNELS, 0);
+        int lastRejectedCandidateTotal = prefs.getInt(PREF_LAST_REJECTED_CANDIDATE_TOTAL, 0);
+        boolean sameReducedCandidateAlreadySeen = lastRejectedCandidateLive == candidateLive
+                && lastRejectedCandidateTotal == candidateTotal
+                && candidateLive > 0
+                && candidateTotal > 0;
+        boolean coherentLargeCatalog = candidateLive >= 1000 && candidateTotal >= 1000;
+        if (sameReducedCandidateAlreadySeen || coherentLargeCatalog) {
+            Log.w(TAG, "accepting reduced catalog candidate channels="
+                    + candidateLive + "/" + previousLive
+                    + " total=" + candidateTotal + "/" + previousTotal
+                    + " repeated=" + sameReducedCandidateAlreadySeen
+                    + " coherentLarge=" + coherentLargeCatalog);
             return;
         }
         String reason = "catalogo candidato reducido: canales "

@@ -98,7 +98,7 @@ public class MainActivity extends FragmentActivity {
     private static final long OFFLINE_APP_UPDATE_STARTUP_DELAY_MS = 2L * 60L * 1000L;
     private static final long OFFLINE_APP_UPDATE_RESUME_CHECK_MS = 15L * 60L * 1000L;
     private static final long OFFLINE_EPG_INITIAL_DELAY_MS = 20L * 1000L;
-    private static final long OFFLINE_EPG_PROGRESSIVE_DELAY_MS = 45L * 1000L;
+    private static final long OFFLINE_EPG_PROGRESSIVE_DELAY_MS = 8L * 1000L;
     private static final long OFFLINE_EPG_PRIORITY_DELAY_MS = 2L * 1000L;
     private static final long OFFLINE_EPG_BUSY_RETRY_MS = 5L * 1000L;
     private static final long OFFLINE_EPG_LOAD_TIMEOUT_MS = 25L * 1000L;
@@ -2647,8 +2647,8 @@ public class MainActivity extends FragmentActivity {
         }, OFFLINE_EPG_LOAD_TIMEOUT_MS + 500L);
         if (!submitEpgTask("load-epg-partial", () -> {
             try {
-                Map<String, EpgRepository.EpgProgramPair> pairs = BuildConfig.STANDALONE_MODE
-                        ? epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, true, false)
+                Map<String, EpgRepository.EpgProgramPair> pairs = BuildConfig.STANDALONE_MODE && !compactEpgMode
+                        ? epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, false, false, true)
                         : epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, compactEpgMode, false);
                 Map<String, String> updates = buildNowProgramUpdatesFromPairs(pairs);
                 uiHandler.post(() -> {

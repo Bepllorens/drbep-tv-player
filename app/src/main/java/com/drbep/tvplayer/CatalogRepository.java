@@ -149,7 +149,10 @@ final class CatalogRepository {
             if (standaloneMode && channel.has("direct_playback")) {
                 directPlayback = channel.optBoolean("direct_playback", directPlayback);
             }
-            String tvgId = safeCatalogText(channel.optString("tvg_id", ""));
+            String tvgId = firstNonEmpty(
+                    safeCatalogText(channel.optString("custom_tvg_id", "")),
+                    safeCatalogText(channel.optString("tvg_id", ""))
+            );
             int platformId = (int) channel.optLong("platform_id", 0L);
             String playbackProfile = safeCatalogText(channel.optString("playback_profile", ""));
             int sortOrder = channel.has("sort_order") && !channel.isNull("sort_order")
@@ -222,8 +225,22 @@ final class CatalogRepository {
         long activePlatformId = payload.optLong("active_platform_id", 0L);
         StartupFilterConfig startupConfig = parseStartupFilterConfig(payload.optJSONObject("tv_player_startup"));
         List<ChannelFilter> filters = buildFiltersFromCatalog(parsed, activePlatformId, startupConfig, offlinePermissions);
+        int liveItems = 0;
+        int vodItems = 0;
+        for (ChannelItem item : parsed) {
+            if (item == null) {
+                continue;
+            }
+            if (item.isVod) {
+                vodItems++;
+            } else {
+                liveItems++;
+            }
+        }
         Log.i(TAG, "catalog parsed channels=" + channelsArray.length()
                 + " totalItems=" + parsed.size()
+                + " liveItems=" + liveItems
+                + " vodItems=" + vodItems
                 + " filters=" + filters.size()
                 + " appendRemoteVod=" + appendRemoteVod
                 + " itemParseMs=" + parsedItemsMs
@@ -294,7 +311,10 @@ final class CatalogRepository {
             parsed.add(new ChannelItem(
                     id,
                     name,
-                    safeCatalogText(channel.optString("tvg_id", "")),
+                    firstNonEmpty(
+                            safeCatalogText(channel.optString("custom_tvg_id", "")),
+                            safeCatalogText(channel.optString("tvg_id", ""))
+                    ),
                     logo,
                     sourceGroup,
                     playUrl,

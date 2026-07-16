@@ -5,6 +5,7 @@ import json
 import sys
 import time
 import urllib.request
+import urllib.parse
 
 
 def fetch_json(base_url, path, timeout):
@@ -187,6 +188,34 @@ def match_now_program(channel, now_index):
     return None
 
 
+def epg_lookup_candidates(channel):
+    seen = set()
+    out = []
+
+    def add(value):
+        text = str(value or "").strip()
+        if not text:
+            return
+        key = text.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(text)
+
+    add(channel.get("id"))
+    add(channel.get("custom_tvg_id"))
+    add(channel.get("tvg_id"))
+    name = str(channel.get("name") or "").strip()
+    add(name)
+    if name:
+        add(name.replace("_", " "))
+        add(name.replace("-", " "))
+        for suffix in (" HD", " UHD", " FHD", " SD"):
+            if name.upper().endswith(suffix):
+                add(name[: -len(suffix)].strip())
+    return out
+
+
 def program_title(program):
     if not isinstance(program, dict):
         return ""
@@ -206,7 +235,12 @@ def build_epg_snapshot(base_url, channels, timeout, max_items_per_channel):
         channel_id = str(channel.get("id", "")).strip()
         if not channel_id:
             continue
-        rows = optional_fetch(base_url, f"/api/epg/channel/{channel_id}", timeout, [])
+        rows = []
+        for candidate in epg_lookup_candidates(channel):
+            encoded = urllib.parse.quote(candidate, safe="")
+            rows = optional_fetch(base_url, f"/api/epg/channel/{encoded}", timeout, [])
+            if isinstance(rows, list) and rows:
+                break
         if not isinstance(rows, list) or not rows:
             matched_now = match_now_program(channel, now_index)
             rows = [matched_now] if matched_now else []

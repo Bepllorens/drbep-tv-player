@@ -2905,27 +2905,7 @@ public class MainActivity extends FragmentActivity {
         final long selectedWindowStartMs = windowStartMs;
         showStatus(getString(R.string.status_loading_guide));
         Log.w(TAG, "timeline guide explicit start channel=" + anchorChannel.id + " name=" + displayName(anchorChannel));
-        List<ChannelItem> fastTimelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
-        List<TimelineChannelPrograms> fastRows = buildTimelineRowsFromCachedPrograms(fastTimelineChannels);
-        boolean fastShown = false;
-        if (!fastRows.isEmpty()) {
-            int fastSelectedRowIndex = 0;
-            for (int i = 0; i < fastRows.size(); i++) {
-                ChannelItem channel = fastRows.get(i).channel;
-                if (channel != null && anchorChannel.id != null && anchorChannel.id.equals(channel.id)) {
-                    fastSelectedRowIndex = i;
-                    break;
-                }
-            }
-            ChannelItem selectedChannel = fastRows.get(fastSelectedRowIndex).channel;
-            Log.w(TAG, "timeline guide explicit ready cached channel=" + anchorChannel.id
-                    + " rows=" + fastRows.size()
-                    + " selectedRow=" + fastSelectedRowIndex
-                    + " selectedPrograms=" + (fastRows.get(fastSelectedRowIndex).programs == null ? 0 : fastRows.get(fastSelectedRowIndex).programs.size()));
-            showTimelineGuideDialog(fastRows, selectedWindowStartMs, selectedChannel == null ? anchorChannel.id : selectedChannel.id, new ArrayList<>());
-            fastShown = true;
-        }
-        loadTimelineGuideRowsAsync(fastTimelineChannels, anchorChannel.id, selectedWindowStartMs, "timeline explicit", !fastShown);
+        loadTimelineGuideRowsAsync(selectTimelineChannelsAroundChannel(anchorChannel), anchorChannel.id, selectedWindowStartMs, "timeline explicit", true);
     }
 
     private void openTimelineGuideNextForAnchor() {
@@ -3005,28 +2985,7 @@ public class MainActivity extends FragmentActivity {
         Log.w(TAG, "timeline guide start selectedIndex=" + selectedIndex
                 + " channel=" + (channels.get(selectedIndex) == null ? "" : channels.get(selectedIndex).id)
                 + " name=" + (channels.get(selectedIndex) == null ? "" : displayName(channels.get(selectedIndex))));
-        List<ChannelItem> fastTimelineChannels = selectTimelineChannels(selectedIndex);
-        List<TimelineChannelPrograms> fastRows = buildTimelineRowsFromCachedPrograms(fastTimelineChannels);
-        boolean fastShown = false;
-        if (!fastRows.isEmpty()) {
-            String selectedChannelId = channels.get(selectedIndex).id;
-            int fastSelectedRowIndex = 0;
-            for (int i = 0; i < fastRows.size(); i++) {
-                ChannelItem channel = fastRows.get(i).channel;
-                if (channel != null && selectedChannelId != null && selectedChannelId.equals(channel.id)) {
-                    fastSelectedRowIndex = i;
-                    break;
-                }
-            }
-            ChannelItem selectedChannel = fastRows.get(fastSelectedRowIndex).channel;
-            Log.w(TAG, "timeline guide ready cached selectedChannel=" + selectedChannelId
-                    + " rows=" + fastRows.size()
-                    + " selectedRow=" + fastSelectedRowIndex
-                    + " selectedPrograms=" + (fastRows.get(fastSelectedRowIndex).programs == null ? 0 : fastRows.get(fastSelectedRowIndex).programs.size()));
-            showTimelineGuideDialog(fastRows, selectedWindowStartMs, selectedChannel == null ? selectedChannelId : selectedChannel.id, new ArrayList<>());
-            fastShown = true;
-        }
-        loadTimelineGuideRowsAsync(fastTimelineChannels, channels.get(selectedIndex).id, selectedWindowStartMs, "timeline", !fastShown);
+        loadTimelineGuideRowsAsync(selectTimelineChannels(selectedIndex), channels.get(selectedIndex).id, selectedWindowStartMs, "timeline", true);
     }
 
     private void loadTimelineGuideRowsAsync(List<ChannelItem> timelineChannels, String selectedChannelId, long selectedWindowStartMs, String source, boolean showWhenReady) {
@@ -3089,34 +3048,6 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         });
-    }
-
-    private List<TimelineChannelPrograms> buildTimelineRowsFromCachedPrograms(List<ChannelItem> timelineChannels) {
-        List<TimelineChannelPrograms> rows = new ArrayList<>();
-        if (timelineChannels == null || timelineChannels.isEmpty()) {
-            return rows;
-        }
-        long now = System.currentTimeMillis();
-        for (ChannelItem channel : timelineChannels) {
-            if (channel == null || channel.isVod) {
-                continue;
-            }
-            List<EpgRepository.EpgProgram> programs = new ArrayList<>();
-            EpgRepository.EpgProgramPair pair = channel.id == null ? null : epgProgramPairByChannelId.get(channel.id);
-            if (pair != null) {
-                if (pair.current != null) {
-                    programs.add(pair.current);
-                }
-                if (pair.next != null) {
-                    programs.add(pair.next);
-                }
-            }
-            if (programs.isEmpty()) {
-                programs.addAll(buildInlineTimelinePrograms(channel, now));
-            }
-            rows.add(new TimelineChannelPrograms(channel, programs));
-        }
-        return rows;
     }
 
     private List<EpgRepository.EpgProgram> buildInlineTimelinePrograms(ChannelItem channel, long now) {

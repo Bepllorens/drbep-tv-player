@@ -447,6 +447,10 @@ final class EpgRepository {
     }
 
     Map<String, List<EpgProgram>> fetchChannelProgramsForChannels(List<ChannelItem> channelItems, int maxItems) throws Exception {
+        return fetchChannelProgramsForChannels(channelItems, maxItems, true);
+    }
+
+    Map<String, List<EpgProgram>> fetchChannelProgramsForChannels(List<ChannelItem> channelItems, int maxItems, boolean allowOfflineSnapshotScan) throws Exception {
         Map<String, List<EpgProgram>> out = new LinkedHashMap<>();
         if (channelItems == null || channelItems.isEmpty()) {
             return out;
@@ -461,7 +465,7 @@ final class EpgRepository {
             return out;
         }
         long now = System.currentTimeMillis();
-        Map<String, List<EpgProgram>> targetedPrograms = loadOfflineProgramsForRequestedChannels(channelItems);
+        Map<String, List<EpgProgram>> targetedPrograms = loadOfflineProgramsForRequestedChannels(channelItems, allowOfflineSnapshotScan);
         for (ChannelItem channel : channelItems) {
             if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
                 continue;

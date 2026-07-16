@@ -2905,7 +2905,9 @@ public class MainActivity extends FragmentActivity {
         final long selectedWindowStartMs = windowStartMs;
         showStatus(getString(R.string.status_loading_guide));
         Log.w(TAG, "timeline guide explicit start channel=" + anchorChannel.id + " name=" + displayName(anchorChannel));
-        loadTimelineGuideRowsAsync(selectTimelineChannelsAroundChannel(anchorChannel), anchorChannel.id, selectedWindowStartMs, "timeline explicit", true);
+        List<ChannelItem> timelineChannels = selectTimelineChannelsAroundChannel(anchorChannel);
+        showTimelineGuideDialog(buildFastTimelineRows(timelineChannels), selectedWindowStartMs, anchorChannel.id, new ArrayList<>());
+        loadTimelineGuideRowsAsync(timelineChannels, anchorChannel.id, selectedWindowStartMs, "timeline explicit", false);
     }
 
     private void openTimelineGuideNextForAnchor() {
@@ -2985,7 +2987,10 @@ public class MainActivity extends FragmentActivity {
         Log.w(TAG, "timeline guide start selectedIndex=" + selectedIndex
                 + " channel=" + (channels.get(selectedIndex) == null ? "" : channels.get(selectedIndex).id)
                 + " name=" + (channels.get(selectedIndex) == null ? "" : displayName(channels.get(selectedIndex))));
-        loadTimelineGuideRowsAsync(selectTimelineChannels(selectedIndex), channels.get(selectedIndex).id, selectedWindowStartMs, "timeline", true);
+        List<ChannelItem> timelineChannels = selectTimelineChannels(selectedIndex);
+        String selectedChannelId = channels.get(selectedIndex).id;
+        showTimelineGuideDialog(buildFastTimelineRows(timelineChannels), selectedWindowStartMs, selectedChannelId, new ArrayList<>());
+        loadTimelineGuideRowsAsync(timelineChannels, selectedChannelId, selectedWindowStartMs, "timeline", false);
     }
 
     private void loadTimelineGuideRowsAsync(List<ChannelItem> timelineChannels, String selectedChannelId, long selectedWindowStartMs, String source, boolean showWhenReady) {
@@ -3001,7 +3006,7 @@ public class MainActivity extends FragmentActivity {
                         + " channels=" + channelsSnapshot.size());
                 List<TimelineChannelPrograms> rows = new ArrayList<>();
                 int selectedTimelineIndex = 0;
-                java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannels(channelsSnapshot, 12);
+                java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannels(channelsSnapshot, 8, false);
                 for (int i = 0; i < channelsSnapshot.size(); i++) {
                     ChannelItem channel = channelsSnapshot.get(i);
                     if (channel != null && !anchorId.isEmpty() && anchorId.equals(channel.id)) {
@@ -3048,6 +3053,63 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         });
+    }
+
+    private List<TimelineChannelPrograms> buildFastTimelineRows(List<ChannelItem> timelineChannels) {
+        List<TimelineChannelPrograms> rows = new ArrayList<>();
+        if (timelineChannels == null || timelineChannels.isEmpty()) {
+            return rows;
+        }
+        long now = System.currentTimeMillis();
+        for (ChannelItem channel : timelineChannels) {
+            if (channel != null && !channel.isVod) {
+                List<EpgRepository.EpgProgram> programs = buildCachedTimelinePrograms(channel, now);
+                if (programs.isEmpty()) {
+                    programs = buildInlineTimelinePrograms(channel, now);
+                }
+                rows.add(new TimelineChannelPrograms(channel, programs));
+            }
+        }
+        return rows;
+    }
+
+    private List<EpgRepository.EpgProgram> buildCachedTimelinePrograms(ChannelItem channel, long now) {
+        List<EpgRepository.EpgProgram> programs = new ArrayList<>();
+        if (channel == null || channel.id == null) {
+            return programs;
+        }
+        EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channel.id);
+        if (pair == null) {
+            return programs;
+        }
+        addCachedTimelineProgram(programs, channel, pair.current, now, false);
+        addCachedTimelineProgram(programs, channel, pair.next, now, true);
+        return programs;
+    }
+
+    private void addCachedTimelineProgram(List<EpgRepository.EpgProgram> programs, ChannelItem channel, EpgRepository.EpgProgram program, long now, boolean next) {
+        if (program == null || program.title == null || program.title.trim().isEmpty()) {
+            return;
+        }
+        long startMs = parseIsoMillis(program.startTime);
+        long endMs = parseIsoMillis(program.endTime);
+        if (startMs <= 0L || endMs <= startMs) {
+            long roundedNow = Math.max(0L, (now / 60000L) * 60000L);
+            startMs = next ? roundedNow + 30L * 60L * 1000L : Math.max(0L, roundedNow - 30L * 60L * 1000L);
+            endMs = startMs + 60L * 60L * 1000L;
+        }
+        programs.add(new EpgRepository.EpgProgram(
+                channel.id,
+                channel.name,
+                channel.tvgId,
+                program.title,
+                program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon,
+                program.description,
+                java.time.Instant.ofEpochMilli(startMs).toString(),
+                java.time.Instant.ofEpochMilli(endMs).toString(),
+                program.category,
+                next ? -1 : Math.max(program.progress, 0)
+        ));
     }
 
     private List<EpgRepository.EpgProgram> buildInlineTimelinePrograms(ChannelItem channel, long now) {

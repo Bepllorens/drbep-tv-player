@@ -451,6 +451,14 @@ final class EpgRepository {
     }
 
     Map<String, List<EpgProgram>> fetchChannelProgramsForChannels(List<ChannelItem> channelItems, int maxItems, boolean allowOfflineSnapshotScan) throws Exception {
+        return fetchChannelProgramsForChannels(channelItems, maxItems, allowOfflineSnapshotScan, false);
+    }
+
+    Map<String, List<EpgProgram>> fetchChannelProgramsForChannelsDirect(List<ChannelItem> channelItems, int maxItems) throws Exception {
+        return fetchChannelProgramsForChannels(channelItems, maxItems, true, true);
+    }
+
+    private Map<String, List<EpgProgram>> fetchChannelProgramsForChannels(List<ChannelItem> channelItems, int maxItems, boolean allowOfflineSnapshotScan, boolean directSnapshotRead) throws Exception {
         Map<String, List<EpgProgram>> out = new LinkedHashMap<>();
         if (channelItems == null || channelItems.isEmpty()) {
             return out;
@@ -465,7 +473,9 @@ final class EpgRepository {
             return out;
         }
         long now = System.currentTimeMillis();
-        Map<String, List<EpgProgram>> targetedPrograms = loadOfflineProgramsForRequestedChannels(channelItems, allowOfflineSnapshotScan);
+        Map<String, List<EpgProgram>> targetedPrograms = directSnapshotRead
+                ? loadOfflineProgramsForRequestedChannelsDirect(channelItems)
+                : loadOfflineProgramsForRequestedChannels(channelItems, allowOfflineSnapshotScan);
         for (ChannelItem channel : channelItems) {
             if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
                 continue;
@@ -491,6 +501,43 @@ final class EpgRepository {
             out.put(channelId, programs);
         }
         return out;
+    }
+
+    private Map<String, List<EpgProgram>> loadOfflineProgramsForRequestedChannelsDirect(List<ChannelItem> channelItems) {
+        Map<String, List<EpgProgram>> empty = new LinkedHashMap<>();
+        if (snapshotStore == null || channelItems == null || channelItems.isEmpty()) {
+            return empty;
+        }
+        Set<String> channelIds = new LinkedHashSet<>();
+        for (ChannelItem channel : channelItems) {
+            if (channel == null || channel.isVod || channel.id == null) {
+                continue;
+            }
+            String clean = channel.id.trim();
+            if (!clean.isEmpty()) {
+                channelIds.add(clean);
+            }
+        }
+        if (channelIds.isEmpty()) {
+            return empty;
+        }
+        long startMs = System.currentTimeMillis();
+        try {
+            Map<String, List<EpgProgram>> programs = snapshotStore.loadEpgProgramsForChannelIdsDirect(channelIds);
+            int programCount = 0;
+            for (List<EpgProgram> rows : programs.values()) {
+                programCount += rows == null ? 0 : rows.size();
+            }
+            Log.w(TAG, "offline EPG targeted loaded mode=direct requested="
+                    + channelIds.size()
+                    + " matched=" + programs.size()
+                    + " programs=" + programCount
+                    + " totalMs=" + (System.currentTimeMillis() - startMs));
+            return programs;
+        } catch (Exception e) {
+            Log.w(TAG, "offline EPG direct targeted load failed requested=" + channelIds.size(), e);
+            return new LinkedHashMap<>();
+        }
     }
 
     List<EpgProgram> fetchPastChannelPrograms(ChannelItem channel, int maxItems, int daysBack) throws Exception {

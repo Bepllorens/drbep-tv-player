@@ -3002,35 +3002,7 @@ public class MainActivity extends FragmentActivity {
                 + " activeDialog=" + (activeTimelineDialog != null && activeTimelineDialog.isShowing()));
         interactiveExecutor.execute(() -> {
             try {
-                Log.w(TAG, source + " enriched start selectedChannel=" + anchorId
-                        + " channels=" + channelsSnapshot.size());
-                java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannels(channelsSnapshot, 8, false);
-                List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
-                final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
                 List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely(source);
-                uiHandler.post(() -> {
-                    Log.w(TAG, source + " enriched ready selectedChannel=" + anchorId
-                            + " rows=" + rows.size()
-                            + " selectedRow=" + selectedRowIndex
-                            + " selectedPrograms=" + (rows.isEmpty() || rows.get(selectedRowIndex).programs == null ? 0 : rows.get(selectedRowIndex).programs.size()));
-                    if (rows.isEmpty()) {
-                        showStatus(getString(R.string.status_no_epg_for_channel));
-                        return;
-                    }
-                    ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
-                    boolean canRefreshActiveDialog = activeTimelineDialog != null
-                            && activeTimelineDialog.isShowing()
-                            && activeTimelineWindowStartMs == selectedWindowStartMs;
-                    if (!showWhenReady && !canRefreshActiveDialog) {
-                        return;
-                    }
-                    if (canRefreshActiveDialog) {
-                        refreshingTimelineDialog = true;
-                        activeTimelineDialog.dismiss();
-                        refreshingTimelineDialog = false;
-                    }
-                    showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorId : selectedChannel.id, scheduledItems);
-                });
                 loadTimelineGuideRowsFromSnapshot(channelsSnapshot, anchorId, selectedWindowStartMs, source, showWhenReady, scheduledItems);
             } catch (Exception e) {
                 Log.w(TAG, source + " enriched failed", e);
@@ -3053,7 +3025,7 @@ public class MainActivity extends FragmentActivity {
             Thread.sleep(650L);
             Log.w(TAG, source + " full guide scan start selectedChannel=" + anchorId
                     + " channels=" + channelsSnapshot.size());
-            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannels(channelsSnapshot, 18, true);
+            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannelsDirect(channelsSnapshot, 18);
             List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
             final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
             uiHandler.post(() -> {

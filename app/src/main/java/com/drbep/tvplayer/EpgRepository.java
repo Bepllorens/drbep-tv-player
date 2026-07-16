@@ -458,6 +458,40 @@ final class EpgRepository {
         return fetchChannelProgramsForChannels(channelItems, maxItems, true, true);
     }
 
+    Map<String, List<EpgProgram>> fetchRemoteChannelProgramsForChannels(List<ChannelItem> channelItems, int maxItems, boolean offlinePublicOnly) throws Exception {
+        Map<String, List<EpgProgram>> out = new LinkedHashMap<>();
+        if (channelItems == null || channelItems.isEmpty()) {
+            return out;
+        }
+        long startMs = System.currentTimeMillis();
+        for (ChannelItem channel : channelItems) {
+            if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
+                continue;
+            }
+            String channelId = channel.id.trim();
+            List<EpgProgram> programs = fetchRemoteChannelPrograms(
+                    channelId,
+                    maxItems,
+                    PREFERRED_REMOTE_EPG_CONNECT_TIMEOUT_MS,
+                    REMOTE_EPG_READ_TIMEOUT_MS,
+                    offlinePublicOnly
+            );
+            if (programs.isEmpty()) {
+                programs = fetchRemoteProgramsForChannel(channel, maxItems);
+            }
+            if (programs.isEmpty()) {
+                programs = buildInlineProgramsForChannel(channel, maxItems, System.currentTimeMillis());
+            }
+            out.put(channelId, programs);
+        }
+        Log.w(TAG, "EPG remote channel programs loaded channels="
+                + channelItems.size()
+                + " matched=" + out.size()
+                + " offlinePublicOnly=" + offlinePublicOnly
+                + " totalMs=" + (System.currentTimeMillis() - startMs));
+        return out;
+    }
+
     private Map<String, List<EpgProgram>> fetchChannelProgramsForChannels(List<ChannelItem> channelItems, int maxItems, boolean allowOfflineSnapshotScan, boolean directSnapshotRead) throws Exception {
         Map<String, List<EpgProgram>> out = new LinkedHashMap<>();
         if (channelItems == null || channelItems.isEmpty()) {
@@ -932,6 +966,7 @@ final class EpgRepository {
             }
         }
         RemoteProgramIndex index = buildRemoteProgramIndex(fetchRemoteNowProgramsDetailed(connectTimeoutMs, readTimeoutMs, offlinePublicOnly));
+        List<ChannelItem> missingChannels = new ArrayList<>();
         for (ChannelItem channel : channelItems) {
             if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
                 continue;
@@ -939,8 +974,31 @@ final class EpgRepository {
             EpgProgram current = matchRemoteProgram(index, channel);
             if (current != null) {
                 out.put(channel.id.trim(), new EpgProgramPair(current, null));
+            } else {
+                missingChannels.add(channel);
             }
         }
+        if (!offlinePublicOnly || missingChannels.isEmpty()) {
+            return out;
+        }
+        int beforeFallback = out.size();
+        long fallbackStartMs = System.currentTimeMillis();
+        for (ChannelItem channel : missingChannels) {
+            EpgProgramPair pair = fetchRemoteProgramPairForChannel(
+                    channel,
+                    PREFERRED_REMOTE_EPG_CONNECT_TIMEOUT_MS,
+                    readTimeoutMs,
+                    true
+            );
+            if (pair != null && (pair.current != null || pair.next != null)) {
+                out.put(channel.id.trim(), pair);
+            }
+        }
+        Log.w(TAG, "EPG remote channel fallback loaded channels="
+                + missingChannels.size()
+                + " matched=" + (out.size() - beforeFallback)
+                + " totalMatched=" + out.size()
+                + " totalMs=" + (System.currentTimeMillis() - fallbackStartMs));
         return out;
     }
 

@@ -3086,7 +3086,9 @@ public class MainActivity extends FragmentActivity {
             Thread.sleep(650L);
             Log.w(TAG, source + " full guide scan start selectedChannel=" + anchorId
                     + " channels=" + channelsSnapshot.size());
-            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannelsDirect(channelsSnapshot, 18);
+            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = BuildConfig.STANDALONE_MODE
+                    ? epgRepository.fetchRemoteChannelProgramsForChannels(channelsSnapshot, 18, true)
+                    : epgRepository.fetchChannelProgramsForChannelsDirect(channelsSnapshot, 18);
             List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
             final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
             uiHandler.post(() -> {

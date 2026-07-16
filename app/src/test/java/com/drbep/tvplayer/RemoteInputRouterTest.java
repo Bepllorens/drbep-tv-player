@@ -113,6 +113,7 @@ public class RemoteInputRouterTest {
 
         assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0, 0));
         assertEquals("controls:timeshift", host.lastAction);
+        assertEquals(0, host.tuneCalls);
     }
 
     @Test
@@ -139,6 +140,7 @@ public class RemoteInputRouterTest {
         assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0, 0));
 
         assertEquals("controls:actions", host.lastAction);
+        assertEquals(0, host.tuneCalls);
     }
 
     @Test
@@ -170,6 +172,7 @@ public class RemoteInputRouterTest {
         boolean currentChannel = true;
         int resumeLiveCalls;
         int seekForwardCalls;
+        int tuneCalls;
         String lastAction = "";
 
         @Override
@@ -387,6 +390,7 @@ public class RemoteInputRouterTest {
 
         @Override
         public void tuneRelative(int delta) {
+            tuneCalls++;
             lastAction = "tune:" + delta;
         }
 

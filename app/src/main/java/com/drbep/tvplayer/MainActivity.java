@@ -3004,23 +3004,9 @@ public class MainActivity extends FragmentActivity {
             try {
                 Log.w(TAG, source + " enriched start selectedChannel=" + anchorId
                         + " channels=" + channelsSnapshot.size());
-                List<TimelineChannelPrograms> rows = new ArrayList<>();
-                int selectedTimelineIndex = 0;
                 java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannels(channelsSnapshot, 8, false);
-                for (int i = 0; i < channelsSnapshot.size(); i++) {
-                    ChannelItem channel = channelsSnapshot.get(i);
-                    if (channel != null && !anchorId.isEmpty() && anchorId.equals(channel.id)) {
-                        selectedTimelineIndex = i;
-                    }
-                    List<EpgRepository.EpgProgram> programs = channel == null || channel.id == null
-                            ? new ArrayList<>()
-                            : programsByChannel.get(channel.id.trim());
-                    if (programs == null) {
-                        programs = new ArrayList<>();
-                    }
-                    rows.add(new TimelineChannelPrograms(channel, programs));
-                }
-                final int selectedRowIndex = selectedTimelineIndex;
+                List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
+                final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
                 List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely(source);
                 uiHandler.post(() -> {
                     Log.w(TAG, source + " enriched ready selectedChannel=" + anchorId
@@ -3034,8 +3020,7 @@ public class MainActivity extends FragmentActivity {
                     ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
                     boolean canRefreshActiveDialog = activeTimelineDialog != null
                             && activeTimelineDialog.isShowing()
-                            && activeTimelineWindowStartMs == selectedWindowStartMs
-                            && (activeTimelineAnchorChannelId == null || anchorId.isEmpty() || anchorId.equals(activeTimelineAnchorChannelId));
+                            && activeTimelineWindowStartMs == selectedWindowStartMs;
                     if (!showWhenReady && !canRefreshActiveDialog) {
                         return;
                     }
@@ -3046,6 +3031,7 @@ public class MainActivity extends FragmentActivity {
                     }
                     showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorId : selectedChannel.id, scheduledItems);
                 });
+                loadTimelineGuideRowsFromSnapshot(channelsSnapshot, anchorId, selectedWindowStartMs, source, showWhenReady, scheduledItems);
             } catch (Exception e) {
                 Log.w(TAG, source + " enriched failed", e);
                 if (showWhenReady) {
@@ -3053,6 +3039,82 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         });
+    }
+
+    private void loadTimelineGuideRowsFromSnapshot(
+            List<ChannelItem> channelsSnapshot,
+            String anchorId,
+            long selectedWindowStartMs,
+            String source,
+            boolean showWhenReady,
+            List<RecordingsRepository.RecordingItem> scheduledItems
+    ) {
+        try {
+            Thread.sleep(650L);
+            Log.w(TAG, source + " full guide scan start selectedChannel=" + anchorId
+                    + " channels=" + channelsSnapshot.size());
+            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel = epgRepository.fetchChannelProgramsForChannels(channelsSnapshot, 18, true);
+            List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
+            final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
+            uiHandler.post(() -> {
+                Log.w(TAG, source + " full guide scan ready selectedChannel=" + anchorId
+                        + " rows=" + rows.size()
+                        + " selectedRow=" + selectedRowIndex
+                        + " selectedPrograms=" + (rows.isEmpty() || rows.get(selectedRowIndex).programs == null ? 0 : rows.get(selectedRowIndex).programs.size()));
+                if (rows.isEmpty()) {
+                    return;
+                }
+                boolean canRefreshActiveDialog = activeTimelineDialog != null
+                        && activeTimelineDialog.isShowing()
+                        && activeTimelineWindowStartMs == selectedWindowStartMs;
+                if (!showWhenReady && !canRefreshActiveDialog) {
+                    return;
+                }
+                ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
+                if (canRefreshActiveDialog) {
+                    refreshingTimelineDialog = true;
+                    activeTimelineDialog.dismiss();
+                    refreshingTimelineDialog = false;
+                }
+                showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorId : selectedChannel.id, scheduledItems);
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            Log.w(TAG, source + " full guide scan failed", e);
+        }
+    }
+
+    private List<TimelineChannelPrograms> buildTimelineRowsFromPrograms(
+            List<ChannelItem> channelsSnapshot,
+            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel,
+            String anchorId
+    ) {
+        List<TimelineChannelPrograms> rows = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (ChannelItem channel : channelsSnapshot) {
+            List<EpgRepository.EpgProgram> programs = channel == null || channel.id == null
+                    ? new ArrayList<>()
+                    : programsByChannel.get(channel.id.trim());
+            if (programs == null || programs.isEmpty()) {
+                programs = channel == null ? new ArrayList<>() : buildInlineTimelinePrograms(channel, now);
+            }
+            rows.add(new TimelineChannelPrograms(channel, programs));
+        }
+        return rows;
+    }
+
+    private int findTimelineRowIndex(List<TimelineChannelPrograms> rows, String anchorId) {
+        if (rows == null || rows.isEmpty() || anchorId == null || anchorId.isEmpty()) {
+            return 0;
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            TimelineChannelPrograms row = rows.get(i);
+            if (row != null && row.channel != null && anchorId.equals(row.channel.id)) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     private List<TimelineChannelPrograms> buildFastTimelineRows(List<ChannelItem> timelineChannels) {

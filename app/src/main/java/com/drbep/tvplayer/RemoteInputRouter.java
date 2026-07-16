@@ -376,6 +376,13 @@ final class RemoteInputRouter {
             host.moveRecordingsSelection(-1);
             return true;
         }
+        if (host.isTouchControlsVisible()) {
+            host.focusTouchControlsTimeshift();
+            return true;
+        }
+        if (host.isTvTimeshiftHudActive()) {
+            return true;
+        }
         if (host.isOverlayVisible()) {
             host.moveOverlaySelection(-1);
         } else {
@@ -391,6 +398,13 @@ final class RemoteInputRouter {
         }
         if (host.isRecordingsPanelVisible()) {
             host.moveRecordingsSelection(1);
+            return true;
+        }
+        if (host.isTouchControlsVisible()) {
+            host.focusTouchControlsActions();
+            return true;
+        }
+        if (host.isTvTimeshiftHudActive()) {
             return true;
         }
         if (host.isOverlayVisible()) {

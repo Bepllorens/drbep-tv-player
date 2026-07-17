@@ -8,6 +8,14 @@ WAIT_BOOT_SECONDS="${WAIT_BOOT_SECONDS:-12}"
 WAIT_AFTER_KEY_SECONDS="${WAIT_AFTER_KEY_SECONDS:-1}"
 LOG_LINES="${LOG_LINES:-2500}"
 LOG_OUTPUT="${LOG_OUTPUT:-}"
+TMP_LOG=""
+
+cleanup() {
+  if [ -n "$TMP_LOG" ] && [ -f "$TMP_LOG" ]; then
+    rm -f "$TMP_LOG"
+  fi
+}
+trap cleanup EXIT
 
 usage() {
   cat <<EOF

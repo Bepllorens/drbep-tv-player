@@ -148,10 +148,12 @@ final class VodVisualUiFactory {
             ));
         }
         if (!mapped.isEmpty()) {
-            String sectionTitle = items.size() > mapped.size()
+            boolean limited = items.size() > mapped.size();
+            String sectionTitle = limited
                     ? host.text(R.string.vod_visual_section_title_limited, title, mapped.size(), items.size())
                     : host.text(R.string.vod_visual_section_title, title, mapped.size());
-            sections.add(new VodVisualSectionUiModel(sectionTitle, mapped));
+            String sectionSubtitle = limited ? host.text(R.string.vod_visual_section_limited_hint) : "";
+            sections.add(new VodVisualSectionUiModel(sectionTitle, sectionSubtitle, mapped));
         }
     }
 }

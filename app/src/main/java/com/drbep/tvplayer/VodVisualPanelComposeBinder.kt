@@ -164,6 +164,15 @@ private fun VodVisualSection(section: VodVisualSectionUiModel, imageBinder: VodV
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        if (section.subtitle.isNotBlank()) {
+            Spacer(modifier = Modifier.height(3.dp))
+            BasicText(
+                text = section.subtitle,
+                style = TextStyle(color = Color(0xFF91A9C1), fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         Spacer(modifier = Modifier.height(if (compact) 8.dp else 10.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)) {
             items(section.items ?: emptyList()) { item ->

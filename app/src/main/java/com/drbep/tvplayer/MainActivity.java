@@ -10849,6 +10849,7 @@ public class MainActivity extends FragmentActivity {
                     .put("vod_loading_kind", vodLoadingKind == null ? "" : vodLoadingKind)
                     .put("vod_loading_title", vodLoadingTitle == null ? "" : vodLoadingTitle)
                     .put("vod_loading_step", vodLoadingStep == null ? "" : vodLoadingStep)
+                    .put("vod_loading_detail", vodLoadingDetail == null ? "" : vodLoadingDetail)
                     .put("vod_loading_elapsed_ms", currentVodLoadingElapsedMs())
                     .put("last_app_update_check_ms", lastAppUpdateCheckMs)
                     .put("last_app_update_error", lastAppUpdateError == null ? "" : lastAppUpdateError)
@@ -10983,7 +10984,9 @@ public class MainActivity extends FragmentActivity {
                     .put("estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
                     .put("vod_loading_active", isVodLoadingActive())
                     .put("vod_loading_kind", vodLoadingKind == null ? "" : vodLoadingKind)
+                    .put("vod_loading_title", vodLoadingTitle == null ? "" : vodLoadingTitle)
                     .put("vod_loading_step", vodLoadingStep == null ? "" : vodLoadingStep)
+                    .put("vod_loading_detail", vodLoadingDetail == null ? "" : vodLoadingDetail)
                     .put("vod_loading_elapsed_ms", currentVodLoadingElapsedMs())
                     .put("playback_profile", channel.playbackProfile == null ? "" : channel.playbackProfile)
                     .put("startup_ms", "ready".equalsIgnoreCase(normalizedState) ? startupMs : 0L);

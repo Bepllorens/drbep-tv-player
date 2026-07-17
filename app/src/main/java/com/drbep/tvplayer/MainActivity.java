@@ -2456,7 +2456,7 @@ public class MainActivity extends FragmentActivity {
 
     private void loadEpgNow(boolean fullCatalog) {
         if (BuildConfig.STANDALONE_MODE && !fullCatalog) {
-            loadEpgForChannels(currentEpgFilterKey(), "visible", buildPriorityVisibleEpgSnapshot(), false, true);
+            loadEpgForChannels(currentEpgFilterKey(), currentEpgFilterLabel(), buildPriorityVisibleEpgSnapshot(), false, true);
             return;
         }
         if (epgLoadInFlight) {
@@ -2538,34 +2538,50 @@ public class MainActivity extends FragmentActivity {
             Log.w(TAG, "EPG visible trigger channels=" + snapshot.size()
                     + " totalVisible=" + channels.size()
                     + " filter=" + currentEpgFilterKey());
-            loadEpgForChannels(currentEpgFilterKey(), "visible", snapshot, false, true);
+            loadEpgForChannels(currentEpgFilterKey(), currentEpgFilterLabel(), snapshot, false, true);
         }, safeDelay);
     }
 
     private List<ChannelItem> buildPriorityVisibleEpgSnapshot() {
+        List<ChannelItem> source = resolvePriorityEpgSourceChannels();
         List<ChannelItem> out = new ArrayList<>();
-        if (channels.isEmpty()) {
+        if (source.isEmpty()) {
             return out;
         }
         if (!useCompactTouchEpgMode()) {
-            return new ArrayList<>(channels);
+            return new ArrayList<>(source);
         }
         int limit = Math.max(1, OFFLINE_EPG_COMPACT_BATCH_LIMIT);
-        if (channels.size() <= limit) {
-            return new ArrayList<>(channels);
+        if (source.size() <= limit) {
+            return new ArrayList<>(source);
         }
-        int center = resolveCurrentVisibleChannelIndex();
+        int center = resolveCurrentVisibleChannelIndex(source);
         int before = limit / 3;
         int start = Math.max(0, center - before);
-        int end = Math.min(channels.size(), start + limit);
+        int end = Math.min(source.size(), start + limit);
         start = Math.max(0, end - limit);
         for (int i = start; i < end; i++) {
-            ChannelItem channel = channels.get(i);
+            ChannelItem channel = source.get(i);
             if (channel != null && !channel.isVod) {
                 out.add(channel);
             }
         }
         return out;
+    }
+
+    private List<ChannelItem> resolvePriorityEpgSourceChannels() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current == null || current.id == null || current.id.trim().isEmpty()) {
+            return new ArrayList<>(channels);
+        }
+        for (ChannelItem item : channels) {
+            if (item != null && current.id.equals(item.id)) {
+                return new ArrayList<>(channels);
+            }
+        }
+        ChannelFilter currentFilter = resolveEpgFilterForChannel(current);
+        List<ChannelItem> filtered = channelsForEpgFilter(currentFilter);
+        return filtered.isEmpty() ? new ArrayList<>(channels) : filtered;
     }
 
     private List<ChannelItem> limitEpgSnapshot(List<ChannelItem> source, int limit) {
@@ -2603,16 +2619,21 @@ public class MainActivity extends FragmentActivity {
     }
 
     private int resolveCurrentVisibleChannelIndex() {
+        return resolveCurrentVisibleChannelIndex(channels);
+    }
+
+    private int resolveCurrentVisibleChannelIndex(List<ChannelItem> source) {
+        List<ChannelItem> safeSource = source == null ? channels : source;
         ChannelItem current = getCurrentPlaybackChannelItem();
         if (current != null && current.id != null) {
-            for (int i = 0; i < channels.size(); i++) {
-                ChannelItem item = channels.get(i);
+            for (int i = 0; i < safeSource.size(); i++) {
+                ChannelItem item = safeSource.get(i);
                 if (item != null && current.id.equals(item.id)) {
                     return i;
                 }
             }
         }
-        if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
+        if (safeSource == channels && overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
             return overlayNavigationState.currentIndex;
         }
         return 0;
@@ -2941,8 +2962,57 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String currentEpgFilterKey() {
-        ChannelFilter filter = selectedOverlayFilter();
+        ChannelFilter filter = resolveCurrentPlaybackEpgFilter();
         return filter == null ? "visible" : epgFilterKey(filter);
+    }
+
+    private String currentEpgFilterLabel() {
+        ChannelFilter filter = resolveCurrentPlaybackEpgFilter();
+        return filter == null || filter.label == null || filter.label.trim().isEmpty()
+                ? "visible"
+                : stripOverlayFilterPrefix(filter.label);
+    }
+
+    private ChannelFilter resolveCurrentPlaybackEpgFilter() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        ChannelFilter selected = selectedOverlayFilter();
+        if (current == null) {
+            return selected;
+        }
+        if (filterContainsChannel(selected, current)) {
+            return selected;
+        }
+        ChannelFilter currentFilter = resolveEpgFilterForChannel(current);
+        return currentFilter == null ? selected : currentFilter;
+    }
+
+    private ChannelFilter resolveEpgFilterForChannel(ChannelItem channel) {
+        if (channel == null) {
+            return null;
+        }
+        for (ChannelFilter filter : filters) {
+            if (filterContainsChannel(filter, channel)) {
+                return filter;
+            }
+        }
+        return null;
+    }
+
+    private boolean filterContainsChannel(ChannelFilter filter, ChannelItem channel) {
+        if (filter == null || channel == null) {
+            return false;
+        }
+        if (filter.type == FILTER_PLATFORM) {
+            return channel.platformId == filter.platformId;
+        }
+        if (filter.type == FILTER_CUSTOM_GROUP && channel.customGroups != null) {
+            for (String groupName : channel.customGroups) {
+                if (groupName != null && groupName.equalsIgnoreCase(filter.groupName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String epgFilterKey(ChannelFilter filter) {
@@ -6604,7 +6674,8 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hasCurrentChannel() {
-                return overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size();
+                return getCurrentPlaybackChannelItem() != null
+                        || (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size());
             }
 
             @Override
@@ -6649,7 +6720,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openTimelineGuideForCurrentChannel() {
-                MainActivity.this.openTimelineGuide(overlayNavigationState.currentIndex, System.currentTimeMillis());
+                MainActivity.this.openTimelineGuideForCurrentPlayback();
             }
 
             @Override

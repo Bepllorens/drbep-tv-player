@@ -1,11 +1,11 @@
 # Offline App Compose Migration State
 
-Fecha: 2026-07-03
+Fecha: 2026-07-17
 
 ## Version actual
 
-- Canal beta publicado: `2.0.185-beta-orange-startup-fix`
-- `versionCode`: `185`
+- Canal beta publicado: `2.0.319-beta-fast-startup-timeline`
+- `versionCode`: `319`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo de prueba principal: Fire Stick `192.168.93.16:5555`
 
@@ -18,6 +18,10 @@ Fecha: 2026-07-03
 - El panel de grabaciones navega con mando entre `Completadas`, `Programadas` y `Refrescar`.
 - `Programadas` ya filtra registros cerrados o vencidos y `Refrescar` fuerza lectura no-cache del backend.
 - Movistar ISM y Orange ya no muestran el aviso superior `VOD listo` al zapear canales live directos.
+- El arranque en `.16` reutiliza cache parseada del catalogo: ultimo arranque medido `startup catalog loaded ... durationMs=1045`.
+- La EPG progresiva carga plataformas completas en segundo plano con bloques locales rapidos, sin fallback remoto canal a canal.
+- La guia Timeline abre desde snapshot local dirigido y ya no deberia parpadear abriendo primero una vista rapida de dos programas.
+- Movistar ISM, Tivify, PlutoTV, Runtime y otras plataformas completan lotes EPG en diferido con tiempos de cientos de ms por bloque.
 
 ## Migracion Compose completada o avanzada
 
@@ -37,6 +41,11 @@ Fecha: 2026-07-03
 
 ## Ultimos arreglos importantes
 
+- `CatalogSnapshotStore` deja de invalidar la cache parseada por tener mas de 5000 items, porque el catalogo total incluye VOD y no implica corrupcion.
+- `EpgRepository` separa la lectura dirigida de EPG del limite global de tamano del snapshot, permitiendo timeline/progresiva desde snapshot local grande.
+- `MainActivity` abre la guia Timeline enriquecida una sola vez cuando los datos reales estan listos, evitando cerrar/reabrir el panel.
+- La carga progresiva de EPG usa snapshot local dirigido y reduce el intervalo entre bloques para hidratar el catalogo en pocos minutos sin bloquear zapping.
+- El backend EPG resuelve referencias directas por `tvg_id`/nombre cuando el canal numerico del catalogo offline no coincide.
 - `RemoteInputRouter` gestiona foco superior de grabaciones con izquierda/derecha y evita que izquierda cierre el panel.
 - `RecordingsRepository` anade cache-buster y cabeceras no-cache para grabaciones.
 - `RecordingsRepository` filtra programadas vivas por estado y descarta programaciones con `end_time` vencido.
@@ -52,7 +61,9 @@ Fecha: 2026-07-03
 ## Pendiente sugerido al retomar
 
 - Revisar restos de XML/layouts legacy que aun esten vivos y decidir si migrarlos o dejarlos como contenedores nativos.
-- Probar `2.0.185-beta-orange-startup-fix` desde el actualizador de la app, no solo por ADB.
+- Probar `2.0.319-beta-fast-startup-timeline` desde el actualizador de la app, no solo por ADB.
+- Confirmar visualmente en Fire Stick que el boton `Guia` ya no parpadea ni reabre el Timeline.
+- Revisar si conviene separar VOD pesado del catalogo de arranque para bajar aun mas memoria/tiempo en primer parseo tras cambio de snapshot.
 - Probar en Fire Stick y tablet el panel de diagnostico playback, especialmente foco de botones y lectura de URLs largas.
 - Afinar UX de grabaciones si queremos filtros tipo dashboard (`Grabando`, `Fallidas`, `Completadas`, etc.) en vez de solo `Completadas/Programadas`.
 - Revisar warnings conocidos de Glide/imagenes para reducir ruido en logs, aunque no son crash.
@@ -60,7 +71,8 @@ Fecha: 2026-07-03
 ## Verificacion reciente
 
 - `./gradlew :app:testDebugUnitTest :app:assembleDebug` OK en la tanda Compose previa.
-- `scripts/publish_offline_update.sh --channel beta` OK para v184.
-- `./gradlew :app:assembleDebug` OK para v185.
-- Instalacion ADB en `.16` OK.
+- `./gradlew :app:compileReleaseJavaWithJavac` OK para v319.
+- `scripts/publish_offline_update.sh --channel beta` OK para v319.
+- Instalacion ADB en `.16` OK para v319.
+- Segundo arranque medido en `.16`: cache parseada hit, catalogo listo en `1045 ms`.
 - Arranque en `.16` sin `FATAL EXCEPTION`.

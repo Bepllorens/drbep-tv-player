@@ -11362,6 +11362,7 @@ public class MainActivity extends FragmentActivity {
                         .put("catalog_last_rejected_candidate_total", status.lastRejectedCandidateTotal);
             }
             appendPlaybackStatusSummary(extra);
+            appendDeviceHealthSummary(extra);
             if (prefs != null) {
                 String updateDiagnostic = prefs.getString(PREF_APP_UPDATE_DIAGNOSTIC, "");
                 if (updateDiagnostic != null && !updateDiagnostic.trim().isEmpty()) {
@@ -11408,6 +11409,55 @@ public class MainActivity extends FragmentActivity {
             }
         } catch (Exception e) {
             Log.d(TAG, "playback status summary failed", e);
+        }
+    }
+
+    private void appendDeviceHealthSummary(JSONObject extra) {
+        if (extra == null) {
+            return;
+        }
+        try {
+            PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+            String playbackError = diagnostics == null || diagnostics.lastError == null ? "" : diagnostics.lastError.trim();
+            String catalogError = lastOfflineCatalogRefreshError == null ? "" : lastOfflineCatalogRefreshError.trim();
+            String maintenanceError = lastOfflineMaintenanceError == null ? "" : lastOfflineMaintenanceError.trim();
+            String updateError = lastAppUpdateError == null ? "" : lastAppUpdateError.trim();
+            String epgError = epgProgressLastError == null ? "" : epgProgressLastError.trim();
+            String level = "ok";
+            String summary = "Funcionando";
+            if (!playbackError.isEmpty()) {
+                level = "error";
+                summary = "Error de reproduccion: " + classifyOperationalError(playbackError);
+            } else if (!catalogError.isEmpty() && channels.isEmpty()) {
+                level = "error";
+                summary = "Catalogo sin canales: " + classifyOperationalError(catalogError);
+            } else if (isVodLoadingActive()) {
+                level = currentVodLoadingElapsedMs() > 30_000L ? "warning" : "loading";
+                summary = vodLoadingStep == null || vodLoadingStep.trim().isEmpty()
+                        ? "Preparando VOD/U7D"
+                        : vodLoadingStep.trim();
+            } else if ("loading".equalsIgnoreCase(epgProgressState) || "partial".equalsIgnoreCase(epgProgressState)) {
+                level = "loading";
+                summary = epgProgressLabel == null || epgProgressLabel.trim().isEmpty()
+                        ? "EPG cargando"
+                        : epgProgressLabel.trim();
+            } else if (!catalogError.isEmpty() || !maintenanceError.isEmpty() || !updateError.isEmpty() || !epgError.isEmpty()) {
+                level = "warning";
+                summary = !catalogError.isEmpty()
+                        ? "Catalogo: " + classifyOperationalError(catalogError)
+                        : !maintenanceError.isEmpty()
+                        ? "Mantenimiento: " + classifyOperationalError(maintenanceError)
+                        : !updateError.isEmpty()
+                        ? "Update: " + classifyOperationalError(updateError)
+                        : "EPG: " + classifyOperationalError(epgError);
+            } else if (channels.isEmpty()) {
+                level = "warning";
+                summary = "Sin canales visibles";
+            }
+            extra.put("device_health_level", level)
+                    .put("device_health_summary", summary);
+        } catch (Exception e) {
+            Log.d(TAG, "device health summary failed", e);
         }
     }
 

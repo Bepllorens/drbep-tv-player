@@ -194,6 +194,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - El estado de overlays ya separa visibilidad y foco: repintar timeshift no roba foco al HUD inferior salvo que el usuario suba explicitamente a la barra.
 - El HUD inferior desplaza automaticamente el carril horizontal hacia el boton enfocado cuando no caben todos los botones.
 - El selector tactil de plataforma/grupo se abre centrado cerca del filtro activo para evitar buscar manualmente en listas largas.
+- El estado periodico del dispositivo incluye resumen compacto de dashboard: filtro activo, EPG, VOD/U7D cargando, ruta, trafico, calidad y tiempos basicos de reproduccion.
 
 ## Criterios de exito
 

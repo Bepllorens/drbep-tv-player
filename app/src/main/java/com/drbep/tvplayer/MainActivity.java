@@ -11327,6 +11327,21 @@ public class MainActivity extends FragmentActivity {
                     .put("last_catalog_error", lastOfflineCatalogRefreshError == null ? "" : lastOfflineCatalogRefreshError)
                     .put("last_maintenance_ms", lastOfflineMaintenanceMs)
                     .put("last_maintenance_error", lastOfflineMaintenanceError == null ? "" : lastOfflineMaintenanceError)
+                    .put("selected_filter", overlayNavigationState.selectedFilterKey == null ? "" : overlayNavigationState.selectedFilterKey)
+                    .put("selected_filter_label", buildCurrentFilterLabel())
+                    .put("channels_visible", channels.size())
+                    .put("channels_total", allChannels.size())
+                    .put("epg_progress_state", epgProgressState)
+                    .put("epg_progress_label", epgProgressLabel)
+                    .put("epg_progress_loaded_channels", epgProgressLoadedChannels)
+                    .put("epg_progress_total_channels", epgProgressTotalChannels)
+                    .put("epg_progress_completed_filters", epgProgressCompletedFilters)
+                    .put("epg_progress_last_error", epgProgressLastError == null ? "" : epgProgressLastError)
+                    .put("vod_loading_active", isVodLoadingActive())
+                    .put("vod_loading_kind", vodLoadingKind == null ? "" : vodLoadingKind)
+                    .put("vod_loading_title", vodLoadingTitle == null ? "" : vodLoadingTitle)
+                    .put("vod_loading_step", vodLoadingStep == null ? "" : vodLoadingStep)
+                    .put("vod_loading_elapsed_ms", currentVodLoadingElapsedMs())
                     .put("update_health_state", prefs == null ? "" : prefs.getString(PREF_UPDATE_HEALTH_STATE, ""))
                     .put("pending_update_version_code", prefs == null ? 0 : prefs.getInt(PREF_PENDING_UPDATE_HEALTH_VERSION_CODE, 0))
                     .put("last_good_version_code", prefs == null ? 0 : prefs.getInt(PREF_LAST_GOOD_APP_VERSION_CODE, 0))
@@ -11336,12 +11351,17 @@ public class MainActivity extends FragmentActivity {
             if (catalogSnapshotStore != null) {
                 CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
                 extra.put("catalog_last_rejected_at_ms", status.lastRejectedAtMs)
+                        .put("last_startup_cache_hit_ms", status.lastStartupCacheHitMs)
+                        .put("catalog_cache_age_ms", status.updatedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - status.updatedAtMs))
+                        .put("catalog_expired", status.expired)
+                        .put("catalog_verification_state", status.verificationState)
                         .put("catalog_last_rejected_reason", status.lastRejectedReason)
                         .put("catalog_last_rejected_previous_channels", status.lastRejectedPreviousChannels)
                         .put("catalog_last_rejected_candidate_channels", status.lastRejectedCandidateChannels)
                         .put("catalog_last_rejected_previous_total", status.lastRejectedPreviousTotal)
                         .put("catalog_last_rejected_candidate_total", status.lastRejectedCandidateTotal);
             }
+            appendPlaybackStatusSummary(extra);
             if (prefs != null) {
                 String updateDiagnostic = prefs.getString(PREF_APP_UPDATE_DIAGNOSTIC, "");
                 if (updateDiagnostic != null && !updateDiagnostic.trim().isEmpty()) {
@@ -11352,6 +11372,43 @@ public class MainActivity extends FragmentActivity {
             Log.d(TAG, "offline status extra build failed", e);
         }
         return extra;
+    }
+
+    private void appendPlaybackStatusSummary(JSONObject extra) {
+        if (extra == null) {
+            return;
+        }
+        try {
+            ChannelItem current = getCurrentPlaybackChannelItem();
+            PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+            boolean serverTraffic = current != null && isServerTrafficHeartbeat(current, diagnostics);
+            double estimatedMbps = estimatePlaybackMbps(diagnostics);
+            extra.put("playback_active", current != null)
+                    .put("playback_channel_id", current == null || current.id == null ? "" : current.id)
+                    .put("playback_channel", current == null ? "" : displayName(current))
+                    .put("playback_platform", current == null || current.platformName == null ? "" : current.platformName)
+                    .put("playback_group", current == null || current.group == null ? "" : current.group)
+                    .put("playback_content_type", current == null ? "" : current.isVod ? "vod" : "live")
+                    .put("playback_route_class", current == null ? "" : classifyPlaybackRoute(current, diagnostics))
+                    .put("playback_traffic_scope", current == null ? "" : playbackTrafficScope(current, diagnostics, serverTraffic))
+                    .put("playback_server_traffic", serverTraffic)
+                    .put("playback_quality_label", formatPlaybackQualityCompact(diagnostics))
+                    .put("playback_estimated_mbps", estimatedMbps)
+                    .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps));
+            if (diagnostics != null) {
+                extra.put("playback_state", diagnostics.playbackState == null ? "" : diagnostics.playbackState)
+                        .put("playback_phase", diagnostics.playbackPhase == null ? "" : diagnostics.playbackPhase)
+                        .put("playback_route", diagnostics.routeLabel == null ? "" : diagnostics.routeLabel)
+                        .put("playback_mode", diagnostics.playbackMode == null ? "" : diagnostics.playbackMode)
+                        .put("playback_prepare_elapsed_ms", diagnostics.prepareElapsedMs)
+                        .put("playback_ready_elapsed_ms", diagnostics.readyElapsedMs)
+                        .put("playback_buffering_count", diagnostics.bufferingCount)
+                        .put("playback_buffering_total_ms", diagnostics.bufferingTotalMs)
+                        .put("playback_first_frame_rendered", diagnostics.firstFrameRendered);
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "playback status summary failed", e);
+        }
     }
 
     private String buildOfflineActivationDeviceLabel() {

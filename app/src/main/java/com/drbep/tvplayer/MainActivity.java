@@ -10820,6 +10820,7 @@ public class MainActivity extends FragmentActivity {
             PlayerController.PlaybackDiagnostics playbackDiagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
             boolean playbackServerTraffic = current != null && isServerTrafficHeartbeat(current, playbackDiagnostics);
             double playbackEstimatedMbps = estimatePlaybackMbps(playbackDiagnostics);
+            PlaybackHealthClassifier.Result playbackHealth = PlaybackHealthClassifier.classify(playbackDiagnostics, playbackHeartbeatStartedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - playbackHeartbeatStartedAtMs));
             payload.put("report_id", UUID.randomUUID().toString())
                     .put("created_at_ms", System.currentTimeMillis())
                     .put("package_name", getPackageName())
@@ -10870,7 +10871,10 @@ public class MainActivity extends FragmentActivity {
                         .put("playback_server_traffic", playbackServerTraffic)
                         .put("playback_quality_label", formatPlaybackQualityCompact(playbackDiagnostics))
                         .put("playback_estimated_mbps", playbackEstimatedMbps)
-                        .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(playbackEstimatedMbps));
+                        .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(playbackEstimatedMbps))
+                        .put("playback_health_level", playbackHealth.level)
+                        .put("playback_health_summary", playbackHealth.summary)
+                        .put("playback_rebuffer_ratio", playbackHealth.rebufferRatio);
             }
             if (playbackDiagnostics != null) {
                 payload.put("playback_state", playbackDiagnostics.playbackState)
@@ -10964,6 +10968,7 @@ public class MainActivity extends FragmentActivity {
         boolean actualDirectPlayback = isDirectPlaybackHeartbeat(channel, diagnostics);
         boolean serverTraffic = isServerTrafficHeartbeat(channel, diagnostics);
         double estimatedMbps = estimatePlaybackMbps(diagnostics);
+        PlaybackHealthClassifier.Result playbackHealth = PlaybackHealthClassifier.classify(diagnostics, startupMs);
         JSONObject payload = new JSONObject();
         try {
             payload.put("session_id", sessionId)
@@ -10984,6 +10989,9 @@ public class MainActivity extends FragmentActivity {
                     .put("quality_label", formatPlaybackQualityCompact(diagnostics))
                     .put("estimated_mbps", estimatedMbps)
                     .put("estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
+                    .put("playback_health_level", playbackHealth.level)
+                    .put("playback_health_summary", playbackHealth.summary)
+                    .put("playback_rebuffer_ratio", playbackHealth.rebufferRatio)
                     .put("vod_loading_active", isVodLoadingActive())
                     .put("vod_loading_kind", vodLoadingKind == null ? "" : vodLoadingKind)
                     .put("vod_loading_title", vodLoadingTitle == null ? "" : vodLoadingTitle)
@@ -11326,6 +11334,7 @@ public class MainActivity extends FragmentActivity {
             PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
             boolean serverTraffic = current != null && isServerTrafficHeartbeat(current, diagnostics);
             double estimatedMbps = estimatePlaybackMbps(diagnostics);
+            PlaybackHealthClassifier.Result playbackHealth = PlaybackHealthClassifier.classify(diagnostics, playbackHeartbeatStartedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - playbackHeartbeatStartedAtMs));
             extra.put("playback_active", current != null)
                     .put("playback_channel_id", current == null || current.id == null ? "" : current.id)
                     .put("playback_channel", current == null ? "" : displayName(current))
@@ -11337,7 +11346,10 @@ public class MainActivity extends FragmentActivity {
                     .put("playback_server_traffic", serverTraffic)
                     .put("playback_quality_label", formatPlaybackQualityCompact(diagnostics))
                     .put("playback_estimated_mbps", estimatedMbps)
-                    .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps));
+                    .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
+                    .put("playback_health_level", playbackHealth.level)
+                    .put("playback_health_summary", playbackHealth.summary)
+                    .put("playback_rebuffer_ratio", playbackHealth.rebufferRatio);
             if (diagnostics != null) {
                 extra.put("playback_state", diagnostics.playbackState == null ? "" : diagnostics.playbackState)
                         .put("playback_phase", diagnostics.playbackPhase == null ? "" : diagnostics.playbackPhase)

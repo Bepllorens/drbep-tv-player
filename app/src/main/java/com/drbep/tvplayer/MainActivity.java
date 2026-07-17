@@ -5601,6 +5601,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.touch_filter_picker_title),
                 getString(R.string.touch_filter_picker_subtitle),
                 getString(R.string.touch_filter_picker_selected, buildCurrentFilterLabel()),
+                checkedIndex,
                 rows,
                 close
         ));

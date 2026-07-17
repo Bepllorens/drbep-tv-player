@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -98,7 +99,11 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel) {
                 }
             }
             Spacer(modifier = Modifier.height(if (compact) 12.dp else 16.dp))
+            val selectedIndex = model.selectedIndex.coerceIn(0, model.rows.lastIndex.coerceAtLeast(0))
+            val initialIndex = if (model.selectedIndex >= 0) (selectedIndex - 2).coerceAtLeast(0) else 0
+            val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (compact) 330.dp else 450.dp),

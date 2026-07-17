@@ -88,18 +88,20 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: Touc
                 model.contextSubtitle,
                 focusedIndex
             )
+            val minimumChipWidth = if (compact) 104.dp else 112.dp
+            val maximumCenteredChipWidth = if (compact) 132.dp else 156.dp
             val minimumContentWidth =
-                (78.dp * actionCount) + (8.dp * (actionCount - 1).coerceAtLeast(0)) + 24.dp
+                (minimumChipWidth * actionCount) + (8.dp * (actionCount - 1).coerceAtLeast(0)) + 24.dp
             val shouldCenter = minimumContentWidth <= maxWidth
             val chipWidth = if (shouldCenter) {
                 ((maxWidth - 24.dp - (8.dp * (actionCount - 1).coerceAtLeast(0))) / actionCount)
-                    .coerceIn(78.dp, if (compact) 116.dp else 136.dp)
+                    .coerceIn(minimumChipWidth, maximumCenteredChipWidth)
             } else {
                 0.dp
             }
             LaunchedEffect(focusedIndex, actionCount, shouldCenter, compact) {
                 if (!shouldCenter && actionCount > 1) {
-                    val chipPx = with(density) { (if (compact) 86.dp else 92.dp).roundToPx() }
+                    val chipPx = with(density) { minimumChipWidth.roundToPx() }
                     val gapPx = with(density) { 8.dp.roundToPx() }
                     val leadingPx = with(density) { 8.dp.roundToPx() }
                     val target = leadingPx + ((chipPx + gapPx) * focusedIndex) - chipPx
@@ -117,7 +119,7 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: Touc
                 model.actions.forEachIndexed { index, item ->
                     TouchControlChip(
                         item = item,
-                        modifier = if (shouldCenter) Modifier.width(chipWidth) else Modifier.defaultMinSize(minWidth = if (compact) 86.dp else 92.dp),
+                        modifier = if (shouldCenter) Modifier.width(chipWidth) else Modifier.defaultMinSize(minWidth = minimumChipWidth),
                         focused = index == focusedIndex,
                         focusRequester = if (index == focusedIndex) firstButtonFocusRequester else null
                     )
@@ -388,6 +390,8 @@ private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier,
     val compact = LocalConfiguration.current.screenWidthDp < 600
     BasicText(
         text = item.label,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .alpha(if (item.enabled) 1f else 0.45f)
             .background(

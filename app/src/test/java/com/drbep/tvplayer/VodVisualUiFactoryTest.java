@@ -28,7 +28,7 @@ public class VodVisualUiFactoryTest {
         assertEquals(1, model.sections.size());
         VodVisualSectionUiModel section = model.sections.get(0);
         assertEquals("Movistar (48/60)", section.title);
-        assertEquals("Mostrando una muestra. Usa busqueda o filtros para afinar.", section.subtitle);
+        assertEquals("Mostrando 48 de 60 contenidos. Usa busqueda o filtros para afinar sin cargar toda la seccion.", section.subtitle);
         assertEquals(48, section.items.size());
     }
 
@@ -117,7 +117,6 @@ public class VodVisualUiFactoryTest {
             if (resId == R.string.vod_library_tivify) return "Tivify";
             if (resId == R.string.vod_library_with_progress) return "Con progreso";
             if (resId == R.string.vod_visual_results) return "Resultados";
-            if (resId == R.string.vod_visual_section_limited_hint) return "Mostrando una muestra. Usa busqueda o filtros para afinar.";
             if (resId == R.string.vod_visual_filter_edit_search) return "Editar busqueda";
             if (resId == R.string.vod_visual_filter_clear_search) return "Limpiar busqueda";
             if (resId == R.string.vod_visual_filter_search) return "Buscar";
@@ -135,6 +134,9 @@ public class VodVisualUiFactoryTest {
             }
             if (resId == R.string.vod_visual_section_title) {
                 return args[0] + " (" + args[1] + ")";
+            }
+            if (resId == R.string.vod_visual_section_limited_hint) {
+                return "Mostrando " + args[0] + " de " + args[1] + " contenidos. Usa busqueda o filtros para afinar sin cargar toda la seccion.";
             }
             if (resId == R.string.vod_visual_filter_type
                     || resId == R.string.vod_visual_filter_platform

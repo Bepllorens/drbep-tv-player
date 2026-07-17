@@ -203,6 +203,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - El estado periodico tambien envia `device_health_level` y `device_health_summary` para que el dashboard pueda pintar OK/loading/warning/error sin recalcularlo.
 - La reproduccion reporta `playback_health_level`, resumen y ratio de rebuffer en heartbeat, diagnostico remoto y estado periodico para detectar error, buffering, listo sin primer frame o buffer inestable.
 - Las secciones VOD limitadas muestran una pista clara para usar busqueda/filtros cuando solo se renderiza una muestra de resultados.
+- Las secciones VOD grandes indican exactamente cuantos contenidos se estan mostrando frente al total para evitar la sensacion de lista incompleta o congelada.
 - Se anade `scripts/offline_smoke_test.sh` para comprobar por ADB arranque, HUD, guia/info, menu, grabacion, zapping basico, ausencia de crashes recientes y resumen de actividad/arranque/EPG/playback.
 - El smoke ADB reporta version instalada, tiempo/PID de arranque y senales de salud con modo estricto opcional para bloquear betas con errores de reproduccion, catalogo, EPG o ausencia de primer frame.
 - Se extrae `TouchControlsFocusState` para aislar el estado de foco HUD/timeshift y cubrirlo con tests unitarios.

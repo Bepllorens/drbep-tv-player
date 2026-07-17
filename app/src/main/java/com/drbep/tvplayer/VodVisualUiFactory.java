@@ -152,7 +152,7 @@ final class VodVisualUiFactory {
             String sectionTitle = limited
                     ? host.text(R.string.vod_visual_section_title_limited, title, mapped.size(), items.size())
                     : host.text(R.string.vod_visual_section_title, title, mapped.size());
-            String sectionSubtitle = limited ? host.text(R.string.vod_visual_section_limited_hint) : "";
+            String sectionSubtitle = limited ? host.text(R.string.vod_visual_section_limited_hint, mapped.size(), items.size()) : "";
             sections.add(new VodVisualSectionUiModel(sectionTitle, sectionSubtitle, mapped));
         }
     }

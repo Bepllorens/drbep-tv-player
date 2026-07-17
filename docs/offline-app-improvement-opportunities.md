@@ -192,6 +192,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - VOD/U7D comparten estado de carga observable: tipo de contenido, paso activo, detalle y tiempo de espera se muestran en UI y se envian en diagnostico/heartbeat.
 - El heartbeat de reproduccion tambien reporta titulo y detalle de carga VOD/U7D para diagnosticar esperas largas desde dashboard sin logcat.
 - El estado de overlays ya separa visibilidad y foco: repintar timeshift no roba foco al HUD inferior salvo que el usuario suba explicitamente a la barra.
+- `OfflineOverlayState` tiene cobertura de regresion para superficies que no roban foco, cierre de superficie enfocada y reset completo.
 - El HUD inferior desplaza automaticamente el carril horizontal hacia el boton enfocado cuando no caben todos los botones.
 - La navegacion del HUD inferior hacia el siguiente boton habilitado esta extraida a estado testeable, cubriendo salto de botones deshabilitados, vuelta circular y foco timeshift.
 - El selector tactil de plataforma/grupo se abre centrado cerca del filtro activo para evitar buscar manualmente en listas largas.

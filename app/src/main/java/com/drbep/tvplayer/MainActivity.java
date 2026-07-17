@@ -10774,6 +10774,8 @@ public class MainActivity extends FragmentActivity {
             long usedMemory = runtime.totalMemory() - runtime.freeMemory();
             ChannelItem current = getCurrentPlaybackChannelItem();
             PlayerController.PlaybackDiagnostics playbackDiagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+            boolean playbackServerTraffic = current != null && isServerTrafficHeartbeat(current, playbackDiagnostics);
+            double playbackEstimatedMbps = estimatePlaybackMbps(playbackDiagnostics);
             payload.put("report_id", UUID.randomUUID().toString())
                     .put("created_at_ms", System.currentTimeMillis())
                     .put("package_name", getPackageName())
@@ -10811,7 +10813,13 @@ public class MainActivity extends FragmentActivity {
                 payload.put("current_channel_id", current.id == null ? "" : current.id)
                         .put("current_channel", displayName(current))
                         .put("current_platform", current.platformName == null ? "" : current.platformName)
-                        .put("current_group", current.group == null ? "" : current.group);
+                        .put("current_group", current.group == null ? "" : current.group)
+                        .put("playback_route_class", classifyPlaybackRoute(current, playbackDiagnostics))
+                        .put("playback_traffic_scope", playbackTrafficScope(current, playbackDiagnostics, playbackServerTraffic))
+                        .put("playback_server_traffic", playbackServerTraffic)
+                        .put("playback_quality_label", formatPlaybackQualityCompact(playbackDiagnostics))
+                        .put("playback_estimated_mbps", playbackEstimatedMbps)
+                        .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(playbackEstimatedMbps));
             }
             if (playbackDiagnostics != null) {
                 payload.put("playback_state", playbackDiagnostics.playbackState)
@@ -10903,6 +10911,8 @@ public class MainActivity extends FragmentActivity {
         long startupMs = playbackHeartbeatStartedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - playbackHeartbeatStartedAtMs);
         String normalizedState = state == null ? "heartbeat" : state.trim();
         boolean actualDirectPlayback = isDirectPlaybackHeartbeat(channel, diagnostics);
+        boolean serverTraffic = isServerTrafficHeartbeat(channel, diagnostics);
+        double estimatedMbps = estimatePlaybackMbps(diagnostics);
         JSONObject payload = new JSONObject();
         try {
             payload.put("session_id", sessionId)
@@ -10917,6 +10927,12 @@ public class MainActivity extends FragmentActivity {
                     .put("position_ms", Math.max(0L, positionMs))
                     .put("direct_playback", actualDirectPlayback)
                     .put("catalog_direct_playback", channel.directPlayback)
+                    .put("server_traffic", serverTraffic)
+                    .put("traffic_scope", playbackTrafficScope(channel, diagnostics, serverTraffic))
+                    .put("route_class", classifyPlaybackRoute(channel, diagnostics))
+                    .put("quality_label", formatPlaybackQualityCompact(diagnostics))
+                    .put("estimated_mbps", estimatedMbps)
+                    .put("estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
                     .put("playback_profile", channel.playbackProfile == null ? "" : channel.playbackProfile)
                     .put("startup_ms", "ready".equalsIgnoreCase(normalizedState) ? startupMs : 0L);
             if (diagnostics != null) {
@@ -10938,13 +10954,13 @@ public class MainActivity extends FragmentActivity {
                         .put("video_bitrate", diagnostics.videoBitrate)
                         .put("video_frame_rate", diagnostics.videoFrameRate)
                         .put("audio_codec", diagnostics.audioCodec == null ? "" : diagnostics.audioCodec)
-                        .put("server_traffic", isServerTrafficHeartbeat(channel, diagnostics));
+                        .put("server_traffic", serverTraffic);
                 if ("error".equalsIgnoreCase(normalizedState)) {
                     payload.put("error_message", diagnostics.lastError == null ? "" : diagnostics.lastError)
                             .put("error_category", diagnostics.playbackState == null ? "" : diagnostics.playbackState);
                 }
             } else {
-                payload.put("server_traffic", isServerTrafficHeartbeat(channel, null));
+                payload.put("server_traffic", serverTraffic);
             }
         } catch (Exception e) {
             Log.d(TAG, "playback heartbeat payload failed", e);
@@ -11006,6 +11022,86 @@ public class MainActivity extends FragmentActivity {
                 || target.contains("/api/vod/movistar/")
                 || target.contains("/api/u7d/movistar/")
                 || target.contains("/api/offline/u7d/");
+    }
+
+    private String classifyPlaybackRoute(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {
+        if (channel == null) {
+            return "unknown";
+        }
+        if (isRuntimeManifestOnlyHeartbeat(channel, diagnostics)) {
+            return "direct_video_manifest_proxy";
+        }
+        if (isDirectPlaybackHeartbeat(channel, diagnostics)) {
+            return hasBackendAssistTarget(diagnostics) ? "direct_video_backend_assist" : "direct_video";
+        }
+        if (isServerTrafficHeartbeat(channel, diagnostics)) {
+            return "server_video";
+        }
+        String route = diagnostics == null || diagnostics.routeLabel == null ? "" : diagnostics.routeLabel.trim().toLowerCase(Locale.ROOT);
+        String mode = diagnostics == null || diagnostics.playbackMode == null ? "" : diagnostics.playbackMode.trim().toLowerCase(Locale.ROOT);
+        String target = diagnostics == null || diagnostics.targetUrl == null ? "" : diagnostics.targetUrl.trim().toLowerCase(Locale.ROOT);
+        if (route.contains("drm") || mode.contains("drm") || target.contains("/drm/")) {
+            return "license_server";
+        }
+        if (route.contains("proxy") || mode.contains("proxy") || hasBackendAssistTarget(diagnostics)) {
+            return "backend_assist";
+        }
+        return "unknown";
+    }
+
+    private String playbackTrafficScope(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics, boolean serverTraffic) {
+        if (serverTraffic) {
+            return "video_server";
+        }
+        if (isDirectPlaybackHeartbeat(channel, diagnostics)) {
+            return hasBackendAssistTarget(diagnostics) ? "video_direct_backend_assist" : "video_direct";
+        }
+        if (hasBackendAssistTarget(diagnostics)) {
+            return "backend_assist";
+        }
+        return "unknown";
+    }
+
+    private boolean hasBackendAssistTarget(PlayerController.PlaybackDiagnostics diagnostics) {
+        String target = diagnostics == null || diagnostics.targetUrl == null ? "" : diagnostics.targetUrl.trim().toLowerCase(Locale.ROOT);
+        return isBackendHostedTrafficTarget(target)
+                || target.contains("/drm/")
+                || target.contains("/api/vod/")
+                || target.contains("/api/u7d/")
+                || target.contains("/api/offline/u7d/");
+    }
+
+    private double estimatePlaybackMbps(PlayerController.PlaybackDiagnostics diagnostics) {
+        if (diagnostics == null) {
+            return 0d;
+        }
+        if (diagnostics.videoBitrate > 0) {
+            return Math.round((diagnostics.videoBitrate / 1_000_000d) * 10d) / 10d;
+        }
+        int height = diagnostics.videoHeight;
+        if (height >= 2160) {
+            return 16d;
+        }
+        if (height >= 1080) {
+            return 6d;
+        }
+        if (height >= 720) {
+            return 3d;
+        }
+        if (height >= 576) {
+            return 2d;
+        }
+        if (height >= 360) {
+            return 1.2d;
+        }
+        return 0d;
+    }
+
+    private long estimatePlaybackMegabytesPerHour(double estimatedMbps) {
+        if (estimatedMbps <= 0d) {
+            return 0L;
+        }
+        return Math.round(estimatedMbps * 450d);
     }
 
     private boolean isDirectPlaybackHeartbeat(ChannelItem channel, PlayerController.PlaybackDiagnostics diagnostics) {

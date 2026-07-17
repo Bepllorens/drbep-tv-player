@@ -121,6 +121,7 @@ Mejoras propuestas:
 - Firmar secciones del snapshot y rechazar partes manipuladas.
 - Registrar auditoria de peticiones de licencia sin guardar secretos.
 - Revisar que logs de app/backend nunca impriman keys, tokens completos ni URLs firmadas reutilizables.
+- Redactar URLs efectivas en heartbeats y paneles de diagnostico: conservar host/ruta, eliminar query/fragmentos y tokens.
 
 Beneficio esperado: alguien con APK y catalogo no deberia poder extraer material suficiente para compartir streams protegidos.
 

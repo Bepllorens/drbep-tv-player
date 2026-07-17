@@ -10,6 +10,7 @@ final class PlaybackDiagnosticsUiFactory {
         String text(int resId, Object... args);
         String displayName(ChannelItem item);
         String safeText(String value);
+        String safeDiagnosticUrl(String value);
         String fallbackUnknown(String value);
         String routeTone(String routeLabel);
         String playbackQuality(PlayerController.PlaybackDiagnostics diagnostics);
@@ -72,8 +73,9 @@ final class PlaybackDiagnosticsUiFactory {
         rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Primer frame", diagnostics.firstFrameRendered ? "Si" : "No", diagnostics.firstFrameRendered ? "ok" : "warn"));
         appendLine(message, host.text(R.string.diagnostics_route, host.safeText(diagnostics.routeLabel)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "Ruta activa", host.safeText(diagnostics.routeLabel), host.routeTone(diagnostics.routeLabel)));
-        appendLine(message, host.text(R.string.diagnostics_target, host.safeText(diagnostics.targetUrl)));
-        rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "URL efectiva", host.safeText(diagnostics.targetUrl), ""));
+        String safeTargetUrl = host.safeDiagnosticUrl(diagnostics.targetUrl);
+        appendLine(message, host.text(R.string.diagnostics_target, safeTargetUrl));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "URL efectiva", safeTargetUrl, ""));
         appendLine(message, host.text(R.string.diagnostics_mime, host.fallbackUnknown(diagnostics.mimeType)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Ruta", "Mime", host.fallbackUnknown(diagnostics.mimeType), ""));
         if (diagnostics.hasVideoQuality()) {

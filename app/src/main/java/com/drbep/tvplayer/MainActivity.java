@@ -4749,7 +4749,7 @@ public class MainActivity extends FragmentActivity {
         appendDiagnosticLine(message, getString(R.string.diagnostics_channel, displayName(channel)));
         appendDiagnosticLine(message, getString(R.string.vod_diagnostics_source, fallbackUnknown(channel.platformName)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_playback_mode, formatPlaybackModeLabel(resolvePlaybackModeForRequest(channel))));
-        appendDiagnosticLine(message, getString(R.string.diagnostics_target, decision == null ? fallbackUnknown(channel.playUrl) : fallbackUnknown(decision.targetUrl)));
+        appendDiagnosticLine(message, getString(R.string.diagnostics_target, fallbackUnknown(sanitizeDiagnosticUrl(decision == null ? channel.playUrl : decision.targetUrl))));
         appendDiagnosticLine(message, getString(R.string.diagnostics_mime, decision == null ? fallbackUnknown(PlaybackRouteResolver.inferMimeType(channel.playUrl)) : fallbackUnknown(decision.mimeType)));
         appendDiagnosticLine(message, getString(R.string.diagnostics_drm, fallbackUnknown(channel.drmScheme)));
         appendDiagnosticLine(message, getString(R.string.vod_diagnostics_direct, getString(channel.directPlayback ? R.string.diagnostics_value_yes : R.string.diagnostics_value_no)));
@@ -10997,7 +10997,7 @@ public class MainActivity extends FragmentActivity {
                         .put("playback_buffering_total_ms", diagnostics.bufferingTotalMs)
                         .put("playback_first_frame_rendered", diagnostics.firstFrameRendered)
                         .put("route_label", diagnostics.routeLabel == null ? "" : diagnostics.routeLabel)
-                        .put("target_url", diagnostics.targetUrl == null ? "" : diagnostics.targetUrl)
+                        .put("target_url", sanitizeDiagnosticUrl(diagnostics.targetUrl))
                         .put("mime_type", diagnostics.mimeType == null ? "" : diagnostics.mimeType)
                         .put("drm_type", diagnostics.drmType == null ? "" : diagnostics.drmType)
                         .put("video_width", diagnostics.videoWidth)
@@ -11244,6 +11244,54 @@ public class MainActivity extends FragmentActivity {
             return "";
         }
         return value.trim().replaceAll("[^A-Za-z0-9._-]", "_");
+    }
+
+    private String sanitizeDiagnosticUrl(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        try {
+            Uri uri = Uri.parse(trimmed);
+            if (uri != null && uri.getScheme() != null && uri.getHost() != null) {
+                Uri.Builder builder = new Uri.Builder()
+                        .scheme(uri.getScheme())
+                        .authority(uri.getAuthority())
+                        .path(uri.getPath());
+                return builder.build().toString();
+            }
+        } catch (Exception ignored) {
+            // Fall through to conservative text redaction below.
+        }
+        return redactSensitiveDiagnosticText(stripDiagnosticQuery(trimmed));
+    }
+
+    private String stripDiagnosticQuery(String value) {
+        if (value == null) {
+            return "";
+        }
+        int queryIndex = value.indexOf('?');
+        int fragmentIndex = value.indexOf('#');
+        int cutIndex = -1;
+        if (queryIndex >= 0) {
+            cutIndex = queryIndex;
+        }
+        if (fragmentIndex >= 0 && (cutIndex < 0 || fragmentIndex < cutIndex)) {
+            cutIndex = fragmentIndex;
+        }
+        return cutIndex >= 0 ? value.substring(0, cutIndex) : value;
+    }
+
+    private String redactSensitiveDiagnosticText(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return "";
+        }
+        return value.trim()
+                .replaceAll("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+", "$1<redacted>")
+                .replaceAll("(?i)(access_token|token|refresh_token|authorization|auth|signature|sig|key|kid|device_id|license|nv-authorizations)=([^&\\s]+)", "$1=<redacted>");
     }
 
     private JSONObject buildOfflineDeviceStatusExtra() {
@@ -15714,6 +15762,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public String safeText(String value) {
                 return MainActivity.this.safeText(value);
+            }
+
+            @Override
+            public String safeDiagnosticUrl(String value) {
+                return MainActivity.this.safeText(sanitizeDiagnosticUrl(value));
             }
 
             @Override

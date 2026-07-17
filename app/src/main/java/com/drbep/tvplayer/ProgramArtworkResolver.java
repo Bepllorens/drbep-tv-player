@@ -12,10 +12,26 @@ final class ProgramArtworkResolver {
     }
 
     static String resolve(String programIconUrl, String channelLogoUrl) {
-        String programIcon = programIconUrl == null ? "" : programIconUrl.trim();
+        String programIcon = cleanImageUrl(programIconUrl);
         if (!programIcon.isEmpty()) {
             return programIcon;
         }
-        return channelLogoUrl == null ? "" : channelLogoUrl.trim();
+        return cleanImageUrl(channelLogoUrl);
+    }
+
+    private static String cleanImageUrl(String url) {
+        String clean = url == null ? "" : url.trim();
+        if (clean.isEmpty()) {
+            return "";
+        }
+        String lower = clean.toLowerCase();
+        if ("null".equals(lower)
+                || "undefined".equals(lower)
+                || "none".equals(lower)
+                || "about:blank".equals(lower)
+                || lower.startsWith("data:")) {
+            return "";
+        }
+        return clean;
     }
 }

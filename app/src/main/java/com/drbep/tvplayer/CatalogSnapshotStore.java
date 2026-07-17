@@ -115,6 +115,7 @@ final class CatalogSnapshotStore {
     private final Context context;
     private final SharedPreferences prefs;
     private final HttpClient httpClient;
+    private final Object targetEpgReadLock = new Object();
 
     CatalogSnapshotStore(Context context) {
         this.context = context.getApplicationContext();
@@ -171,25 +172,37 @@ final class CatalogSnapshotStore {
         long startMs = System.currentTimeMillis();
         Map<String, List<EpgRepository.EpgProgram>> loaded = new LinkedHashMap<>();
         boolean scannedAllPrograms = true;
-        try (InputStream inputStream = snapshotInputStream(file);
-             JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            try {
-                reader.beginObject();
-                while (reader.hasNext()) {
-                    String name = reader.nextName();
-                    if ("epg".equals(name)) {
-                        readTargetEpgObject(reader, missingIds, loaded);
-                    } else if ("catalog".equals(name)) {
-                        readTargetCatalogObject(reader, missingIds, loaded);
-                    } else {
-                        reader.skipValue();
+        try {
+            synchronized (targetEpgReadLock) {
+                try (InputStream inputStream = snapshotInputStream(file);
+                     JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                    try {
+                        reader.beginObject();
+                        while (reader.hasNext()) {
+                            String name = reader.nextName();
+                            if ("epg".equals(name)) {
+                                readTargetEpgObject(reader, missingIds, loaded);
+                            } else if ("catalog".equals(name)) {
+                                readTargetCatalogObject(reader, missingIds, loaded);
+                            } else {
+                                reader.skipValue();
+                            }
+                        }
+                        reader.endObject();
+                    } catch (TargetEpgComplete ignored) {
+                        scannedAllPrograms = false;
+                        // Closing the stream is enough once every requested channel has been read.
                     }
                 }
-                reader.endObject();
-            } catch (TargetEpgComplete ignored) {
-                scannedAllPrograms = false;
-                // Closing the stream is enough once every requested channel has been read.
             }
+        } catch (OutOfMemoryError e) {
+            Log.e(TAG, "target EPG read exhausted memory; returning cached partial result requested="
+                    + requestedIds.size() + " matched=" + out.size(), e);
+            return out;
+        } catch (Exception e) {
+            Log.w(TAG, "target EPG read failed; returning cached partial result requested="
+                    + requestedIds.size() + " matched=" + out.size(), e);
+            return out;
         }
         if (scannedAllPrograms) {
             for (String missingId : missingIds) {
@@ -263,24 +276,36 @@ final class CatalogSnapshotStore {
         }
         long startMs = System.currentTimeMillis();
         boolean scannedAllPrograms = true;
-        try (InputStream inputStream = snapshotInputStream(file);
-             JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            try {
-                reader.beginObject();
-                while (reader.hasNext()) {
-                    String name = reader.nextName();
-                    if ("epg".equals(name)) {
-                        readTargetEpgObject(reader, requestedIds, out);
-                    } else if ("catalog".equals(name)) {
-                        readTargetCatalogObject(reader, requestedIds, out);
-                    } else {
-                        reader.skipValue();
+        try {
+            synchronized (targetEpgReadLock) {
+                try (InputStream inputStream = snapshotInputStream(file);
+                     JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                    try {
+                        reader.beginObject();
+                        while (reader.hasNext()) {
+                            String name = reader.nextName();
+                            if ("epg".equals(name)) {
+                                readTargetEpgObject(reader, requestedIds, out);
+                            } else if ("catalog".equals(name)) {
+                                readTargetCatalogObject(reader, requestedIds, out);
+                            } else {
+                                reader.skipValue();
+                            }
+                        }
+                        reader.endObject();
+                    } catch (TargetEpgComplete ignored) {
+                        scannedAllPrograms = false;
                     }
                 }
-                reader.endObject();
-            } catch (TargetEpgComplete ignored) {
-                scannedAllPrograms = false;
             }
+        } catch (OutOfMemoryError e) {
+            Log.e(TAG, "target EPG direct read exhausted memory; returning partial result requested="
+                    + requestedIds.size() + " matched=" + out.size(), e);
+            return copyProgramMap(out);
+        } catch (Exception e) {
+            Log.w(TAG, "target EPG direct read failed; returning partial result requested="
+                    + requestedIds.size() + " matched=" + out.size(), e);
+            return copyProgramMap(out);
         }
         if (scannedAllPrograms) {
             for (String requestedId : requestedIds) {

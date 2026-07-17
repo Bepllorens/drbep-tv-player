@@ -2758,7 +2758,7 @@ public class MainActivity extends FragmentActivity {
         if (useCompactTouchEpgMode()) {
             return;
         }
-        if (epgLoadInFlight || (useCompactTouchEpgMode() && epgWorkerBusy)) {
+        if (epgLoadInFlight || epgWorkerBusy) {
             scheduleNextProgressiveEpgLoad(OFFLINE_EPG_BUSY_RETRY_MS);
             return;
         }

@@ -45,6 +45,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -115,7 +117,7 @@ final class CatalogSnapshotStore {
     private final Context context;
     private final SharedPreferences prefs;
     private final HttpClient httpClient;
-    private final Object targetEpgReadLock = new Object();
+    private final ReentrantLock targetEpgReadLock = new ReentrantLock();
 
     CatalogSnapshotStore(Context context) {
         this.context = context.getApplicationContext();
@@ -172,8 +174,15 @@ final class CatalogSnapshotStore {
         long startMs = System.currentTimeMillis();
         Map<String, List<EpgRepository.EpgProgram>> loaded = new LinkedHashMap<>();
         boolean scannedAllPrograms = true;
+        boolean locked = false;
         try {
-            synchronized (targetEpgReadLock) {
+            locked = targetEpgReadLock.tryLock(750L, TimeUnit.MILLISECONDS);
+            if (!locked) {
+                Log.w(TAG, "target EPG read skipped because snapshot reader is busy requested="
+                        + requestedIds.size() + " matched=" + out.size());
+                return out;
+            }
+            try {
                 try (InputStream inputStream = snapshotInputStream(file);
                      JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
                     try {
@@ -194,7 +203,14 @@ final class CatalogSnapshotStore {
                         // Closing the stream is enough once every requested channel has been read.
                     }
                 }
+            } finally {
+                targetEpgReadLock.unlock();
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Log.w(TAG, "target EPG read interrupted; returning cached partial result requested="
+                    + requestedIds.size() + " matched=" + out.size(), e);
+            return out;
         } catch (OutOfMemoryError e) {
             Log.e(TAG, "target EPG read exhausted memory; returning cached partial result requested="
                     + requestedIds.size() + " matched=" + out.size(), e);
@@ -276,8 +292,15 @@ final class CatalogSnapshotStore {
         }
         long startMs = System.currentTimeMillis();
         boolean scannedAllPrograms = true;
+        boolean locked = false;
         try {
-            synchronized (targetEpgReadLock) {
+            locked = targetEpgReadLock.tryLock(750L, TimeUnit.MILLISECONDS);
+            if (!locked) {
+                Log.w(TAG, "target EPG direct read skipped because snapshot reader is busy requested="
+                        + requestedIds.size() + " matched=" + out.size());
+                return copyProgramMap(out);
+            }
+            try {
                 try (InputStream inputStream = snapshotInputStream(file);
                      JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
                     try {
@@ -297,7 +320,14 @@ final class CatalogSnapshotStore {
                         scannedAllPrograms = false;
                     }
                 }
+            } finally {
+                targetEpgReadLock.unlock();
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Log.w(TAG, "target EPG direct read interrupted; returning partial result requested="
+                    + requestedIds.size() + " matched=" + out.size(), e);
+            return copyProgramMap(out);
         } catch (OutOfMemoryError e) {
             Log.e(TAG, "target EPG direct read exhausted memory; returning partial result requested="
                     + requestedIds.size() + " matched=" + out.size(), e);

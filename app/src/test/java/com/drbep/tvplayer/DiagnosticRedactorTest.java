@@ -21,10 +21,10 @@ public class DiagnosticRedactorTest {
 
     @Test
     public void redactSensitiveTextMasksBearerAndKnownSecretParameters() {
-        String input = "Bearer abc.def token=secret key=123 authorization=super normal=value";
+        String input = "Bearer abc.def token=secret key=123 authorization=super X-TCDN-token=signed normal=value";
 
         assertEquals(
-                "Bearer <redacted> token=<redacted> key=<redacted> authorization=<redacted> normal=value",
+                "Bearer <redacted> token=<redacted> key=<redacted> authorization=<redacted> X-TCDN-token=<redacted> normal=value",
                 DiagnosticRedactor.redactSensitiveText(input)
         );
     }

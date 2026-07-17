@@ -200,6 +200,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - Se anade `scripts/offline_smoke_test.sh` para comprobar por ADB arranque, HUD, guia/info, menu, grabacion, zapping basico y ausencia de crashes recientes.
 - Se extrae `TouchControlsFocusState` para aislar el estado de foco HUD/timeshift y cubrirlo con tests unitarios.
 - Se centraliza la redaccion de diagnosticos en `DiagnosticRedactor` con tests para URLs firmadas, rutas relativas y tokens Bearer/keys.
+- Las trazas del player pasan las URLs de decision/stream y valores libres por el redactor antes de acortarlas, incluyendo tokens tipo `X-TCDN-token`.
 
 ## Criterios de exito
 

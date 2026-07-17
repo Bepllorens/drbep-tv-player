@@ -38,7 +38,7 @@ final class DiagnosticRedactor {
         }
         return value.trim()
                 .replaceAll("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+", "$1<redacted>")
-                .replaceAll("(?i)(access_token|token|refresh_token|authorization|auth|signature|sig|key|kid|device_id|license|nv-authorizations)=([^&\\s]+)", "$1=<redacted>");
+                .replaceAll("(?i)([A-Za-z0-9_.-]*(?:access_token|token|refresh_token|authorization|auth|signature|sig|key|kid|device_id|license|nv-authorizations)[A-Za-z0-9_.-]*)=([^&\\s]+)", "$1=<redacted>");
     }
 
     private static String stripQueryAndFragment(String value) {

@@ -2637,14 +2637,15 @@ final class PlayerController {
         if (url == null || url.trim().isEmpty()) {
             return "";
         }
-        if (url.length() <= 120) {
-            return url;
+        String sanitized = DiagnosticRedactor.sanitizeUrl(url);
+        if (sanitized.length() <= 120) {
+            return sanitized;
         }
-        return url.substring(0, 117) + "...";
+        return sanitized.substring(0, 117) + "...";
     }
 
     private static String safeLogValue(String value) {
-        return value == null ? "" : value;
+        return DiagnosticRedactor.redactSensitiveText(value);
     }
 
     private static String safeLower(String value) {

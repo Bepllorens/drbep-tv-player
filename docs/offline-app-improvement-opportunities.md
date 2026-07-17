@@ -188,6 +188,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - El diagnostico remoto incluye estado EPG, filtro activo, canales procesados, total estimado, ultimo lote, errores y tiempos.
 - El router de mando separa comprobaciones `can...` de acciones reales: preguntar si se puede buscar ya no mueve la reproduccion.
 - En HUD/timeshift con mando, izquierda/derecha ejecutan seek real cuando la barra de timeshift tiene foco, y los botones multimedia REW/FWD tambien hacen salto real.
+- VOD/U7D comparten estado de carga observable: tipo de contenido, paso activo, detalle y tiempo de espera se muestran en UI y se envian en diagnostico/heartbeat.
 
 ## Criterios de exito
 

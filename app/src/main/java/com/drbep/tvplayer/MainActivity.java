@@ -250,6 +250,10 @@ public class MainActivity extends FragmentActivity {
         }
     };
     private String vodLoadingChannelId = "";
+    private String vodLoadingKind = "";
+    private String vodLoadingTitle = "";
+    private String vodLoadingStep = "";
+    private String vodLoadingDetail = "";
     private long vodLoadingStartedAtMs;
     private final Runnable vodLoadingProgressRunnable = new Runnable() {
         @Override
@@ -4438,7 +4442,8 @@ public class MainActivity extends FragmentActivity {
         } else if (channel.id != null && !channel.id.trim().isEmpty()) {
             saveLastChannelId(channel.id);
         }
-        showLoading(
+        updateVodLoadingState(
+                replayItem,
                 getString(R.string.u7d_loading_title),
                 getString(R.string.u7d_loading_step_manifest),
                 getString(R.string.u7d_loading_detail_manifest)
@@ -6327,10 +6332,11 @@ public class MainActivity extends FragmentActivity {
         vodLoadingChannelId = item.id.trim();
         vodLoadingStartedAtMs = System.currentTimeMillis();
         uiHandler.removeCallbacks(vodLoadingProgressRunnable);
-        showLoading(
+        updateVodLoadingState(
+                item,
                 getVodLoadingTitle(item),
-                getString(R.string.vod_loading_step_preparing),
-                getString(R.string.vod_loading_detail_preparing, displayName(item))
+                isU7dReplayItem(item) ? getString(R.string.u7d_loading_step_manifest) : getString(R.string.vod_loading_step_preparing),
+                isU7dReplayItem(item) ? getString(R.string.u7d_loading_detail_manifest) : getString(R.string.vod_loading_detail_preparing, displayName(item))
         );
         uiHandler.postDelayed(vodLoadingProgressRunnable, 4_000L);
     }
@@ -6343,42 +6349,63 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         long elapsedMs = Math.max(0L, System.currentTimeMillis() - vodLoadingStartedAtMs);
+        boolean u7dReplay = isU7dReplayItem(current);
         boolean movistarVod = isMovistarVodItem(current);
         String title = getVodLoadingTitle(current);
         String step;
         String detail;
         long nextDelayMs;
         if (elapsedMs < 12_000L) {
-            step = movistarVod
+            step = u7dReplay
+                    ? getString(R.string.u7d_loading_step_manifest)
+                    : movistarVod
                     ? getString(R.string.vod_loading_step_manifest)
                     : getString(R.string.vod_loading_step_stream);
-            detail = movistarVod
+            detail = u7dReplay
+                    ? getString(R.string.u7d_loading_detail_manifest)
+                    : movistarVod
                     ? getString(R.string.vod_loading_detail_manifest)
                     : getString(R.string.vod_loading_detail_stream);
             nextDelayMs = 8_000L;
         } else if (elapsedMs < 30_000L) {
-            step = movistarVod
+            step = u7dReplay
+                    ? getString(R.string.u7d_loading_step_drm)
+                    : movistarVod
                     ? getString(R.string.vod_loading_step_drm)
                     : getString(R.string.vod_loading_step_buffering);
-            detail = movistarVod
+            detail = u7dReplay
+                    ? getString(R.string.u7d_loading_detail_drm)
+                    : movistarVod
                     ? getString(R.string.vod_loading_detail_drm)
                     : getString(R.string.vod_loading_detail_buffering);
             nextDelayMs = 10_000L;
         } else if (elapsedMs < 55_000L) {
-            step = movistarVod
+            step = u7dReplay
+                    ? getString(R.string.u7d_loading_step_backend)
+                    : movistarVod
                     ? getString(R.string.vod_loading_step_backend)
                     : getString(R.string.vod_loading_step_waiting);
-            detail = movistarVod
+            detail = u7dReplay
+                    ? getString(R.string.u7d_loading_detail_backend)
+                    : movistarVod
                     ? getString(R.string.vod_loading_detail_backend)
                     : getString(R.string.vod_loading_detail_waiting);
             nextDelayMs = 12_000L;
         } else {
-            step = getString(R.string.vod_loading_step_slow);
-            detail = getString(R.string.vod_loading_detail_slow);
+            step = u7dReplay ? getString(R.string.u7d_loading_step_slow) : getString(R.string.vod_loading_step_slow);
+            detail = u7dReplay ? getString(R.string.u7d_loading_detail_slow) : getString(R.string.vod_loading_detail_slow);
             nextDelayMs = 15_000L;
         }
-        updateLoading(title, step, detail);
+        updateVodLoadingState(current, title, step, detail);
         uiHandler.postDelayed(vodLoadingProgressRunnable, nextDelayMs);
+    }
+
+    private void updateVodLoadingState(ChannelItem item, String title, String step, String detail) {
+        vodLoadingKind = isU7dReplayItem(item) ? "u7d" : isMovistarVodItem(item) ? "movistar_vod" : "vod";
+        vodLoadingTitle = title == null ? "" : title.trim();
+        vodLoadingStep = step == null ? "" : step.trim();
+        vodLoadingDetail = detail == null ? "" : detail.trim();
+        updateLoading(vodLoadingTitle, vodLoadingStep, vodLoadingDetail);
     }
 
     private void stopVodLoadingOverlay(String channelId) {
@@ -6390,13 +6417,28 @@ public class MainActivity extends FragmentActivity {
         }
         uiHandler.removeCallbacks(vodLoadingProgressRunnable);
         vodLoadingChannelId = "";
+        vodLoadingKind = "";
+        vodLoadingTitle = "";
+        vodLoadingStep = "";
+        vodLoadingDetail = "";
         vodLoadingStartedAtMs = 0L;
         if (hadVodLoading) {
             hideStartupLoading();
         }
     }
 
+    private boolean isVodLoadingActive() {
+        return vodLoadingChannelId != null && !vodLoadingChannelId.trim().isEmpty() && vodLoadingStartedAtMs > 0L;
+    }
+
+    private long currentVodLoadingElapsedMs() {
+        return isVodLoadingActive() ? Math.max(0L, System.currentTimeMillis() - vodLoadingStartedAtMs) : 0L;
+    }
+
     private String getVodLoadingTitle(ChannelItem item) {
+        if (isU7dReplayItem(item)) {
+            return getString(R.string.u7d_loading_title);
+        }
         if (isMovistarVodItem(item)) {
             return getString(R.string.vod_loading_title_movistar);
         }
@@ -10802,6 +10844,12 @@ public class MainActivity extends FragmentActivity {
                     .put("epg_progress_started_at_ms", epgProgressStartedAtMs)
                     .put("epg_progress_completed_at_ms", epgProgressCompletedAtMs)
                     .put("epg_progress_last_error", epgProgressLastError)
+                    .put("vod_loading_active", isVodLoadingActive())
+                    .put("vod_loading_channel_id", vodLoadingChannelId == null ? "" : vodLoadingChannelId)
+                    .put("vod_loading_kind", vodLoadingKind == null ? "" : vodLoadingKind)
+                    .put("vod_loading_title", vodLoadingTitle == null ? "" : vodLoadingTitle)
+                    .put("vod_loading_step", vodLoadingStep == null ? "" : vodLoadingStep)
+                    .put("vod_loading_elapsed_ms", currentVodLoadingElapsedMs())
                     .put("last_app_update_check_ms", lastAppUpdateCheckMs)
                     .put("last_app_update_error", lastAppUpdateError == null ? "" : lastAppUpdateError)
                     .put("last_catalog_error", lastOfflineCatalogRefreshError == null ? "" : lastOfflineCatalogRefreshError)
@@ -10933,6 +10981,10 @@ public class MainActivity extends FragmentActivity {
                     .put("quality_label", formatPlaybackQualityCompact(diagnostics))
                     .put("estimated_mbps", estimatedMbps)
                     .put("estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
+                    .put("vod_loading_active", isVodLoadingActive())
+                    .put("vod_loading_kind", vodLoadingKind == null ? "" : vodLoadingKind)
+                    .put("vod_loading_step", vodLoadingStep == null ? "" : vodLoadingStep)
+                    .put("vod_loading_elapsed_ms", currentVodLoadingElapsedMs())
                     .put("playback_profile", channel.playbackProfile == null ? "" : channel.playbackProfile)
                     .put("startup_ms", "ready".equalsIgnoreCase(normalizedState) ? startupMs : 0L);
             if (diagnostics != null) {

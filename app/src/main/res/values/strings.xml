@@ -304,6 +304,12 @@
     <string name="u7d_loading_title">Preparando U7D</string>
     <string name="u7d_loading_step_manifest">Solicitando replay</string>
     <string name="u7d_loading_detail_manifest">Pidiendo al backend el manifest temporal del programa seleccionado.</string>
+    <string name="u7d_loading_step_drm">Preparando licencia</string>
+    <string name="u7d_loading_detail_drm">Validando el acceso y la ventana del programa antes de abrir el stream.</string>
+    <string name="u7d_loading_step_backend">Backend preparando replay</string>
+    <string name="u7d_loading_detail_backend">El replay sigue preparandose. Si ya esta cacheado deberia arrancar enseguida.</string>
+    <string name="u7d_loading_step_slow">U7D tarda mas de lo normal</string>
+    <string name="u7d_loading_detail_slow">Seguimos esperando respuesta. Si falla abriremos recuperacion o diagnostico automaticamente.</string>
     <string name="u7d_replay_group">U7D</string>
     <string name="u7d_replay_platform">Movistar U7D</string>
     <string name="status_retry_channel">Reintentando: %1$s</string>

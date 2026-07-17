@@ -217,7 +217,13 @@ public class RemoteInputRouterTest {
 
         @Override
         public boolean canResumeTimeshiftLive() {
+            return resumeTimeshiftLive;
+        }
+
+        @Override
+        public boolean resumeTimeshiftLive() {
             resumeLiveCalls++;
+            lastAction = "timeshift:live";
             return resumeTimeshiftLive;
         }
 
@@ -229,6 +235,19 @@ public class RemoteInputRouterTest {
         @Override
         public boolean canSeekTimeshiftForward() {
             seekForwardCalls++;
+            return seekTimeshiftForward;
+        }
+
+        @Override
+        public boolean seekTimeshiftBack() {
+            lastAction = "timeshift:back";
+            return seekTimeshiftBack;
+        }
+
+        @Override
+        public boolean seekTimeshiftForward() {
+            seekForwardCalls++;
+            lastAction = "timeshift:forward";
             return seekTimeshiftForward;
         }
 

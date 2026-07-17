@@ -201,8 +201,7 @@ public class MainActivity extends FragmentActivity {
     private ComposeView timeshiftComposeView;
     private boolean touchSurfaceHudVisible;
     private TouchControlsBarUiModel currentTouchControlsBarModel;
-    private int touchControlsFocusedActionIndex;
-    private boolean touchControlsTimeshiftFocused;
+    private final TouchControlsFocusState touchControlsFocusState = new TouchControlsFocusState();
     private View playbackGestureLayer;
     private android.app.Dialog activeTimelineDialog;
     private List<TimelineChannelPrograms> activeTimelineRows = new ArrayList<>();
@@ -1145,8 +1144,8 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         timeshiftBarContainer.setVisibility(View.VISIBLE);
-        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, true, touchControlsTimeshiftFocused);
-        if (touchControlsTimeshiftFocused) {
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, true, touchControlsFocusState.timeshiftFocused());
+        if (touchControlsFocusState.timeshiftFocused()) {
             overlaySurfaceState.focusSurface(OfflineOverlayState.Surface.TIMESHIFT);
         } else if (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
             overlaySurfaceState.focusSurface(OfflineOverlayState.Surface.TOUCH_CONTROLS);
@@ -1207,7 +1206,7 @@ public class MainActivity extends FragmentActivity {
             }
         });
         if (!touchDeviceMode || model == null || !model.liveVisible) {
-            if (model == null || !touchControlsTimeshiftFocused) {
+            if (model == null || !touchControlsFocusState.timeshiftFocused()) {
                 return model;
             }
             return new TimeshiftBarUiModel(
@@ -1229,7 +1228,7 @@ public class MainActivity extends FragmentActivity {
                 model.onSeekStart,
                 model.previewLabelProvider,
                 model.seekCommitHandler,
-                touchControlsTimeshiftFocused
+                touchControlsFocusState.timeshiftFocused()
         );
     }
 
@@ -1509,7 +1508,7 @@ public class MainActivity extends FragmentActivity {
                     playerController.togglePlayback();
                 }
             }
-        }, touchControlsFocusedActionIndex, nowPlaying);
+        }, touchControlsFocusState.actionIndex(), nowPlaying);
     }
 
     private TouchControlsNowPlayingUiModel buildTouchControlsNowPlayingUiModel(ChannelItem channel) {
@@ -4248,14 +4247,12 @@ public class MainActivity extends FragmentActivity {
         } else if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
         }
-        touchControlsFocusedActionIndex = 0;
-        touchControlsTimeshiftFocused = false;
+        touchControlsFocusState.clear();
         currentTouchControlsBarModel = null;
     }
 
     private void resetTouchControlsFocus() {
-        touchControlsTimeshiftFocused = false;
-        touchControlsFocusedActionIndex = firstEnabledTouchActionIndex();
+        touchControlsFocusState.reset(firstEnabledTouchActionIndex());
         refreshTouchControlsBar();
         updateTimeshiftBar();
     }
@@ -4275,20 +4272,19 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void moveTouchControlsFocus(int delta) {
-        touchControlsTimeshiftFocused = false;
         TouchControlsBarUiModel model = currentTouchControlsBarModel;
         if (model == null || model.actions == null || model.actions.isEmpty()) {
             refreshTouchControlsBar();
             return;
         }
         int size = model.actions.size();
-        int start = Math.max(0, Math.min(size - 1, touchControlsFocusedActionIndex));
+        int start = Math.max(0, Math.min(size - 1, touchControlsFocusState.actionIndex()));
         int next = start;
         for (int step = 0; step < size; step++) {
             next = (next + delta + size) % size;
             ZapActionItem item = model.actions.get(next);
             if (item != null && item.enabled) {
-                touchControlsFocusedActionIndex = next;
+                touchControlsFocusState.focusAction(next);
                 refreshTouchControlsBar();
                 scheduleTouchControlsAutoHide();
                 return;
@@ -4297,7 +4293,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isTouchControlsTimeshiftFocused() {
-        return touchControlsTimeshiftFocused;
+        return touchControlsFocusState.timeshiftFocused();
     }
 
     private boolean canSeekPlaybackBack() {
@@ -4353,17 +4349,16 @@ public class MainActivity extends FragmentActivity {
             scheduleTouchControlsAutoHide();
             return;
         }
-        touchControlsTimeshiftFocused = true;
+        touchControlsFocusState.focusTimeshift();
         updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
     }
 
     private void focusTouchControlsActions() {
-        if (!touchControlsTimeshiftFocused) {
+        if (!touchControlsFocusState.focusActionsIfNeeded()) {
             scheduleTouchControlsAutoHide();
             return;
         }
-        touchControlsTimeshiftFocused = false;
         refreshTouchControlsBar();
         updateTimeshiftBar();
         scheduleTouchControlsAutoHide();
@@ -4375,7 +4370,7 @@ public class MainActivity extends FragmentActivity {
             refreshTouchControlsBar();
             return;
         }
-        int index = Math.max(0, Math.min(model.actions.size() - 1, touchControlsFocusedActionIndex));
+        int index = Math.max(0, Math.min(model.actions.size() - 1, touchControlsFocusState.actionIndex()));
         ZapActionItem item = model.actions.get(index);
         Log.w(TAG, "touch controls activate index=" + index
                 + " label=" + (item == null ? "null" : item.label)
@@ -5897,7 +5892,7 @@ public class MainActivity extends FragmentActivity {
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE, false);
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, timeshiftBarContainer != null && timeshiftBarContainer.getVisibility() == View.VISIBLE, false);
         if (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
-            overlaySurfaceState.focusSurface(touchControlsTimeshiftFocused ? OfflineOverlayState.Surface.TIMESHIFT : OfflineOverlayState.Surface.TOUCH_CONTROLS);
+            overlaySurfaceState.focusSurface(touchControlsFocusState.timeshiftFocused() ? OfflineOverlayState.Surface.TIMESHIFT : OfflineOverlayState.Surface.TOUCH_CONTROLS);
         }
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.ZAP_BANNER, isZapBannerVisible());
     }

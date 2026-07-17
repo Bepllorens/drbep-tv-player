@@ -76,9 +76,7 @@ final class GlobalSearchUiFactory {
                 imageKind = GlobalSearchRowUiModel.IMAGE_PROGRAM;
                 EpgRepository.EpgProgram program = result.epgResult.program;
                 ChannelItem channel = result.epgResult.channel;
-                imageUrl = program == null || program.icon == null || program.icon.trim().isEmpty()
-                        ? (channel == null ? "" : channel.logoUrl)
-                        : program.icon.trim();
+                imageUrl = ProgramArtworkResolver.resolve(program, channel);
                 imageName = channel == null ? "" : host.displayName(channel);
             } else if (result.recording != null) {
                 imageKind = GlobalSearchRowUiModel.IMAGE_RECORDING;

@@ -1543,7 +1543,7 @@ public class MainActivity extends FragmentActivity {
                 buildZapProgramMeta(channel, currentProgram),
                 nextLabel,
                 !nextLabel.isEmpty(),
-                currentProgram == null ? "" : currentProgram.icon,
+                ProgramArtworkResolver.resolve(currentProgram, channel),
                 remainingText,
                 progress,
                 progressVisible,
@@ -3392,7 +3392,7 @@ public class MainActivity extends FragmentActivity {
                 channel.name,
                 channel.tvgId,
                 program.title,
-                program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon,
+                ProgramArtworkResolver.resolve(program, channel),
                 program.description,
                 java.time.Instant.ofEpochMilli(startMs).toString(),
                 java.time.Instant.ofEpochMilli(endMs).toString(),
@@ -3840,7 +3840,7 @@ public class MainActivity extends FragmentActivity {
                 EpgRepository.EpgProgram program = entry.program;
                 boolean scheduled = isProgramScheduled(channel, program, scheduledItems);
                 boolean live = program.progress >= 0;
-                String heroPoster = program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon.trim();
+                String heroPoster = ProgramArtworkResolver.resolve(program, channel);
                 String cardTitle = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title.trim();
                 String cardTime = shortTime(program.startTime) + " - " + shortTime(program.endTime);
                 String cardBadge = scheduled ? getString(R.string.timeline_program_scheduled_short) : (live ? getString(R.string.guide_program_now) : channel.name);
@@ -4407,7 +4407,7 @@ public class MainActivity extends FragmentActivity {
                 "u7d:" + channel.id + ":" + Math.max(0L, startMs),
                 programTitle,
                 channel.tvgId,
-                program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon,
+                ProgramArtworkResolver.resolve(program, channel),
                 getString(R.string.u7d_replay_group),
                 replayUrl,
                 "",
@@ -4772,7 +4772,7 @@ public class MainActivity extends FragmentActivity {
         String description = program.description == null || program.description.trim().isEmpty()
                 ? getString(R.string.timeline_program_desc_empty)
                 : program.description.trim();
-        String imageUrl = program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon.trim();
+        String imageUrl = ProgramArtworkResolver.resolve(program, channel);
         String meta = channel.name + "  ·  " + shortTime(program.startTime) + " - " + shortTime(program.endTime);
         final Dialog[] dialogHolder = new Dialog[1];
         List<TvMessageActionUiModel> actions = new ArrayList<>();
@@ -4898,7 +4898,7 @@ public class MainActivity extends FragmentActivity {
                 req.put("channel_name", ch.name);
                 req.put("tvg_id", "");
                 req.put("program_title", program.title == null || program.title.trim().isEmpty() ? ch.name : program.title);
-                req.put("poster", program.icon == null || program.icon.trim().isEmpty() ? ch.logoUrl : program.icon);
+                req.put("poster", ProgramArtworkResolver.resolve(program, ch));
                 req.put("start_time", program.startTime == null ? "" : program.startTime);
                 req.put("end_time", program.endTime == null ? "" : program.endTime);
 
@@ -4959,7 +4959,7 @@ public class MainActivity extends FragmentActivity {
                 "",
                 channel.name,
                 program.title == null ? "" : program.title,
-                program.icon == null || program.icon.trim().isEmpty() ? channel.logoUrl : program.icon,
+                ProgramArtworkResolver.resolve(program, channel),
                 "scheduled",
                 program.startTime == null ? "" : program.startTime,
                 program.endTime == null ? "" : program.endTime,
@@ -17287,10 +17287,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String buildTimelineProgramPosterUrl(ChannelItem channel, EpgRepository.EpgProgram program) {
-        if (program != null && program.icon != null && !program.icon.trim().isEmpty()) {
-            return program.icon.trim();
-        }
-        return channel == null ? "" : channel.logoUrl;
+        return ProgramArtworkResolver.resolve(program, channel);
     }
 
     private TimelineProgramDetailUiModel buildTimelineProgramDetailModel(ChannelItem channel, EpgRepository.EpgProgram program, boolean live, boolean scheduled) {

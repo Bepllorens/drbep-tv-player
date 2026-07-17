@@ -33,9 +33,7 @@ final class EpgGuideUiFactory {
                 boolean live = program != null && program.progress >= 0;
                 String badge = host.text(live ? R.string.epg_search_badge_live : R.string.epg_search_badge_next);
                 int badgeColor = live ? 0xFF276B49 : 0xFF1E2D3E;
-                String imageUrl = program == null || program.icon == null || program.icon.trim().isEmpty()
-                        ? (channel == null ? "" : channel.logoUrl)
-                        : program.icon.trim();
+                String imageUrl = ProgramArtworkResolver.resolve(program, channel);
                 rows.add(new EpgSearchResultRowUiModel(
                         programTitle,
                         meta,

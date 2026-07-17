@@ -208,6 +208,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - Las secciones VOD grandes indican exactamente cuantos contenidos se estan mostrando frente al total para evitar la sensacion de lista incompleta o congelada.
 - Se anade `scripts/offline_smoke_test.sh` para comprobar por ADB arranque, HUD, guia/info, menu, grabacion, zapping basico, ausencia de crashes recientes y resumen de actividad/arranque/EPG/playback.
 - El smoke ADB reporta version instalada, tiempo/PID de arranque y senales de salud con modo estricto opcional para bloquear betas con errores de reproduccion, catalogo, EPG o ausencia de primer frame.
+- El smoke ADB pulsa explicitamente `KEYCODE_GUIDE` para cubrir la guia timeline en Fire TV antes de publicar una beta.
 - Se extrae `TouchControlsFocusState` para aislar el estado de foco HUD/timeshift y cubrirlo con tests unitarios.
 - Se centraliza la redaccion de diagnosticos en `DiagnosticRedactor` con tests para URLs firmadas, rutas relativas y tokens Bearer/keys.
 - Las trazas del player pasan las URLs de decision/stream y valores libres por el redactor antes de acortarlas, incluyendo tokens tipo `X-TCDN-token`.

@@ -9,6 +9,7 @@ WAIT_AFTER_KEY_SECONDS="${WAIT_AFTER_KEY_SECONDS:-1}"
 LOG_LINES="${LOG_LINES:-2500}"
 LOG_OUTPUT="${LOG_OUTPUT:-}"
 STRICT_WARNINGS="${STRICT_WARNINGS:-0}"
+CHECK_GUIDE_KEY="${CHECK_GUIDE_KEY:-1}"
 TMP_LOG=""
 
 cleanup() {
@@ -30,6 +31,7 @@ Variables opcionales:
   LOG_LINES                Lineas de logcat a revisar. Default: $LOG_LINES
   LOG_OUTPUT               Ruta opcional donde guardar el logcat revisado.
   STRICT_WARNINGS          Si vale 1, cualquier aviso diagnostico falla el smoke. Default: $STRICT_WARNINGS
+  CHECK_GUIDE_KEY          Si vale 1, pulsa KEYCODE_GUIDE durante el smoke. Default: $CHECK_GUIDE_KEY
 
 Ejemplos:
   $0 192.168.93.16:5555
@@ -63,6 +65,7 @@ echo "Dispositivo: $DEVICE"
 echo "Paquete:     $APP_PACKAGE"
 echo "Activity:    $APP_ACTIVITY"
 echo "Modo estricto avisos: $STRICT_WARNINGS"
+echo "Comprueba GUIDE: $CHECK_GUIDE_KEY"
 
 echo
 echo "== Version instalada =="
@@ -197,6 +200,10 @@ send_key "Abajo hacia acciones" KEYCODE_DPAD_DOWN
 send_key "Back cerrar HUD" KEYCODE_BACK
 send_key "Info / Guia actual" KEYCODE_INFO
 send_key "Back cerrar panel" KEYCODE_BACK
+if [ "$CHECK_GUIDE_KEY" = "1" ]; then
+  send_key "Guia timeline" KEYCODE_GUIDE
+  send_key "Back cerrar guia" KEYCODE_BACK
+fi
 send_key "Menu herramientas" KEYCODE_MENU
 send_key "Back cerrar menu" KEYCODE_BACK
 send_key "Grabacion" KEYCODE_MEDIA_RECORD

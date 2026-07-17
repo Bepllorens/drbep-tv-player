@@ -78,6 +78,29 @@ public class RemoteInputRouterTest {
     }
 
     @Test
+    public void guideKeyOpensTimelineForCurrentChannel() {
+        FakeHost host = new FakeHost();
+        host.currentChannel = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_GUIDE, 0, 0));
+
+        assertEquals("timeline:current", host.lastAction);
+    }
+
+    @Test
+    public void guideKeyOpensTimelineAroundOverlaySelection() {
+        FakeHost host = new FakeHost();
+        host.overlayVisible = true;
+        host.selectedOverlayChannel = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_GUIDE, 0, 0));
+
+        assertEquals("timeline:selected", host.lastAction);
+    }
+
+    @Test
     public void repeatedFastForwardJumpsToLiveWhenPossible() {
         FakeHost host = new FakeHost();
         host.resumeTimeshiftLive = true;

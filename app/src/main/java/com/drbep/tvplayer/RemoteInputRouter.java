@@ -184,6 +184,8 @@ final class RemoteInputRouter {
                 return handleConfirmKey();
             case KeyEvent.KEYCODE_INFO:
                 return handleInfoKey();
+            case KeyEvent.KEYCODE_GUIDE:
+                return handleGuideKey();
             case KeyEvent.KEYCODE_SEARCH:
                 host.showChannelSearchDialog();
                 return true;
@@ -536,6 +538,29 @@ final class RemoteInputRouter {
         }
         if (host.isRecordingsPanelVisible()) {
             host.showRecordingActionsDialog();
+            return true;
+        }
+        if (host.isOverlayVisible()) {
+            if (host.hasSelectedOverlayChannel()) {
+                host.openTimelineGuideAroundSelection();
+            }
+            return true;
+        }
+        if (host.hasCurrentChannel()) {
+            host.openTimelineGuideForCurrentChannel();
+        } else {
+            host.showOverlay();
+        }
+        return true;
+    }
+
+    private boolean handleGuideKey() {
+        if (host.isQuickSearchVisible()) {
+            host.clearQuickSearchOverlay();
+            return true;
+        }
+        if (host.isRecordingsPanelVisible()) {
+            host.hideRecordingsPanel();
             return true;
         }
         if (host.isOverlayVisible()) {

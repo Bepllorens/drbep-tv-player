@@ -191,6 +191,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - En HUD/timeshift con mando, izquierda/derecha ejecutan seek real cuando la barra de timeshift tiene foco, y los botones multimedia REW/FWD tambien hacen salto real.
 - VOD/U7D comparten estado de carga observable: tipo de contenido, paso activo, detalle y tiempo de espera se muestran en UI y se envian en diagnostico/heartbeat.
 - Las caratulas de programa usan un resolver comun con fallback al logo del canal para HUD, guia, busqueda, U7D y programaciones.
+- La biblioteca visual VOD tiene cobertura de regresion para limites de secciones grandes, resultados de busqueda acotados y aviso de usar busqueda/filtros.
 - El heartbeat de reproduccion tambien reporta titulo y detalle de carga VOD/U7D para diagnosticar esperas largas desde dashboard sin logcat.
 - El estado de overlays ya separa visibilidad y foco: repintar timeshift no roba foco al HUD inferior salvo que el usuario suba explicitamente a la barra.
 - `OfflineOverlayState` tiene cobertura de regresion para superficies que no roban foco, cierre de superficie enfocada y reset completo.

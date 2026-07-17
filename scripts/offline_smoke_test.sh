@@ -105,7 +105,7 @@ print_log_summary() {
     | sed 's/^/  /' || echo "  sin eventos EPG recientes"
   echo
   echo "Playback:"
-  grep -iE "playChannel|prepareMediaSource|Playback route|decision=|first frame|STATE_READY|Source error|ExoPlaybackException" "$log_file" \
+  grep -iE "playChannel|prepareMediaSource|Playback route|decision=|first frame|STATE_READY|Source error|ExoPlaybackException|playback_health|rebuffer|buffering" "$log_file" \
     | tail -n 16 \
     | sed 's/^/  /' || echo "  sin eventos de reproduccion recientes"
 }

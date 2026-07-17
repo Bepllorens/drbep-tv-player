@@ -199,6 +199,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - Las secciones VOD limitadas muestran una pista clara para usar busqueda/filtros cuando solo se renderiza una muestra de resultados.
 - Se anade `scripts/offline_smoke_test.sh` para comprobar por ADB arranque, HUD, guia/info, menu, grabacion, zapping basico y ausencia de crashes recientes.
 - Se extrae `TouchControlsFocusState` para aislar el estado de foco HUD/timeshift y cubrirlo con tests unitarios.
+- Se centraliza la redaccion de diagnosticos en `DiagnosticRedactor` con tests para URLs firmadas, rutas relativas y tokens Bearer/keys.
 
 ## Criterios de exito
 

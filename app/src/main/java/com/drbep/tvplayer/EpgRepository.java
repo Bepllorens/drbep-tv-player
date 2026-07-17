@@ -511,6 +511,28 @@ final class EpgRepository {
         Map<String, List<EpgProgram>> targetedPrograms = directSnapshotRead
                 ? loadOfflineProgramsForRequestedChannelsDirect(channelItems)
                 : loadOfflineProgramsForRequestedChannels(channelItems, allowOfflineSnapshotScan);
+        if (directSnapshotRead && !hasTimelineProgramDepth(targetedPrograms, channelItems)) {
+            try {
+                Map<String, List<EpgProgram>> remotePrograms = fetchRemoteChannelProgramsForChannels(channelItems, maxItems, true);
+                if (hasTimelineProgramDepth(remotePrograms, channelItems)) {
+                    int programCount = 0;
+                    for (List<EpgProgram> rows : remotePrograms.values()) {
+                        programCount += rows == null ? 0 : rows.size();
+                    }
+                    Log.w(TAG, "offline EPG direct sparse; using public remote timeline fallback channels="
+                            + channelItems.size()
+                            + " matched=" + remotePrograms.size()
+                            + " programs=" + programCount);
+                    return remotePrograms;
+                }
+                Log.w(TAG, "offline EPG direct sparse; public remote fallback also shallow channels="
+                        + channelItems.size()
+                        + " matched=" + remotePrograms.size());
+            } catch (Exception e) {
+                Log.w(TAG, "offline EPG direct sparse; public remote fallback failed channels="
+                        + channelItems.size(), e);
+            }
+        }
         for (ChannelItem channel : channelItems) {
             if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
                 continue;
@@ -536,6 +558,41 @@ final class EpgRepository {
             out.put(channelId, programs);
         }
         return out;
+    }
+
+    private static boolean hasTimelineProgramDepth(Map<String, List<EpgProgram>> programsByChannel, List<ChannelItem> requestedChannels) {
+        if (programsByChannel == null || programsByChannel.isEmpty() || requestedChannels == null || requestedChannels.isEmpty()) {
+            return false;
+        }
+        int liveChannels = 0;
+        int channelsWithDepth = 0;
+        int totalPrograms = 0;
+        long now = System.currentTimeMillis();
+        for (ChannelItem channel : requestedChannels) {
+            if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
+                continue;
+            }
+            liveChannels++;
+            List<EpgProgram> rows = programsByChannel.get(channel.id.trim());
+            int futurePrograms = 0;
+            if (rows != null) {
+                for (EpgProgram program : rows) {
+                    if (program == null || parseIsoMillis(program.endTime) <= now) {
+                        continue;
+                    }
+                    futurePrograms++;
+                }
+            }
+            totalPrograms += futurePrograms;
+            if (futurePrograms > 2) {
+                channelsWithDepth++;
+            }
+        }
+        if (liveChannels <= 0) {
+            return false;
+        }
+        return channelsWithDepth >= Math.max(1, Math.min(3, liveChannels / 6))
+                || totalPrograms > liveChannels * 2;
     }
 
     private Map<String, List<EpgProgram>> loadOfflineProgramsForRequestedChannelsDirect(List<ChannelItem> channelItems) {

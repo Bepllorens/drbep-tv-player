@@ -2778,7 +2778,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void loadEpgForChannels(String filterKey, String label, List<ChannelItem> snapshot, boolean fullCatalog, boolean continueProgressive) {
-        if (epgLoadInFlight || (useCompactTouchEpgMode() && epgWorkerBusy)) {
+        if (epgLoadInFlight || epgWorkerBusy) {
             Log.w(TAG, "EPG partial skipped inFlight filter=" + filterKey
                     + " workerBusy=" + epgWorkerBusy
                     + " continueProgressive=" + continueProgressive);
@@ -2796,6 +2796,9 @@ public class MainActivity extends FragmentActivity {
         }
         final String cleanFilterKey = filterKey == null || filterKey.trim().isEmpty() ? "visible" : filterKey.trim();
         final String cleanLabel = label == null || label.trim().isEmpty() ? cleanFilterKey : label.trim();
+        if (continueProgressive) {
+            pruneEpgProgressToActiveFilter(cleanFilterKey);
+        }
         final boolean compactEpgMode = useCompactTouchEpgMode();
         final int batchLimit = compactEpgMode ? OFFLINE_EPG_COMPACT_BATCH_LIMIT : OFFLINE_EPG_VISIBLE_BATCH_LIMIT;
         final List<ChannelItem> sourceSnapshot = new ArrayList<>(snapshot);
@@ -2938,17 +2941,24 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
-    private ChannelFilter nextProgressiveEpgFilter() {
-        for (ChannelFilter filter : filters) {
-            if (!isProgressiveEpgFilter(filter)) {
-                continue;
-            }
-            String key = epgFilterKey(filter);
-            if (!epgLoadedFilterKeys.contains(key) && !epgQueuedFilterKeys.contains(key)) {
-                return filter;
-            }
+    private void pruneEpgProgressToActiveFilter(String activeFilterKey) {
+        String cleanActive = activeFilterKey == null ? "" : activeFilterKey.trim();
+        if (cleanActive.isEmpty()) {
+            return;
         }
-        return null;
+        epgQueuedFilterKeys.removeIf(key -> key == null || !cleanActive.equals(key));
+        epgFilterOffsets.keySet().removeIf(key -> key == null || !cleanActive.equals(key));
+    }
+
+    private ChannelFilter nextProgressiveEpgFilter() {
+        ChannelFilter currentFilter = resolveCurrentPlaybackEpgFilter();
+        if (currentFilter == null || !isProgressiveEpgFilter(currentFilter)) {
+            return null;
+        }
+        String key = epgFilterKey(currentFilter);
+        return !epgLoadedFilterKeys.contains(key) && !epgQueuedFilterKeys.contains(key)
+                ? currentFilter
+                : null;
     }
 
     private boolean isProgressiveEpgFilter(ChannelFilter filter) {

@@ -106,7 +106,6 @@ final class CatalogSnapshotStore {
     private static final long MAX_EPG_CHANNEL_CACHE_BYTES = 2L * 1024L * 1024L;
     private static final int MAX_EPG_CHANNEL_CACHE_CHANNELS = 160;
     private static final long TARGET_EPG_BACKGROUND_LOCK_WAIT_MS = 750L;
-    private static final long TARGET_EPG_INTERACTIVE_LOCK_WAIT_MS = 12_000L;
     private static final String SNAPSHOT_ENCRYPTION_ALIAS = "drbep_catalog_snapshot_aes_v1";
     private static final byte[] SNAPSHOT_ENCRYPTED_MAGIC = "DRBEPENC1\n".getBytes(StandardCharsets.US_ASCII);
     private static final int SNAPSHOT_GCM_IV_BYTES = 12;
@@ -294,42 +293,26 @@ final class CatalogSnapshotStore {
         }
         long startMs = System.currentTimeMillis();
         boolean scannedAllPrograms = true;
-        boolean locked = false;
         try {
-            locked = targetEpgReadLock.tryLock(TARGET_EPG_INTERACTIVE_LOCK_WAIT_MS, TimeUnit.MILLISECONDS);
-            if (!locked) {
-                Log.w(TAG, "target EPG direct read skipped because snapshot reader is busy requested="
-                        + requestedIds.size() + " matched=" + out.size());
-                return copyProgramMap(out);
-            }
-            try {
-                try (InputStream inputStream = snapshotInputStream(file);
-                     JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-                    try {
-                        reader.beginObject();
-                        while (reader.hasNext()) {
-                            String name = reader.nextName();
-                            if ("epg".equals(name)) {
-                                readTargetEpgObject(reader, requestedIds, out);
-                            } else if ("catalog".equals(name)) {
-                                readTargetCatalogObject(reader, requestedIds, out);
-                            } else {
-                                reader.skipValue();
-                            }
+            try (InputStream inputStream = snapshotInputStream(file);
+                 JsonReader reader = new JsonReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                try {
+                    reader.beginObject();
+                    while (reader.hasNext()) {
+                        String name = reader.nextName();
+                        if ("epg".equals(name)) {
+                            readTargetEpgObject(reader, requestedIds, out);
+                        } else if ("catalog".equals(name)) {
+                            readTargetCatalogObject(reader, requestedIds, out);
+                        } else {
+                            reader.skipValue();
                         }
-                        reader.endObject();
-                    } catch (TargetEpgComplete ignored) {
-                        scannedAllPrograms = false;
                     }
+                    reader.endObject();
+                } catch (TargetEpgComplete ignored) {
+                    scannedAllPrograms = false;
                 }
-            } finally {
-                targetEpgReadLock.unlock();
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            Log.w(TAG, "target EPG direct read interrupted; returning partial result requested="
-                    + requestedIds.size() + " matched=" + out.size(), e);
-            return copyProgramMap(out);
         } catch (OutOfMemoryError e) {
             Log.e(TAG, "target EPG direct read exhausted memory; returning partial result requested="
                     + requestedIds.size() + " matched=" + out.size(), e);

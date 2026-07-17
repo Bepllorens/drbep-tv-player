@@ -105,6 +105,8 @@ final class CatalogSnapshotStore {
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     private static final long MAX_EPG_CHANNEL_CACHE_BYTES = 2L * 1024L * 1024L;
     private static final int MAX_EPG_CHANNEL_CACHE_CHANNELS = 160;
+    private static final long TARGET_EPG_BACKGROUND_LOCK_WAIT_MS = 750L;
+    private static final long TARGET_EPG_INTERACTIVE_LOCK_WAIT_MS = 12_000L;
     private static final String SNAPSHOT_ENCRYPTION_ALIAS = "drbep_catalog_snapshot_aes_v1";
     private static final byte[] SNAPSHOT_ENCRYPTED_MAGIC = "DRBEPENC1\n".getBytes(StandardCharsets.US_ASCII);
     private static final int SNAPSHOT_GCM_IV_BYTES = 12;
@@ -176,7 +178,7 @@ final class CatalogSnapshotStore {
         boolean scannedAllPrograms = true;
         boolean locked = false;
         try {
-            locked = targetEpgReadLock.tryLock(750L, TimeUnit.MILLISECONDS);
+            locked = targetEpgReadLock.tryLock(TARGET_EPG_BACKGROUND_LOCK_WAIT_MS, TimeUnit.MILLISECONDS);
             if (!locked) {
                 Log.w(TAG, "target EPG read skipped because snapshot reader is busy requested="
                         + requestedIds.size() + " matched=" + out.size());
@@ -294,7 +296,7 @@ final class CatalogSnapshotStore {
         boolean scannedAllPrograms = true;
         boolean locked = false;
         try {
-            locked = targetEpgReadLock.tryLock(750L, TimeUnit.MILLISECONDS);
+            locked = targetEpgReadLock.tryLock(TARGET_EPG_INTERACTIVE_LOCK_WAIT_MS, TimeUnit.MILLISECONDS);
             if (!locked) {
                 Log.w(TAG, "target EPG direct read skipped because snapshot reader is busy requested="
                         + requestedIds.size() + " matched=" + out.size());

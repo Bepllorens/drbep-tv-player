@@ -1053,6 +1053,9 @@ public class MainActivity extends FragmentActivity {
                     touchControlsBar.setVisibility(visible ? View.VISIBLE : View.GONE);
                 }
                 overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, visible);
+                if (visible) {
+                    overlaySurfaceState.focusSurface(OfflineOverlayState.Surface.TOUCH_CONTROLS);
+                }
             }
 
             @Override
@@ -1142,7 +1145,12 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         timeshiftBarContainer.setVisibility(View.VISIBLE);
-        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, true);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, true, touchControlsTimeshiftFocused);
+        if (touchControlsTimeshiftFocused) {
+            overlaySurfaceState.focusSurface(OfflineOverlayState.Surface.TIMESHIFT);
+        } else if (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
+            overlaySurfaceState.focusSurface(OfflineOverlayState.Surface.TOUCH_CONTROLS);
+        }
         composeSurfaceRenderer.bindTimeshift(timeshiftComposeView, buildTimeshiftBarUiModel(state));
         updatePlaybackStateBadge(playerController.getTimeshiftState());
     }
@@ -5885,8 +5893,11 @@ public class MainActivity extends FragmentActivity {
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, channelOverlayCoordinator.isOverlayVisible(channelOverlay));
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.RECORDINGS, recordingsPanelController.isVisible());
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, multiViewContainer != null && multiViewContainer.getVisibility() == View.VISIBLE);
-        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE);
-        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, timeshiftBarContainer != null && timeshiftBarContainer.getVisibility() == View.VISIBLE);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE, false);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, timeshiftBarContainer != null && timeshiftBarContainer.getVisibility() == View.VISIBLE, false);
+        if (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
+            overlaySurfaceState.focusSurface(touchControlsTimeshiftFocused ? OfflineOverlayState.Surface.TIMESHIFT : OfflineOverlayState.Surface.TOUCH_CONTROLS);
+        }
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.ZAP_BANNER, isZapBannerVisible());
     }
 

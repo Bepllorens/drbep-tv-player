@@ -18,17 +18,29 @@ final class OfflineOverlayState {
     private Surface focusedSurface;
 
     void setVisible(Surface surface, boolean visible) {
+        setVisible(surface, visible, visible);
+    }
+
+    void setVisible(Surface surface, boolean visible, boolean takeFocus) {
         if (surface == null) {
             return;
         }
         if (visible) {
             visibleSurfaces.add(surface);
-            focusedSurface = surface;
+            if (takeFocus) {
+                focusedSurface = surface;
+            }
             return;
         }
         visibleSurfaces.remove(surface);
         if (focusedSurface == surface) {
             focusedSurface = visibleSurfaces.isEmpty() ? null : visibleSurfaces.iterator().next();
+        }
+    }
+
+    void focusSurface(Surface surface) {
+        if (surface != null && visibleSurfaces.contains(surface)) {
+            focusedSurface = surface;
         }
     }
 

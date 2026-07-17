@@ -65,6 +65,35 @@ final class CatalogRepository {
         return parseCatalogPayload(payload, true);
     }
 
+    CatalogLoadResult fetchStartupLiveCatalogChannels() throws Exception {
+        if (!standaloneMode) {
+            return fetchCatalogChannels();
+        }
+        if (snapshotStore == null) {
+            throw new IllegalStateException("catalogo local no configurado");
+        }
+        String snapshotUrl = baseUrl + "/api/offline/snapshot";
+        CatalogLoadResult cached = snapshotStore.loadStartupParsedCache(snapshotUrl);
+        if (cached != null) {
+            Log.w(TAG, "using parsed startup catalog cache channels=" + cached.channels.size());
+            return cached.withLoadSource("startup-cache");
+        }
+        return parseCatalogPayload(snapshotStore.loadStartupSnapshotObject(snapshotUrl), false, false, "startup-live");
+    }
+
+    CatalogLoadResult hydrateFullStartupCatalog() throws Exception {
+        if (!standaloneMode) {
+            return fetchCatalogChannels();
+        }
+        if (snapshotStore == null) {
+            throw new IllegalStateException("catalogo local no configurado");
+        }
+        String snapshotUrl = baseUrl + "/api/offline/snapshot";
+        CatalogLoadResult result = parseCatalogPayload(snapshotStore.loadSnapshotObject(), false, true, "startup-hydrate");
+        snapshotStore.saveStartupParsedCache(snapshotUrl, result);
+        return result;
+    }
+
     CatalogLoadResult refreshSnapshotFromConfiguredUrl(String fallbackUrl) throws Exception {
         if (snapshotStore == null) {
             throw new IllegalStateException("catalogo local no configurado");
@@ -99,14 +128,22 @@ final class CatalogRepository {
     }
 
     private CatalogLoadResult parseCatalogPayload(JSONObject rawPayload, boolean appendRemoteVod) {
+        return parseCatalogPayload(rawPayload, appendRemoteVod, true, appendRemoteVod ? "remote-full" : "full");
+    }
+
+    private CatalogLoadResult parseCatalogPayload(JSONObject rawPayload, boolean appendRemoteVod, boolean includeSnapshotVod, String loadSource) {
         long startMs = System.currentTimeMillis();
         JSONObject payload = normalizeSnapshotPayload(rawPayload);
+        long normalizeMs = System.currentTimeMillis() - startMs;
+        long permissionsStartMs = System.currentTimeMillis();
         OfflinePermissions offlinePermissions = parseOfflinePermissions(rawPayload);
+        long permissionsMs = System.currentTimeMillis() - permissionsStartMs;
         JSONArray channelsArray = payload.optJSONArray("channels");
         if (channelsArray == null) {
             channelsArray = new JSONArray();
         }
 
+        long liveStartMs = System.currentTimeMillis();
         List<ChannelItem> parsed = new ArrayList<>(channelsArray.length());
         for (int i = 0; i < channelsArray.length(); i++) {
             JSONObject channel = channelsArray.optJSONObject(i);
@@ -214,17 +251,23 @@ final class CatalogRepository {
             }
             parsed.add(item);
         }
+        long liveParseMs = System.currentTimeMillis() - liveStartMs;
 
-        appendSnapshotVodItems(parsed, payload, offlinePermissions);
+        long vodStartMs = System.currentTimeMillis();
+        if (includeSnapshotVod) {
+            appendSnapshotVodItems(parsed, payload, offlinePermissions);
+        }
         if (appendRemoteVod) {
             appendTivifyVodItems(parsed);
             appendRuntimeVodItems(parsed);
         }
+        long vodParseMs = System.currentTimeMillis() - vodStartMs;
 
-        long parsedItemsMs = System.currentTimeMillis() - startMs;
+        long filtersStartMs = System.currentTimeMillis();
         long activePlatformId = payload.optLong("active_platform_id", 0L);
         StartupFilterConfig startupConfig = parseStartupFilterConfig(payload.optJSONObject("tv_player_startup"));
         List<ChannelFilter> filters = buildFiltersFromCatalog(parsed, activePlatformId, startupConfig, offlinePermissions);
+        long filtersMs = System.currentTimeMillis() - filtersStartMs;
         int liveItems = 0;
         int vodItems = 0;
         for (ChannelItem item : parsed) {
@@ -237,15 +280,37 @@ final class CatalogRepository {
                 liveItems++;
             }
         }
+        long totalMs = System.currentTimeMillis() - startMs;
         Log.i(TAG, "catalog parsed channels=" + channelsArray.length()
                 + " totalItems=" + parsed.size()
                 + " liveItems=" + liveItems
                 + " vodItems=" + vodItems
                 + " filters=" + filters.size()
                 + " appendRemoteVod=" + appendRemoteVod
-                + " itemParseMs=" + parsedItemsMs
-                + " totalMs=" + (System.currentTimeMillis() - startMs));
-        return new CatalogLoadResult(parsed, filters, resolveDefaultFilterKey(filters, startupConfig), offlinePermissions);
+                + " includeSnapshotVod=" + includeSnapshotVod
+                + " source=" + loadSource
+                + " normalizeMs=" + normalizeMs
+                + " permissionsMs=" + permissionsMs
+                + " liveParseMs=" + liveParseMs
+                + " vodParseMs=" + vodParseMs
+                + " filtersMs=" + filtersMs
+                + " totalMs=" + totalMs);
+        return new CatalogLoadResult(
+                parsed,
+                filters,
+                resolveDefaultFilterKey(filters, startupConfig),
+                offlinePermissions,
+                !includeSnapshotVod,
+                safeCatalogText(loadSource),
+                liveItems,
+                vodItems,
+                normalizeMs,
+                permissionsMs,
+                liveParseMs,
+                vodParseMs,
+                filtersMs,
+                totalMs
+        );
     }
 
     private JSONObject normalizeSnapshotPayload(JSONObject rawPayload) {
@@ -1266,15 +1331,73 @@ final class CatalogLoadResult implements Serializable {
     final List<ChannelFilter> filters;
     final String defaultFilterKey;
     final OfflinePermissions offlinePermissions;
+    final boolean liveOnly;
+    final String loadSource;
+    final int liveItems;
+    final int vodItems;
+    final long normalizeMs;
+    final long permissionsMs;
+    final long liveParseMs;
+    final long vodParseMs;
+    final long filtersMs;
+    final long totalParseMs;
 
     CatalogLoadResult(List<ChannelItem> channels, List<ChannelFilter> filters, String defaultFilterKey) {
         this(channels, filters, defaultFilterKey, new OfflinePermissions());
     }
 
     CatalogLoadResult(List<ChannelItem> channels, List<ChannelFilter> filters, String defaultFilterKey, OfflinePermissions offlinePermissions) {
-        this.channels = channels;
-        this.filters = filters;
-        this.defaultFilterKey = defaultFilterKey;
+        this(channels, filters, defaultFilterKey, offlinePermissions, false, "", 0, 0, 0L, 0L, 0L, 0L, 0L, 0L);
+    }
+
+    CatalogLoadResult(
+            List<ChannelItem> channels,
+            List<ChannelFilter> filters,
+            String defaultFilterKey,
+            OfflinePermissions offlinePermissions,
+            boolean liveOnly,
+            String loadSource,
+            int liveItems,
+            int vodItems,
+            long normalizeMs,
+            long permissionsMs,
+            long liveParseMs,
+            long vodParseMs,
+            long filtersMs,
+            long totalParseMs
+    ) {
+        this.channels = channels == null ? new ArrayList<>() : channels;
+        this.filters = filters == null ? new ArrayList<>() : filters;
+        this.defaultFilterKey = defaultFilterKey == null || defaultFilterKey.trim().isEmpty() ? "all" : defaultFilterKey.trim();
         this.offlinePermissions = offlinePermissions == null ? new OfflinePermissions() : offlinePermissions;
+        this.liveOnly = liveOnly;
+        this.loadSource = loadSource == null ? "" : loadSource.trim();
+        this.liveItems = liveItems;
+        this.vodItems = vodItems;
+        this.normalizeMs = Math.max(0L, normalizeMs);
+        this.permissionsMs = Math.max(0L, permissionsMs);
+        this.liveParseMs = Math.max(0L, liveParseMs);
+        this.vodParseMs = Math.max(0L, vodParseMs);
+        this.filtersMs = Math.max(0L, filtersMs);
+        this.totalParseMs = Math.max(0L, totalParseMs);
+    }
+
+    CatalogLoadResult withLoadSource(String source) {
+        return new CatalogLoadResult(
+                channels,
+                filters,
+                defaultFilterKey,
+                offlinePermissions,
+                liveOnly,
+                source,
+                liveItems,
+                vodItems,
+                normalizeMs,
+                permissionsMs,
+                liveParseMs,
+                vodParseMs,
+                filtersMs,
+                totalParseMs
+        );
     }
 }

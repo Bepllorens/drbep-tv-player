@@ -22,9 +22,15 @@ final class RemoteInputRouter {
 
         boolean canResumeTimeshiftLive();
 
+        boolean resumeTimeshiftLive();
+
         boolean canSeekTimeshiftBack();
 
         boolean canSeekTimeshiftForward();
+
+        boolean seekTimeshiftBack();
+
+        boolean seekTimeshiftForward();
 
         boolean isPlayingRecordingWithReturnTarget();
 
@@ -192,17 +198,18 @@ final class RemoteInputRouter {
                 host.scheduleSelectedOrCurrentProgram();
                 return true;
             case KeyEvent.KEYCODE_MEDIA_REWIND:
-                if (host.canSeekTimeshiftBack()) {
+                if (host.seekTimeshiftBack()) {
                     host.showTimeshiftHudTemporarily();
                     return true;
                 }
                 return false;
             case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
                 if (repeatCount > 0 && host.canResumeTimeshiftLive()) {
+                    host.resumeTimeshiftLive();
                     host.showTimeshiftHudTemporarily();
                     return true;
                 }
-                if (host.canSeekTimeshiftForward()) {
+                if (host.seekTimeshiftForward()) {
                     host.showTimeshiftHudTemporarily();
                     return true;
                 }
@@ -221,6 +228,7 @@ final class RemoteInputRouter {
     boolean onKeyLongPress(int keyCode) {
         if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
             if (host.canResumeTimeshiftLive()) {
+                host.resumeTimeshiftLive();
                 host.showTimeshiftHudTemporarily();
                 return true;
             }
@@ -426,8 +434,8 @@ final class RemoteInputRouter {
         }
         if (host.isTouchControlsVisible()) {
             if (host.isTouchControlsTimeshiftFocused()) {
-                if (host.canSeekTimeshiftBack()) {
-                    host.focusTouchControlsTimeshift();
+                if (host.seekTimeshiftBack()) {
+                    host.showTimeshiftHudTemporarily();
                 }
                 return true;
             }
@@ -435,6 +443,7 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftBack()) {
+            host.seekTimeshiftBack();
             host.showTimeshiftHudTemporarily();
             return true;
         }
@@ -461,8 +470,8 @@ final class RemoteInputRouter {
         }
         if (host.isTouchControlsVisible()) {
             if (host.isTouchControlsTimeshiftFocused()) {
-                if (host.canSeekTimeshiftForward()) {
-                    host.focusTouchControlsTimeshift();
+                if (host.seekTimeshiftForward()) {
+                    host.showTimeshiftHudTemporarily();
                 }
                 return true;
             }
@@ -470,6 +479,7 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftForward()) {
+            host.seekTimeshiftForward();
             host.showTimeshiftHudTemporarily();
             return true;
         }

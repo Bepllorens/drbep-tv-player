@@ -344,6 +344,7 @@ public class MainActivity extends FragmentActivity {
     private int overlaySearchClearFocusRequestToken;
     private boolean startupHubShown;
     private boolean startupFastPlaybackStarted;
+    private boolean startupCatalogHydrationRunning;
     private String startupFastPlaybackChannelId = "";
     private String lastChannelId;
     private final List<String> globalSearchRecents = new ArrayList<>();
@@ -393,6 +394,17 @@ public class MainActivity extends FragmentActivity {
     private boolean epgFullCatalogLoaded;
     private boolean epgFullCatalogLoadRequested;
     private boolean startupEpgLoadsScheduled;
+    private String epgProgressState = "idle";
+    private String epgProgressFilterKey = "";
+    private String epgProgressLabel = "";
+    private String epgProgressLastError = "";
+    private int epgProgressLoadedChannels;
+    private int epgProgressTotalChannels;
+    private int epgProgressLastBatchChannels;
+    private int epgProgressLastBatchUpdates;
+    private int epgProgressCompletedFilters;
+    private long epgProgressStartedAtMs;
+    private long epgProgressCompletedAtMs;
     private final Set<String> epgLoadedFilterKeys = new HashSet<>();
     private final Set<String> epgQueuedFilterKeys = new HashSet<>();
     private final Map<String, Integer> epgFilterOffsets = new HashMap<>();
@@ -1884,15 +1896,15 @@ public class MainActivity extends FragmentActivity {
         }
         submitCatalogTask("load-channels", () -> {
             try {
-                CatalogLoadResult result = catalogRepository.fetchCatalogChannels();
+                CatalogLoadResult result = BuildConfig.STANDALONE_MODE
+                        ? catalogRepository.fetchStartupLiveCatalogChannels()
+                        : catalogRepository.fetchCatalogChannels();
                 long durationMs = System.currentTimeMillis() - startMs;
-                Log.w(TAG, "startup catalog loaded channels="
-                        + (result == null || result.channels == null ? 0 : result.channels.size())
-                        + " filters=" + (result == null || result.filters == null ? 0 : result.filters.size())
-                        + " durationMs=" + durationMs);
+                logCatalogStartupMetrics("startup-load", result, durationMs);
                 uiHandler.post(() -> {
                     lastCatalogLoadDurationMs = durationMs;
                     applyLoadedChannels(result);
+                    maybeHydrateFullStartupCatalog(result);
                     maybeShowStartupCatalogCacheValidated();
                     runPostUpdateStartupHealthCheck("catalog-load", result);
                     refreshStandaloneCatalogInBackgroundIfPossible();
@@ -1917,6 +1929,7 @@ public class MainActivity extends FragmentActivity {
                                     getString(R.string.startup_loading_prepare_list),
                                     getString(R.string.startup_loading_prepare_list_detail)
                             );
+                            logCatalogStartupMetrics("startup-refresh", refreshed, durationMs);
                             applyLoadedChannels(refreshed);
                             runPostUpdateStartupHealthCheck("catalog-refresh", refreshed);
                         });
@@ -1937,6 +1950,7 @@ public class MainActivity extends FragmentActivity {
                                         getString(R.string.startup_loading_prepare_list),
                                         getString(R.string.startup_loading_prepare_list_detail)
                                 );
+                                logCatalogStartupMetrics("startup-last-good", fallback, durationMs);
                                 applyLoadedChannels(fallback);
                                 runPostUpdateStartupHealthCheck("last-good-catalog", fallback);
                             });
@@ -1963,6 +1977,7 @@ public class MainActivity extends FragmentActivity {
                                 getString(R.string.startup_loading_prepare_list),
                                 getString(R.string.startup_loading_prepare_list_detail)
                         );
+                        logCatalogStartupMetrics("startup-api-fallback", fallback, durationMs);
                         applyLoadedChannels(fallback);
                         runPostUpdateStartupHealthCheck("api-fallback", fallback);
                     });
@@ -1976,6 +1991,85 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         });
+    }
+
+    private void logCatalogStartupMetrics(String stage, CatalogLoadResult result, long durationMs) {
+        int channelCount = result == null || result.channels == null ? 0 : result.channels.size();
+        int filterCount = result == null || result.filters == null ? 0 : result.filters.size();
+        Log.w(TAG, "startup catalog metrics stage=" + fallbackUnknown(stage)
+                + " source=" + (result == null ? "" : result.loadSource)
+                + " liveOnly=" + (result != null && result.liveOnly)
+                + " channels=" + channelCount
+                + " liveItems=" + (result == null ? 0 : result.liveItems)
+                + " vodItems=" + (result == null ? 0 : result.vodItems)
+                + " filters=" + filterCount
+                + " normalizeMs=" + (result == null ? 0L : result.normalizeMs)
+                + " permissionsMs=" + (result == null ? 0L : result.permissionsMs)
+                + " liveParseMs=" + (result == null ? 0L : result.liveParseMs)
+                + " vodParseMs=" + (result == null ? 0L : result.vodParseMs)
+                + " filtersMs=" + (result == null ? 0L : result.filtersMs)
+                + " parseTotalMs=" + (result == null ? 0L : result.totalParseMs)
+                + " durationMs=" + durationMs);
+    }
+
+    private void maybeHydrateFullStartupCatalog(CatalogLoadResult startupResult) {
+        if (!BuildConfig.STANDALONE_MODE
+                || startupResult == null
+                || !startupResult.liveOnly
+                || startupCatalogHydrationRunning
+                || catalogRepository == null
+                || ioExecutor == null) {
+            return;
+        }
+        startupCatalogHydrationRunning = true;
+        long startMs = System.currentTimeMillis();
+        Log.w(TAG, "startup catalog hydration scheduled after live-first load channels="
+                + (startupResult.channels == null ? 0 : startupResult.channels.size()));
+        ioExecutor.execute(() -> {
+            try {
+                CatalogLoadResult hydrated = catalogRepository.hydrateFullStartupCatalog();
+                long durationMs = System.currentTimeMillis() - startMs;
+                uiHandler.post(() -> {
+                    startupCatalogHydrationRunning = false;
+                    logCatalogStartupMetrics("startup-hydrate", hydrated, durationMs);
+                    applyHydratedStartupCatalog(hydrated);
+                    showStatus("Catalogo completo preparado: TV "
+                            + (hydrated == null ? 0 : hydrated.liveItems)
+                            + " · VOD "
+                            + (hydrated == null ? 0 : hydrated.vodItems));
+                });
+            } catch (Exception e) {
+                long durationMs = System.currentTimeMillis() - startMs;
+                Log.w(TAG, "startup catalog hydration failed durationMs=" + durationMs, e);
+                uiHandler.post(() -> startupCatalogHydrationRunning = false);
+            }
+        });
+    }
+
+    private void applyHydratedStartupCatalog(CatalogLoadResult result) {
+        if (!isActivityReadyForUiWork() || result == null || result.channels == null || result.channels.isEmpty()) {
+            return;
+        }
+        long startMs = System.currentTimeMillis();
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        String keepChannelId = current == null ? lastChannelId : current.id;
+        currentOfflinePermissions = result.offlinePermissions == null ? new OfflinePermissions() : result.offlinePermissions;
+        syncOverlayCoordinator();
+        invalidateVodDerivedCaches();
+        channelOverlayCoordinator.applyLoadedChannels(result, keepChannelId);
+        syncOverlayStateFromCoordinator();
+        persistNavigationState();
+        refreshOverlayChannelList();
+        updateFilterText();
+        updateOverlaySearchState();
+        refreshTouchControlsBar();
+        if (current != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
+            updateZapBannerContent(getCurrentPlaybackChannelItem());
+        }
+        Log.w(TAG, "startup catalog hydrated applied total=" + allChannels.size()
+                + " visible=" + channels.size()
+                + " keepChannel=" + fallbackUnknown(keepChannelId)
+                + " applyMs=" + (System.currentTimeMillis() - startMs));
     }
 
     private void tryFastStartupPlaybackFromCache() {
@@ -2554,6 +2648,77 @@ public class MainActivity extends FragmentActivity {
         uiHandler.postDelayed(progressiveEpgRunnable, Math.max(0L, delayMs));
     }
 
+    private void markEpgProgressStarted(String filterKey, String label, int loadedChannels, int totalChannels, int batchChannels) {
+        epgProgressState = "loading";
+        epgProgressFilterKey = filterKey == null ? "" : filterKey.trim();
+        epgProgressLabel = label == null || label.trim().isEmpty() ? epgProgressFilterKey : label.trim();
+        epgProgressLastError = "";
+        epgProgressLoadedChannels = Math.max(0, loadedChannels);
+        epgProgressTotalChannels = Math.max(epgProgressLoadedChannels, totalChannels);
+        epgProgressLastBatchChannels = Math.max(0, batchChannels);
+        epgProgressLastBatchUpdates = 0;
+        epgProgressStartedAtMs = System.currentTimeMillis();
+        showStatus(getString(
+                R.string.status_epg_loading_filter,
+                epgProgressLabel,
+                epgProgressLoadedChannels,
+                epgProgressTotalChannels
+        ));
+    }
+
+    private void markEpgProgressLoaded(String filterKey, String label, int loadedChannels, int totalChannels, int batchChannels, int updates, boolean complete) {
+        epgProgressState = complete ? "ready" : "partial";
+        epgProgressFilterKey = filterKey == null ? "" : filterKey.trim();
+        epgProgressLabel = label == null || label.trim().isEmpty() ? epgProgressFilterKey : label.trim();
+        epgProgressLoadedChannels = Math.max(0, loadedChannels);
+        epgProgressTotalChannels = Math.max(epgProgressLoadedChannels, totalChannels);
+        epgProgressLastBatchChannels = Math.max(0, batchChannels);
+        epgProgressLastBatchUpdates = Math.max(0, updates);
+        epgProgressCompletedAtMs = System.currentTimeMillis();
+        if (complete) {
+            epgProgressCompletedFilters = epgLoadedFilterKeys.size();
+            showStatus(getString(
+                    R.string.status_epg_loaded_filter,
+                    epgProgressLabel,
+                    epgProgressLoadedChannels,
+                    epgProgressTotalChannels,
+                    epgProgressLastBatchUpdates
+            ));
+        } else {
+            showStatus(getString(
+                    R.string.status_epg_partial_filter,
+                    epgProgressLabel,
+                    epgProgressLoadedChannels,
+                    epgProgressTotalChannels
+            ));
+        }
+    }
+
+    private void markEpgProgressFailed(String filterKey, String label, String error, boolean timeout) {
+        epgProgressState = timeout ? "timeout" : "error";
+        epgProgressFilterKey = filterKey == null ? "" : filterKey.trim();
+        epgProgressLabel = label == null || label.trim().isEmpty() ? epgProgressFilterKey : label.trim();
+        epgProgressLastError = error == null ? "" : error.trim();
+        epgProgressCompletedAtMs = System.currentTimeMillis();
+        showStatus(getString(
+                timeout ? R.string.status_epg_timeout_filter : R.string.status_epg_failed_filter,
+                epgProgressLabel
+        ));
+    }
+
+    private void markEpgProgressAllReadyIfNeeded() {
+        if (!BuildConfig.STANDALONE_MODE || epgLoadInFlight || !epgQueuedFilterKeys.isEmpty()) {
+            return;
+        }
+        if (nextProgressiveEpgFilter() != null) {
+            return;
+        }
+        epgProgressState = "complete";
+        epgProgressCompletedFilters = epgLoadedFilterKeys.size();
+        epgProgressCompletedAtMs = System.currentTimeMillis();
+        showStatus(getString(R.string.status_epg_all_ready));
+    }
+
     private void loadNextProgressiveEpgFilter() {
         if (!BuildConfig.STANDALONE_MODE || allChannels.isEmpty()) {
             return;
@@ -2567,6 +2732,7 @@ public class MainActivity extends FragmentActivity {
         }
         ChannelFilter nextFilter = nextProgressiveEpgFilter();
         if (nextFilter == null) {
+            markEpgProgressAllReadyIfNeeded();
             return;
         }
         String key = epgFilterKey(nextFilter);
@@ -2622,6 +2788,13 @@ public class MainActivity extends FragmentActivity {
         epgLoadStartedAtMs = System.currentTimeMillis();
         final int loadGeneration = ++epgLoadGeneration;
         long startMs = System.currentTimeMillis();
+        markEpgProgressStarted(
+                cleanFilterKey,
+                cleanLabel,
+                batchOffset,
+                batchSnapshot.totalLiveChannels,
+                epgChannelsSnapshot.size()
+        );
         Log.w(TAG, "EPG partial start filter=" + cleanFilterKey
                 + " label=" + cleanLabel
                 + " channels=" + epgChannelsSnapshot.size()
@@ -2639,6 +2812,7 @@ public class MainActivity extends FragmentActivity {
             epgLoadInFlight = false;
             epgLoadGeneration++;
             epgQueuedFilterKeys.remove(cleanFilterKey);
+            markEpgProgressFailed(cleanFilterKey, cleanLabel, "timeout", true);
             Log.w(TAG, "EPG partial timeout filter=" + cleanFilterKey
                     + " label=" + cleanLabel
                     + " channels=" + epgChannelsSnapshot.size()
@@ -2679,6 +2853,16 @@ public class MainActivity extends FragmentActivity {
                     }
                     int filled = applyProgramPairUpdates(epgChannelsSnapshot, updates, pairs);
                     applyProgramPairUpdates(channels, epgNowByChannelId, epgProgramPairByChannelId);
+                    boolean filterComplete = batchSnapshot.complete || !continueProgressive;
+                    markEpgProgressLoaded(
+                            cleanFilterKey,
+                            cleanLabel,
+                            filterComplete ? batchSnapshot.totalLiveChannels : batchSnapshot.nextOffset,
+                            batchSnapshot.totalLiveChannels,
+                            epgChannelsSnapshot.size(),
+                            updates.size(),
+                            filterComplete
+                    );
                     Log.w(TAG, "EPG partial loaded filter=" + cleanFilterKey
                             + " label=" + cleanLabel
                             + " updates=" + updates.size()
@@ -2698,6 +2882,8 @@ public class MainActivity extends FragmentActivity {
                         scheduleNextProgressiveEpgLoad(batchSnapshot.complete
                                 ? OFFLINE_EPG_PROGRESSIVE_DELAY_MS
                                 : OFFLINE_EPG_BUSY_RETRY_MS);
+                    } else {
+                        markEpgProgressAllReadyIfNeeded();
                     }
                 });
             } catch (Exception e) {
@@ -2706,6 +2892,7 @@ public class MainActivity extends FragmentActivity {
                 epgFullCatalogLoadRequested = false;
                 lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                 epgQueuedFilterKeys.remove(cleanFilterKey);
+                uiHandler.post(() -> markEpgProgressFailed(cleanFilterKey, cleanLabel, e.getMessage(), false));
                 Log.w(TAG, "load epg partial failed filter=" + cleanFilterKey, e);
                 if (continueProgressive && !compactEpgMode) {
                     scheduleNextProgressiveEpgLoad(OFFLINE_EPG_PROGRESSIVE_DELAY_MS);
@@ -4099,6 +4286,54 @@ public class MainActivity extends FragmentActivity {
 
     private boolean isTouchControlsTimeshiftFocused() {
         return touchControlsTimeshiftFocused;
+    }
+
+    private boolean canSeekPlaybackBack() {
+        PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
+        if (state == null && playerController != null) {
+            state = playerController.getPlaybackSeekState();
+        }
+        return state != null && state.currentMs > state.startMs;
+    }
+
+    private boolean canSeekPlaybackForward() {
+        PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
+        if (state == null && playerController != null) {
+            state = playerController.getPlaybackSeekState();
+        }
+        return state != null && state.currentMs < state.endMs;
+    }
+
+    private boolean canResumeLivePlayback() {
+        if (playerController == null) {
+            return false;
+        }
+        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
+        return state != null && state.liveCapable && state.currentMs < state.endMs;
+    }
+
+    private boolean seekTouchControlsBack() {
+        if (isCurrentU7dPlayback()) {
+            PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
+            if (state == null) {
+                return false;
+            }
+            seekCurrentU7dPlaybackTo(state.currentMs - 30_000L);
+            return true;
+        }
+        return playerController != null && playerController.seekTimeshiftBack();
+    }
+
+    private boolean seekTouchControlsForward() {
+        if (isCurrentU7dPlayback()) {
+            PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
+            if (state == null) {
+                return false;
+            }
+            seekCurrentU7dPlaybackTo(state.currentMs + 30_000L);
+            return true;
+        }
+        return playerController != null && playerController.seekTimeshiftForward();
     }
 
     private void focusTouchControlsTimeshift() {
@@ -6275,17 +6510,32 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean canResumeTimeshiftLive() {
+                return MainActivity.this.canResumeLivePlayback();
+            }
+
+            @Override
+            public boolean resumeTimeshiftLive() {
                 return playerController != null && playerController.resumeTimeshiftLive();
             }
 
             @Override
             public boolean canSeekTimeshiftBack() {
-                return playerController != null && playerController.seekTimeshiftBack();
+                return MainActivity.this.canSeekPlaybackBack();
             }
 
             @Override
             public boolean canSeekTimeshiftForward() {
-                return playerController != null && playerController.seekTimeshiftForward();
+                return MainActivity.this.canSeekPlaybackForward();
+            }
+
+            @Override
+            public boolean seekTimeshiftBack() {
+                return MainActivity.this.seekTouchControlsBack();
+            }
+
+            @Override
+            public boolean seekTimeshiftForward() {
+                return MainActivity.this.seekTouchControlsForward();
             }
 
             @Override
@@ -10537,6 +10787,19 @@ public class MainActivity extends FragmentActivity {
                     .put("last_catalog_load_ms", lastCatalogLoadDurationMs)
                     .put("last_apply_channels_ms", lastApplyChannelsDurationMs)
                     .put("last_epg_now_load_ms", lastEpgNowLoadDurationMs)
+                    .put("epg_progress_state", epgProgressState)
+                    .put("epg_progress_filter_key", epgProgressFilterKey)
+                    .put("epg_progress_label", epgProgressLabel)
+                    .put("epg_progress_loaded_channels", epgProgressLoadedChannels)
+                    .put("epg_progress_total_channels", epgProgressTotalChannels)
+                    .put("epg_progress_last_batch_channels", epgProgressLastBatchChannels)
+                    .put("epg_progress_last_batch_updates", epgProgressLastBatchUpdates)
+                    .put("epg_progress_completed_filters", epgProgressCompletedFilters)
+                    .put("epg_progress_loaded_filter_keys", epgLoadedFilterKeys.size())
+                    .put("epg_progress_queued_filter_keys", epgQueuedFilterKeys.size())
+                    .put("epg_progress_started_at_ms", epgProgressStartedAtMs)
+                    .put("epg_progress_completed_at_ms", epgProgressCompletedAtMs)
+                    .put("epg_progress_last_error", epgProgressLastError)
                     .put("last_app_update_check_ms", lastAppUpdateCheckMs)
                     .put("last_app_update_error", lastAppUpdateError == null ? "" : lastAppUpdateError)
                     .put("last_catalog_error", lastOfflineCatalogRefreshError == null ? "" : lastOfflineCatalogRefreshError)

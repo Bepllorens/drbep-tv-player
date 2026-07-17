@@ -72,6 +72,12 @@
     <string name="startup_recovery_retry">Reintentar carga</string>
     <string name="status_loading_guide">Cargando guia...</string>
     <string name="status_searching_epg">Buscando programas...</string>
+    <string name="status_epg_loading_filter">EPG: cargando %1$s (%2$d/%3$d canales)</string>
+    <string name="status_epg_loaded_filter">EPG: %1$s lista (%2$d/%3$d canales, %4$d con guia)</string>
+    <string name="status_epg_partial_filter">EPG: %1$s parcial (%2$d/%3$d canales)</string>
+    <string name="status_epg_all_ready">EPG completa para las plataformas visibles</string>
+    <string name="status_epg_failed_filter">EPG: fallo cargando %1$s</string>
+    <string name="status_epg_timeout_filter">EPG: %1$s tarda mas de lo esperado</string>
     <string name="status_loading_visual_epg">Cargando EPG visual...</string>
     <string name="status_loading_recordings">Cargando grabaciones...</string>
     <string name="status_loading_scheduled_recordings">Cargando grabaciones programadas...</string>

@@ -4,8 +4,8 @@ Fecha: 2026-07-17
 
 ## Version de referencia
 
-- Canal beta publicado: `2.0.319-beta-fast-startup-timeline`
-- `versionCode`: `319`
+- Canal beta preparado: `2.0.320-beta-vod-hud-smoke-polish`
+- `versionCode`: `320`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo principal de prueba: Fire Stick `192.168.93.16:5555`
 - Rama app: `codex/offline-firestick-app`
@@ -68,7 +68,7 @@ La app offline ya es operativa en Fire Stick, tablet y movil Android, con UI may
 
 ## Pendiente real
 
-- Probar `2.0.319-beta-fast-startup-timeline` desde el actualizador interno, no solo por ADB.
+- Probar `2.0.320-beta-vod-hud-smoke-polish` desde el actualizador interno, no solo por ADB.
 - Confirmar visualmente en Fire Stick real que `Guia` abre una sola vez y mantiene foco correcto.
 - Valorar separar VOD pesado del catalogo de arranque para reducir el primer parseo tras cambio de snapshot.
 - Revisar restos XML/layout legacy que sean decorativos o contenedores ya prescindibles.

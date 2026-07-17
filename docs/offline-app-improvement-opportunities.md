@@ -2,7 +2,7 @@
 
 Fecha: 2026-07-17
 
-Base analizada: app offline en torno a `2.0.319-beta-fast-startup-timeline`, con la migracion a Compose muy avanzada, arranque rapido con cache local, EPG progresiva, VOD operativo y reproduccion directa/proxy segun plataforma.
+Base analizada: app offline en torno a `2.0.320-beta-vod-hud-smoke-polish`, con la migracion a Compose muy avanzada, arranque rapido con cache local, EPG progresiva, VOD operativo y reproduccion directa/proxy segun plataforma.
 
 ## Resumen ejecutivo
 

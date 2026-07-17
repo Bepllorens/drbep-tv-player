@@ -126,7 +126,7 @@ public class RemoteInputRouterTest {
 
         assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0, 0));
 
-        assertEquals("controls:timeshift", host.lastAction);
+        assertEquals("timeshift:show", host.lastAction);
         assertEquals(1, host.seekForwardCalls);
     }
 

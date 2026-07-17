@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +35,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -78,6 +80,8 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: Touc
             val actionCount = model.actions.size.coerceAtLeast(1)
             val firstEnabledIndex = model.actions.indexOfFirst { it.enabled }
             val focusedIndex = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
+            val scrollState = rememberScrollState()
+            val density = LocalDensity.current
             val firstButtonFocusRequester = rememberTvInitialFocusRequester(
                 enabled = firstEnabledIndex >= 0,
                 model.actions.size,
@@ -93,10 +97,19 @@ private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: Touc
             } else {
                 0.dp
             }
+            LaunchedEffect(focusedIndex, actionCount, shouldCenter, compact) {
+                if (!shouldCenter && actionCount > 1) {
+                    val chipPx = with(density) { (if (compact) 86.dp else 92.dp).roundToPx() }
+                    val gapPx = with(density) { 8.dp.roundToPx() }
+                    val leadingPx = with(density) { 8.dp.roundToPx() }
+                    val target = leadingPx + ((chipPx + gapPx) * focusedIndex) - chipPx
+                    scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
+                }
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                    .horizontalScroll(scrollState),
                 horizontalArrangement = if (shouldCenter) Arrangement.Center else Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {

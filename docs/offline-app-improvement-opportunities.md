@@ -197,7 +197,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - El estado periodico del dispositivo incluye resumen compacto de dashboard: filtro activo, EPG, VOD/U7D cargando, ruta, trafico, calidad y tiempos basicos de reproduccion.
 - El estado periodico tambien envia `device_health_level` y `device_health_summary` para que el dashboard pueda pintar OK/loading/warning/error sin recalcularlo.
 - Las secciones VOD limitadas muestran una pista clara para usar busqueda/filtros cuando solo se renderiza una muestra de resultados.
-- Se anade `scripts/offline_smoke_test.sh` para comprobar por ADB arranque, HUD, guia/info, menu, grabacion, zapping basico y ausencia de crashes recientes.
+- Se anade `scripts/offline_smoke_test.sh` para comprobar por ADB arranque, HUD, guia/info, menu, grabacion, zapping basico, ausencia de crashes recientes y resumen de actividad/arranque/EPG/playback.
 - Se extrae `TouchControlsFocusState` para aislar el estado de foco HUD/timeshift y cubrirlo con tests unitarios.
 - Se centraliza la redaccion de diagnosticos en `DiagnosticRedactor` con tests para URLs firmadas, rutas relativas y tokens Bearer/keys.
 - Las trazas del player pasan las URLs de decision/stream y valores libres por el redactor antes de acortarlas, incluyendo tokens tipo `X-TCDN-token`.

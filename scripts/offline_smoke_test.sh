@@ -7,6 +7,7 @@ APP_ACTIVITY="${APP_ACTIVITY:-com.drbep.tvplayer.MainActivity}"
 WAIT_BOOT_SECONDS="${WAIT_BOOT_SECONDS:-12}"
 WAIT_AFTER_KEY_SECONDS="${WAIT_AFTER_KEY_SECONDS:-1}"
 LOG_LINES="${LOG_LINES:-2500}"
+LOG_OUTPUT="${LOG_OUTPUT:-}"
 
 usage() {
   cat <<EOF
@@ -18,6 +19,7 @@ Variables opcionales:
   WAIT_BOOT_SECONDS        Espera tras arrancar la app. Default: $WAIT_BOOT_SECONDS
   WAIT_AFTER_KEY_SECONDS   Espera entre teclas. Default: $WAIT_AFTER_KEY_SECONDS
   LOG_LINES                Lineas de logcat a revisar. Default: $LOG_LINES
+  LOG_OUTPUT               Ruta opcional donde guardar el logcat revisado.
 
 Ejemplos:
   $0 192.168.93.16:5555
@@ -73,6 +75,33 @@ send_key() {
   sleep "$WAIT_AFTER_KEY_SECONDS"
 }
 
+print_log_summary() {
+  local log_file="$1"
+  echo
+  echo "== Resumen diagnostico =="
+  echo "Activity visible:"
+  "${ADB[@]}" shell dumpsys window windows 2>/dev/null \
+    | grep -E "mCurrentFocus|mFocusedApp" \
+    | tail -n 4 \
+    | sed 's/^[[:space:]]*/  /' || true
+  echo
+  echo "Catalogo/arranque:"
+  grep -iE "startup (catalog|parsed|playback)|startup-load|startup-refresh|startup-hydrate|catalog .*duration|parse.*duration" "$log_file" \
+    | tail -n 12 \
+    | sed 's/^/  /' || echo "  sin metricas recientes"
+  echo
+  echo "EPG:"
+  grep -iE "EPG|timeline|guide" "$log_file" \
+    | grep -ivE "ResourcesCompat|ViewRootImpl" \
+    | tail -n 12 \
+    | sed 's/^/  /' || echo "  sin eventos EPG recientes"
+  echo
+  echo "Playback:"
+  grep -iE "playChannel|prepareMediaSource|Playback route|decision=|first frame|STATE_READY|Source error|ExoPlaybackException" "$log_file" \
+    | tail -n 16 \
+    | sed 's/^/  /' || echo "  sin eventos de reproduccion recientes"
+}
+
 # Secuencia conservadora: abrir HUD, navegar botones, abrir/cerrar guia/info/grabaciones
 # sin asumir un canal o plataforma concretos.
 send_key "OK / HUD inferior" KEYCODE_DPAD_CENTER
@@ -98,11 +127,21 @@ if [ -z "$PID" ]; then
   exit 1
 fi
 
-CRASH_LOG="$("${ADB[@]}" logcat -d -t "$LOG_LINES" | grep -iE "FATAL EXCEPTION|AndroidRuntime|Process: $APP_PACKAGE|Unable to start activity|ANR in $APP_PACKAGE" || true)"
+TMP_LOG="$(mktemp "${TMPDIR:-/tmp}/drbep-offline-smoke.XXXXXX.log")"
+"${ADB[@]}" logcat -d -t "$LOG_LINES" > "$TMP_LOG" || true
+
+if [ -n "$LOG_OUTPUT" ]; then
+  cp "$TMP_LOG" "$LOG_OUTPUT"
+  echo "Log guardado en: $LOG_OUTPUT"
+fi
+
+CRASH_LOG="$(grep -iE "FATAL EXCEPTION|AndroidRuntime|Process: $APP_PACKAGE|Unable to start activity|ANR in $APP_PACKAGE" "$TMP_LOG" || true)"
 if [ -n "$CRASH_LOG" ]; then
   echo "Se han detectado errores graves en logcat:" >&2
   echo "$CRASH_LOG" >&2
+  print_log_summary "$TMP_LOG" >&2
   exit 1
 fi
 
+print_log_summary "$TMP_LOG"
 echo "Smoke test OK: app viva y sin FATAL/AndroidRuntime recientes."

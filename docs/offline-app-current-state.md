@@ -4,7 +4,7 @@ Fecha: 2026-07-17
 
 ## Version de referencia
 
-- Canal beta preparado: `2.0.320-beta-vod-hud-smoke-polish`
+- Canal beta publicado: `2.0.320-beta-vod-hud-smoke-polish`
 - `versionCode`: `320`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo principal de prueba: Fire Stick `192.168.93.16:5555`

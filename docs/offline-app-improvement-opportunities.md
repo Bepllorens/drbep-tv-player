@@ -197,6 +197,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - El estado periodico del dispositivo incluye resumen compacto de dashboard: filtro activo, EPG, VOD/U7D cargando, ruta, trafico, calidad y tiempos basicos de reproduccion.
 - El estado periodico tambien envia `device_health_level` y `device_health_summary` para que el dashboard pueda pintar OK/loading/warning/error sin recalcularlo.
 - Las secciones VOD limitadas muestran una pista clara para usar busqueda/filtros cuando solo se renderiza una muestra de resultados.
+- Se anade `scripts/offline_smoke_test.sh` para comprobar por ADB arranque, HUD, guia/info, menu, grabacion, zapping basico y ausencia de crashes recientes.
 
 ## Criterios de exito
 

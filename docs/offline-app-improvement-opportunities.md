@@ -201,6 +201,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - Se extrae `TouchControlsFocusState` para aislar el estado de foco HUD/timeshift y cubrirlo con tests unitarios.
 - Se centraliza la redaccion de diagnosticos en `DiagnosticRedactor` con tests para URLs firmadas, rutas relativas y tokens Bearer/keys.
 - Las trazas del player pasan las URLs de decision/stream y valores libres por el redactor antes de acortarlas, incluyendo tokens tipo `X-TCDN-token`.
+- El resumen de catalogo offline muestra URLs sanitizadas y el editor de token ya no presenta el valor en claro en pantalla.
 
 ## Criterios de exito
 

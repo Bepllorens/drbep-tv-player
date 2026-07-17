@@ -10578,8 +10578,8 @@ public class MainActivity extends FragmentActivity {
                 status.epgUntilMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.epgUntilMs),
                 humanReadableSize(status.sizeBytes),
                 status.schema == null || status.schema.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.schema,
-                status.sourceUrl == null || status.sourceUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceUrl,
-                status.sourceBaseUrl == null || status.sourceBaseUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.sourceBaseUrl,
+                status.sourceUrl == null || status.sourceUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : DiagnosticRedactor.sanitizeUrl(status.sourceUrl),
+                status.sourceBaseUrl == null || status.sourceBaseUrl.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : DiagnosticRedactor.sanitizeUrl(status.sourceBaseUrl),
                 status.deviceId == null || status.deviceId.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.deviceId,
                 status.hasAccessToken ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
                 status.subject == null || status.subject.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : status.subject,
@@ -11809,7 +11809,7 @@ public class MainActivity extends FragmentActivity {
                 getString(android.R.string.ok),
                 getString(R.string.dialog_cancel),
                 getString(R.string.offline_catalog_action_clear_token),
-                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.offline_catalog_token_hint), current == null || current.trim().isEmpty() ? "" : current, false, false)),
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.offline_catalog_token_hint), current == null || current.trim().isEmpty() ? "" : current, true, false)),
                 values -> {
                     if (catalogSnapshotStore != null) {
                         catalogSnapshotStore.setAccessToken(values == null || values.isEmpty() ? "" : values.get(0));

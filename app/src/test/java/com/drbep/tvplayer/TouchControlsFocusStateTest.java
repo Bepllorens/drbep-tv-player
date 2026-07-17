@@ -40,4 +40,42 @@ public class TouchControlsFocusStateTest {
         assertFalse(state.timeshiftFocused());
         assertEquals(0, state.actionIndex());
     }
+
+    @Test
+    public void moveToNextEnabledActionSkipsDisabledActionsAndWraps() {
+        TouchControlsFocusState state = new TouchControlsFocusState();
+        boolean[] enabled = new boolean[] {true, false, false, true};
+
+        state.focusAction(0);
+
+        assertTrue(state.moveToNextEnabledAction(1, enabled.length, index -> enabled[index]));
+        assertEquals(3, state.actionIndex());
+
+        assertTrue(state.moveToNextEnabledAction(1, enabled.length, index -> enabled[index]));
+        assertEquals(0, state.actionIndex());
+    }
+
+    @Test
+    public void moveToNextEnabledActionMovesBackwardsAndClearsTimeshiftFocus() {
+        TouchControlsFocusState state = new TouchControlsFocusState();
+        boolean[] enabled = new boolean[] {true, false, true, false};
+
+        state.focusAction(0);
+        state.focusTimeshift();
+
+        assertTrue(state.moveToNextEnabledAction(-1, enabled.length, index -> enabled[index]));
+        assertFalse(state.timeshiftFocused());
+        assertEquals(2, state.actionIndex());
+    }
+
+    @Test
+    public void moveToNextEnabledActionKeepsCurrentFocusWhenNothingIsEnabled() {
+        TouchControlsFocusState state = new TouchControlsFocusState();
+        boolean[] enabled = new boolean[] {false, false, false};
+
+        state.focusAction(2);
+
+        assertFalse(state.moveToNextEnabledAction(1, enabled.length, index -> enabled[index]));
+        assertEquals(2, state.actionIndex());
+    }
 }

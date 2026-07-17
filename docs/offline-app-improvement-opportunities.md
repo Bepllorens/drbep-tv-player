@@ -193,6 +193,7 @@ Beneficio esperado: menos regresiones repetidas y mas confianza al promocionar b
 - El heartbeat de reproduccion tambien reporta titulo y detalle de carga VOD/U7D para diagnosticar esperas largas desde dashboard sin logcat.
 - El estado de overlays ya separa visibilidad y foco: repintar timeshift no roba foco al HUD inferior salvo que el usuario suba explicitamente a la barra.
 - El HUD inferior desplaza automaticamente el carril horizontal hacia el boton enfocado cuando no caben todos los botones.
+- La navegacion del HUD inferior hacia el siguiente boton habilitado esta extraida a estado testeable, cubriendo salto de botones deshabilitados, vuelta circular y foco timeshift.
 - El selector tactil de plataforma/grupo se abre centrado cerca del filtro activo para evitar buscar manualmente en listas largas.
 - El estado periodico del dispositivo incluye resumen compacto de dashboard: filtro activo, EPG, VOD/U7D cargando, ruta, trafico, calidad y tiempos basicos de reproduccion.
 - El estado periodico tambien envia `device_health_level` y `device_health_summary` para que el dashboard pueda pintar OK/loading/warning/error sin recalcularlo.

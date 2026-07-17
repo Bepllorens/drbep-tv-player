@@ -4277,18 +4277,13 @@ public class MainActivity extends FragmentActivity {
             refreshTouchControlsBar();
             return;
         }
-        int size = model.actions.size();
-        int start = Math.max(0, Math.min(size - 1, touchControlsFocusState.actionIndex()));
-        int next = start;
-        for (int step = 0; step < size; step++) {
-            next = (next + delta + size) % size;
-            ZapActionItem item = model.actions.get(next);
-            if (item != null && item.enabled) {
-                touchControlsFocusState.focusAction(next);
-                refreshTouchControlsBar();
-                scheduleTouchControlsAutoHide();
-                return;
-            }
+        boolean moved = touchControlsFocusState.moveToNextEnabledAction(delta, model.actions.size(), index -> {
+            ZapActionItem item = model.actions.get(index);
+            return item != null && item.enabled;
+        });
+        if (moved) {
+            refreshTouchControlsBar();
+            scheduleTouchControlsAutoHide();
         }
     }
 

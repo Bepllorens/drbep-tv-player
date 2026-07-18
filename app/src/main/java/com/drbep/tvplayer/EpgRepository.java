@@ -456,6 +456,31 @@ final class EpgRepository {
     }
 
     Map<String, List<EpgProgram>> fetchChannelProgramsForChannelsDirect(List<ChannelItem> channelItems, int maxItems) throws Exception {
+        if (standaloneMode) {
+            long startMs = System.currentTimeMillis();
+            try {
+                Map<String, List<EpgProgram>> remotePrograms = fetchRemoteChannelProgramsForChannels(channelItems, maxItems, true);
+                if (hasTimelineProgramDepth(remotePrograms, channelItems)) {
+                    int programCount = 0;
+                    for (List<EpgProgram> rows : remotePrograms.values()) {
+                        programCount += rows == null ? 0 : rows.size();
+                    }
+                    Log.w(TAG, "EPG timeline public preferred loaded channels="
+                            + (channelItems == null ? 0 : channelItems.size())
+                            + " matched=" + remotePrograms.size()
+                            + " programs=" + programCount
+                            + " totalMs=" + (System.currentTimeMillis() - startMs));
+                    return remotePrograms;
+                }
+                Log.w(TAG, "EPG timeline public preferred shallow; falling back to snapshot channels="
+                        + (channelItems == null ? 0 : channelItems.size())
+                        + " matched=" + remotePrograms.size()
+                        + " totalMs=" + (System.currentTimeMillis() - startMs));
+            } catch (Exception e) {
+                Log.w(TAG, "EPG timeline public preferred failed; falling back to snapshot channels="
+                        + (channelItems == null ? 0 : channelItems.size()), e);
+            }
+        }
         return fetchChannelProgramsForChannels(channelItems, maxItems, true, true);
     }
 
@@ -474,7 +499,7 @@ final class EpgRepository {
                     channel,
                     maxItems,
                     PREFERRED_REMOTE_EPG_CONNECT_TIMEOUT_MS,
-                    REMOTE_EPG_READ_TIMEOUT_MS,
+                    PREFERRED_REMOTE_EPG_READ_TIMEOUT_MS,
                     offlinePublicOnly
             );
             if (programs.isEmpty()) {

@@ -65,7 +65,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
                                     ViewGroup.LayoutParams.MATCH_PARENT,
                                     ViewGroup.LayoutParams.MATCH_PARENT
                                 )
-                                scaleType = ImageView.ScaleType.CENTER_CROP
+                                scaleType = ImageView.ScaleType.FIT_CENTER
                                 contentDescription = null
                             }
                         )

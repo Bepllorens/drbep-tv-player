@@ -15427,7 +15427,7 @@ public class MainActivity extends FragmentActivity {
                         }
                         return;
                     }
-                    Glide.with(this).load(item.imageUrl.trim()).centerCrop()
+                    Glide.with(this).load(item.imageUrl.trim()).fitCenter()
                             .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                             .override(dp(320), dp(200)).into(imageView);
                 }

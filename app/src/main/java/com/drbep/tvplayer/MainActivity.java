@@ -244,6 +244,8 @@ public class MainActivity extends FragmentActivity {
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService interactiveExecutor = Executors.newCachedThreadPool();
+    // Telemetria y comandos remotos no deben bloquear la resolucion de una reproduccion.
+    private final ExecutorService controlExecutor = Executors.newSingleThreadExecutor();
     // Executor dedicado a la carga inicial del catalogo para que NO espere en cola
     // detras del arranque del reproductor (que comparte ioExecutor single-thread).
     private final ExecutorService catalogLoadExecutor = Executors.newSingleThreadExecutor();
@@ -346,6 +348,7 @@ public class MainActivity extends FragmentActivity {
     };
     private CatalogRepository catalogRepository;
     private CatalogSnapshotStore catalogSnapshotStore;
+    private boolean u7dProgramsLoading;
     private EpgRepository epgRepository;
     private RecordingsRepository recordingsRepository;
     private ReminderStore reminderStore;
@@ -4112,14 +4115,31 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_u7d_unavailable));
             return;
         }
-        showStatus(getString(R.string.status_loading_u7d));
+        if (u7dProgramsLoading) {
+            showStatus(getString(R.string.status_loading_u7d));
+            return;
+        }
+        u7dProgramsLoading = true;
+        showLoading(
+                getString(R.string.u7d_menu_title, displayName(channel)),
+                getString(R.string.u7d_loading_step_programs),
+                getString(R.string.u7d_loading_detail_programs)
+        );
         interactiveExecutor.execute(() -> {
             try {
                 List<EpgRepository.EpgProgram> programs = fetchMovistarIsmU7dPrograms(channel);
-                postUiIfAlive(() -> showMovistarIsmU7dMenu(channel, programs));
+                postUiIfAlive(() -> {
+                    u7dProgramsLoading = false;
+                    hideStartupLoading();
+                    showMovistarIsmU7dMenu(channel, programs);
+                });
             } catch (Exception e) {
                 Log.w(TAG, "failed to load Movistar ISM U7D programs channel=" + channel.id, e);
-                postUiIfAlive(() -> showStatus(getString(R.string.status_u7d_empty)));
+                postUiIfAlive(() -> {
+                    u7dProgramsLoading = false;
+                    hideStartupLoading();
+                    showError(getString(R.string.status_u7d_load_failed));
+                });
             }
         });
     }
@@ -7041,6 +7061,10 @@ public class MainActivity extends FragmentActivity {
         return submitExecutorTask(catalogLoadExecutor, label, task);
     }
 
+    private boolean submitControlTask(String label, Runnable task) {
+        return submitExecutorTask(controlExecutor, label, task);
+    }
+
     private boolean postUiIfAlive(Runnable task) {
         if (task == null || activityDestroyed) {
             return false;
@@ -7095,6 +7119,7 @@ public class MainActivity extends FragmentActivity {
         ioExecutor.shutdownNow();
         epgExecutor.shutdownNow();
         interactiveExecutor.shutdownNow();
+        controlExecutor.shutdownNow();
         catalogLoadExecutor.shutdownNow();
         if (playerController != null) {
             playerController.release();
@@ -11022,12 +11047,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void reportOfflineDeviceStatus(String event, boolean success, long durationMs, String detail) {
-        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || ioExecutor == null) {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || controlExecutor == null) {
             return;
         }
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         JSONObject extra = buildOfflineDeviceStatusExtra();
-        submitIoTask("offline-device-status", () -> {
+        submitControlTask("offline-device-status", () -> {
             try {
                 JSONObject response = catalogSnapshotStore.reportDeviceStatus(BuildConfig.OFFLINE_BASE_URL, status, event, success, durationMs, detail, extra);
                 if (response != null && response.optBoolean("diagnostic_requested", false)) {
@@ -11225,7 +11250,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void sendPlaybackHeartbeat(String state) {
-        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || ioExecutor == null) {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || controlExecutor == null) {
             return;
         }
         ChannelItem channel = playbackHeartbeatChannel;
@@ -11303,7 +11328,7 @@ public class MainActivity extends FragmentActivity {
             Log.d(TAG, "playback heartbeat payload failed", e);
             return;
         }
-        submitIoTask("playback-heartbeat", () -> {
+        submitControlTask("playback-heartbeat", () -> {
             try {
                 catalogSnapshotStore.reportPlaybackHeartbeat(BuildConfig.OFFLINE_BASE_URL, payload);
             } catch (Exception e) {

@@ -296,12 +296,15 @@
     <string name="status_no_favorites_saved">Aun no has marcado canales favoritos</string>
     <string name="status_touch_seek_unavailable">Seek no disponible en este stream</string>
     <string name="status_loading_u7d">Cargando U7D…</string>
+    <string name="status_u7d_load_failed">No se pudo cargar U7D. Comprueba la conexion e intentalo de nuevo.</string>
     <string name="status_u7d_unavailable">U7D no disponible para este canal</string>
     <string name="status_u7d_empty">No hay programas U7D disponibles para este canal</string>
     <string name="status_u7d_opening">Preparando U7D: %1$s</string>
     <string name="u7d_menu_title">U7D: %1$s</string>
     <string name="u7d_menu_message">Ultimos programas disponibles de Movistar ISM. Selecciona uno para reproducirlo desde el inicio.</string>
     <string name="u7d_loading_title">Preparando U7D</string>
+    <string name="u7d_loading_step_programs">Buscando programas disponibles</string>
+    <string name="u7d_loading_detail_programs">Consultando los ultimos siete dias para este canal.</string>
     <string name="u7d_loading_step_manifest">Solicitando replay</string>
     <string name="u7d_loading_detail_manifest">Pidiendo al backend el manifest temporal del programa seleccionado.</string>
     <string name="u7d_loading_step_drm">Preparando licencia</string>

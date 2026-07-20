@@ -1,10 +1,13 @@
 package com.drbep.tvplayer;
 
+import android.util.Log;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -12,6 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 final class HttpClient {
+    private static final String TAG = "HttpClient";
+    static final int MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
     static final class Response {
         final int code;
         final String body;
@@ -100,7 +106,12 @@ final class HttpClient {
 
             int code = conn.getResponseCode();
             InputStream inputStream = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
-            String responseBody = inputStream == null ? "" : readAll(inputStream);
+            int contentLength = conn.getContentLength();
+            if (contentLength > MAX_RESPONSE_BYTES) {
+                throw new IllegalStateException("respuesta HTTP demasiado grande: " + contentLength + " bytes");
+            }
+            String responseBody = inputStream == null ? "" : readAll(inputStream, MAX_RESPONSE_BYTES);
+            Log.d(TAG, method + " " + safeEndpoint(url) + " status=" + code + " responseChars=" + responseBody.length());
             return new Response(code, responseBody);
         } finally {
             if (conn != null) {
@@ -109,15 +120,33 @@ final class HttpClient {
         }
     }
 
-    private static String readAll(InputStream inputStream) throws Exception {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
+    static String readAll(InputStream inputStream, int maxBytes) throws Exception {
+        if (maxBytes <= 0) {
+            throw new IllegalArgumentException("limite de respuesta invalido");
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(32 * 1024, maxBytes));
         byte[] buffer = new byte[16 * 1024];
         try (InputStream stream = inputStream) {
             int read;
             while ((read = stream.read(buffer)) != -1) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedIOException("lectura HTTP cancelada");
+                }
+                if (read > maxBytes - output.size()) {
+                    throw new IllegalStateException("respuesta HTTP supera el limite de " + maxBytes + " bytes");
+                }
                 output.write(buffer, 0, read);
             }
         }
         return output.toString(StandardCharsets.UTF_8.name());
+    }
+
+    private static String safeEndpoint(String value) {
+        try {
+            URL parsed = new URL(value == null ? "" : value);
+            return parsed.getProtocol() + "://" + parsed.getHost() + parsed.getPath();
+        } catch (Exception ignored) {
+            return "endpoint-invalido";
+        }
     }
 }

@@ -65,8 +65,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 332
-        versionName "2.0.332-beta-adaptive-cross-device"
+        versionCode 333
+        versionName "2.0.333-beta-runtime-stability"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",
@@ -164,6 +164,7 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.10.1'
     implementation 'androidx.media3:media3-ui:1.10.1'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
     implementation 'com.caverock:androidsvg:1.4'
     implementation 'androidx.work:work-runtime:2.9.1'
     testImplementation 'junit:junit:4.13.2'

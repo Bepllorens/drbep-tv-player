@@ -33,6 +33,19 @@ final class LocalDashManifestServer {
         return "http://127.0.0.1:" + port + "/dash/" + id + "/manifest.mpd";
     }
 
+    synchronized void close() {
+        entries.clear();
+        ServerSocket socket = serverSocket;
+        serverSocket = null;
+        port = 0;
+        if (socket != null) {
+            try {
+                socket.close();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     private void ensureStarted() throws Exception {
         if (serverSocket != null && !serverSocket.isClosed()) {
             return;

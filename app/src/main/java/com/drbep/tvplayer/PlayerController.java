@@ -432,6 +432,13 @@ final class PlayerController {
             }
 
             @Override
+            public void onTimelineChanged(@NonNull Timeline timeline, int reason) {
+                // The rolling HLS window duration is known before STATE_READY. Move to
+                // the safe live offset here so the first rendered frame is already final.
+                applyMovistarIsmFastZapOffsetIfNeeded();
+            }
+
+            @Override
             public void onPlaybackStateChanged(int playbackState) {
                 lastPlaybackState = playbackStateToString(playbackState);
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
@@ -1197,7 +1204,7 @@ final class PlayerController {
                     streamInfoCache.put(channelId, info);
                 }
             }
-            info = ensurePatchedClearKeyManifests(request, info);
+            info = ensurePatchedClearKeyManifestsForRoute(request, info, false);
             Log.d(TAG, "resolveStreamInfo channelId=" + channelId
                     + " fromCache=" + fromCache
                     + " streamInfo=" + describeStreamInfo(info));
@@ -1253,7 +1260,7 @@ final class PlayerController {
                     streamInfoCache.put(channelId, info);
                 }
             }
-            info = ensurePatchedClearKeyManifests(request, info);
+            info = ensurePatchedClearKeyManifestsForRoute(request, info, false);
             StreamInfo resolved = info;
             Log.d(TAG, "playChannelAfterResolvingStreamInfo channelId=" + channelId
                     + " generation=" + generation
@@ -1331,6 +1338,8 @@ final class PlayerController {
             player.release();
             player = null;
         }
+        localSmoothManifestServer.close();
+        localDashManifestServer.close();
     }
 
     boolean isTimeshiftSupportedForCurrentChannel() {
@@ -1445,7 +1454,7 @@ final class PlayerController {
             pendingAutoRecoveryReason = "";
         }
         currentRequest = request;
-        streamInfo = ensurePatchedClearKeyManifests(request, streamInfo);
+        streamInfo = ensurePatchedClearKeyManifestsForRoute(request, streamInfo, useFallback);
         currentStreamInfo = streamInfo;
         currentRecordingUrl = null;
         usingPlaybackFallback = useFallback;
@@ -1484,6 +1493,9 @@ final class PlayerController {
             return;
         }
         currentPlaybackDecision = decision;
+        if (isMovistarIsmHlsDecision(decision)) {
+            localSmoothManifestServer.close();
+        }
         Log.w(TAG, "zapPrepare channel=" + describeRequest(request)
             + " generation=" + generation
             + " autoPlay=" + autoPlay
@@ -1503,9 +1515,9 @@ final class PlayerController {
         MediaItem.Builder builder = new MediaItem.Builder().setUri(mediaTargetUrl);
         if (isMovistarIsmHlsDecision(decision)) {
             builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(35_000)
-                    .setMinOffsetMs(24_000)
-                    .setMaxOffsetMs(75_000)
+                    .setTargetOffsetMs(MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS)
+                    .setMinOffsetMs(8_000)
+                    .setMaxOffsetMs(30_000)
                     .setMinPlaybackSpeed(0.98f)
                     .setMaxPlaybackSpeed(1.01f)
                     .build());
@@ -1949,14 +1961,14 @@ final class PlayerController {
         if (!movistarIsmFastZapOffsetPending || player == null || !isMovistarIsmHlsDecision(currentPlaybackDecision)) {
             return;
         }
-        movistarIsmFastZapOffsetPending = false;
         long durationMs = player.getDuration();
         if (durationMs == C.TIME_UNSET || durationMs <= MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS + 3_000L) {
-            Log.w(TAG, "fastZapLiveOffset skipped channel=" + describeRequest(currentRequest)
+            Log.d(TAG, "fastZapLiveOffset deferred channel=" + describeRequest(currentRequest)
                     + " durationMs=" + durationMs
                     + playbackBufferDebugSuffix());
             return;
         }
+        movistarIsmFastZapOffsetPending = false;
         long currentPositionMs = Math.max(0L, player.getCurrentPosition());
         long bufferedMs = Math.max(0L, player.getBufferedPosition() - currentPositionMs);
         long currentOffsetMs = Math.max(0L, durationMs - currentPositionMs);
@@ -2218,6 +2230,23 @@ final class PlayerController {
             return info;
         }
         return ensurePatchedClearKeyManifests(request.channelId, info);
+    }
+
+    private StreamInfo ensurePatchedClearKeyManifestsForRoute(
+            PlaybackRequest request,
+            StreamInfo info,
+            boolean useFallback
+    ) {
+        if (info == null) {
+            return null;
+        }
+        PlaybackRouteResolver.Decision directDecision = buildPlaybackDecision(request, useFallback, info);
+        if (isMovistarIsmHlsDecision(directDecision)) {
+            // The HLS proxy does not consume the local Smooth manifest. Avoid opening a
+            // loopback server and retaining its thread/socket for this common TV route.
+            return info;
+        }
+        return ensurePatchedClearKeyManifests(request, info);
     }
 
     private StreamInfo ensurePatchedSmoothClearKeyManifest(String channelId, StreamInfo info) {

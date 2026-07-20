@@ -98,6 +98,14 @@ final class CatalogRepository {
         if (snapshotStore == null) {
             throw new IllegalStateException("catalogo local no configurado");
         }
+        // A background sync is commonly scheduled immediately after startup. Reuse the
+        // parsed cache when the lightweight /meta fingerprint still matches instead of
+        // downloading and materialising the complete 50+ MB JSON a second time.
+        CatalogLoadResult unchanged = snapshotStore.loadStartupParsedCache(fallbackUrl);
+        if (unchanged != null) {
+            Log.i(TAG, "catalog refresh skipped because remote fingerprint is unchanged");
+            return unchanged.withLoadSource("refresh-unchanged");
+        }
         CatalogLoadResult result = parseCatalogPayload(snapshotStore.refreshFromConfiguredUrl(fallbackUrl), false);
         snapshotStore.saveStartupParsedCache(fallbackUrl, result);
         return result;

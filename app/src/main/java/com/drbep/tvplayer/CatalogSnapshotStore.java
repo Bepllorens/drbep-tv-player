@@ -23,6 +23,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
@@ -745,7 +746,9 @@ final class CatalogSnapshotStore {
         } else if (previousPermissionsFingerprint.trim().isEmpty() && !permissionsFingerprint.isEmpty()) {
             permissionsChangedAtMs = 0L;
         }
-        String jsonToWrite = rawJson == null || rawJson.trim().isEmpty() ? payload.toString() : rawJson;
+        // rawJson can exceed 50 MB. String.trim() creates another full-sized String on
+        // Fire OS and was the final allocation that caused an OOM during background sync.
+        String jsonToWrite = rawJson == null || rawJson.isEmpty() ? payload.toString() : rawJson;
         writeSnapshotString(tmp, jsonToWrite);
         if (!tmp.renameTo(current)) {
             writeSnapshotString(current, jsonToWrite);
@@ -1159,9 +1162,16 @@ final class CatalogSnapshotStore {
             char[] buf = new char[8192];
             int n;
             while ((n = reader.read(buf)) != -1) {
+                throwIfInterrupted("lectura de snapshot cancelada");
                 sb.append(buf, 0, n);
             }
             return sb;
+        }
+    }
+
+    private static void throwIfInterrupted(String message) throws InterruptedIOException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedIOException(message);
         }
     }
 
@@ -1549,6 +1559,9 @@ final class CatalogSnapshotStore {
             }
             List<ChannelItem> channels = new ArrayList<>(channelCount);
             for (int i = 0; i < channelCount; i++) {
+                if ((i & 127) == 0) {
+                    throwIfInterrupted("lectura de cache de catalogo cancelada");
+                }
                 channels.add(readChannel(in));
             }
             return new CatalogLoadResult(channels, filters, defaultFilterKey, permissions);
@@ -1775,7 +1788,7 @@ final class CatalogSnapshotStore {
     }
 
     private void rewriteSnapshotEncrypted(File file, String rawJson) {
-        if (file == null || rawJson == null || rawJson.trim().isEmpty()) {
+        if (file == null || rawJson == null || rawJson.isEmpty()) {
             return;
         }
         File encryptedTmp = new File(file.getParentFile(), file.getName() + ".enc.tmp");

@@ -37,6 +37,19 @@ final class LocalSmoothManifestServer {
         return "http://127.0.0.1:" + port + "/smooth/" + id + "/Manifest";
     }
 
+    synchronized void close() {
+        sources.clear();
+        ServerSocket socket = serverSocket;
+        serverSocket = null;
+        port = 0;
+        if (socket != null) {
+            try {
+                socket.close();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     private void ensureStarted() throws Exception {
         if (serverSocket != null && !serverSocket.isClosed()) {
             return;

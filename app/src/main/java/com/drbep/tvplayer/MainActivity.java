@@ -246,11 +246,12 @@ public class MainActivity extends FragmentActivity {
     // detras del arranque del reproductor (que comparte ioExecutor single-thread).
     private final ExecutorService catalogLoadExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private volatile boolean activityDestroyed;
     private final Runnable vodProgressSaveRunnable = new Runnable() {
         @Override
         public void run() {
             rememberCurrentVodPosition();
-            uiHandler.postDelayed(this, 15_000L);
+            postUiDelayedIfAlive(this, 15_000L);
         }
     };
     private String vodLoadingChannelId = "";
@@ -282,7 +283,7 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void run() {
             sendPlaybackHeartbeat("heartbeat");
-            uiHandler.postDelayed(this, PLAYBACK_HEARTBEAT_INTERVAL_MS);
+            postUiDelayedIfAlive(this, PLAYBACK_HEARTBEAT_INTERVAL_MS);
         }
     };
     private final Runnable progressiveEpgRunnable = new Runnable() {
@@ -401,6 +402,9 @@ public class MainActivity extends FragmentActivity {
     private long lastResumeAppUpdateCheckMs;
     private long lastResumeOfflineCatalogCheckMs;
     private String epgFullLoadScheduledForChannelId = "";
+    private Runnable pendingVisibleEpgLoadRunnable;
+    private String pendingVisibleEpgLoadFilterKey = "";
+    private long pendingVisibleEpgLoadAtMs;
     private boolean epgFullCatalogLoaded;
     private boolean epgFullCatalogLoadRequested;
     private boolean startupEpgLoadsScheduled;
@@ -547,7 +551,7 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void run() {
             checkReminderNotifications();
-            uiHandler.postDelayed(this, 30000L);
+            postUiDelayedIfAlive(this, 30000L);
         }
     };
 
@@ -781,8 +785,8 @@ public class MainActivity extends FragmentActivity {
         showPostUpdateNotesIfNeeded();
         scheduleAppUpdateCheckOnStartup();
         scheduleOfflineCatalogAutoRefresh();
-        uiHandler.postDelayed(reminderTickRunnable, 30000L);
-        uiHandler.postDelayed(vodProgressSaveRunnable, 15_000L);
+        postUiDelayedIfAlive(reminderTickRunnable, 30000L);
+        postUiDelayedIfAlive(vodProgressSaveRunnable, 15_000L);
     }
 
     @Override
@@ -792,7 +796,7 @@ public class MainActivity extends FragmentActivity {
         maybeRefreshOfflineCatalogOnResume();
         if (playbackHeartbeatChannel != null) {
             uiHandler.removeCallbacks(playbackHeartbeatRunnable);
-            uiHandler.postDelayed(playbackHeartbeatRunnable, PLAYBACK_HEARTBEAT_INTERVAL_MS);
+            postUiDelayedIfAlive(playbackHeartbeatRunnable, PLAYBACK_HEARTBEAT_INTERVAL_MS);
         }
     }
 
@@ -1601,7 +1605,7 @@ public class MainActivity extends FragmentActivity {
             }
             EpgRepository.EpgProgram finalCurrent = current;
             EpgRepository.EpgProgram finalNext = next;
-            uiHandler.post(() -> {
+            postUiIfAlive(() -> {
                 touchControlsEpgFetchInFlight.remove(channelId);
                 EpgRepository.EpgProgramPair previousPair = epgProgramPairByChannelId.get(channelId);
                 EpgRepository.EpgProgram mergedCurrent = finalCurrent != null ? finalCurrent : (previousPair == null ? null : previousPair.current);
@@ -1931,7 +1935,7 @@ public class MainActivity extends FragmentActivity {
                         : catalogRepository.fetchCatalogChannels();
                 long durationMs = System.currentTimeMillis() - startMs;
                 logCatalogStartupMetrics("startup-load", result, durationMs);
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     lastCatalogLoadDurationMs = durationMs;
                     applyLoadedChannels(result);
                     maybeHydrateFullStartupCatalog(result);
@@ -1940,17 +1944,21 @@ public class MainActivity extends FragmentActivity {
                     refreshStandaloneCatalogInBackgroundIfPossible();
                 });
             } catch (Exception catalogErr) {
+                if (activityDestroyed || Thread.currentThread().isInterrupted()) {
+                    Log.i(TAG, "catalog load cancelled because activity was destroyed");
+                    return;
+                }
                 if (BuildConfig.STANDALONE_MODE) {
                     Log.w(TAG, "local catalog load failed in standalone mode", catalogErr);
                     try {
-                        uiHandler.post(() -> updateStartupLoading(
+                        postUiIfAlive(() -> updateStartupLoading(
                                 getString(R.string.startup_loading_refresh_catalog),
                                 getString(R.string.startup_loading_refresh_catalog_detail)
                         ));
                         lastOfflineCatalogRefreshAttemptMs = System.currentTimeMillis();
                         CatalogLoadResult refreshed = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
                         long durationMs = System.currentTimeMillis() - startMs;
-                        uiHandler.post(() -> {
+                        postUiIfAlive(() -> {
                             lastCatalogLoadDurationMs = durationMs;
                             lastOfflineCatalogRefreshSuccessMs = System.currentTimeMillis();
                             lastOfflineCatalogRefreshError = "";
@@ -1966,13 +1974,13 @@ public class MainActivity extends FragmentActivity {
                     } catch (Exception e) {
                         Log.e(TAG, "standalone catalog load failed", e);
                         try {
-                            uiHandler.post(() -> updateStartupLoading(
+                            postUiIfAlive(() -> updateStartupLoading(
                                     getString(R.string.startup_loading_last_good),
                                     getString(R.string.startup_loading_last_good_detail)
                             ));
                             CatalogLoadResult fallback = catalogRepository.fetchLastKnownGoodSnapshotCatalog();
                             long durationMs = System.currentTimeMillis() - startMs;
-                            uiHandler.post(() -> {
+                            postUiIfAlive(() -> {
                                 lastCatalogLoadDurationMs = durationMs;
                                 lastOfflineCatalogRefreshError = e.getMessage();
                                 showStatus(getString(R.string.offline_catalog_status_using_last_good));
@@ -1985,7 +1993,7 @@ public class MainActivity extends FragmentActivity {
                                 runPostUpdateStartupHealthCheck("last-good-catalog", fallback);
                             });
                         } catch (Exception fallbackErr) {
-                            uiHandler.post(() -> {
+                            postUiIfAlive(() -> {
                                 hideStartupLoading();
                                 lastOfflineCatalogRefreshError = e.getMessage();
                                 if (!showOfflineCatalogRecoveryDialogIfNeeded(e)) {
@@ -2001,7 +2009,7 @@ public class MainActivity extends FragmentActivity {
                 try {
                     CatalogLoadResult fallback = catalogRepository.fetchActiveChannels();
                     long durationMs = System.currentTimeMillis() - startMs;
-                    uiHandler.post(() -> {
+                    postUiIfAlive(() -> {
                         lastCatalogLoadDurationMs = durationMs;
                         updateStartupLoading(
                                 getString(R.string.startup_loading_prepare_list),
@@ -2013,7 +2021,7 @@ public class MainActivity extends FragmentActivity {
                     });
                 } catch (Exception e) {
                     Log.e(TAG, "load channels failed", e);
-                    uiHandler.post(() -> {
+                    postUiIfAlive(() -> {
                         hideStartupLoading();
                         showError(getString(R.string.error_load_channels, e.getMessage()));
                         showCatalogRecoveryDialog(e.getMessage());
@@ -2059,7 +2067,7 @@ public class MainActivity extends FragmentActivity {
             try {
                 CatalogLoadResult hydrated = catalogRepository.hydrateFullStartupCatalog();
                 long durationMs = System.currentTimeMillis() - startMs;
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     startupCatalogHydrationRunning = false;
                     logCatalogStartupMetrics("startup-hydrate", hydrated, durationMs);
                     applyHydratedStartupCatalog(hydrated);
@@ -2071,7 +2079,7 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 long durationMs = System.currentTimeMillis() - startMs;
                 Log.w(TAG, "startup catalog hydration failed durationMs=" + durationMs, e);
-                uiHandler.post(() -> startupCatalogHydrationRunning = false);
+                postUiIfAlive(() -> startupCatalogHydrationRunning = false);
             }
         });
     }
@@ -2209,7 +2217,7 @@ public class MainActivity extends FragmentActivity {
             if (catalogSnapshotStore != null && startupChannel != null && !isProtectedItem(startupChannel)) {
                 catalogSnapshotStore.saveStartupPlaybackChannel(BuildConfig.CATALOG_SNAPSHOT_URL, startupChannel);
             }
-            uiHandler.postDelayed(() -> {
+            postUiDelayedIfAlive(() -> {
                 if (!isActivityReadyForUiWork() || channels.isEmpty()) {
                     return;
                 }
@@ -2224,13 +2232,13 @@ public class MainActivity extends FragmentActivity {
                 }
                 playChannelItem(channel, true);
             }, 120L);
-            uiHandler.postDelayed(this::prefetchCurrentChannelLogos, 2400L);
+            postUiDelayedIfAlive(this::prefetchCurrentChannelLogos, 2400L);
         } else {
             tuneToIndex(startIndex, true);
-            uiHandler.postDelayed(this::prefetchCurrentChannelLogos, 1800L);
-            uiHandler.postDelayed(() -> loadEpgNow(false), 450L);
+            postUiDelayedIfAlive(this::prefetchCurrentChannelLogos, 1800L);
+            postUiDelayedIfAlive(() -> loadEpgNow(false), 450L);
         }
-        uiHandler.postDelayed(this::maybeShowStartupHub, 700L);
+        postUiDelayedIfAlive(this::maybeShowStartupHub, 700L);
     }
 
     private void selectChannelIndex(int index) {
@@ -2501,7 +2509,7 @@ public class MainActivity extends FragmentActivity {
                 }
                 Map<String, EpgRepository.EpgProgramPair> finalPairs = pairs;
 
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     epgLoadInFlight = false;
                     lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                     if (fullCatalog) {
@@ -2547,18 +2555,39 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         long safeDelay = Math.max(0L, delayMs);
+        String scheduledFilterKey = currentEpgFilterKey();
+        long scheduledAtMs = System.currentTimeMillis() + safeDelay;
+        if (pendingVisibleEpgLoadRunnable != null) {
+            if (scheduledFilterKey.equals(pendingVisibleEpgLoadFilterKey)
+                    && pendingVisibleEpgLoadAtMs <= scheduledAtMs) {
+                Log.d(TAG, "EPG visible schedule coalesced filter=" + scheduledFilterKey
+                        + " existingDelayMs=" + Math.max(0L, pendingVisibleEpgLoadAtMs - System.currentTimeMillis())
+                        + " requestedDelayMs=" + safeDelay);
+                return;
+            }
+            uiHandler.removeCallbacks(pendingVisibleEpgLoadRunnable);
+        }
         List<ChannelItem> scheduledSnapshot = buildPriorityVisibleEpgSnapshot();
         Log.w(TAG, "EPG visible scheduled delayMs=" + safeDelay
                 + " channels=" + scheduledSnapshot.size()
                 + " totalVisible=" + channels.size()
-                + " filter=" + currentEpgFilterKey());
-        uiHandler.postDelayed(() -> {
+                + " filter=" + scheduledFilterKey);
+        pendingVisibleEpgLoadFilterKey = scheduledFilterKey;
+        pendingVisibleEpgLoadAtMs = scheduledAtMs;
+        pendingVisibleEpgLoadRunnable = () -> {
+            if (!scheduledFilterKey.equals(pendingVisibleEpgLoadFilterKey)) {
+                return;
+            }
+            pendingVisibleEpgLoadRunnable = null;
+            pendingVisibleEpgLoadFilterKey = "";
+            pendingVisibleEpgLoadAtMs = 0L;
             List<ChannelItem> snapshot = buildPriorityVisibleEpgSnapshot();
             Log.w(TAG, "EPG visible trigger channels=" + snapshot.size()
                     + " totalVisible=" + channels.size()
                     + " filter=" + currentEpgFilterKey());
             loadEpgForChannels(currentEpgFilterKey(), currentEpgFilterLabel(), snapshot, false, true);
-        }, safeDelay);
+        };
+        postUiDelayedIfAlive(pendingVisibleEpgLoadRunnable, safeDelay);
     }
 
     private List<ChannelItem> buildPriorityVisibleEpgSnapshot() {
@@ -2677,7 +2706,7 @@ public class MainActivity extends FragmentActivity {
         }
         long safeDelay = Math.max(0L, delayMs);
         Log.w(TAG, "EPG current scheduled delayMs=" + safeDelay + " currentIndex=" + overlayNavigationState.currentIndex);
-        uiHandler.postDelayed(() -> {
+        postUiDelayedIfAlive(() -> {
             ChannelItem current = getCurrentPlaybackChannelItem();
             if (current == null && overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
                 current = channels.get(overlayNavigationState.currentIndex);
@@ -2696,7 +2725,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         uiHandler.removeCallbacks(progressiveEpgRunnable);
-        uiHandler.postDelayed(progressiveEpgRunnable, Math.max(0L, delayMs));
+        postUiDelayedIfAlive(progressiveEpgRunnable, Math.max(0L, delayMs));
     }
 
     private void markEpgProgressStarted(String filterKey, String label, int loadedChannels, int totalChannels, int batchChannels) {
@@ -2855,7 +2884,7 @@ public class MainActivity extends FragmentActivity {
                 + " offset=" + batchOffset
                 + " nextOffset=" + batchSnapshot.nextOffset
                 + " totalLive=" + batchSnapshot.totalLiveChannels);
-        uiHandler.postDelayed(() -> {
+        postUiDelayedIfAlive(() -> {
             if (!epgLoadInFlight || loadGeneration != epgLoadGeneration) {
                 return;
             }
@@ -2879,7 +2908,7 @@ public class MainActivity extends FragmentActivity {
                         ? epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, false, false, false)
                         : epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, compactEpgMode, false);
                 Map<String, String> updates = buildNowProgramUpdatesFromPairs(pairs);
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     epgWorkerBusy = false;
                     if (loadGeneration != epgLoadGeneration) {
                         Log.w(TAG, "EPG partial stale result ignored filter=" + cleanFilterKey
@@ -2946,7 +2975,7 @@ public class MainActivity extends FragmentActivity {
                 epgFullCatalogLoadRequested = false;
                 lastEpgNowLoadDurationMs = System.currentTimeMillis() - startMs;
                 epgQueuedFilterKeys.remove(cleanFilterKey);
-                uiHandler.post(() -> markEpgProgressFailed(cleanFilterKey, cleanLabel, e.getMessage(), false));
+                postUiIfAlive(() -> markEpgProgressFailed(cleanFilterKey, cleanLabel, e.getMessage(), false));
                 Log.w(TAG, "load epg partial failed filter=" + cleanFilterKey, e);
                 if (continueProgressive && !compactEpgMode) {
                     scheduleNextProgressiveEpgLoad(OFFLINE_EPG_PROGRESSIVE_DELAY_MS);
@@ -3207,7 +3236,7 @@ public class MainActivity extends FragmentActivity {
         interactiveExecutor.execute(() -> {
             try {
                 List<EpgRepository.EpgProgram> items = epgRepository.fetchChannelPrograms(ch, 8);
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     if (items.isEmpty()) {
                         showStatus(getString(R.string.status_no_epg_for_channel));
                         return;
@@ -3216,7 +3245,7 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "mini guide failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
     }
@@ -3363,7 +3392,7 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, source + " enriched failed", e);
                 if (showWhenReady) {
-                    uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+                    postUiIfAlive(() -> showStatus(getString(R.string.status_failed_load_guide)));
                 }
             }
         });
@@ -3384,7 +3413,7 @@ public class MainActivity extends FragmentActivity {
                     epgRepository.fetchChannelProgramsForChannelsDirect(channelsSnapshot, 18);
             List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
             final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
-            uiHandler.post(() -> {
+            postUiIfAlive(() -> {
                 Log.w(TAG, source + " full guide scan ready selectedChannel=" + anchorId
                         + " rows=" + rows.size()
                         + " selectedRow=" + selectedRowIndex
@@ -3687,7 +3716,7 @@ public class MainActivity extends FragmentActivity {
                         Log.w(TAG, "visual epg scheduled recordings fetch failed", scheduledErr);
                     }
                 }
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     if (sections.isEmpty()) {
                         showStatus(getString(R.string.visual_epg_empty));
                         return;
@@ -3696,7 +3725,7 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "visual epg failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
     }
@@ -4041,13 +4070,13 @@ public class MainActivity extends FragmentActivity {
                         + " start=" + (program == null ? "" : program.startTime)
                         + " end=" + (program == null ? "" : program.endTime));
                 if (program == null) {
-                    uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
+                    postUiIfAlive(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;
                 }
-                uiHandler.post(() -> showCurrentProgramInfoDialog(targetChannel, program));
+                postUiIfAlive(() -> showCurrentProgramInfoDialog(targetChannel, program));
             } catch (Exception e) {
                 Log.w(TAG, "touch info current program failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_get_program)));
             }
         });
     }
@@ -4061,10 +4090,10 @@ public class MainActivity extends FragmentActivity {
         interactiveExecutor.execute(() -> {
             try {
                 List<EpgRepository.EpgProgram> programs = fetchMovistarIsmU7dPrograms(channel);
-                uiHandler.post(() -> showMovistarIsmU7dMenu(channel, programs));
+                postUiIfAlive(() -> showMovistarIsmU7dMenu(channel, programs));
             } catch (Exception e) {
                 Log.w(TAG, "failed to load Movistar ISM U7D programs channel=" + channel.id, e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_u7d_empty)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_u7d_empty)));
             }
         });
     }
@@ -4940,10 +4969,10 @@ public class MainActivity extends FragmentActivity {
             try {
                 EpgRepository.EpgProgram program = epgRepository.fetchProgramForChannel(ch, next);
                 if (program == null) {
-                    uiHandler.post(() -> showStatus(getString(R.string.status_no_program_in_epg)));
+                    postUiIfAlive(() -> showStatus(getString(R.string.status_no_program_in_epg)));
                     return;
                 }
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     if (reminderOnly) {
                         createReminder(ch, program);
                     } else {
@@ -4952,7 +4981,7 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "fetch program failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_get_program)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_get_program)));
             }
         });
     }
@@ -5011,13 +5040,13 @@ public class MainActivity extends FragmentActivity {
                 if (!response.isSuccessful()) {
                     throw new IllegalStateException("schedule HTTP " + response.code + ": " + response.body);
                 }
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     showStatus(getString(R.string.status_recording_scheduled));
                     markScheduledProgramInOpenGuides(ch, program);
                 });
             } catch (Exception e) {
                 Log.w(TAG, "schedule program failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_schedule_recording)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_schedule_recording)));
             }
         });
     }
@@ -5103,7 +5132,7 @@ public class MainActivity extends FragmentActivity {
         ioExecutor.execute(() -> {
             try {
                 recordingsRepository.deleteScheduledRecording(scheduled.id);
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     activeProgramScheduledItems.remove(scheduled);
                     activeTimelineScheduledItems.removeIf(item -> item != null && scheduled.id.equals(item.id));
                     showStatus(getString(R.string.status_scheduled_recording_canceled));
@@ -5113,7 +5142,7 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, "cancel scheduled program failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_cancel_scheduled_recording)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_cancel_scheduled_recording)));
             }
         });
     }
@@ -5174,12 +5203,12 @@ public class MainActivity extends FragmentActivity {
                 final RecordingsRepository.RecordingsResult alternateResult = filterRecordingsResult(fetchedAlternateResult);
                 if (!primaryResult.items.isEmpty()) {
                     Log.d(TAG, "loadRecordingsPanel primary scheduled=" + primaryResult.scheduledMode + " count=" + primaryResult.items.size());
-                    uiHandler.post(() -> showRecordingsPanel(primaryResult, desiredId));
+                    postUiIfAlive(() -> showRecordingsPanel(primaryResult, desiredId));
                     return;
                 }
                 if (!alternateResult.items.isEmpty()) {
                     Log.d(TAG, "loadRecordingsPanel alternate scheduled=" + alternateResult.scheduledMode + " count=" + alternateResult.items.size());
-                    uiHandler.post(() -> {
+                    postUiIfAlive(() -> {
                         showStatus(getString(scheduledMode
                                 ? R.string.status_recordings_showing_completed
                                 : R.string.status_recordings_showing_scheduled));
@@ -5188,13 +5217,13 @@ public class MainActivity extends FragmentActivity {
                     return;
                 }
                 Log.d(TAG, "loadRecordingsPanel both empty scheduledMode=" + scheduledMode);
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     showRecordingsPanel(primaryResult, desiredId);
                     showStatus(getString(scheduledMode ? R.string.status_no_scheduled_recordings : R.string.status_no_recordings));
                 });
             } catch (Exception e) {
                 Log.w(TAG, scheduledMode ? "open scheduled recordings failed" : "open recordings failed", e);
-                uiHandler.post(() -> showStatus(getString(scheduledMode ? R.string.status_failed_load_scheduled_recordings : R.string.status_failed_load_recordings)));
+                postUiIfAlive(() -> showStatus(getString(scheduledMode ? R.string.status_failed_load_scheduled_recordings : R.string.status_failed_load_recordings)));
             }
         });
     }
@@ -5239,13 +5268,13 @@ public class MainActivity extends FragmentActivity {
         ioExecutor.execute(() -> {
             try {
                 recordingsRepository.deleteScheduledRecording(item.id);
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     showStatus(getString(R.string.status_scheduled_recording_canceled));
                     refreshRecordingsPanel();
                 });
             } catch (Exception e) {
                 Log.w(TAG, "cancel scheduled recording failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_cancel_scheduled_recording)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_cancel_scheduled_recording)));
             }
         });
     }
@@ -5297,13 +5326,13 @@ public class MainActivity extends FragmentActivity {
         ioExecutor.execute(() -> {
             try {
                 recordingsRepository.updateScheduledRecording(item.id, formatIsoMillis(updatedStart), formatIsoMillis(updatedEnd));
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     showStatus(getString(R.string.status_scheduled_recording_updated));
                     refreshRecordingsPanel();
                 });
             } catch (Exception e) {
                 Log.w(TAG, "update scheduled recording failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_update_scheduled_recording)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_update_scheduled_recording)));
             }
         });
     }
@@ -6442,7 +6471,7 @@ public class MainActivity extends FragmentActivity {
                 isU7dReplayItem(item) ? getString(R.string.u7d_loading_step_manifest) : getString(R.string.vod_loading_step_preparing),
                 isU7dReplayItem(item) ? getString(R.string.u7d_loading_detail_manifest) : getString(R.string.vod_loading_detail_preparing, displayName(item))
         );
-        uiHandler.postDelayed(vodLoadingProgressRunnable, 4_000L);
+        postUiDelayedIfAlive(vodLoadingProgressRunnable, 4_000L);
     }
 
     private void updateVodLoadingOverlay() {
@@ -6501,7 +6530,7 @@ public class MainActivity extends FragmentActivity {
             nextDelayMs = 15_000L;
         }
         updateVodLoadingState(current, title, step, detail);
-        uiHandler.postDelayed(vodLoadingProgressRunnable, nextDelayMs);
+        postUiDelayedIfAlive(vodLoadingProgressRunnable, nextDelayMs);
     }
 
     private void updateVodLoadingState(ChannelItem item, String title, String step, String detail) {
@@ -6986,6 +7015,26 @@ public class MainActivity extends FragmentActivity {
         return submitExecutorTask(catalogLoadExecutor, label, task);
     }
 
+    private boolean postUiIfAlive(Runnable task) {
+        if (task == null || activityDestroyed) {
+            return false;
+        }
+        return uiHandler.post(() -> {
+            if (!activityDestroyed) {
+                task.run();
+            }
+        });
+    }
+
+    private boolean postUiDelayedIfAlive(Runnable task, long delayMs) {
+        if (task == null || activityDestroyed) {
+            return false;
+        }
+        // Keep the original Runnable identity so removeCallbacks(task) continues to work.
+        // onDestroy() clears the handler queue and prevents any later scheduling.
+        return uiHandler.postDelayed(task, delayMs);
+    }
+
     private boolean submitExecutorTask(ExecutorService executor, String label, Runnable task) {
         if (executor == null || task == null) {
             return false;
@@ -6995,7 +7044,11 @@ public class MainActivity extends FragmentActivity {
             return false;
         }
         try {
-            executor.execute(task);
+            executor.execute(() -> {
+                if (!activityDestroyed && !Thread.currentThread().isInterrupted()) {
+                    task.run();
+                }
+            });
             return true;
         } catch (RejectedExecutionException e) {
             Log.w(TAG, "executor task rejected label=" + label, e);
@@ -7005,6 +7058,7 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onDestroy() {
+        activityDestroyed = true;
         rememberCurrentVodPosition();
         rememberCurrentRecordingPosition();
         stopPlaybackHeartbeat("stop");
@@ -7012,12 +7066,10 @@ public class MainActivity extends FragmentActivity {
             touchControlsController.cancelTimers();
         }
         uiHandler.removeCallbacksAndMessages(null);
-        if (!isChangingConfigurations()) {
-            ioExecutor.shutdownNow();
-            epgExecutor.shutdownNow();
-            interactiveExecutor.shutdownNow();
-            catalogLoadExecutor.shutdownNow();
-        }
+        ioExecutor.shutdownNow();
+        epgExecutor.shutdownNow();
+        interactiveExecutor.shutdownNow();
+        catalogLoadExecutor.shutdownNow();
         if (playerController != null) {
             playerController.release();
             playerController = null;
@@ -10148,12 +10200,12 @@ public class MainActivity extends FragmentActivity {
                     refreshProtectedContentState();
                     showStatus(getString(replaceExisting ? R.string.settings_parental_pin_changed : R.string.settings_parental_pin_set));
                     if (onBack != null) {
-                        uiHandler.post(onBack);
+                        postUiIfAlive(onBack);
                     }
                 },
                 () -> {
                     if (onBack != null) {
-                        uiHandler.post(onBack);
+                        postUiIfAlive(onBack);
                     }
                 },
                 null
@@ -10205,7 +10257,7 @@ public class MainActivity extends FragmentActivity {
                 },
                 () -> {
                     if (onBack != null) {
-                        uiHandler.post(onBack);
+                        postUiIfAlive(onBack);
                     }
                 },
                 null
@@ -10221,7 +10273,7 @@ public class MainActivity extends FragmentActivity {
         actions.add(new TvMessageActionUiModel(getString(R.string.settings_parental_set_pin), false, () -> showParentalPinSetupDialog(false, onBack)));
         actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, () -> {
             if (onBack != null) {
-                uiHandler.post(onBack);
+                postUiIfAlive(onBack);
             }
         }));
         showTvMessagePanel(getString(R.string.settings_section_parental), getString(R.string.parental_pin_required_setup), actions, onBack);
@@ -10601,10 +10653,10 @@ public class MainActivity extends FragmentActivity {
                         buildOfflineActivationDeviceLabel()
                 );
                 String code = payload.optString("code", "").trim();
-                uiHandler.post(() -> showOfflineActivationCodeDialog(code));
+                postUiIfAlive(() -> showOfflineActivationCodeDialog(code));
             } catch (Exception e) {
                 Log.e(TAG, "offline activation start failed", e);
-                uiHandler.post(() -> showError(getString(R.string.offline_catalog_activation_error, e.getMessage())));
+                postUiIfAlive(() -> showError(getString(R.string.offline_catalog_activation_error, e.getMessage())));
             }
         });
     }
@@ -10663,7 +10715,7 @@ public class MainActivity extends FragmentActivity {
                     if (catalogSnapshotStore != null) {
                         catalogSnapshotStore.applyActivationPayload(payload, BuildConfig.OFFLINE_BASE_URL);
                     }
-                    uiHandler.post(() -> {
+                    postUiIfAlive(() -> {
                         active[0] = false;
                         if (dialog != null && dialog.isShowing()) {
                             dialog.dismiss();
@@ -10674,10 +10726,10 @@ public class MainActivity extends FragmentActivity {
                     });
                     return;
                 }
-                uiHandler.postDelayed(() -> pollOfflineActivationCode(code, active, attempts, dialog), 3000L);
+                postUiDelayedIfAlive(() -> pollOfflineActivationCode(code, active, attempts, dialog), 3000L);
             } catch (Exception e) {
                 Log.e(TAG, "offline activation poll failed", e);
-                uiHandler.postDelayed(() -> pollOfflineActivationCode(code, active, attempts, dialog), 3000L);
+                postUiDelayedIfAlive(() -> pollOfflineActivationCode(code, active, attempts, dialog), 3000L);
             }
         });
     }
@@ -10847,7 +10899,7 @@ public class MainActivity extends FragmentActivity {
             try {
                 CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
                 long durationMs = System.currentTimeMillis() - startMs;
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     offlineCatalogRefreshRunning = false;
                     lastCatalogLoadDurationMs = durationMs;
                     lastOfflineCatalogRefreshSuccessMs = System.currentTimeMillis();
@@ -10860,19 +10912,23 @@ public class MainActivity extends FragmentActivity {
                     String refreshDetail = buildOfflineCatalogRefreshDetail(statusBeforeRefresh, afterStatus);
                     recordOfflineSyncEvent(getString(R.string.settings_offline_sync_catalog), true, durationMs, refreshDetail);
                     reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_catalog), true, durationMs, refreshDetail);
-                    applyLoadedChannels(result);
-                    runPostUpdateStartupHealthCheck("catalog-refresh", result);
+                    if (result != null && "refresh-unchanged".equals(result.loadSource)) {
+                        Log.i(TAG, "catalog refresh unchanged; keeping current UI state");
+                    } else {
+                        applyLoadedChannels(result);
+                        runPostUpdateStartupHealthCheck("catalog-refresh", result);
+                    }
                     if (manual) {
                         showStatus(refreshDetail);
                     }
                     maybeShowOfflineActivationReadySummary(afterStatus);
                 });
-            } catch (Exception e) {
+            } catch (Exception | OutOfMemoryError e) {
                 Log.e(TAG, "offline catalog refresh failed", e);
                 long durationMs = System.currentTimeMillis() - startMs;
                 CatalogLoadResult fallback = null;
                 String fallbackError = "";
-                if (shouldFallbackOnFailure) {
+                if (shouldFallbackOnFailure && !(e instanceof OutOfMemoryError)) {
                     try {
                         fallback = catalogRepository.fetchLastKnownGoodSnapshotCatalog();
                     } catch (Exception fallbackErr) {
@@ -10881,7 +10937,7 @@ public class MainActivity extends FragmentActivity {
                 }
                 CatalogLoadResult finalFallback = fallback;
                 String finalFallbackError = fallbackError;
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     offlineCatalogRefreshRunning = false;
                     lastOfflineCatalogRefreshError = e.getMessage();
                     lastOfflineMaintenanceError = e.getMessage();
@@ -10938,7 +10994,7 @@ public class MainActivity extends FragmentActivity {
         if (!forceCatalogRefresh && !appUpdateCheck && !wipeRequested) {
             return;
         }
-        uiHandler.post(() -> {
+        postUiIfAlive(() -> {
             if (wipeRequested) {
                 performOfflineRemoteWipe();
                 return;
@@ -11097,7 +11153,7 @@ public class MainActivity extends FragmentActivity {
         playbackHeartbeatStartedAtMs = System.currentTimeMillis();
         uiHandler.removeCallbacks(playbackHeartbeatRunnable);
         sendPlaybackHeartbeat("start");
-        uiHandler.postDelayed(playbackHeartbeatRunnable, PLAYBACK_HEARTBEAT_INTERVAL_MS);
+        postUiDelayedIfAlive(playbackHeartbeatRunnable, PLAYBACK_HEARTBEAT_INTERVAL_MS);
     }
 
     private void stopPlaybackHeartbeat(String state) {
@@ -11707,7 +11763,7 @@ public class MainActivity extends FragmentActivity {
                     : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
             if (shouldRefreshOfflineCatalog(status)) {
                 uiHandler.removeCallbacks(offlineCatalogAutoRefreshRunnable);
-                uiHandler.postDelayed(offlineCatalogAutoRefreshRunnable, startupMaintenanceGraceRemainingMs());
+                postUiDelayedIfAlive(offlineCatalogAutoRefreshRunnable, startupMaintenanceGraceRemainingMs());
             }
             return;
         }
@@ -11937,7 +11993,7 @@ public class MainActivity extends FragmentActivity {
         offlineCatalogRetryCount = Math.min(offlineCatalogRetryCount + 1, 4);
         long delayMs = Math.min(OFFLINE_CATALOG_RETRY_MAX_MS, OFFLINE_CATALOG_RETRY_BASE_MS * offlineCatalogRetryCount);
         uiHandler.removeCallbacks(offlineCatalogRetryRunnable);
-        uiHandler.postDelayed(offlineCatalogRetryRunnable, delayMs);
+        postUiDelayedIfAlive(offlineCatalogRetryRunnable, delayMs);
     }
 
     private void scheduleOfflineCatalogAutoRefresh() {
@@ -11945,7 +12001,7 @@ public class MainActivity extends FragmentActivity {
         if (BuildConfig.STANDALONE_MODE) {
             long delayMs = OFFLINE_CATALOG_AUTO_REFRESH_MS;
             delayMs = Math.max(delayMs, startupMaintenanceGraceRemainingMs());
-            uiHandler.postDelayed(offlineCatalogAutoRefreshRunnable, delayMs);
+            postUiDelayedIfAlive(offlineCatalogAutoRefreshRunnable, delayMs);
         }
     }
 
@@ -12033,7 +12089,7 @@ public class MainActivity extends FragmentActivity {
         List<TvMessageActionUiModel> actions = new ArrayList<>();
         actions.add(new TvMessageActionUiModel(getString(onBack == null ? R.string.dialog_close : R.string.dialog_back), false, () -> {
             if (onBack != null) {
-                uiHandler.post(onBack);
+                postUiIfAlive(onBack);
             }
         }));
         actions.add(new TvMessageActionUiModel(getString(R.string.settings_performance_clear_caches), true, this::clearRuntimeCaches));
@@ -12094,7 +12150,7 @@ public class MainActivity extends FragmentActivity {
 
     private void scheduleAppUpdateCheckOnStartup() {
         if (BuildConfig.STANDALONE_MODE) {
-            uiHandler.postDelayed(this::checkAppUpdateOnStartup, OFFLINE_APP_UPDATE_STARTUP_DELAY_MS);
+            postUiDelayedIfAlive(this::checkAppUpdateOnStartup, OFFLINE_APP_UPDATE_STARTUP_DELAY_MS);
         } else {
             checkAppUpdateOnStartup();
         }
@@ -12112,7 +12168,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         lastResumeAppUpdateCheckMs = now;
-        uiHandler.postDelayed(() -> checkAppUpdate(false), 5_000L);
+        postUiDelayedIfAlive(() -> checkAppUpdate(false), 5_000L);
     }
 
     private void maybeRefreshOfflineCatalogOnResume() {
@@ -12128,7 +12184,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         lastResumeOfflineCatalogCheckMs = now;
-        uiHandler.postDelayed(() -> refreshOfflineCatalog(false, false, true), 8_000L);
+        postUiDelayedIfAlive(() -> refreshOfflineCatalog(false, false, true), 8_000L);
     }
 
     private String currentUpdateChannel() {
@@ -12272,7 +12328,7 @@ public class MainActivity extends FragmentActivity {
             try {
                 AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, updateChannel);
                 long durationMs = System.currentTimeMillis() - startMs;
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     appUpdateCheckRunning = false;
                     adoptEffectiveUpdateChannel(info);
                     lastKnownAppUpdateInfo = info;
@@ -12313,7 +12369,7 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, "app update check failed", e);
                 long durationMs = System.currentTimeMillis() - startMs;
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     appUpdateCheckRunning = false;
                     lastAppUpdateCheckMs = System.currentTimeMillis();
                     lastAppUpdateError = e.getMessage();
@@ -12340,7 +12396,7 @@ public class MainActivity extends FragmentActivity {
             try {
                 AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, "rescue");
                 long durationMs = System.currentTimeMillis() - startMs;
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     appUpdateCheckRunning = false;
                     lastKnownAppUpdateInfo = info;
                     lastAppUpdateCheckMs = System.currentTimeMillis();
@@ -12357,7 +12413,7 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, "rescue app update check failed", e);
                 long durationMs = System.currentTimeMillis() - startMs;
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     appUpdateCheckRunning = false;
                     lastAppUpdateCheckMs = System.currentTimeMillis();
                     lastAppUpdateError = e.getMessage();
@@ -12412,7 +12468,7 @@ public class MainActivity extends FragmentActivity {
                 File apk = appUpdateManager.downloadApk(info, (done, total) -> {
                     if (total > 0L) {
                         int pct = (int) Math.max(0L, Math.min(100L, (done * 100L) / total));
-                        uiHandler.post(() -> showStatus(getString(R.string.app_update_status_downloading_pct, pct)));
+                        postUiIfAlive(() -> showStatus(getString(R.string.app_update_status_downloading_pct, pct)));
                     }
                 });
                 AppUpdateManager.InstallPreflight preflight = appUpdateManager.checkInstallPreflight(apk);
@@ -12421,7 +12477,7 @@ public class MainActivity extends FragmentActivity {
                 if (!preflight.ok) {
                     throw new IllegalStateException(preflight.message);
                 }
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     showStatus(getString(R.string.app_update_status_installing));
                     try {
                         recordAppUpdateDiagnostic("installer", true, info, preflight, durationMs, getString(R.string.app_update_status_installing));
@@ -12439,7 +12495,7 @@ public class MainActivity extends FragmentActivity {
                 Log.e(TAG, "app update download failed", e);
                 long durationMs = System.currentTimeMillis() - startMs;
                 recordAppUpdateDiagnostic("download", false, info, null, durationMs, e.getMessage());
-                uiHandler.post(() -> {
+                postUiIfAlive(() -> {
                     showError(getString(R.string.app_update_error, e.getMessage()));
                     if (isOfflineRecoveryError(e)) {
                         showOfflineRecoveryActionsDialog(e.getMessage());
@@ -12580,7 +12636,7 @@ public class MainActivity extends FragmentActivity {
             try {
                 AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, currentUpdateChannel());
                 if (info.versionCode == BuildConfig.VERSION_CODE && !info.changelog.isEmpty()) {
-                    uiHandler.post(() -> showAppUpdatedPanel(info));
+                    postUiIfAlive(() -> showAppUpdatedPanel(info));
                 }
             } catch (Exception e) {
                 Log.d(TAG, "post-update notes unavailable", e);
@@ -12700,7 +12756,7 @@ public class MainActivity extends FragmentActivity {
         lastOfflineMaintenanceError = cleanDetail;
         reportOfflineDeviceStatus(getString(R.string.app_update_health_event), false, 0L, cleanDetail);
         if (showActions) {
-            uiHandler.postDelayed(() -> showPostUpdateRecoveryDialog(cleanDetail), 600L);
+            postUiDelayedIfAlive(() -> showPostUpdateRecoveryDialog(cleanDetail), 600L);
         }
     }
 
@@ -12787,7 +12843,7 @@ public class MainActivity extends FragmentActivity {
         List<PlaybackDiagnosticsRowUiModel> rows = buildSettingsInfoRows(title, cleanMessage, notes);
         List<TvMessageActionUiModel> actions = java.util.Collections.singletonList(new TvMessageActionUiModel(getString(onBack == null ? R.string.dialog_close : R.string.dialog_back), false, () -> {
                     if (onBack != null) {
-                        uiHandler.post(onBack);
+                        postUiIfAlive(onBack);
                     }
                 }));
         if (!rows.isEmpty()) {
@@ -12866,12 +12922,12 @@ public class MainActivity extends FragmentActivity {
                 action.run();
             }
             if (onBack != null) {
-                uiHandler.post(onBack);
+                postUiIfAlive(onBack);
             }
         }));
         actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, () -> {
             if (onBack != null) {
-                uiHandler.post(onBack);
+                postUiIfAlive(onBack);
             }
         }));
         showTvMessagePanel(getString(titleResId), getString(messageResId), actions, onBack);
@@ -12932,7 +12988,7 @@ public class MainActivity extends FragmentActivity {
             }
             showStatus(getString(R.string.settings_playback_quality_changed, playbackQualityLabel()));
             if (onBack != null) {
-                uiHandler.post(onBack);
+                postUiIfAlive(onBack);
             }
         });
     }
@@ -13163,15 +13219,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void finishModalTransitionAfterDelay() {
-        uiHandler.postDelayed(this::finishModalTransitionWithoutChild, 250L);
+        postUiDelayedIfAlive(this::finishModalTransitionWithoutChild, 250L);
     }
 
     private void dismissModalForNextAction(Dialog dialog, Runnable nextAction) {
         beginModalTransition(null);
         if (nextAction != null) {
-            uiHandler.post(() -> {
+            postUiIfAlive(() -> {
                 nextAction.run();
-                uiHandler.postDelayed(() -> {
+                postUiDelayedIfAlive(() -> {
                     modalTransitionInProgress = true;
                     if (dialog != null) {
                         dialog.dismiss();
@@ -13199,7 +13255,7 @@ public class MainActivity extends FragmentActivity {
         if (modalReturnAction != null) {
             Runnable returnAction = modalReturnAction;
             modalReturnAction = null;
-            uiHandler.post(returnAction);
+            postUiIfAlive(returnAction);
             return;
         }
         restorePlaybackAfterModal();
@@ -13263,7 +13319,7 @@ public class MainActivity extends FragmentActivity {
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onCancel != null) {
                 beginModalTransition(null);
-                uiHandler.post(onCancel);
+                postUiIfAlive(onCancel);
                 finishModalTransitionAfterDelay();
             }
         }, this::handleModalDismissed);
@@ -13312,7 +13368,7 @@ public class MainActivity extends FragmentActivity {
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (onCancel != null) {
                 beginModalTransition(null);
-                uiHandler.post(onCancel);
+                postUiIfAlive(onCancel);
                 finishModalTransitionAfterDelay();
             }
         }, this::handleModalDismissed);
@@ -13349,7 +13405,7 @@ public class MainActivity extends FragmentActivity {
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             if (model.onCancel != null) {
                 beginModalTransition(null);
-                uiHandler.post(model.onCancel);
+                postUiIfAlive(model.onCancel);
                 finishModalTransitionAfterDelay();
             }
         }, this::handleModalDismissed);
@@ -13414,7 +13470,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         startupHubShown = true;
-        uiHandler.postDelayed(this::loadStartupHubStateAndShow, 700L);
+        postUiDelayedIfAlive(this::loadStartupHubStateAndShow, 700L);
     }
 
     private void loadStartupHubStateAndShow() {
@@ -13445,7 +13501,7 @@ public class MainActivity extends FragmentActivity {
                 }
             }
             StartupHubState state = new StartupHubState(current, lastVod, resumeRecording, recordingBasePath, completedCount, scheduledCount);
-            uiHandler.post(() -> showStartupHubDialog(state));
+            postUiIfAlive(() -> showStartupHubDialog(state));
         });
     }
 
@@ -14423,7 +14479,7 @@ public class MainActivity extends FragmentActivity {
             }
             refreshLocalChannelFilters(lastChannelId);
             showStatus(getString(R.string.status_personal_list_created));
-            uiHandler.post(() -> showPersonalListChannelsPanel(created));
+            postUiIfAlive(() -> showPersonalListChannelsPanel(created));
         });
     }
 
@@ -14540,7 +14596,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_personal_list_channel_removed));
             ChannelCollectionStore.ChannelCollection refreshed = channelCollectionStore == null ? null : channelCollectionStore.getCollection(collection.key);
             if (refreshed != null && !refreshed.channelIds.isEmpty()) {
-                uiHandler.post(() -> showPersonalListChannelsPanel(refreshed));
+                postUiIfAlive(() -> showPersonalListChannelsPanel(refreshed));
             }
         });
         options.add(getString(R.string.personal_list_channel_action_profile));
@@ -14827,7 +14883,7 @@ public class MainActivity extends FragmentActivity {
         }
         int requestedFilter = globalSearchFilter;
         pendingGlobalSearchRunnable = () -> fetchGlobalSearchRemoteResults(composeView, dialogHolder, queryHolder, trimmed, generation, requestedFilter);
-        uiHandler.postDelayed(pendingGlobalSearchRunnable, 450L);
+        postUiDelayedIfAlive(pendingGlobalSearchRunnable, 450L);
     }
 
     private void fetchGlobalSearchRemoteResults(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder, String query, int generation, int requestedFilter) {
@@ -14852,7 +14908,7 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, "global recording search failed", e);
             }
-            uiHandler.post(() -> {
+            postUiIfAlive(() -> {
                 if (generation != globalSearchGeneration) {
                     return;
                 }
@@ -15280,10 +15336,10 @@ public class MainActivity extends FragmentActivity {
         ioExecutor.execute(() -> {
             try {
                 List<EpgSearchResult> results = buildEpgSearchResults(trimmedQuery);
-                uiHandler.post(() -> showEpgSearchResultsDialog(trimmedQuery, results));
+                postUiIfAlive(() -> showEpgSearchResultsDialog(trimmedQuery, results));
             } catch (Exception e) {
                 Log.w(TAG, "EPG search failed", e);
-                uiHandler.post(() -> showStatus(getString(R.string.status_failed_load_guide)));
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_load_guide)));
             }
         });
     }
@@ -15419,7 +15475,7 @@ public class MainActivity extends FragmentActivity {
                 if (activeDialog != null && activeDialog.isShowing()) {
                     activeDialog.dismiss();
                 }
-                uiHandler.post(() -> channelActionsCoordinator.showProgramActionMenu(channel, program));
+                postUiIfAlive(() -> channelActionsCoordinator.showProgramActionMenu(channel, program));
             }
         };
     }
@@ -16277,7 +16333,7 @@ public class MainActivity extends FragmentActivity {
             stopVodLoadingOverlay(request.channelId);
             rememberCurrentVodPosition();
             showStatus(getString(R.string.vod_status_failed));
-            uiHandler.postDelayed(() -> {
+            postUiDelayedIfAlive(() -> {
                 ChannelItem current = getCurrentPlaybackChannelItem();
                 if (current != null && request.channelId.equals(current.id)) {
                     showVodPlaybackRecoveryPanel(current, diagnostics);
@@ -16384,7 +16440,7 @@ public class MainActivity extends FragmentActivity {
         }
         playbackRecoveryCoordinator.setTemporaryMode(request.channelId, nextMode);
         showStatus(getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(nextMode)));
-        uiHandler.postDelayed(() -> {
+        postUiDelayedIfAlive(() -> {
             ChannelItem current = getCurrentPlaybackChannelItem();
             if (current != null && request.channelId.equals(current.id)) {
                 retryCurrentPlayback();
@@ -16427,7 +16483,7 @@ public class MainActivity extends FragmentActivity {
         if (!playbackRepairEnabled || PlaybackModeStore.MODE_AUTO.equals(mode) || channelId == null || channelId.trim().isEmpty()) {
             return;
         }
-        uiHandler.postDelayed(() -> learnPlaybackModeIfStillCurrent(channelId, mode), 18_000L);
+        postUiDelayedIfAlive(() -> learnPlaybackModeIfStillCurrent(channelId, mode), 18_000L);
     }
 
     private void learnPlaybackModeIfStillCurrent(String channelId, String playbackMode) {
@@ -17327,7 +17383,7 @@ public class MainActivity extends FragmentActivity {
             if (loaded != null) {
                 channelLogoCache.put(logoUrl, loaded);
             }
-            uiHandler.post(() -> {
+            postUiIfAlive(() -> {
                 Object tag = imageView.getTag();
                 if (!(tag instanceof String) || !logoUrl.equals(tag)) {
                     return;

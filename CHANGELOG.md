@@ -1,4 +1,7 @@
 ## Unreleased - adaptive performance and cross-device UX
+- Estabilidad: cancela ejecutores y publicaciones UI de actividades destruidas, evitando tareas huerfanas, CPU alta y tormentas de GC tras recreaciones.
+- Reproduccion: adelanta el offset fast-zap a la llegada de la linea temporal y evita levantar el servidor Smooth cuando la ruta final es HLS.
+- Arranque: agrupa cargas EPG visibles duplicadas y activa la integracion generada de Glide.
 - Playback: calidad Automatica/Ahorro/Alta; Automatica vuelve a usar seleccion adaptativa y Ahorro limita a 720p.
 - Multiview: limita streams segun memoria del dispositivo y usa un perfil 540p/1.8 Mbps en tiles.
 - Memoria: elimina `largeHeap`, reduce precarga en equipos de poca RAM y libera caches/multiview bajo presion.

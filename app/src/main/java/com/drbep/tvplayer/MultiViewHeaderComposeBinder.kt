@@ -26,9 +26,8 @@ object MultiViewHeaderComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: MultiViewHeaderUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            MultiViewHeader(model)
+        composeView.setStableContent("multiview-header", model) { currentModel ->
+            MultiViewHeader(currentModel)
         }
     }
 }

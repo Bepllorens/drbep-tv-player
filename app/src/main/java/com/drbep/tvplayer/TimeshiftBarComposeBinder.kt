@@ -37,9 +37,8 @@ object TimeshiftBarComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: TimeshiftBarUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            TimeshiftBar(model)
+        composeView.setStableContent("timeshift-bar", model) { currentModel ->
+            TimeshiftBar(currentModel)
         }
     }
 }

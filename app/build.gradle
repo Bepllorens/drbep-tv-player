@@ -1,6 +1,5 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
@@ -59,15 +58,15 @@ def escapedOfflineSnapshotKeyId = offlineSnapshotKeyId
         .replace('"', '\\"')
 
 android {
-    namespace 'com.drbep.tvplayer'
+    namespace = 'com.drbep.tvplayer'
     compileSdk 36
 
     defaultConfig {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 331
-        versionName "2.0.331-beta-epg-image-fit"
+        versionCode 332
+        versionName "2.0.332-beta-adaptive-cross-device"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",
@@ -111,7 +110,11 @@ android {
             buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
         }
         release {
-            signingConfig signingConfigs.release
+            // CI and contributor builds can produce an unsigned release APK;
+            // publication still uses the configured production keystore.
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
             manifestPlaceholders = [
                     appAllowBackup: "false",
                     appFullBackupContent: "false",
@@ -129,27 +132,25 @@ android {
             buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
             buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
             minifyEnabled true
-            shrinkResources true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
     compileOptions {
+        coreLibraryDesugaringEnabled = true
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-
     buildFeatures {
-        buildConfig true
-        compose true
+        buildConfig = true
+        compose = true
     }
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.activity:activity-compose:1.10.1'
     implementation 'androidx.leanback:leanback:1.2.0'

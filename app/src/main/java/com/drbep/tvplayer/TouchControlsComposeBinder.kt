@@ -55,9 +55,8 @@ object TouchControlsComposeBinder {
         artworkBinder: TouchControlsArtworkBinder? = null
     ) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            TouchControlsBar(model = model, artworkBinder = artworkBinder)
+        composeView.setStableContent("touch-controls", model) { currentModel ->
+            TouchControlsBar(model = currentModel, artworkBinder = artworkBinder)
         }
     }
 }

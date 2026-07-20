@@ -1,5 +1,7 @@
 package com.drbep.tvplayer;
 
+import java.util.Locale;
+
 final class ProgramArtworkResolver {
     private ProgramArtworkResolver() {
     }
@@ -24,7 +26,7 @@ final class ProgramArtworkResolver {
         if (clean.isEmpty()) {
             return "";
         }
-        String lower = clean.toLowerCase();
+        String lower = clean.toLowerCase(Locale.ROOT);
         if ("null".equals(lower)
                 || "undefined".equals(lower)
                 || "none".equals(lower)

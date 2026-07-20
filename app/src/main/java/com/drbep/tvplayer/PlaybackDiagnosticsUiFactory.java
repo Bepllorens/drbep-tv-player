@@ -3,6 +3,7 @@ package com.drbep.tvplayer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 final class PlaybackDiagnosticsUiFactory {
     interface Host {
@@ -236,7 +237,7 @@ final class PlaybackDiagnosticsUiFactory {
     }
 
     private static String phaseTone(String phase) {
-        String normalized = phase == null ? "" : phase.trim().toLowerCase();
+        String normalized = phase == null ? "" : phase.trim().toLowerCase(Locale.ROOT);
         if (normalized.contains("playing")) {
             return "ok";
         }

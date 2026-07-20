@@ -52,9 +52,8 @@ object RecordingsSurfaceComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: RecordingsSurfaceUiModel, posterBinder: RecordingPosterBinder?) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            RecordingsSurface(model, posterBinder)
+        composeView.setStableContent("recordings-surface", model) { currentModel ->
+            RecordingsSurface(currentModel, posterBinder)
         }
     }
 }

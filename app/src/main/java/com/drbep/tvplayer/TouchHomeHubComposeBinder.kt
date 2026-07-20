@@ -30,9 +30,8 @@ object TouchHomeHubComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: TouchHomeHubUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            TouchHomeHub(model)
+        composeView.setStableContent("touch-home-hub", model) { currentModel ->
+            TouchHomeHub(currentModel)
         }
     }
 }

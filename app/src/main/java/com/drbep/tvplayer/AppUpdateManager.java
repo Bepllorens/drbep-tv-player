@@ -138,7 +138,10 @@ final class AppUpdateManager {
             if (code < 200 || code >= 300) {
                 throw new IllegalStateException("descarga APK HTTP " + code);
             }
-            long total = conn.getContentLengthLong();
+            // getContentLengthLong() was added in API 24 while the app still
+            // supports Android 6 / API 23 devices. Parsing the header keeps the
+            // updater compatible without truncating files larger than 2 GiB.
+            long total = parseContentLength(conn.getHeaderField("Content-Length"));
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] buffer = new byte[64 * 1024];
             long done = 0L;
@@ -168,6 +171,17 @@ final class AppUpdateManager {
             if (conn != null) {
                 conn.disconnect();
             }
+        }
+    }
+
+    private static long parseContentLength(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return -1L;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException ignored) {
+            return -1L;
         }
     }
 

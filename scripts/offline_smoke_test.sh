@@ -6,7 +6,7 @@ APP_PACKAGE="${APP_PACKAGE:-com.drbep.tvplayer.offline}"
 APP_ACTIVITY="${APP_ACTIVITY:-com.drbep.tvplayer.MainActivity}"
 WAIT_BOOT_SECONDS="${WAIT_BOOT_SECONDS:-12}"
 WAIT_AFTER_KEY_SECONDS="${WAIT_AFTER_KEY_SECONDS:-1}"
-LOG_LINES="${LOG_LINES:-2500}"
+LOG_LINES="${LOG_LINES:-8000}"
 LOG_OUTPUT="${LOG_OUTPUT:-}"
 STRICT_WARNINGS="${STRICT_WARNINGS:-0}"
 CHECK_GUIDE_KEY="${CHECK_GUIDE_KEY:-1}"
@@ -99,13 +99,23 @@ send_key() {
   sleep "$WAIT_AFTER_KEY_SECONDS"
 }
 
+ensure_main_activity() {
+  local resumed
+  resumed="$("${ADB[@]}" shell dumpsys activity activities 2>/dev/null | grep -m1 "mResumedActivity" || true)"
+  if [[ "$resumed" != *"$APP_PACKAGE/$APP_ACTIVITY"* ]]; then
+    echo "Restaurando Activity principal para continuar el smoke"
+    "${ADB[@]}" shell am start -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
+    sleep "$WAIT_AFTER_KEY_SECONDS"
+  fi
+}
+
 print_log_summary() {
   local log_file="$1"
   echo
   echo "== Resumen diagnostico =="
   echo "Activity visible:"
-  "${ADB[@]}" shell dumpsys window windows 2>/dev/null \
-    | grep -E "mCurrentFocus|mFocusedApp" \
+  "${ADB[@]}" shell dumpsys activity activities 2>/dev/null \
+    | grep -E "mResumedActivity|topResumedActivity" \
     | tail -n 4 \
     | sed 's/^[[:space:]]*/  /' || true
   echo
@@ -170,7 +180,7 @@ print_health_gates() {
   local warnings=0
   echo
   echo "== Senales de salud =="
-  print_warning_sample "crashes graves" "FATAL EXCEPTION|AndroidRuntime|Process: $APP_PACKAGE|Unable to start activity|ANR in $APP_PACKAGE" "$log_file" || warnings=$((warnings + 1))
+  print_warning_sample "crashes graves" "FATAL EXCEPTION|Process: $APP_PACKAGE|Unable to start activity|ANR in $APP_PACKAGE" "$log_file" || warnings=$((warnings + 1))
   print_warning_sample "errores de reproduccion" "Source error|ExoPlaybackException|Playback error|Error de reproduccion" "$log_file" || warnings=$((warnings + 1))
   print_warning_sample "catalogo reducido/rechazado" "catalogo candidato reducido|candidate reduced|last rejected|verification warning|caller-provided IV not permitted" "$log_file" || warnings=$((warnings + 1))
   print_warning_sample "EPG con error" "epg.*error|timeline.*error|guide.*error|EPG 0 / 0" "$log_file" || warnings=$((warnings + 1))
@@ -198,16 +208,21 @@ send_key "Izquierda en HUD" KEYCODE_DPAD_LEFT
 send_key "Arriba hacia timeshift" KEYCODE_DPAD_UP
 send_key "Abajo hacia acciones" KEYCODE_DPAD_DOWN
 send_key "Back cerrar HUD" KEYCODE_BACK
+ensure_main_activity
 send_key "Info / Guia actual" KEYCODE_INFO
 send_key "Back cerrar panel" KEYCODE_BACK
+ensure_main_activity
 if [ "$CHECK_GUIDE_KEY" = "1" ]; then
   send_key "Guia timeline" KEYCODE_GUIDE
   send_key "Back cerrar guia" KEYCODE_BACK
+  ensure_main_activity
 fi
 send_key "Menu herramientas" KEYCODE_MENU
 send_key "Back cerrar menu" KEYCODE_BACK
+ensure_main_activity
 send_key "Grabacion" KEYCODE_MEDIA_RECORD
 send_key "Back cerrar grabacion" KEYCODE_BACK
+ensure_main_activity
 send_key "Canal abajo" KEYCODE_DPAD_DOWN
 send_key "Canal arriba" KEYCODE_DPAD_UP
 
@@ -219,14 +234,14 @@ if [ -z "$PID" ]; then
 fi
 
 TMP_LOG="$(mktemp "${TMPDIR:-/tmp}/drbep-offline-smoke.XXXXXX.log")"
-"${ADB[@]}" logcat -d -t "$LOG_LINES" > "$TMP_LOG" || true
+"${ADB[@]}" logcat -d --pid="$PID" -t "$LOG_LINES" > "$TMP_LOG" || true
 
 if [ -n "$LOG_OUTPUT" ]; then
   cp "$TMP_LOG" "$LOG_OUTPUT"
   echo "Log guardado en: $LOG_OUTPUT"
 fi
 
-CRASH_LOG="$(grep -iE "FATAL EXCEPTION|AndroidRuntime|Process: $APP_PACKAGE|Unable to start activity|ANR in $APP_PACKAGE" "$TMP_LOG" || true)"
+CRASH_LOG="$(grep -iE "FATAL EXCEPTION|Process: $APP_PACKAGE|Unable to start activity|ANR in $APP_PACKAGE" "$TMP_LOG" || true)"
 if [ -n "$CRASH_LOG" ]; then
   echo "Se han detectado errores graves en logcat:" >&2
   echo "$CRASH_LOG" >&2

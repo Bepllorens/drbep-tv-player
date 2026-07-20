@@ -11,6 +11,7 @@ final class SettingsUiFactory {
         String updateChannelLabel();
         int recentSearchCount();
         boolean playbackRepairEnabled();
+        String playbackQualityLabel();
         void openStartup();
         void openPlayback();
         void openSearch();
@@ -34,6 +35,8 @@ final class SettingsUiFactory {
         void clearRecentSearches();
         void showSearchSummary();
         void togglePlaybackRepair();
+        void openPlaybackQuality();
+        void openTextTracks();
         void openCurrentPlaybackMode();
         void openPlaybackDiagnostics();
         void clearLearnedPlaybackModes();
@@ -108,6 +111,8 @@ final class SettingsUiFactory {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         add(options, actions, host.text(host.playbackRepairEnabled() ? R.string.settings_playback_repair_disable : R.string.settings_playback_repair_enable), host::togglePlaybackRepair);
+        add(options, actions, host.text(R.string.settings_playback_quality_action, host.playbackQualityLabel()), host::openPlaybackQuality);
+        add(options, actions, host.text(R.string.subtitle_track_action), host::openTextTracks);
         add(options, actions, host.text(R.string.settings_playback_current_mode), host::openCurrentPlaybackMode);
         add(options, actions, host.text(R.string.settings_playback_diagnostics), host::openPlaybackDiagnostics);
         add(options, actions, host.text(R.string.settings_playback_clear_learned), host::clearLearnedPlaybackModes);

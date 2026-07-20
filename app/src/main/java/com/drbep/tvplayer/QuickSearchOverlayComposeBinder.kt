@@ -26,9 +26,8 @@ object QuickSearchOverlayComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: QuickSearchOverlayUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            QuickSearchOverlay(model)
+        composeView.setStableContent("quick-search-overlay", model) { currentModel ->
+            QuickSearchOverlay(currentModel)
         }
     }
 }

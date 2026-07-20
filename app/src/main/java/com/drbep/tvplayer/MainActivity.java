@@ -1,5 +1,6 @@
 package com.drbep.tvplayer;
 
+import android.annotation.SuppressLint;
 import android.net.Uri;
 import android.os.Build;
 import android.media.AudioManager;
@@ -42,10 +43,12 @@ import android.widget.TextView;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
 import androidx.compose.ui.platform.ComposeView;
 import androidx.lifecycle.ViewTreeLifecycleOwner;
 import androidx.lifecycle.ViewTreeViewModelStoreOwner;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.common.util.UnstableApi;
 import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
 
 import org.json.JSONArray;
@@ -83,6 +86,7 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import java.util.HashMap;
 import java.util.Map;
 
+@OptIn(markerClass = UnstableApi.class)
 public class MainActivity extends FragmentActivity {
     private static final String TAG = "DRBEP-TV-Native";
     private static final long OVERLAY_HIDE_MS = 6000L;
@@ -127,6 +131,7 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_CHANNEL_PROFILES = "channel_profiles";
     private static final String PREF_PLAYBACK_DIAGNOSTICS = "playback_diagnostics";
     private static final String PREF_PLAYBACK_REPAIR_ENABLED = "playback_repair_enabled";
+    private static final String PREF_PLAYBACK_QUALITY_MODE = "playback_quality_mode";
     private static final String PREF_PLAYBACK_LEARNED_MODES = "playback_learned_modes";
     private static final String PREF_OFFLINE_SYNC_HISTORY = "offline_sync_history";
     private static final String PREF_APP_UPDATE_DIAGNOSTIC = "app_update_diagnostic";
@@ -366,6 +371,8 @@ public class MainActivity extends FragmentActivity {
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
     private boolean touchDeviceMode;
     private boolean playbackRepairEnabled = true;
+    private String playbackQualityMode = PlaybackQualityPolicy.AUTO;
+    private DevicePerformanceProfile devicePerformanceProfile;
     private long lastCatalogLoadDurationMs;
     private long lastEpgNowLoadDurationMs;
     private long lastApplyChannelsDurationMs;
@@ -549,6 +556,8 @@ public class MainActivity extends FragmentActivity {
         super.onCreate(savedInstanceState);
         activityCreatedAtMs = System.currentTimeMillis();
         setContentView(R.layout.activity_main);
+        touchDeviceMode = detectTouchDeviceMode();
+        devicePerformanceProfile = DevicePerformanceProfile.detect(this);
 
         playerView = findViewById(R.id.playerView);
         ComposeView errorText = findViewById(R.id.errorText);
@@ -556,7 +565,7 @@ public class MainActivity extends FragmentActivity {
         ComposeView startupLoadingOverlay = findViewById(R.id.startupLoadingOverlay);
         overlayControlsComposeView = findViewById(R.id.overlayExploreSection);
         touchHomeHub = findViewById(R.id.touchHomeHub);
-        touchHomeComposeView = findViewById(R.id.touchHomeHub);
+        touchHomeComposeView = (ComposeView) touchHomeHub;
         multiViewContainer = findViewById(R.id.multiViewContainer);
         multiViewHeaderComposeView = findViewById(R.id.multiViewHeaderComposeView);
         multiPlayerViews[0] = findViewById(R.id.multiPlayerView1);
@@ -572,8 +581,8 @@ public class MainActivity extends FragmentActivity {
         multiOverlayViews[2] = findViewById(R.id.multiOverlay3);
         multiOverlayViews[3] = findViewById(R.id.multiOverlay4);
         overlayNowPlayingComposeView = findViewById(R.id.overlayNowPlayingSection);
-        overlayNowPlayingSection = findViewById(R.id.overlayNowPlayingSection);
-        overlayExploreSection = findViewById(R.id.overlayExploreSection);
+        overlayNowPlayingSection = overlayNowPlayingComposeView;
+        overlayExploreSection = overlayControlsComposeView;
         overlayListSection = findViewById(R.id.overlayListSection);
         zapBanner = findViewById(R.id.zapBanner);
         zapBannerController.attachBanner(zapBanner);
@@ -589,25 +598,24 @@ public class MainActivity extends FragmentActivity {
         liveStateBadgeText = findViewById(R.id.liveStateBadgeText);
         touchControlsBar = findViewById(R.id.touchControlsBar);
         timeshiftBarContainer = findViewById(R.id.timeshiftBarContainer);
-        touchControlsComposeView = findViewById(R.id.touchControlsBar);
-        timeshiftComposeView = findViewById(R.id.timeshiftBarContainer);
+        touchControlsComposeView = (ComposeView) touchControlsBar;
+        timeshiftComposeView = (ComposeView) timeshiftBarContainer;
         playbackGestureLayer = findViewById(R.id.playbackGestureLayer);
         channelOverlay = findViewById(R.id.channelOverlay);
         recordingsPanel = findViewById(R.id.recordingsPanel);
         recordingsPanelController.attachPanel(recordingsPanel);
-        channelListComposeView = findViewById(R.id.overlayListSection);
+        channelListComposeView = (ComposeView) overlayListSection;
         if (channelOverlay != null) {
             channelOverlay.setClickable(true);
             channelOverlay.setOnTouchListener((v, event) -> {
                 if (touchDeviceMode) {
                     uiHandler.removeCallbacks(hideOverlayRunnable);
                 }
+                if (event != null && event.getAction() == MotionEvent.ACTION_UP) {
+                    v.performClick();
+                }
                 return false;
             });
-        }
-        if (recordingsPanel != null) {
-            recordingsPanel.setClickable(true);
-            recordingsPanel.setOnTouchListener((v, event) -> true);
         }
         applyResponsiveSurfaceLayout();
         if (liveStateBadgeText != null) {
@@ -738,6 +746,7 @@ public class MainActivity extends FragmentActivity {
         overlayNavigationState.selectedFilterKey = prefs.getString(PREF_LAST_FILTER_KEY, "all");
         overlayNavigationState.favoritesOnly = prefs.getBoolean(PREF_FAVORITES_ONLY, false);
         playbackRepairEnabled = prefs.getBoolean(PREF_PLAYBACK_REPAIR_ENABLED, true);
+        playbackQualityMode = PlaybackQualityPolicy.normalize(prefs.getString(PREF_PLAYBACK_QUALITY_MODE, PlaybackQualityPolicy.AUTO));
         lastVodId = prefs.getString(PREF_LAST_VOD_ID, "");
         overlayNavigationState.favoritesOnly = false;
         remoteInputRouter = new RemoteInputRouter(createRemoteInputHost(), MENU_DOUBLE_PRESS_MS);
@@ -756,7 +765,6 @@ public class MainActivity extends FragmentActivity {
         channelProfileStore.load();
         playbackDiagnosticsStore.load();
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
-        touchDeviceMode = detectTouchDeviceMode();
         touchControlsController = new TouchControlsController(uiHandler, createTouchControlsHost(), TOUCH_CONTROLS_HIDE_MS, TV_TIMESHIFT_HUD_HIDE_MS);
         tabletOrientationLocked = prefs.getBoolean(PREF_TABLET_ORIENTATION_LOCK, false);
         initializeTabletBrightness();
@@ -876,6 +884,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public boolean isCompactTouchDeviceMode() {
                 return MainActivity.this.useCompactTouchEpgMode();
+            }
+
+            @Override
+            public String playbackQualityMode() {
+                return MainActivity.this.playbackQualityMode;
             }
 
             @Override
@@ -1112,7 +1125,13 @@ public class MainActivity extends FragmentActivity {
         }
         refreshTouchControlsBar();
         if (playbackGestureLayer != null) {
-            playbackGestureLayer.setOnTouchListener((v, event) -> handlePlayerSurfaceTouch(event));
+            playbackGestureLayer.setOnTouchListener((v, event) -> {
+                boolean handled = handlePlayerSurfaceTouch(event);
+                if (handled && event != null && event.getAction() == MotionEvent.ACTION_UP) {
+                    v.performClick();
+                }
+                return handled;
+            });
         }
     }
 
@@ -5462,8 +5481,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private static String formatIsoMillis(long value) {
-        SimpleDateFormat out = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US);
-        return out.format(new Date(value));
+        SimpleDateFormat out = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US);
+        String formatted = out.format(new Date(value));
+        return formatted.length() > 2
+                ? formatted.substring(0, formatted.length() - 2) + ":" + formatted.substring(formatted.length() - 2)
+                : formatted;
     }
 
     private void tuneRelative(int delta) {
@@ -6913,6 +6935,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     @Override
+    @SuppressLint("RestrictedApi")
     public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
         if (remoteInputRouter != null && remoteInputRouter.dispatchKeyEvent(event)) {
             return true;
@@ -7000,6 +7023,31 @@ public class MainActivity extends FragmentActivity {
             playerController = null;
         }
         super.onDestroy();
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        Glide.get(this).trimMemory(level);
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            channelLogoCache.evictAll();
+            streamInfoByChannelId.clear();
+        }
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL && isMultiViewVisible()) {
+            closeMultiView();
+            showStatus(getString(R.string.status_multiview_closed_low_memory));
+        }
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        channelLogoCache.evictAll();
+        streamInfoByChannelId.clear();
+        Glide.get(this).clearMemory();
+        if (isMultiViewVisible()) {
+            closeMultiView();
+        }
     }
     private PlayerController.PlaybackRequest toPlaybackRequest(ChannelItem channelItem) {
         if (channelItem == null) {
@@ -7946,6 +7994,12 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_multiview_not_enough_channels));
             return;
         }
+        int supportedStreams = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
+        boolean limitedByDevice = false;
+        if (selected.size() > supportedStreams) {
+            selected = new ArrayList<>(selected.subList(0, supportedStreams));
+            limitedByDevice = true;
+        }
         hideOverlay();
         hideRecordingsPanel();
         clearQuickSearchOverlay();
@@ -7999,7 +8053,9 @@ public class MainActivity extends FragmentActivity {
             multiViewContainer.setVisibility(View.VISIBLE);
         }
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, true);
-        showStatus(getString(R.string.multiview_title));
+        showStatus(limitedByDevice
+                ? getString(R.string.status_multiview_device_limit, supportedStreams)
+                : getString(R.string.multiview_title));
     }
 
     private void closeMultiView() {
@@ -8027,7 +8083,8 @@ public class MainActivity extends FragmentActivity {
         if (!multiPlayerControllers.isEmpty()) {
             return;
         }
-        for (int i = 0; i < multiPlayerViews.length; i++) {
+        int supportedStreams = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
+        for (int i = 0; i < Math.min(multiPlayerViews.length, supportedStreams); i++) {
             final int slot = i;
             PlayerView mv = multiPlayerViews[i];
             if (mv == null) {
@@ -8061,6 +8118,11 @@ public class MainActivity extends FragmentActivity {
                 }
 
                 @Override
+                public boolean isMultiViewPlayback() {
+                    return true;
+                }
+
+                @Override
                 public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
                     MainActivity.this.recordPlaybackError(request, diagnostics);
                 }
@@ -8090,6 +8152,7 @@ public class MainActivity extends FragmentActivity {
     private List<ChannelItem> buildMultiViewChannels() {
         List<ChannelItem> selected = new ArrayList<>();
         Set<String> added = new HashSet<>();
+        int maxStreams = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
         if (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) {
             ChannelItem current = channels.get(overlayNavigationState.currentIndex);
             if (current != null && !current.isVod && current.id != null && added.add(current.id)) {
@@ -8097,7 +8160,7 @@ public class MainActivity extends FragmentActivity {
             }
         }
         for (ChannelItem item : channels) {
-            if (selected.size() >= 4) {
+            if (selected.size() >= maxStreams) {
                 break;
             }
             if (item == null || item.isVod || item.id == null || !added.add(item.id)) {
@@ -8105,9 +8168,9 @@ public class MainActivity extends FragmentActivity {
             }
             selected.add(item);
         }
-        if (selected.size() < 4) {
+        if (selected.size() < maxStreams) {
             for (ChannelItem item : allChannels) {
-                if (selected.size() >= 4) {
+                if (selected.size() >= maxStreams) {
                     break;
                 }
                 if (item == null || item.isVod || item.id == null || !added.add(item.id)) {
@@ -9643,6 +9706,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public String playbackQualityLabel() {
+                return MainActivity.this.playbackQualityLabel();
+            }
+
+            @Override
             public void openStartup() {
                 showStartupSettingsDialog(() -> showSettingsCenterDialog(onBack));
             }
@@ -9767,6 +9835,16 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void togglePlaybackRepair() {
                 MainActivity.this.togglePlaybackRepair();
+            }
+
+            @Override
+            public void openPlaybackQuality() {
+                MainActivity.this.showPlaybackQualityDialog(() -> showPlaybackSettingsDialog(onBack));
+            }
+
+            @Override
+            public void openTextTracks() {
+                MainActivity.this.showTextTrackDialog(() -> showPlaybackSettingsDialog(onBack));
             }
 
             @Override
@@ -9948,7 +10026,8 @@ public class MainActivity extends FragmentActivity {
                 temporaryPlaybackModesByChannelId.size(),
                 learnedPlaybackModesByChannelId.size(),
                 playbackRepairEnabled ? getString(R.string.diagnostics_value_yes) : getString(R.string.diagnostics_value_no),
-                errors
+                errors,
+                playbackQualityLabel()
         );
     }
 
@@ -12817,6 +12896,47 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(playbackRepairEnabled ? R.string.status_playback_repair_enabled : R.string.status_playback_repair_disabled));
     }
 
+    private String playbackQualityLabel() {
+        switch (PlaybackQualityPolicy.normalize(playbackQualityMode)) {
+            case PlaybackQualityPolicy.DATA_SAVER:
+                return getString(R.string.settings_playback_quality_data_saver);
+            case PlaybackQualityPolicy.HIGH:
+                return getString(R.string.settings_playback_quality_high);
+            default:
+                return getString(R.string.settings_playback_quality_auto);
+        }
+    }
+
+    private void showPlaybackQualityDialog(Runnable onBack) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        addPlaybackQualityOption(options, actions, PlaybackQualityPolicy.AUTO, R.string.settings_playback_quality_auto, onBack);
+        addPlaybackQualityOption(options, actions, PlaybackQualityPolicy.DATA_SAVER, R.string.settings_playback_quality_data_saver, onBack);
+        addPlaybackQualityOption(options, actions, PlaybackQualityPolicy.HIGH, R.string.settings_playback_quality_high, onBack);
+        showTvOptionsDialog(R.string.settings_playback_quality_title, getString(R.string.settings_playback_quality_message), options, actions, onBack);
+    }
+
+    private void addPlaybackQualityOption(List<String> options, List<Runnable> actions, String mode, int labelRes, Runnable onBack) {
+        String label = getString(labelRes);
+        if (mode.equals(PlaybackQualityPolicy.normalize(playbackQualityMode))) {
+            label = getString(R.string.settings_selected_prefix, label);
+        }
+        options.add(label);
+        actions.add(() -> {
+            playbackQualityMode = PlaybackQualityPolicy.normalize(mode);
+            if (prefs != null) {
+                prefs.edit().putString(PREF_PLAYBACK_QUALITY_MODE, playbackQualityMode).apply();
+            }
+            if (playerController != null) {
+                playerController.refreshVideoTrackPolicy();
+            }
+            showStatus(getString(R.string.settings_playback_quality_changed, playbackQualityLabel()));
+            if (onBack != null) {
+                uiHandler.post(onBack);
+            }
+        });
+    }
+
     private void clearLearnedPlaybackModes() {
         learnedPlaybackModesByChannelId.clear();
         if (prefs != null) {
@@ -14967,7 +15087,7 @@ public class MainActivity extends FragmentActivity {
                 results.add(globalSearchHeader(getString(R.string.global_search_section_suggestions)));
                 suggestionHeaderAdded = true;
             }
-            results.add(new GlobalSearchResult(GLOBAL_SEARCH_VOD, displayName(lastVod), getString(R.string.quick_hub_continue_vod, buildVodInfoMeta(lastVod)), getString(R.string.channel_badge_vod), lastVod, null, null, ""));
+            results.add(new GlobalSearchResult(GLOBAL_SEARCH_VOD, displayName(lastVod), buildVodInfoMeta(lastVod), getString(R.string.channel_badge_vod), lastVod, null, null, ""));
         }
         List<ChannelItem> recentChannels = buildRecentQuickChannels();
         if (!recentChannels.isEmpty() && (filter == GLOBAL_SEARCH_FILTER_ALL || filter == GLOBAL_SEARCH_FILTER_TV || filter == GLOBAL_SEARCH_FILTER_FAVORITES)) {
@@ -15841,6 +15961,47 @@ public class MainActivity extends FragmentActivity {
             });
         }
         showTvOptionsDialog(R.string.audio_track_title, null, options, actions);
+    }
+
+    private void showTextTrackDialog(Runnable onBack) {
+        if (playerController == null) {
+            showStatus(getString(R.string.subtitle_track_unavailable));
+            return;
+        }
+        List<PlayerController.TextTrackOption> tracks = playerController.getTextTrackOptions();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.subtitle_track_off));
+        actions.add(() -> {
+            if (playerController != null) {
+                playerController.setTextTracksEnabled(false);
+                showStatus(getString(R.string.subtitle_track_off_selected));
+            }
+        });
+        options.add(getString(R.string.subtitle_track_auto));
+        actions.add(() -> {
+            if (playerController != null) {
+                playerController.setTextTracksEnabled(true);
+                showStatus(getString(R.string.subtitle_track_auto_selected));
+            }
+        });
+        for (PlayerController.TextTrackOption track : tracks) {
+            String label = track.label;
+            if (!track.supported) {
+                label = getString(R.string.subtitle_track_unsupported, label);
+            } else if (track.selected) {
+                label = getString(R.string.subtitle_track_selected, label);
+            }
+            options.add(label);
+            actions.add(() -> {
+                if (playerController != null && playerController.selectTextTrack(track)) {
+                    showStatus(getString(R.string.subtitle_track_changed, track.label));
+                } else {
+                    showStatus(getString(R.string.subtitle_track_unavailable));
+                }
+            });
+        }
+        showTvOptionsDialog(R.string.subtitle_track_title, tracks.isEmpty() ? getString(R.string.subtitle_track_unavailable) : null, options, actions, onBack);
     }
 
     private void testPlaybackModeNow(ChannelItem channelItem, String playbackMode) {
@@ -17050,6 +17211,9 @@ public class MainActivity extends FragmentActivity {
         if (items == null || items.isEmpty()) {
             return;
         }
+        int effectiveMaxItems = devicePerformanceProfile != null && devicePerformanceProfile.lowRam
+                ? Math.min(maxItems, 12)
+                : maxItems;
         int count = 0;
         for (ChannelItem item : items) {
             if (item == null || item.logoUrl == null || item.logoUrl.trim().isEmpty()) {
@@ -17073,7 +17237,7 @@ public class MainActivity extends FragmentActivity {
                         .preload(dp(widthDp), dp(heightDp));
             }
             count++;
-            if (count >= maxItems) {
+            if (count >= effectiveMaxItems) {
                 break;
             }
         }
@@ -17250,7 +17414,7 @@ public class MainActivity extends FragmentActivity {
 
         StringBuilder out = new StringBuilder();
         for (String token : tokens) {
-            if (token.chars().allMatch(Character::isDigit)) {
+            if (isAsciiDigits(token)) {
                 out.append(token.charAt(0));
                 break;
             }
@@ -17262,10 +17426,23 @@ public class MainActivity extends FragmentActivity {
         if (out.length() == 0) {
             out.append(tokens.get(0).charAt(0));
         }
-        if (out.length() == 1 && tokens.size() > 1 && !tokens.get(1).chars().allMatch(Character::isDigit)) {
+        if (out.length() == 1 && tokens.size() > 1 && !isAsciiDigits(tokens.get(1))) {
             out.append(tokens.get(1).charAt(0));
         }
         return out.length() > 3 ? out.substring(0, 3) : out.toString();
+    }
+
+    private static boolean isAsciiDigits(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char character = value.charAt(i);
+            if (character < '0' || character > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void bindProgramPoster(ImageView imageView, String posterUrl) {

@@ -45,9 +45,8 @@ object OverlayControlsComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: OverlayControlsUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            OverlayControlsCard(model)
+        composeView.setStableContent("overlay-controls", model) { currentModel ->
+            OverlayControlsCard(currentModel)
         }
     }
 }

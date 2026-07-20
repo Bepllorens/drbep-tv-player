@@ -1,9 +1,12 @@
 package com.drbep.tvplayer;
 
+import androidx.annotation.OptIn;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.util.UnstableApi;
 
 import java.util.Locale;
 
+@OptIn(markerClass = UnstableApi.class)
 final class PlaybackRouteResolver {
     private final String baseUrl;
 

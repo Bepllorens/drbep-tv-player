@@ -30,9 +30,8 @@ object OverlayNowPlayingComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: ChannelOverlayUi.NowPlayingModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            OverlayNowPlayingCard(model = model)
+        composeView.setStableContent("overlay-now-playing", model) { currentModel ->
+            OverlayNowPlayingCard(model = currentModel)
         }
     }
 }

@@ -37,9 +37,8 @@ object StartupLoadingComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: StartupLoadingUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            StartupLoadingPanel(model)
+        composeView.setStableContent("startup-loading", model) { currentModel ->
+            StartupLoadingPanel(currentModel)
         }
     }
 }

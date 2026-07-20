@@ -41,9 +41,8 @@ object ZapBannerComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: ZapBannerUiModel, logoBinder: ZapLogoBinder) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            ZapBanner(model = model, logoBinder = logoBinder)
+        composeView.setStableContent("zap-banner", model) { currentModel ->
+            ZapBanner(model = currentModel, logoBinder = logoBinder)
         }
     }
 }

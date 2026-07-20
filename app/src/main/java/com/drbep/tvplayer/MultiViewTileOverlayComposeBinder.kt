@@ -29,9 +29,8 @@ object MultiViewTileOverlayComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: MultiViewTileOverlayUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            MultiViewTileOverlay(model)
+        composeView.setStableContent("multiview-tile", model) { currentModel ->
+            MultiViewTileOverlay(currentModel)
         }
     }
 }

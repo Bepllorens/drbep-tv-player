@@ -4,6 +4,7 @@ import android.content.Context;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class ChannelOverlayUi {
     public static final class NowPlayingModel {
@@ -146,7 +147,7 @@ public final class ChannelOverlayUi {
             }
         }
         if (initials.length() == 0) {
-            return clean.substring(0, Math.min(2, clean.length())).toUpperCase();
+            return clean.substring(0, Math.min(2, clean.length())).toUpperCase(Locale.ROOT);
         }
         return initials.toString();
     }
@@ -164,7 +165,7 @@ public final class ChannelOverlayUi {
         if (clean.isEmpty()) {
             return 0xFF3D8BFD;
         }
-        int index = Math.floorMod(clean.toLowerCase().hashCode(), palette.length);
+        int index = Math.floorMod(clean.toLowerCase(Locale.ROOT).hashCode(), palette.length);
         return palette[index];
     }
 

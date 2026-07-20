@@ -1,11 +1,11 @@
 # DRBEP Offline App Current State
 
-Fecha: 2026-07-17
+Fecha: 2026-07-20
 
 ## Version de referencia
 
-- Canal beta publicado: `2.0.320-beta-vod-hud-smoke-polish`
-- `versionCode`: `320`
+- Beta candidata: `2.0.332-beta-adaptive-cross-device`
+- `versionCode`: `332`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo principal de prueba: Fire Stick `192.168.93.16:5555`
 - Rama app: `codex/offline-firestick-app`
@@ -16,6 +16,12 @@ Fecha: 2026-07-17
 La app offline ya es operativa en Fire Stick, tablet y movil Android, con UI mayoritariamente migrada a Compose y catalogo offline seguro basado en snapshot firmado, permisos por usuario y token de activacion. La experiencia principal se centra en TV live, zapping, EPG, VOD, grabaciones, control parental, actualizaciones beta/stable y diagnostico remoto desde dashboard.
 
 ## Validado recientemente
+
+- Build local release optimizado, lint release y 111 tests unitarios correctos.
+- Calidad adaptativa seleccionable: Automatica, Ahorro de datos y Alta.
+- Multiview limitado por memoria y con calidad reducida para tiles secundarios.
+- Selector de subtitulos disponible en ajustes de reproduccion.
+- Los overlays de actualizacion frecuente conservan su composicion y estado de foco/scroll.
 
 - Arranque rapido en `.16`: segundo arranque medido con cache parseada, `startup catalog loaded ... durationMs=1045`.
 - El boton `Guia` abre correctamente el Timeline sin el parpadeo de abrir una vista rapida y reabrir con datos completos.

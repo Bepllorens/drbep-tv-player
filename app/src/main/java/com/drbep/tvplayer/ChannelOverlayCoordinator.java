@@ -7,6 +7,7 @@ import android.widget.TextView;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 final class ChannelOverlayCoordinator {
@@ -531,18 +532,18 @@ final class ChannelOverlayCoordinator {
         if (shouldHideProtectedItem(item)) {
             return false;
         }
-        String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase();
+        String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
         if (query.isEmpty()) {
             return true;
         }
-        String name = item.name == null ? "" : item.name.toLowerCase();
-        String alias = profileStore == null ? "" : profileStore.getDisplayName(item.id, "").toLowerCase();
-        String group = item.group == null ? "" : item.group.toLowerCase();
+        String name = item.name == null ? "" : item.name.toLowerCase(Locale.ROOT);
+        String alias = profileStore == null ? "" : profileStore.getDisplayName(item.id, "").toLowerCase(Locale.ROOT);
+        String group = item.group == null ? "" : item.group.toLowerCase(Locale.ROOT);
         if (name.contains(query) || alias.contains(query) || group.contains(query)) {
             return true;
         }
         for (String label : item.customGroups) {
-            if (label != null && label.toLowerCase().contains(query)) {
+            if (label != null && label.toLowerCase(Locale.ROOT).contains(query)) {
                 return true;
             }
         }

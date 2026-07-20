@@ -14,6 +14,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.ColorInfo;
@@ -25,6 +26,7 @@ import androidx.media3.common.Timeline;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.decoder.CryptoConfig;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
@@ -49,6 +51,7 @@ import androidx.media3.ui.PlayerView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -65,6 +68,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@OptIn(markerClass = UnstableApi.class)
 final class PlayerController {
     private static final String TAG = "PlayerController";
     private static final String PREFS = "drbep_tv_prefs";
@@ -77,7 +81,7 @@ final class PlayerController {
     private static final long TIMESHIFT_SEEK_STEP_MS = 30_000L;
     private static volatile boolean playbackCrashHandlerInstalled;
     private static volatile Thread.UncaughtExceptionHandler previousUncaughtExceptionHandler;
-    private static volatile PlayerController activePlaybackController;
+    private static volatile WeakReference<PlayerController> activePlaybackController = new WeakReference<>(null);
 
 
     interface Host {
@@ -94,6 +98,14 @@ final class PlayerController {
         boolean isPlaybackRepairEnabled();
 
         default boolean isCompactTouchDeviceMode() {
+            return false;
+        }
+
+        default String playbackQualityMode() {
+            return PlaybackQualityPolicy.AUTO;
+        }
+
+        default boolean isMultiViewPlayback() {
             return false;
         }
 
@@ -176,6 +188,22 @@ final class PlayerController {
             this.trackIndex = trackIndex;
             this.label = label;
             this.language = language;
+            this.selected = selected;
+            this.supported = supported;
+        }
+    }
+
+    static final class TextTrackOption {
+        final int groupIndex;
+        final int trackIndex;
+        final String label;
+        final boolean selected;
+        final boolean supported;
+
+        TextTrackOption(int groupIndex, int trackIndex, String label, boolean selected, boolean supported) {
+            this.groupIndex = groupIndex;
+            this.trackIndex = trackIndex;
+            this.label = label;
             this.selected = selected;
             this.supported = supported;
         }
@@ -339,10 +367,17 @@ final class PlayerController {
 
     void initialize() {
         installPlaybackCrashGuard();
-        activePlaybackController = this;
+        activePlaybackController = new WeakReference<>(this);
         trackSelector = new DefaultTrackSelector(context);
-        trackSelector.setParameters(trackSelector.buildUponParameters()
-                .setForceHighestSupportedBitrate(true));
+        DefaultTrackSelector.Parameters.Builder initialTrackParameters = trackSelector.buildUponParameters()
+                .setForceHighestSupportedBitrate(PlaybackQualityPolicy.forceHighestBitrate(host.playbackQualityMode()))
+                .setMaxVideoBitrate(PlaybackQualityPolicy.maxBitrate(host.playbackQualityMode(), host.isMultiViewPlayback()));
+        int initialMaxWidth = PlaybackQualityPolicy.maxWidth(host.playbackQualityMode(), false, host.isMultiViewPlayback());
+        int initialMaxHeight = PlaybackQualityPolicy.maxHeight(host.playbackQualityMode(), false, host.isMultiViewPlayback());
+        if (initialMaxWidth != Integer.MAX_VALUE || initialMaxHeight != Integer.MAX_VALUE) {
+            initialTrackParameters.setMaxVideoSize(initialMaxWidth, initialMaxHeight);
+        }
+        trackSelector.setParameters(initialTrackParameters);
 
         httpDataSourceFactory = new DefaultHttpDataSource.Factory()
                 .setConnectTimeoutMs(PLAYBACK_CONNECT_TIMEOUT_MS)
@@ -502,7 +537,7 @@ final class PlayerController {
             }
             previousUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
             Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-                PlayerController controller = activePlaybackController;
+                PlayerController controller = activePlaybackController.get();
                 if (controller != null && controller.handlePlaybackThreadCrash(thread, throwable)) {
                     return;
                 }
@@ -1288,6 +1323,10 @@ final class PlayerController {
     }
 
     void release() {
+        PlayerController activeController = activePlaybackController.get();
+        if (activeController == this) {
+            activePlaybackController.clear();
+        }
         if (player != null) {
             player.release();
             player = null;
@@ -1593,17 +1632,29 @@ final class PlayerController {
             return;
         }
         boolean capForCompatibility = usingVideoCompatibilityCap;
+        String qualityMode = host.playbackQualityMode();
+        boolean multiView = host.isMultiViewPlayback();
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                .setForceHighestSupportedBitrate(!isHlsDecision(decision));
-        if (capForCompatibility) {
-            builder.setMaxVideoSize(1280, 720);
-            Log.i(TAG, "using 720p video compatibility cap channel=" + describeRequest(request)
+                .setForceHighestSupportedBitrate(PlaybackQualityPolicy.forceHighestBitrate(qualityMode))
+                .setMaxVideoBitrate(PlaybackQualityPolicy.maxBitrate(qualityMode, multiView));
+        int maxWidth = PlaybackQualityPolicy.maxWidth(qualityMode, capForCompatibility, multiView);
+        int maxHeight = PlaybackQualityPolicy.maxHeight(qualityMode, capForCompatibility, multiView);
+        if (maxWidth != Integer.MAX_VALUE || maxHeight != Integer.MAX_VALUE) {
+            builder.setMaxVideoSize(maxWidth, maxHeight);
+            Log.i(TAG, "using video cap " + maxWidth + "x" + maxHeight
+                    + " qualityMode=" + qualityMode
+                    + " multiView=" + multiView
+                    + " channel=" + describeRequest(request)
                     + " decision=" + describeDecision(decision));
         } else {
             builder.clearVideoSizeConstraints();
         }
         trackSelector.setParameters(builder);
+    }
+
+    void refreshVideoTrackPolicy() {
+        applyVideoTrackPolicy(currentRequest, currentPlaybackDecision);
     }
 
     private boolean isHlsDecision(PlaybackRouteResolver.Decision decision) {
@@ -1689,6 +1740,77 @@ final class PlayerController {
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false));
+    }
+
+    List<TextTrackOption> getTextTrackOptions() {
+        List<TextTrackOption> options = new ArrayList<>();
+        if (player == null) {
+            return options;
+        }
+        List<Tracks.Group> groups = player.getCurrentTracks().getGroups();
+        int textNumber = 1;
+        for (int groupIndex = 0; groupIndex < groups.size(); groupIndex++) {
+            Tracks.Group group = groups.get(groupIndex);
+            if (group == null || group.getType() != C.TRACK_TYPE_TEXT) {
+                continue;
+            }
+            for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
+                Format format = group.getTrackFormat(trackIndex);
+                options.add(new TextTrackOption(
+                        groupIndex,
+                        trackIndex,
+                        textTrackLabel(format, textNumber++),
+                        group.isTrackSelected(trackIndex),
+                        group.isTrackSupported(trackIndex)
+                ));
+            }
+        }
+        return options;
+    }
+
+    boolean selectTextTrack(TextTrackOption option) {
+        if (option == null || player == null || trackSelector == null) {
+            return false;
+        }
+        Tracks tracks = player.getCurrentTracks();
+        if (option.groupIndex < 0 || option.groupIndex >= tracks.getGroups().size()) {
+            return false;
+        }
+        Tracks.Group group = tracks.getGroups().get(option.groupIndex);
+        if (group == null || group.getType() != C.TRACK_TYPE_TEXT
+                || option.trackIndex < 0 || option.trackIndex >= group.length
+                || !group.isTrackSupported(option.trackIndex)) {
+            return false;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(new TrackSelectionOverride(group.getMediaTrackGroup(), option.trackIndex)));
+        return true;
+    }
+
+    void setTextTracksEnabled(boolean enabled) {
+        if (trackSelector == null) {
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled));
+    }
+
+    private String textTrackLabel(Format format, int fallbackNumber) {
+        String label = format == null ? "" : safeString(format.label);
+        String language = format == null ? "" : safeString(format.language);
+        if (!label.isEmpty() && !language.isEmpty()) {
+            return label + " (" + language.toUpperCase(Locale.ROOT) + ")";
+        }
+        if (!label.isEmpty()) {
+            return label;
+        }
+        if (!language.isEmpty()) {
+            return language.toUpperCase(Locale.ROOT);
+        }
+        return context.getString(R.string.subtitle_track_fallback, fallbackNumber);
     }
 
     private String audioTrackLabel(Format format, int fallbackNumber) {

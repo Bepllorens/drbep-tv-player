@@ -1,3 +1,12 @@
+## Unreleased - adaptive performance and cross-device UX
+- Playback: calidad Automatica/Ahorro/Alta; Automatica vuelve a usar seleccion adaptativa y Ahorro limita a 720p.
+- Multiview: limita streams segun memoria del dispositivo y usa un perfil 540p/1.8 Mbps en tiles.
+- Memoria: elimina `largeHeap`, reduce precarga en equipos de poca RAM y libera caches/multiview bajo presion.
+- Accesibilidad: incorpora selector de subtitulos, targets adaptativos y foco visual diferenciado en acciones compartidas.
+- Compose: conserva composiciones en HUD, overlays, grabaciones y multiview al actualizar sus modelos.
+- Compatibilidad: activa desugaring para API 23, corrige usos API 24 y deja lint release sin errores.
+- Build: migra al Kotlin integrado de AGP 9, activa cache/configuration cache y endurece CI con tests, lint vital y release.
+
 ## 2.0.284-beta-overlay-compose-surface
 - Offline beta: unifica el overlay lateral en un modelo/superficie logica comun para cabecera, controles y lista.
 - Offline beta: usa el estado central de overlays para decidir si timeshift debe ocultarse ante paneles bloqueantes.

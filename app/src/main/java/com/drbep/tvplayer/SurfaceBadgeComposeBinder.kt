@@ -26,9 +26,8 @@ object SurfaceBadgeComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: SurfaceBadgeUiModel) {
         if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            SurfaceBadge(model)
+        composeView.setStableContent("surface-badge", model) { currentModel ->
+            SurfaceBadge(currentModel)
         }
     }
 }

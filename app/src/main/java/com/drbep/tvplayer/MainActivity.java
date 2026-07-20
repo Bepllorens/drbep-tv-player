@@ -4159,8 +4159,10 @@ public class MainActivity extends FragmentActivity {
             return result;
         }
         List<String> candidates = new ArrayList<>();
-        addUniqueU7dBaseUrl(candidates, baseUrl);
+        // El host IPTV publica la API U7D; fire.tvbep.com puede ser solo el host de media.
+        // Priorizarlo evita un 404 y el timeout/fallback visible al abrir el menu.
         addUniqueU7dBaseUrl(candidates, "https://iptv.bepllorens.com");
+        addUniqueU7dBaseUrl(candidates, baseUrl);
         String token = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
         String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
         Exception lastError = null;

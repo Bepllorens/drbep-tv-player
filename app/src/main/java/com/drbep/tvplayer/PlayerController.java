@@ -1090,7 +1090,7 @@ final class PlayerController {
     PlaybackDiagnostics getPlaybackDiagnostics() {
         String channelName = currentRequest == null ? "" : safeLogValue(currentRequest.channelName);
         String routeLabel = describeRouteLabel(currentPlaybackDecision);
-        String targetUrl = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.targetUrl);
+        String targetUrl = currentPlaybackDecision == null ? "" : DiagnosticRedactor.sanitizeUrl(currentPlaybackDecision.targetUrl);
         String mimeType = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.mimeType);
         String drmType = currentPlaybackDecision == null ? "" : safeLogValue(currentPlaybackDecision.drmType);
         String playbackMode = currentPlaybackDecision == null ? PlaybackModeStore.MODE_AUTO : safeLogValue(currentPlaybackDecision.playbackMode);

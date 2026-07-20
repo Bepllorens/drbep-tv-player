@@ -1,4 +1,6 @@
 ## Unreleased - adaptive performance and cross-device UX
+- Diagnostico: sustituye la expresion regular de secretos por un redactor lineal y acotado para evitar ANR con URLs largas de Pluto TV.
+- Seguridad: las URLs de diagnostico eliminan query y fragmento, y todo texto de entrada queda limitado antes de mostrarse en el HUD.
 - Zapping: evita el ANR de Fire TV separando los cambios de calidad de la reconstruccion completa del listado y agrupando renders repetidos del overlay.
 - Rendimiento: no regenera los 139 modelos de canal mientras el overlay esta oculto y reduce las actualizaciones duplicadas de seleccion/scroll.
 - Estabilidad: cancela ejecutores y publicaciones UI de actividades destruidas, evitando tareas huerfanas, CPU alta y tormentas de GC tras recreaciones.

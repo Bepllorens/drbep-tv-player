@@ -4,8 +4,8 @@ Fecha: 2026-07-20
 
 ## Version de referencia
 
-- Beta candidata: `2.0.334-beta-zap-anr-fix`
-- `versionCode`: `334`
+- Beta candidata: `2.0.335-beta-linear-redaction`
+- `versionCode`: `335`
 - APK beta: `https://iptv.bepllorens.com/api/offline/app/apk?channel=beta`
 - Dispositivo principal de prueba: Fire Stick `192.168.93.16:5555`
 - Rama app: `codex/offline-firestick-app`

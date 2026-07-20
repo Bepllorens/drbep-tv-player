@@ -90,6 +90,8 @@ import java.util.Map;
 public class MainActivity extends FragmentActivity {
     private static final String TAG = "DRBEP-TV-Native";
     private static final long OVERLAY_HIDE_MS = 6000L;
+    private static final long OVERLAY_RENDER_COALESCE_MS = 32L;
+    private static final long PLAYBACK_QUALITY_UI_COALESCE_MS = 120L;
     private static final long TOUCH_CONTROLS_HIDE_MS = 3000L;
     private static final long TV_TIMESHIFT_HUD_HIDE_MS = 3500L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
@@ -247,6 +249,29 @@ public class MainActivity extends FragmentActivity {
     private final ExecutorService catalogLoadExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private volatile boolean activityDestroyed;
+    private final Runnable channelOverlayRenderRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!activityDestroyed) {
+                renderChannelOverlaySurface();
+            }
+        }
+    };
+    private final Runnable playbackQualityUiRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (activityDestroyed) {
+                return;
+            }
+            if (isOverlayVisible()) {
+                renderOverlayNowPlayingSurface();
+            }
+            ChannelItem currentChannel = getCurrentPlaybackChannelItem();
+            if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
+                updateZapBannerContent(currentChannel);
+            }
+        }
+    };
     private final Runnable vodProgressSaveRunnable = new Runnable() {
         @Override
         public void run() {
@@ -918,11 +943,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void onPlaybackQualityChanged(PlayerController.PlaybackDiagnostics diagnostics) {
-                MainActivity.this.updateOverlayPanel();
-                ChannelItem currentChannel = MainActivity.this.getCurrentPlaybackChannelItem();
-                if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
-                    MainActivity.this.updateZapBannerContent(currentChannel);
-                }
+                MainActivity.this.schedulePlaybackQualityUiRefresh();
             }
 
             @Override
@@ -2253,8 +2274,11 @@ public class MainActivity extends FragmentActivity {
         }
         overlayNavigationState.currentIndex = index;
         overlayNavigationState.selectedOverlayIndex = index;
-        refreshOverlayChannelList();
-        scrollOverlayChannelListToPosition(index);
+        pendingOverlayListScrollIndex = index;
+        overlayListScrollRequestToken++;
+        if (isOverlayVisible()) {
+            requestChannelOverlaySurfaceRender();
+        }
     }
 
     private void tuneToIndex(int index, boolean autoPlay) {
@@ -2364,7 +2388,9 @@ public class MainActivity extends FragmentActivity {
         scheduleLearnCurrentPlaybackRoute(ch.id, playbackRequest == null ? PlaybackModeStore.MODE_AUTO : playbackRequest.playbackMode);
 
         hideError();
-        updateOverlayPanel();
+        if (isOverlayVisible()) {
+            requestChannelOverlaySurfaceRender();
+        }
         showZapBanner(ch);
         startPlaybackHeartbeat(ch);
     }
@@ -7869,13 +7895,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshOverlayChannelList() {
-        renderChannelOverlaySurface();
+        requestChannelOverlaySurfaceRender();
     }
 
     private void scrollOverlayChannelListToPosition(int position) {
         pendingOverlayListScrollIndex = position;
         overlayListScrollRequestToken++;
-        refreshOverlayChannelList();
+        requestChannelOverlaySurfaceRender();
     }
 
     private String currentOverlayFilterLabel() {
@@ -7894,7 +7920,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateQuickAccessButtons() {
-        renderChannelOverlaySurface();
+        requestChannelOverlaySurfaceRender();
     }
 
     private void updateTouchHomeHub() {
@@ -8550,16 +8576,32 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateOverlayPanel() {
-        renderChannelOverlaySurface();
+        requestChannelOverlaySurfaceRender();
     }
 
-    private ChannelOverlaySurfaceUiModel buildChannelOverlaySurfaceModel() {
+    private void requestChannelOverlaySurfaceRender() {
+        if (activityDestroyed) {
+            return;
+        }
+        uiHandler.removeCallbacks(channelOverlayRenderRunnable);
+        postUiDelayedIfAlive(channelOverlayRenderRunnable, OVERLAY_RENDER_COALESCE_MS);
+    }
+
+    private void schedulePlaybackQualityUiRefresh() {
+        if (activityDestroyed) {
+            return;
+        }
+        uiHandler.removeCallbacks(playbackQualityUiRefreshRunnable);
+        postUiDelayedIfAlive(playbackQualityUiRefreshRunnable, PLAYBACK_QUALITY_UI_COALESCE_MS);
+    }
+
+    private ChannelOverlayUi.NowPlayingModel buildOverlayNowPlayingModel() {
         ChannelItem currentChannel = getCurrentPlaybackChannelItem();
         ensureTouchControlsEpgPair(currentChannel);
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
         List<RecentChannelsStore.RecentChannelItem> items = recentChannelsStore == null ? new ArrayList<>() : recentChannelsStore.getItems();
         EpgRepository.EpgProgramPair epgPair = currentChannel == null ? null : epgProgramPairByChannelId.get(currentChannel.id);
-        ChannelOverlayUi.NowPlayingModel nowPlayingModel = ChannelOverlayUi.buildNowPlayingModel(
+        return ChannelOverlayUi.buildNowPlayingModel(
                 this,
                 currentChannel,
                 currentChannel == null ? "" : displayName(currentChannel),
@@ -8570,6 +8612,20 @@ public class MainActivity extends FragmentActivity {
                 epgPair,
                 items
         );
+    }
+
+    private void renderOverlayNowPlayingSurface() {
+        if (overlayNowPlayingComposeView == null) {
+            return;
+        }
+        composeSurfaceRenderer.bindOverlayNowPlaying(
+                overlayNowPlayingComposeView,
+                buildOverlayNowPlayingModel()
+        );
+    }
+
+    private ChannelOverlaySurfaceUiModel buildChannelOverlaySurfaceModel() {
+        ChannelOverlayUi.NowPlayingModel nowPlayingModel = buildOverlayNowPlayingModel();
         String activeTvKey = findPreferredTvFilterKey();
         boolean tvActive = !overlayNavigationState.favoritesOnly && (overlayNavigationState.selectedFilterKey == null || overlayNavigationState.selectedFilterKey.equals(activeTvKey) || ("all".equals(overlayNavigationState.selectedFilterKey) && "all".equals(activeTvKey)));
         boolean vodActive = !overlayNavigationState.favoritesOnly && isVodFilterSelected(false);

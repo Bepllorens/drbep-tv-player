@@ -1,4 +1,6 @@
 ## Unreleased - adaptive performance and cross-device UX
+- Zapping: evita el ANR de Fire TV separando los cambios de calidad de la reconstruccion completa del listado y agrupando renders repetidos del overlay.
+- Rendimiento: no regenera los 139 modelos de canal mientras el overlay esta oculto y reduce las actualizaciones duplicadas de seleccion/scroll.
 - Estabilidad: cancela ejecutores y publicaciones UI de actividades destruidas, evitando tareas huerfanas, CPU alta y tormentas de GC tras recreaciones.
 - Reproduccion: adelanta el offset fast-zap a la llegada de la linea temporal y evita levantar el servidor Smooth cuando la ruta final es HLS.
 - Arranque: agrupa cargas EPG visibles duplicadas y activa la integracion generada de Glide.

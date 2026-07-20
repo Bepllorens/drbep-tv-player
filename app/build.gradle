@@ -65,8 +65,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 333
-        versionName "2.0.333-beta-runtime-stability"
+        versionCode 334
+        versionName "2.0.334-beta-zap-anr-fix"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders = [
                 appAllowBackup: "false",

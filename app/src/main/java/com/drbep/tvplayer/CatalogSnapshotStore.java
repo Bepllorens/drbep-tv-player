@@ -104,6 +104,8 @@ final class CatalogSnapshotStore {
     private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 2;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
+    static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
+    static final long MAX_LOCAL_SNAPSHOT_BYTES = 24L * 1024L * 1024L;
     private static final long MAX_EPG_CHANNEL_CACHE_BYTES = 2L * 1024L * 1024L;
     private static final int MAX_EPG_CHANNEL_CACHE_CHANNELS = 160;
     private static final long TARGET_EPG_BACKGROUND_LOCK_WAIT_MS = 750L;
@@ -121,6 +123,7 @@ final class CatalogSnapshotStore {
     private final SharedPreferences prefs;
     private final HttpClient httpClient;
     private final ReentrantLock targetEpgReadLock = new ReentrantLock();
+    private final ReentrantLock snapshotMaterializationLock = new ReentrantLock();
 
     CatalogSnapshotStore(Context context) {
         this.context = context.getApplicationContext();
@@ -470,7 +473,7 @@ final class CatalogSnapshotStore {
             prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
             Log.w(TAG, "startup parsed catalog cache hit channels=" + result.channels.size() + " filters=" + result.filters.size());
             return result;
-        } catch (Exception e) {
+        } catch (Exception | OutOfMemoryError e) {
             Log.w(TAG, "startup parsed catalog cache ignored", e);
             //noinspection ResultOfMethodCallIgnored
             file.delete();
@@ -556,72 +559,72 @@ final class CatalogSnapshotStore {
     }
 
     private JSONObject readSnapshotObject(File file, String label, boolean verifySignature) throws Exception {
-        if (!file.exists() || file.length() <= 0L) {
-            throw new IllegalStateException("no hay " + label);
+        snapshotMaterializationLock.lockInterruptibly();
+        try {
+            if (!file.exists() || file.length() <= 0L) {
+                throw new IllegalStateException("no hay " + label);
+            }
+            ensureSnapshotFileWithinLimit(file);
+            long startMs = System.currentTimeMillis();
+            boolean encrypted = isEncryptedSnapshotFile(file);
+            StringBuilder sb = readSnapshotString(file, encrypted);
+            long readMs = System.currentTimeMillis() - startMs;
+            long parseStartMs = System.currentTimeMillis();
+            String rawJson = sb.toString();
+            JSONObject payload = new JSONObject(rawJson);
+            sb = null; // allow GC before validation
+            long parseMs = System.currentTimeMillis() - parseStartMs;
+            long validateStartMs = System.currentTimeMillis();
+            validateSnapshotPayload(payload, verifySignature);
+            if (!encrypted) {
+                rewriteSnapshotEncrypted(file, rawJson);
+            }
+            rawJson = null;
+            long validateMs = System.currentTimeMillis() - validateStartMs;
+            Log.i(TAG, "snapshot read label=" + label
+                    + " bytes=" + file.length()
+                    + " verifySignature=" + verifySignature
+                    + " encrypted=" + encrypted
+                    + " readMs=" + readMs
+                    + " parseMs=" + parseMs
+                    + " validateMs=" + validateMs
+                    + " totalMs=" + (System.currentTimeMillis() - startMs));
+            return payload;
+        } finally {
+            snapshotMaterializationLock.unlock();
         }
-        long startMs = System.currentTimeMillis();
-        boolean encrypted = isEncryptedSnapshotFile(file);
-        StringBuilder sb = readSnapshotString(file, encrypted);
-        long readMs = System.currentTimeMillis() - startMs;
-        long parseStartMs = System.currentTimeMillis();
-        String rawJson = sb.toString();
-        JSONObject payload = new JSONObject(rawJson);
-        sb = null; // allow GC before validation
-        long parseMs = System.currentTimeMillis() - parseStartMs;
-        long validateStartMs = System.currentTimeMillis();
-        validateSnapshotPayload(payload, verifySignature);
-        if (!encrypted) {
-            rewriteSnapshotEncrypted(file, rawJson);
-        }
-        rawJson = null;
-        long validateMs = System.currentTimeMillis() - validateStartMs;
-        Log.i(TAG, "snapshot read label=" + label
-                + " bytes=" + file.length()
-                + " verifySignature=" + verifySignature
-                + " encrypted=" + encrypted
-                + " readMs=" + readMs
-                + " parseMs=" + parseMs
-                + " validateMs=" + validateMs
-                + " totalMs=" + (System.currentTimeMillis() - startMs));
-        return payload;
     }
 
     JSONObject refreshFromConfiguredUrl(String fallbackUrl) throws Exception {
-        String sourceUrl = getSourceUrl(fallbackUrl);
-        if (sourceUrl.isEmpty()) {
-            throw new IllegalStateException("no hay URL de catalogo configurada");
-        }
-        HttpClient.Response response = httpClient.get(
-                sourceUrl,
-                10000,
-                45000,
-                buildSnapshotHeaders()
-        );
-        httpClient.requireSuccess(response, "actualizando catalogo local");
-        String rawBody = response.body == null ? "" : response.body;
-        JSONObject payload = new JSONObject(rawBody);
-        validateSnapshotPayload(payload);
-        saveSnapshotObject(payload, sourceUrl, rawBody);
-        return payload;
+        // El snapshot completo incluye decenas de miles de entradas EPG y no cabe de
+        // forma segura en el heap de 192 MB de algunos Fire TV. El snapshot ligero
+        // mantiene TV y VOD; la EPG se obtiene y cachea por canales bajo demanda.
+        return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
     }
 
     JSONObject refreshStartupLiteFromConfiguredUrl(String fallbackUrl) throws Exception {
-        String sourceUrl = appendStartupLiteQuery(getSourceUrl(fallbackUrl));
-        if (sourceUrl.isEmpty()) {
-            throw new IllegalStateException("no hay URL de catalogo configurada");
+        snapshotMaterializationLock.lockInterruptibly();
+        try {
+            String sourceUrl = appendStartupLiteQuery(getSourceUrl(fallbackUrl));
+            if (sourceUrl.isEmpty()) {
+                throw new IllegalStateException("no hay URL de catalogo configurada");
+            }
+            HttpClient.Response response = httpClient.get(
+                    sourceUrl,
+                    10000,
+                    30000,
+                    buildSnapshotHeaders(),
+                    MAX_SNAPSHOT_HTTP_BYTES
+            );
+            httpClient.requireSuccess(response, "actualizando catalogo local ligero");
+            String rawBody = response.body == null ? "" : response.body;
+            JSONObject payload = new JSONObject(rawBody);
+            validateSnapshotPayload(payload);
+            saveSnapshotObject(payload, getSourceUrl(fallbackUrl), rawBody, true);
+            return payload;
+        } finally {
+            snapshotMaterializationLock.unlock();
         }
-        HttpClient.Response response = httpClient.get(
-                sourceUrl,
-                10000,
-                30000,
-                buildSnapshotHeaders()
-        );
-        httpClient.requireSuccess(response, "actualizando catalogo local ligero");
-        String rawBody = response.body == null ? "" : response.body;
-        JSONObject payload = new JSONObject(rawBody);
-        validateSnapshotPayload(payload);
-        saveSnapshotObject(payload, getSourceUrl(fallbackUrl), rawBody, true);
-        return payload;
     }
 
     JSONObject startActivation(String baseUrl, String label) throws Exception {
@@ -1155,17 +1158,27 @@ final class CatalogSnapshotStore {
     }
 
     private StringBuilder readSnapshotString(File file, boolean encrypted) throws Exception {
+        ensureSnapshotFileWithinLimit(file);
         InputStream inputStream = encrypted ? encryptedSnapshotInputStream(file) : new FileInputStream(file);
         try (java.io.BufferedReader reader = new java.io.BufferedReader(
                 new java.io.InputStreamReader(inputStream, StandardCharsets.UTF_8), 65536)) {
-            StringBuilder sb = new StringBuilder((int) Math.min(file.length(), 32L * 1024L * 1024L));
+            StringBuilder sb = new StringBuilder((int) Math.min(file.length(), 8L * 1024L * 1024L));
             char[] buf = new char[8192];
             int n;
             while ((n = reader.read(buf)) != -1) {
                 throwIfInterrupted("lectura de snapshot cancelada");
+                if (n > MAX_LOCAL_SNAPSHOT_BYTES - sb.length()) {
+                    throw new IllegalStateException("snapshot local supera el limite de " + MAX_LOCAL_SNAPSHOT_BYTES + " bytes");
+                }
                 sb.append(buf, 0, n);
             }
             return sb;
+        }
+    }
+
+    static void ensureSnapshotFileWithinLimit(File file) {
+        if (file != null && file.exists() && file.length() > MAX_LOCAL_SNAPSHOT_BYTES) {
+            throw new IllegalStateException("snapshot local demasiado grande: " + file.length() + " bytes");
         }
     }
 

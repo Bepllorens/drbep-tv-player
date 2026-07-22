@@ -1967,7 +1967,7 @@ public class MainActivity extends FragmentActivity {
                     runPostUpdateStartupHealthCheck("catalog-load", result);
                     refreshStandaloneCatalogInBackgroundIfPossible();
                 });
-            } catch (Exception catalogErr) {
+            } catch (Exception | OutOfMemoryError catalogErr) {
                 if (activityDestroyed || Thread.currentThread().isInterrupted()) {
                     Log.i(TAG, "catalog load cancelled because activity was destroyed");
                     return;
@@ -1995,7 +1995,7 @@ public class MainActivity extends FragmentActivity {
                             applyLoadedChannels(refreshed);
                             runPostUpdateStartupHealthCheck("catalog-refresh", refreshed);
                         });
-                    } catch (Exception e) {
+                    } catch (Exception | OutOfMemoryError e) {
                         Log.e(TAG, "standalone catalog load failed", e);
                         try {
                             postUiIfAlive(() -> updateStartupLoading(
@@ -2016,7 +2016,7 @@ public class MainActivity extends FragmentActivity {
                                 applyLoadedChannels(fallback);
                                 runPostUpdateStartupHealthCheck("last-good-catalog", fallback);
                             });
-                        } catch (Exception fallbackErr) {
+                        } catch (Exception | OutOfMemoryError fallbackErr) {
                             postUiIfAlive(() -> {
                                 hideStartupLoading();
                                 lastOfflineCatalogRefreshError = e.getMessage();
@@ -2100,7 +2100,7 @@ public class MainActivity extends FragmentActivity {
                             + " · VOD "
                             + (hydrated == null ? 0 : hydrated.vodItems));
                 });
-            } catch (Exception e) {
+            } catch (Exception | OutOfMemoryError e) {
                 long durationMs = System.currentTimeMillis() - startMs;
                 Log.w(TAG, "startup catalog hydration failed durationMs=" + durationMs, e);
                 postUiIfAlive(() -> startupCatalogHydrationRunning = false);
@@ -2998,7 +2998,7 @@ public class MainActivity extends FragmentActivity {
                         markEpgProgressAllReadyIfNeeded();
                     }
                 });
-            } catch (Exception e) {
+            } catch (Exception | OutOfMemoryError e) {
                 epgLoadInFlight = false;
                 epgWorkerBusy = false;
                 epgFullCatalogLoadRequested = false;

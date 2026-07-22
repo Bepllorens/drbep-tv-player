@@ -206,15 +206,15 @@ final class EpgRepository {
         }
         if (standaloneMode && !allowOfflineSnapshotScan) {
             out.putAll(buildInlineProgramPairsForChannels(channelItems));
-            if (!out.isEmpty()) {
-                Log.w(TAG, "EPG inline catalog loaded channels="
-                        + channelItems.size()
-                        + " matched=" + out.size());
-                return out;
-            }
+            Log.w(TAG, "EPG inline-only catalog loaded channels="
+                    + channelItems.size()
+                    + " matched=" + out.size());
+            return out;
         }
         if (!canReadOfflineEpgTargetedSnapshot()) {
-            return fetchRemoteProgramPairsForChannels(channelItems);
+            return allowRemoteFallback
+                    ? fetchRemoteProgramPairsForChannels(channelItems)
+                    : out;
         }
         long now = System.currentTimeMillis();
         List<ChannelItem> remoteFallbackChannels = new ArrayList<>();

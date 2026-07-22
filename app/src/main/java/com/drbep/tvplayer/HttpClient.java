@@ -33,21 +33,25 @@ final class HttpClient {
     }
 
     Response get(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
-        return request("GET", url, connectTimeoutMs, readTimeoutMs, headers, null);
+        return get(url, connectTimeoutMs, readTimeoutMs, headers, MAX_RESPONSE_BYTES);
+    }
+
+    Response get(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers, int maxResponseBytes) throws Exception {
+        return request("GET", url, connectTimeoutMs, readTimeoutMs, headers, null, maxResponseBytes);
     }
 
     Response delete(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
-        return request("DELETE", url, connectTimeoutMs, readTimeoutMs, headers, null);
+        return request("DELETE", url, connectTimeoutMs, readTimeoutMs, headers, null, MAX_RESPONSE_BYTES);
     }
 
     Response postJson(String url, JSONObject payload, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
         byte[] body = payload == null ? new byte[0] : payload.toString().getBytes(StandardCharsets.UTF_8);
-        return request("POST", url, connectTimeoutMs, readTimeoutMs, headers, body);
+        return request("POST", url, connectTimeoutMs, readTimeoutMs, headers, body, MAX_RESPONSE_BYTES);
     }
 
     Response putJson(String url, JSONObject payload, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
         byte[] body = payload == null ? new byte[0] : payload.toString().getBytes(StandardCharsets.UTF_8);
-        return request("PUT", url, connectTimeoutMs, readTimeoutMs, headers, body);
+        return request("PUT", url, connectTimeoutMs, readTimeoutMs, headers, body, MAX_RESPONSE_BYTES);
     }
 
     JSONObject getJsonObject(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers, String errorContext) throws Exception {
@@ -84,7 +88,10 @@ final class HttpClient {
         }
     }
 
-    private Response request(String method, String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers, byte[] body) throws Exception {
+    private Response request(String method, String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers, byte[] body, int maxResponseBytes) throws Exception {
+        if (maxResponseBytes <= 0) {
+            throw new IllegalArgumentException("limite de respuesta invalido");
+        }
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(url).openConnection();
@@ -107,10 +114,10 @@ final class HttpClient {
             int code = conn.getResponseCode();
             InputStream inputStream = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
             int contentLength = conn.getContentLength();
-            if (contentLength > MAX_RESPONSE_BYTES) {
+            if (contentLength > maxResponseBytes) {
                 throw new IllegalStateException("respuesta HTTP demasiado grande: " + contentLength + " bytes");
             }
-            String responseBody = inputStream == null ? "" : readAll(inputStream, MAX_RESPONSE_BYTES);
+            String responseBody = inputStream == null ? "" : readAll(inputStream, maxResponseBytes);
             Log.d(TAG, method + " " + safeEndpoint(url) + " status=" + code + " responseChars=" + responseBody.length());
             return new Response(code, responseBody);
         } finally {

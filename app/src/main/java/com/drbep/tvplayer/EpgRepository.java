@@ -82,6 +82,7 @@ final class EpgRepository {
     private static final int PREFERRED_REMOTE_EPG_READ_TIMEOUT_MS = 2500;
     private static final int COMPACT_REMOTE_EPG_CONNECT_TIMEOUT_MS = 5000;
     private static final int COMPACT_REMOTE_EPG_READ_TIMEOUT_MS = 6000;
+    private static final int MAX_REMOTE_EPG_RESPONSE_BYTES = 2 * 1024 * 1024;
 
     EpgRepository(String baseUrl) {
         this(baseUrl, null, false);
@@ -1059,7 +1060,12 @@ final class EpgRepository {
                 return out;
             }
         }
-        RemoteProgramIndex index = buildRemoteProgramIndex(fetchRemoteNowProgramsDetailed(connectTimeoutMs, readTimeoutMs, offlinePublicOnly));
+        RemoteProgramIndex index = buildRemoteProgramIndex(fetchRemoteNowProgramsDetailed(
+                channelItems,
+                connectTimeoutMs,
+                readTimeoutMs,
+                offlinePublicOnly
+        ));
         List<ChannelItem> missingChannels = new ArrayList<>();
         for (ChannelItem channel : channelItems) {
             if (channel == null || channel.isVod || channel.id == null || channel.id.trim().isEmpty()) {
@@ -1072,7 +1078,7 @@ final class EpgRepository {
                 missingChannels.add(channel);
             }
         }
-        if (!offlinePublicOnly || missingChannels.isEmpty()) {
+        if (!offlinePublicOnly || missingChannels.isEmpty() || channelItems.size() > 3) {
             return out;
         }
         int beforeFallback = out.size();
@@ -1302,6 +1308,60 @@ final class EpgRepository {
         return programs;
     }
 
+    private List<EpgProgram> fetchRemoteNowProgramsDetailed(List<ChannelItem> channelItems, int connectTimeoutMs, int readTimeoutMs, boolean offlinePublicOnly) throws Exception {
+        String path = buildRemoteNowPathForChannels(channelItems);
+        if (path.isEmpty()) {
+            return new ArrayList<>();
+        }
+        HttpClient.Response response = getRemoteEpg(path, connectTimeoutMs, readTimeoutMs, offlinePublicOnly);
+        if (!response.isSuccessful()) {
+            Log.w(TAG, "EPG remote batch unavailable code="
+                    + response.code
+                    + " channels=" + (channelItems == null ? 0 : channelItems.size())
+                    + " offlinePublicOnly=" + offlinePublicOnly);
+            return new ArrayList<>();
+        }
+        List<EpgProgram> programs = parseProgramsArray(response.body, "cargando lote EPG actual");
+        Log.w(TAG, "EPG remote batch loaded requested="
+                + (channelItems == null ? 0 : channelItems.size())
+                + " programs=" + programs.size()
+                + " responseChars=" + (response.body == null ? 0 : response.body.length()));
+        return programs;
+    }
+
+    static String buildRemoteNowPathForChannels(List<ChannelItem> channelItems) {
+        if (channelItems == null || channelItems.isEmpty()) {
+            return "";
+        }
+        LinkedHashSet<String> channelIds = new LinkedHashSet<>();
+        for (ChannelItem channel : channelItems) {
+            if (channel == null || channel.isVod || channel.id == null) {
+                continue;
+            }
+            String clean = channel.id.trim();
+            if (!clean.matches("[0-9]+")) {
+                continue;
+            }
+            channelIds.add(clean);
+            if (channelIds.size() >= 64) {
+                break;
+            }
+        }
+        if (channelIds.isEmpty()) {
+            return "";
+        }
+        StringBuilder path = new StringBuilder("/api/epg/now?channel_ids=");
+        boolean first = true;
+        for (String channelId : channelIds) {
+            if (!first) {
+                path.append(',');
+            }
+            path.append(channelId);
+            first = false;
+        }
+        return path.toString();
+    }
+
     private List<EpgProgram> fetchRemoteProgramsForChannel(ChannelItem channel, int maxItems) throws Exception {
         List<EpgProgram> out = new ArrayList<>();
         if (channel == null || channel.isVod) {
@@ -1427,7 +1487,13 @@ final class EpgRepository {
         int safeReadTimeoutMs = Math.max(500, readTimeoutMs);
         for (String candidate : remoteEpgBaseUrlCandidates(offlinePublicOnly)) {
             try {
-                HttpClient.Response response = httpClient.get(candidate + path, safeConnectTimeoutMs, safeReadTimeoutMs, buildRequestHeaders());
+                HttpClient.Response response = httpClient.get(
+                        candidate + path,
+                        safeConnectTimeoutMs,
+                        safeReadTimeoutMs,
+                        buildRequestHeaders(),
+                        MAX_REMOTE_EPG_RESPONSE_BYTES
+                );
                 if (response.isSuccessful()) {
                     cachedRemoteEpgBaseUrl = candidate;
                     return response;

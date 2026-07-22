@@ -2934,7 +2934,7 @@ public class MainActivity extends FragmentActivity {
         if (!submitEpgTask("load-epg-partial", () -> {
             try {
                 Map<String, EpgRepository.EpgProgramPair> pairs = BuildConfig.STANDALONE_MODE && !compactEpgMode
-                        ? epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, false, false, false)
+                        ? epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, true, false)
                         : epgRepository.fetchProgramPairsForChannels(epgChannelsSnapshot, true, compactEpgMode, false);
                 Map<String, String> updates = buildNowProgramUpdatesFromPairs(pairs);
                 postUiIfAlive(() -> {

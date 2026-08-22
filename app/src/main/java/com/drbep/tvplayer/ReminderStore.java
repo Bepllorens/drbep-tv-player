@@ -22,19 +22,25 @@ final class ReminderStore {
         final String channelName;
         final String title;
         final long startAtMillis;
+        final long endAtMillis;
         boolean notified;
         long updatedAtMillis;
         long deletedAtMillis;
 
         ReminderItem(String channelId, String channelName, String title, long startAtMillis, boolean notified) {
-            this(channelId, channelName, title, startAtMillis, notified, System.currentTimeMillis(), 0L);
+            this(channelId, channelName, title, startAtMillis, 0L, notified, System.currentTimeMillis(), 0L);
         }
 
-        ReminderItem(String channelId, String channelName, String title, long startAtMillis, boolean notified, long updatedAtMillis, long deletedAtMillis) {
+        ReminderItem(String channelId, String channelName, String title, long startAtMillis, long endAtMillis, boolean notified) {
+            this(channelId, channelName, title, startAtMillis, endAtMillis, notified, System.currentTimeMillis(), 0L);
+        }
+
+        ReminderItem(String channelId, String channelName, String title, long startAtMillis, long endAtMillis, boolean notified, long updatedAtMillis, long deletedAtMillis) {
             this.channelId = channelId;
             this.channelName = channelName;
             this.title = title;
             this.startAtMillis = startAtMillis;
+            this.endAtMillis = Math.max(0L, endAtMillis);
             this.notified = notified;
             this.updatedAtMillis = Math.max(1L, updatedAtMillis);
             this.deletedAtMillis = Math.max(0L, deletedAtMillis);
@@ -73,6 +79,7 @@ final class ReminderStore {
                         item.optString("channel_name", ""),
                         item.optString("title", "Programa"),
                         item.optLong("start_at", 0L),
+                        item.optLong("end_at", 0L),
                         item.optBoolean("notified", false),
                         item.optLong("updated_at", System.currentTimeMillis()),
                         item.optLong("deleted_at", 0L)
@@ -181,6 +188,7 @@ final class ReminderStore {
                     row.put("channel_name", item.channelName);
                     row.put("title", item.title);
                     row.put("start_at", item.startAtMillis);
+                    row.put("end_at", item.endAtMillis);
                     row.put("notified", item.notified);
                 }
                 out.put(reminderKey(item.channelId, item.startAtMillis), row);
@@ -239,6 +247,7 @@ final class ReminderStore {
                         row.optString("channel_name", ""),
                         row.optString("title", "Programa"),
                         startAt,
+                        row.optLong("end_at", 0L),
                         row.optBoolean("notified", false),
                         updatedAt,
                         deletedAt

@@ -451,6 +451,11 @@ public class MainActivity extends FragmentActivity {
     private int overlaySearchFocusRequestToken;
     private int overlaySearchClearFocusRequestToken;
     private boolean startupHubShown;
+    private String pendingReminderChannelId = "";
+    private String pendingReminderAction = "";
+    private String pendingReminderTitle = "";
+    private long pendingReminderStartAt;
+    private long pendingReminderEndAt;
     private boolean startupFastPlaybackStarted;
     private boolean startupCatalogHydrationRunning;
     private boolean startupFirstFrameRendered;
@@ -636,15 +641,17 @@ public class MainActivity extends FragmentActivity {
         final List<ChannelItem> continueVods;
         final int vodCount;
         final RecordingsRepository.RecordingItem resumeRecording;
+        final List<RecordingsRepository.RecordingItem> recentRecordings;
         final String resumeRecordingBasePath;
         final int completedRecordings;
         final int scheduledRecordings;
 
-        StartupHubState(ChannelItem currentChannel, List<ChannelItem> continueVods, int vodCount, RecordingsRepository.RecordingItem resumeRecording, String resumeRecordingBasePath, int completedRecordings, int scheduledRecordings) {
+        StartupHubState(ChannelItem currentChannel, List<ChannelItem> continueVods, int vodCount, RecordingsRepository.RecordingItem resumeRecording, List<RecordingsRepository.RecordingItem> recentRecordings, String resumeRecordingBasePath, int completedRecordings, int scheduledRecordings) {
             this.currentChannel = currentChannel;
             this.continueVods = continueVods == null ? new ArrayList<>() : continueVods;
             this.vodCount = Math.max(0, vodCount);
             this.resumeRecording = resumeRecording;
+            this.recentRecordings = recentRecordings == null ? new ArrayList<>() : recentRecordings;
             this.resumeRecordingBasePath = resumeRecordingBasePath;
             this.completedRecordings = completedRecordings;
             this.scheduledRecordings = scheduledRecordings;
@@ -663,6 +670,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        captureReminderIntent(getIntent());
         activityCreatedAtMs = System.currentTimeMillis();
         setContentView(R.layout.activity_main);
         touchDeviceMode = detectTouchDeviceMode();
@@ -908,6 +916,55 @@ public class MainActivity extends FragmentActivity {
         scheduleOfflineCatalogAutoRefresh();
         postUiDelayedIfAlive(reminderTickRunnable, 30000L);
         postUiDelayedIfAlive(vodProgressSaveRunnable, 15_000L);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        captureReminderIntent(intent);
+        tryHandlePendingReminderIntent();
+    }
+
+    private void captureReminderIntent(Intent intent) {
+        if (intent == null) return;
+        String channelId = intent.getStringExtra("reminder_channel_id");
+        if (channelId == null || channelId.trim().isEmpty()) return;
+        pendingReminderChannelId = channelId.trim();
+        String action = intent.getStringExtra("reminder_action");
+        String title = intent.getStringExtra("reminder_title");
+        pendingReminderAction = action == null ? "" : action.trim();
+        pendingReminderTitle = title == null ? "" : title.trim();
+        pendingReminderStartAt = Math.max(0L, intent.getLongExtra("reminder_start_at", 0L));
+        pendingReminderEndAt = Math.max(0L, intent.getLongExtra("reminder_end_at", 0L));
+    }
+
+    private void tryHandlePendingReminderIntent() {
+        if (pendingReminderChannelId.isEmpty() || allChannels.isEmpty()) return;
+        ChannelItem target = null;
+        for (ChannelItem item : allChannels) {
+            if (item != null && pendingReminderChannelId.equals(item.id)) { target = item; break; }
+        }
+        if (target == null) return;
+        String action = pendingReminderAction;
+        String title = pendingReminderTitle;
+        long startAt = pendingReminderStartAt;
+        long endAt = pendingReminderEndAt;
+        pendingReminderChannelId = "";
+        pendingReminderAction = "";
+        pendingReminderTitle = "";
+        pendingReminderStartAt = 0L;
+        pendingReminderEndAt = 0L;
+        if ("record".equals(action)) {
+            if (startAt <= 0L) startAt = System.currentTimeMillis();
+            if (endAt <= startAt) endAt = startAt + 2L * 60L * 60L * 1000L;
+            EpgRepository.EpgProgram program = new EpgRepository.EpgProgram(
+                    target.id, target.name, title, target.logoUrl, "",
+                    formatIsoMillis(startAt), formatIsoMillis(endAt), 0);
+            scheduleProgram(target, program);
+        } else {
+            tuneChannelById(target.id);
+        }
     }
 
     @Override
@@ -2697,7 +2754,16 @@ public class MainActivity extends FragmentActivity {
         }
 
         int startIndex = resolveStartupPlaybackIndex();
+        if (!pendingReminderChannelId.isEmpty() && !"record".equals(pendingReminderAction)) {
+            for (int i = 0; i < channels.size(); i++) {
+                if (channels.get(i) != null && pendingReminderChannelId.equals(channels.get(i).id)) {
+                    startIndex = i;
+                    break;
+                }
+            }
+        }
         selectChannelIndex(startIndex);
+        tryHandlePendingReminderIntent();
         scheduleStartupEpgLoads();
         lastApplyChannelsDurationMs = System.currentTimeMillis() - startMs;
         int visibleCount = channels.size();
@@ -5784,12 +5850,13 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         long startAt = parseIsoMillis(program.startTime);
+        long endAt = parseIsoMillis(program.endTime);
         if (startAt <= 0) {
             showStatus(getString(R.string.status_failed_create_reminder));
             return;
         }
         String title = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title;
-        ReminderStore.ReminderItem item = new ReminderStore.ReminderItem(ch.id, ch.name, title, startAt, false);
+        ReminderStore.ReminderItem item = new ReminderStore.ReminderItem(ch.id, ch.name, title, startAt, endAt, false);
         reminderStore.addReminder(item);
         scheduleUserPreferencePush();
         ensureNotificationPermission();
@@ -15066,6 +15133,7 @@ public class MainActivity extends FragmentActivity {
             }
             List<ChannelItem> continueVods = resolveStartupContinueVodItems();
             RecordingsRepository.RecordingItem resumeRecording = null;
+            List<RecordingsRepository.RecordingItem> recentRecordings = new ArrayList<>();
             String recordingBasePath = "";
             int completedCount = 0;
             int scheduledCount = 0;
@@ -15075,6 +15143,11 @@ public class MainActivity extends FragmentActivity {
                     recordingBasePath = completed == null ? "" : completed.basePath;
                     completedCount = completed == null || completed.items == null ? 0 : completed.items.size();
                     resumeRecording = findResumeRecording(completed);
+                    if (completed != null && completed.items != null) {
+                        for (RecordingsRepository.RecordingItem item : completed.items) {
+                            if (item != null && item.playable && recentRecordings.size() < 5) recentRecordings.add(item);
+                        }
+                    }
                 } catch (Exception e) {
                     Log.w(TAG, "startup completed recordings summary failed", e);
                 }
@@ -15085,7 +15158,7 @@ public class MainActivity extends FragmentActivity {
                     Log.w(TAG, "startup scheduled recordings summary failed", e);
                 }
             }
-            StartupHubState state = new StartupHubState(current, continueVods, vodCount, resumeRecording, recordingBasePath, completedCount, scheduledCount);
+            StartupHubState state = new StartupHubState(current, continueVods, vodCount, resumeRecording, recentRecordings, recordingBasePath, completedCount, scheduledCount);
             postUiIfAlive(() -> showStartupHubDialog(state));
         });
     }
@@ -15407,6 +15480,40 @@ public class MainActivity extends FragmentActivity {
                     0f,
                     open.apply(() -> playRecording(resumeRecording, basePath))
             ));
+        }
+        long now = System.currentTimeMillis();
+        int upcomingAdded = 0;
+        for (ReminderStore.ReminderItem reminder : reminderStore.getPendingReminders()) {
+            if (reminder == null || reminder.startAtMillis < now || reminder.startAtMillis > now + 24L * 60L * 60L * 1000L || upcomingAdded >= 3) continue;
+            ChannelItem reminderChannel = findChannelItemById(reminder.channelId);
+            if (reminderChannel == null || shouldHideProtectedItem(reminderChannel)) continue;
+            String when = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(reminder.startAtMillis));
+            continueCards.add(new StartupHomeHubUiModel.ContinueCard(
+                    reminder.title,
+                    "Aviso · " + reminderChannel.name + " · " + when,
+                    reminderChannel.logoUrl,
+                    reminderChannel.name,
+                    false,
+                    0f,
+                    open.apply(() -> tuneChannelById(reminderChannel.id))
+            ));
+            upcomingAdded++;
+        }
+        if (state != null) {
+            int recentAdded = 0;
+            for (RecordingsRepository.RecordingItem recent : state.recentRecordings) {
+                if (recent == null || !recent.playable || recent == resumeRecording || recentAdded >= 4) continue;
+                continueCards.add(new StartupHomeHubUiModel.ContinueCard(
+                        buildRecordingTitle(recent),
+                        "Grabación reciente · " + fallbackUnknown(recent.channelName),
+                        recent.poster,
+                        buildRecordingTitle(recent),
+                        true,
+                        0f,
+                        open.apply(() -> playRecording(recent, state.resumeRecordingBasePath))
+                ));
+                recentAdded++;
+            }
         }
 
         List<StartupHomeHubUiModel.Shortcut> shortcuts = new ArrayList<>();

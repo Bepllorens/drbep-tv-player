@@ -46,6 +46,10 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".ReminderActionReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".TvLauncherActivity"
             android:exported="true"

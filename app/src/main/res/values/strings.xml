@@ -1060,4 +1060,7 @@
     <string name="parental_change_pin_prompt">Introduce el PIN actual para poder cambiarlo.</string>
     <string name="title_playback_mode_temporary">Modo temporal de playback</string>
     <string name="status_playback_mode_temporary_changed">Modo temporal: %1$s</string>
+    <string name="reminder_action_watch">Ver ahora</string>
+    <string name="reminder_action_record">Grabar</string>
+    <string name="reminder_action_dismiss">Descartar</string>
 </resources>

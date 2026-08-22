@@ -2671,6 +2671,8 @@ public class MainActivity extends FragmentActivity {
         channelOverlayCoordinator.applyLoadedChannels(result, keepChannelId);
         syncOverlayStateFromCoordinator();
         persistNavigationState();
+        int restoredEpgChannels = applyProgramPairUpdates(allChannels, epgNowByChannelId, epgProgramPairByChannelId);
+        applyProgramPairUpdates(channels, epgNowByChannelId, epgProgramPairByChannelId);
         refreshOverlayChannelList();
         updateFilterText();
         updateOverlaySearchState();
@@ -2681,7 +2683,9 @@ public class MainActivity extends FragmentActivity {
         Log.w(TAG, "startup catalog hydrated applied total=" + allChannels.size()
                 + " visible=" + channels.size()
                 + " keepChannel=" + fallbackUnknown(keepChannelId)
+                + " restoredEpgChannels=" + restoredEpgChannels
                 + " applyMs=" + (System.currentTimeMillis() - startMs));
+        scheduleVisibleEpgLoad(0L);
     }
 
     private void tryFastStartupPlaybackFromCache() {
@@ -3416,7 +3420,11 @@ public class MainActivity extends FragmentActivity {
                     + " workerBusy=" + epgWorkerBusy
                     + " continueProgressive=" + continueProgressive);
             if (continueProgressive) {
-                scheduleNextProgressiveEpgLoad(OFFLINE_EPG_BUSY_RETRY_MS);
+                if (useCompactTouchEpgMode()) {
+                    scheduleVisibleEpgLoad(OFFLINE_EPG_BUSY_RETRY_MS);
+                } else {
+                    scheduleNextProgressiveEpgLoad(OFFLINE_EPG_BUSY_RETRY_MS);
+                }
             }
             return;
         }

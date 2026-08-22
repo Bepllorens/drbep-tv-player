@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 431
-        versionName "2.0.431-live-home-recommendations"
+        versionCode 432
+        versionName "2.0.432-startup-epg-refresh"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

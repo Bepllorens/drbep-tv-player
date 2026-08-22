@@ -269,6 +269,8 @@ public class MainActivity extends FragmentActivity {
     private Runnable pendingU7dSeekRunnable;
     private String lastVodId;
     private final Map<String, Long> recordingResumePositions = new HashMap<>();
+    private final Map<String, Long> recordingResumeDurations = new HashMap<>();
+    private final Map<String, Long> recordingResumeUpdatedAt = new HashMap<>();
     private final Map<String, Long> vodResumePositions = new HashMap<>();
     private final Map<String, Long> vodResumeUpdatedAt = new HashMap<>();
     private final Map<String, ChannelItem> vodResumeItems = new HashMap<>();
@@ -409,6 +411,7 @@ public class MainActivity extends FragmentActivity {
     private CatalogRepository catalogRepository;
     private CatalogSnapshotStore catalogSnapshotStore;
     private UserPreferenceSyncRepository userPreferenceSyncRepository;
+    private RemoteCommandEventClient remoteCommandEventClient;
     private boolean userPreferencesReady;
     private boolean userPreferencesLoading;
     private long lastUserPreferencePullMs;
@@ -740,6 +743,7 @@ public class MainActivity extends FragmentActivity {
         baseUrl = resolveBaseUrl();
         catalogSnapshotStore = new CatalogSnapshotStore(this);
         userPreferenceSyncRepository = new UserPreferenceSyncRepository(catalogSnapshotStore);
+        remoteCommandEventClient = new RemoteCommandEventClient(catalogSnapshotStore);
         catalogRepository = new CatalogRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
         epgRepository = new EpgRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
         recordingsRepository = new RecordingsRepository(baseUrl, catalogSnapshotStore);
@@ -912,6 +916,9 @@ public class MainActivity extends FragmentActivity {
         maybeCheckAppUpdateOnResume();
         maybeRefreshOfflineCatalogOnResume();
         uiHandler.removeCallbacks(remoteCommandPollRunnable);
+        if (remoteCommandEventClient != null) {
+            remoteCommandEventClient.start(BuildConfig.OFFLINE_BASE_URL, this::handleOfflineRemoteCommands);
+        }
         pollOfflineRemoteCommands();
         postUiDelayedIfAlive(remoteCommandPollRunnable, REMOTE_COMMAND_POLL_INTERVAL_MS);
         if (playbackHeartbeatChannel != null) {
@@ -926,6 +933,9 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onPause() {
         uiHandler.removeCallbacks(remoteCommandPollRunnable);
+        if (remoteCommandEventClient != null) {
+            remoteCommandEventClient.stop();
+        }
         // Playback continues while Android places the video in PiP, so keep the
         // monitoring session alive instead of reporting a false stop event.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode()) {
@@ -5781,6 +5791,7 @@ public class MainActivity extends FragmentActivity {
         String title = program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title;
         ReminderStore.ReminderItem item = new ReminderStore.ReminderItem(ch.id, ch.name, title, startAt, false);
         reminderStore.addReminder(item);
+        scheduleUserPreferencePush();
         ensureNotificationPermission();
         ReminderScheduler.schedule(this, item);
         showStatus(getString(R.string.status_reminder_created));
@@ -6096,6 +6107,7 @@ public class MainActivity extends FragmentActivity {
         if (!dueItems.isEmpty()) {
             ReminderStore.ReminderItem lastDueItem = dueItems.get(dueItems.size() - 1);
             showStatus(getString(R.string.status_reminder_due, lastDueItem.channelName, lastDueItem.title));
+            scheduleUserPreferencePush();
         }
     }
 
@@ -6638,9 +6650,20 @@ public class MainActivity extends FragmentActivity {
                 }
                 long positionMs = Math.max(0L, Math.round(entry.optDouble("position", 0d) * 1000d));
                 long durationMs = Math.max(0L, Math.round(entry.optDouble("duration", 0d) * 1000d));
+                long updatedAtMs = Math.max(0L, entry.optLong("updated_at", remotePayloadUpdatedAt));
+                if (id.startsWith("recording-") && id.length() > "recording-".length()) {
+                    String recordingId = id.substring("recording-".length());
+                    long localTime = recordingResumeUpdatedAt.getOrDefault(recordingId, 0L);
+                    if (positionMs > 0L && durationMs > 60_000L && positionMs < durationMs * 0.98d && updatedAtMs >= localTime) {
+                        recordingResumePositions.put(recordingId, positionMs);
+                        recordingResumeDurations.put(recordingId, durationMs);
+                        recordingResumeUpdatedAt.put(recordingId, updatedAtMs);
+                    }
+                    continue;
+                }
                 if (positionMs > 0L && durationMs > 60_000L && positionMs < durationMs * 0.98d) {
                     vodResumePositions.put(id, positionMs);
-                    vodResumeUpdatedAt.put(id, Math.max(0L, entry.optLong("updated_at", remotePayloadUpdatedAt)));
+                    vodResumeUpdatedAt.put(id, updatedAtMs);
                 }
             }
             boolean preservedLocal = false;
@@ -6656,10 +6679,15 @@ public class MainActivity extends FragmentActivity {
                 }
             }
             saveVodResumePositions(false);
+            saveRecordingResumePositions();
             invalidateVodDerivedCaches();
             if (preservedLocal) {
                 postUiDelayedIfAlive(this::scheduleUserPreferencePush, 100L);
             }
+        }
+
+        if (reminderStore != null && reminderStore.mergeRemote(payload.optJSONObject("epg_reminders"))) {
+            ReminderScheduler.reschedulePending(this, reminderStore);
         }
 
         JSONObject presets = payload.optJSONObject("multiview_presets");
@@ -6737,10 +6765,32 @@ public class MainActivity extends FragmentActivity {
                         .put("duration", durationMs / 1000d)
                         .put("updated_at", Math.max(0L, vodResumeUpdatedAt.getOrDefault(saved.getKey(), System.currentTimeMillis()))));
             }
+            for (Map.Entry<String, Long> saved : recordingResumePositions.entrySet()) {
+                String recordingId = saved.getKey();
+                long positionMs = saved.getValue() == null ? 0L : Math.max(0L, saved.getValue());
+                long durationMs = Math.max(0L, recordingResumeDurations.getOrDefault(recordingId, 0L));
+                if (recordingId == null || recordingId.trim().isEmpty() || durationMs <= 60_000L || positionMs <= 0L || positionMs >= durationMs * 0.98d) {
+                    continue;
+                }
+                progress.put("recording-" + recordingId, new JSONObject()
+                        .put("position", positionMs / 1000d)
+                        .put("duration", durationMs / 1000d)
+                        .put("updated_at", Math.max(0L, recordingResumeUpdatedAt.getOrDefault(recordingId, System.currentTimeMillis()))));
+            }
             payload.put("vod_progress", progress);
+            payload.put("epg_reminders", reminderStore == null ? new JSONObject() : reminderStore.toRemoteJson());
             payload.put("watchlist", remoteUserPreferences.optJSONArray("watchlist") == null
                     ? new JSONArray()
                     : new JSONArray(remoteUserPreferences.optJSONArray("watchlist").toString()));
+            payload.put("watched", remoteUserPreferences.optJSONArray("watched") == null
+                    ? new JSONArray()
+                    : new JSONArray(remoteUserPreferences.optJSONArray("watched").toString()));
+            payload.put("series_continuity", remoteUserPreferences.optJSONObject("series_continuity") == null
+                    ? new JSONObject()
+                    : new JSONObject(remoteUserPreferences.optJSONObject("series_continuity").toString()));
+            if (remoteUserPreferences.optJSONObject("interface_preferences") != null) {
+                payload.put("interface_preferences", new JSONObject(remoteUserPreferences.optJSONObject("interface_preferences").toString()));
+            }
 
             JSONObject presets = new JSONObject();
             for (int index = 0; index < MULTIVIEW_PRESET_COUNT; index++) {
@@ -7999,6 +8049,9 @@ public class MainActivity extends FragmentActivity {
         rememberCurrentVodPosition();
         rememberCurrentRecordingPosition();
         stopPlaybackHeartbeat("stop");
+        if (remoteCommandEventClient != null) {
+            remoteCommandEventClient.stop();
+        }
         if (touchControlsController != null) {
             touchControlsController.cancelTimers();
         }
@@ -14583,9 +14636,12 @@ public class MainActivity extends FragmentActivity {
     private void clearAllRecordingProgress() {
         rememberCurrentRecordingPosition();
         recordingResumePositions.clear();
+        recordingResumeDurations.clear();
+        recordingResumeUpdatedAt.clear();
         if (prefs != null) {
             prefs.edit().remove(PREF_RECORDING_RESUME_POSITIONS).apply();
         }
+        scheduleUserPreferencePush();
         refreshRecordingsPanelSurface();
         showStatus(getString(R.string.settings_status_recording_progress_cleared));
     }
@@ -19554,8 +19610,15 @@ public class MainActivity extends FragmentActivity {
         if (positionMs <= 0L) {
             return;
         }
+        PlayerController.PlaybackSeekState seekState = playerController.getPlaybackSeekState();
+        long durationMs = seekState == null ? 0L : Math.max(0L, seekState.endMs - seekState.startMs);
         recordingResumePositions.put(currentPlaybackRecordingId, positionMs);
+        if (durationMs > 60_000L) {
+            recordingResumeDurations.put(currentPlaybackRecordingId, durationMs);
+        }
+        recordingResumeUpdatedAt.put(currentPlaybackRecordingId, System.currentTimeMillis());
         saveRecordingResumePositions();
+        scheduleUserPreferencePush();
     }
 
     private long getRecordingResumePosition(String recordingId) {
@@ -19571,7 +19634,10 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         if (recordingResumePositions.remove(recordingId) != null) {
+            recordingResumeDurations.remove(recordingId);
+            recordingResumeUpdatedAt.remove(recordingId);
             saveRecordingResumePositions();
+            scheduleUserPreferencePush();
         }
     }
 
@@ -19796,6 +19862,8 @@ public class MainActivity extends FragmentActivity {
 
     private void loadRecordingResumePositions() {
         recordingResumePositions.clear();
+        recordingResumeDurations.clear();
+        recordingResumeUpdatedAt.clear();
         if (prefs == null) {
             return;
         }
@@ -19808,7 +19876,14 @@ public class MainActivity extends FragmentActivity {
             java.util.Iterator<String> keys = json.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
-                recordingResumePositions.put(key, Math.max(0L, json.optLong(key, 0L)));
+                JSONObject row = json.optJSONObject(key);
+                if (row == null) {
+                    recordingResumePositions.put(key, Math.max(0L, json.optLong(key, 0L)));
+                    continue;
+                }
+                recordingResumePositions.put(key, Math.max(0L, row.optLong("position_ms", 0L)));
+                recordingResumeDurations.put(key, Math.max(0L, row.optLong("duration_ms", 0L)));
+                recordingResumeUpdatedAt.put(key, Math.max(0L, row.optLong("updated_at", 0L)));
             }
         } catch (Exception e) {
             Log.w(TAG, "failed to load recording resume positions", e);
@@ -19827,7 +19902,11 @@ public class MainActivity extends FragmentActivity {
                 }
                 long value = entry.getValue() == null ? 0L : Math.max(0L, entry.getValue());
                 if (value > 0L) {
-                    json.put(entry.getKey(), value);
+                    JSONObject row = new JSONObject();
+                    row.put("position_ms", value);
+                    row.put("duration_ms", Math.max(0L, recordingResumeDurations.getOrDefault(entry.getKey(), 0L)));
+                    row.put("updated_at", Math.max(0L, recordingResumeUpdatedAt.getOrDefault(entry.getKey(), System.currentTimeMillis())));
+                    json.put(entry.getKey(), row);
                 }
             }
             prefs.edit().putString(PREF_RECORDING_RESUME_POSITIONS, json.toString()).apply();

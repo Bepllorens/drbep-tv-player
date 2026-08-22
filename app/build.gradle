@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 428
-        versionName "2.0.428-beta-continuity-poll"
+        versionCode 429
+        versionName "2.0.429-sync-events-reminders"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

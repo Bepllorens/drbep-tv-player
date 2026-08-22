@@ -55,6 +55,7 @@ import androidx.annotation.OptIn;
 import androidx.compose.ui.platform.ComposeView;
 import androidx.lifecycle.ViewTreeLifecycleOwner;
 import androidx.lifecycle.ViewTreeViewModelStoreOwner;
+import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.common.util.UnstableApi;
 import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
@@ -210,6 +211,8 @@ public class MainActivity extends FragmentActivity {
     private PlayerView playerView;
     private VLCVideoLayout vlcVideoLayout;
     private ImageView startupLivePreviewView;
+    private PlayerView startupLivePreviewPlayerView;
+    private FrameLayout startupLivePreviewContainer;
     private Bitmap startupLivePreviewBitmap;
     private boolean startupLivePreviewCapturePending;
     private int startupLivePreviewGeneration;
@@ -645,8 +648,9 @@ public class MainActivity extends FragmentActivity {
         final String resumeRecordingBasePath;
         final int completedRecordings;
         final int scheduledRecordings;
+        final Map<String, EpgRepository.EpgProgramPair> recommendationPairs;
 
-        StartupHubState(ChannelItem currentChannel, List<ChannelItem> continueVods, int vodCount, RecordingsRepository.RecordingItem resumeRecording, List<RecordingsRepository.RecordingItem> recentRecordings, String resumeRecordingBasePath, int completedRecordings, int scheduledRecordings) {
+        StartupHubState(ChannelItem currentChannel, List<ChannelItem> continueVods, int vodCount, RecordingsRepository.RecordingItem resumeRecording, List<RecordingsRepository.RecordingItem> recentRecordings, String resumeRecordingBasePath, int completedRecordings, int scheduledRecordings, Map<String, EpgRepository.EpgProgramPair> recommendationPairs) {
             this.currentChannel = currentChannel;
             this.continueVods = continueVods == null ? new ArrayList<>() : continueVods;
             this.vodCount = Math.max(0, vodCount);
@@ -655,6 +659,21 @@ public class MainActivity extends FragmentActivity {
             this.resumeRecordingBasePath = resumeRecordingBasePath;
             this.completedRecordings = completedRecordings;
             this.scheduledRecordings = scheduledRecordings;
+            this.recommendationPairs = recommendationPairs == null ? new LinkedHashMap<>() : recommendationPairs;
+        }
+    }
+
+    private static final class StartupRecommendation {
+        final ChannelItem channel;
+        final String title;
+        final String reason;
+        final long startsAtMs;
+
+        StartupRecommendation(ChannelItem channel, String title, String reason, long startsAtMs) {
+            this.channel = channel;
+            this.title = title == null ? "" : title.trim();
+            this.reason = reason == null ? "" : reason.trim();
+            this.startsAtMs = startsAtMs;
         }
     }
 
@@ -6182,6 +6201,26 @@ public class MainActivity extends FragmentActivity {
         if (iso == null || iso.trim().isEmpty()) {
             return 0L;
         }
+        String clean = iso.trim();
+        try {
+            return java.time.Instant.parse(clean).toEpochMilli();
+        } catch (Exception ignored) {
+        }
+        try {
+            return java.time.OffsetDateTime.parse(clean).toInstant().toEpochMilli();
+        } catch (Exception ignored) {
+        }
+        try {
+            return java.time.ZonedDateTime.parse(clean).toInstant().toEpochMilli();
+        } catch (Exception ignored) {
+        }
+        try {
+            return java.time.LocalDateTime.parse(clean)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli();
+        } catch (Exception ignored) {
+        }
         String[] patterns = new String[]{
                 "yyyy-MM-dd'T'HH:mm:ssXXX",
                 "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
@@ -6191,7 +6230,7 @@ public class MainActivity extends FragmentActivity {
         for (String p : patterns) {
             try {
                 SimpleDateFormat f = new SimpleDateFormat(p, Locale.US);
-                Date d = f.parse(iso);
+                Date d = f.parse(clean);
                 if (d != null) {
                     return d.getTime();
                 }
@@ -15120,6 +15159,10 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         ChannelItem current = getCurrentPlaybackChannelItem();
+        List<ChannelItem> favoriteSnapshot = new ArrayList<>(buildFavoriteQuickChannels());
+        final List<ChannelItem> startupRecommendationChannels = favoriteSnapshot.size() > 9
+                ? new ArrayList<>(favoriteSnapshot.subList(0, 9))
+                : favoriteSnapshot;
         ioExecutor.execute(() -> {
             int vodCount = countItemsForQuickTarget("vod");
             if (catalogSnapshotStore != null) {
@@ -15158,7 +15201,23 @@ public class MainActivity extends FragmentActivity {
                     Log.w(TAG, "startup scheduled recordings summary failed", e);
                 }
             }
-            StartupHubState state = new StartupHubState(current, continueVods, vodCount, resumeRecording, recentRecordings, recordingBasePath, completedCount, scheduledCount);
+            Map<String, EpgRepository.EpgProgramPair> recommendationPairs = new LinkedHashMap<>();
+            if (epgRepository != null && !startupRecommendationChannels.isEmpty()) {
+                for (int offset = 0; offset < startupRecommendationChannels.size(); offset += 3) {
+                    int end = Math.min(startupRecommendationChannels.size(), offset + 3);
+                    try {
+                        recommendationPairs.putAll(epgRepository.fetchProgramPairsForChannels(
+                                new ArrayList<>(startupRecommendationChannels.subList(offset, end)),
+                                true,
+                                true,
+                                false
+                        ));
+                    } catch (Exception e) {
+                        Log.w(TAG, "startup favorite recommendations failed offset=" + offset, e);
+                    }
+                }
+            }
+            StartupHubState state = new StartupHubState(current, continueVods, vodCount, resumeRecording, recentRecordings, recordingBasePath, completedCount, scheduledCount, recommendationPairs);
             postUiIfAlive(() -> showStartupHubDialog(state));
         });
     }
@@ -15289,6 +15348,28 @@ public class MainActivity extends FragmentActivity {
             imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
             bindChannelLogo(imageView, fallbackLogoUrl, channelName, widthDp, heightDp);
         }
+        if (startupLivePreviewPlayerView != null && startupLivePreviewPlayerView.isAttachedToWindow()) {
+            return;
+        }
+        if (playerController != null && imageView.getParent() instanceof FrameLayout) {
+            FrameLayout container = (FrameLayout) imageView.getParent();
+            PlayerView previewView = new PlayerView(this);
+            previewView.setUseController(false);
+            previewView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+            previewView.setBackgroundColor(Color.BLACK);
+            previewView.setContentDescription(channelName);
+            container.addView(previewView, 0, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            if (playerController.attachStartupPreview(previewView)) {
+                startupLivePreviewPlayerView = previewView;
+                startupLivePreviewContainer = container;
+                imageView.setVisibility(View.INVISIBLE);
+                return;
+            }
+            container.removeView(previewView);
+        }
         uiHandler.removeCallbacks(startupLivePreviewRunnable);
         if (!startupLivePreviewCapturePending) {
             uiHandler.postDelayed(startupLivePreviewRunnable, 350L);
@@ -15402,6 +15483,17 @@ public class MainActivity extends FragmentActivity {
         uiHandler.removeCallbacks(startupLivePreviewRunnable);
         startupLivePreviewGeneration++;
         startupLivePreviewCapturePending = false;
+        if (playerController != null) {
+            playerController.detachStartupPreview(startupLivePreviewPlayerView);
+        }
+        if (startupLivePreviewContainer != null && startupLivePreviewPlayerView != null) {
+            startupLivePreviewContainer.removeView(startupLivePreviewPlayerView);
+        }
+        if (startupLivePreviewView != null) {
+            startupLivePreviewView.setVisibility(View.VISIBLE);
+        }
+        startupLivePreviewPlayerView = null;
+        startupLivePreviewContainer = null;
         startupLivePreviewView = null;
         startupLivePreviewBitmap = null;
     }
@@ -15482,22 +15574,58 @@ public class MainActivity extends FragmentActivity {
             ));
         }
         long now = System.currentTimeMillis();
-        int upcomingAdded = 0;
+        long recommendationEnd = now + 24L * 60L * 60L * 1000L;
+        List<StartupRecommendation> recommendations = new ArrayList<>();
+        List<StartupHomeHubUiModel.ContinueCard> recommendationCards = new ArrayList<>();
+        Set<String> recommendationKeys = new HashSet<>();
         for (ReminderStore.ReminderItem reminder : reminderStore.getPendingReminders()) {
-            if (reminder == null || reminder.startAtMillis < now || reminder.startAtMillis > now + 24L * 60L * 60L * 1000L || upcomingAdded >= 3) continue;
+            if (reminder == null || reminder.startAtMillis < now || reminder.startAtMillis > recommendationEnd) continue;
             ChannelItem reminderChannel = findChannelItemById(reminder.channelId);
             if (reminderChannel == null || shouldHideProtectedItem(reminderChannel)) continue;
-            String when = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(reminder.startAtMillis));
-            continueCards.add(new StartupHomeHubUiModel.ContinueCard(
-                    reminder.title,
-                    "Aviso · " + reminderChannel.name + " · " + when,
-                    reminderChannel.logoUrl,
-                    reminderChannel.name,
+            String key = reminderChannel.id + "|" + reminder.startAtMillis;
+            if (!recommendationKeys.add(key)) continue;
+            recommendations.add(new StartupRecommendation(reminderChannel, reminder.title, "Aviso", reminder.startAtMillis));
+        }
+        Map<String, EpgRepository.EpgProgramPair> favoritePairs = state == null
+                ? epgProgramPairByChannelId
+                : state.recommendationPairs;
+        for (ChannelItem favorite : buildFavoriteQuickChannels()) {
+            EpgRepository.EpgProgramPair pair = favoritePairs.get(favorite.id);
+            EpgRepository.EpgProgram next = pair == null ? null : pair.next;
+            long startsAt = next == null ? 0L : parseIsoMillis(next.startTime);
+            String reason = "Favorito";
+            EpgRepository.EpgProgram recommendedProgram = next;
+            if (recommendedProgram == null
+                    || recommendedProgram.title == null
+                    || recommendedProgram.title.trim().isEmpty()
+                    || startsAt < now
+                    || startsAt > recommendationEnd) {
+                EpgRepository.EpgProgram currentProgram = pair == null ? null : pair.current;
+                if (currentProgram == null || currentProgram.title == null || currentProgram.title.trim().isEmpty()) continue;
+                recommendedProgram = currentProgram;
+                startsAt = now;
+                reason = "Favorito en emisión";
+            }
+            String key = favorite.id + "|" + startsAt;
+            if (!recommendationKeys.add(key)) continue;
+            recommendations.add(new StartupRecommendation(favorite, recommendedProgram.title, reason, startsAt));
+        }
+        recommendations.sort((left, right) -> Long.compare(left.startsAtMs, right.startsAtMs));
+        for (int index = 0; index < Math.min(3, recommendations.size()); index++) {
+            StartupRecommendation recommendation = recommendations.get(index);
+            String when = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(recommendation.startsAtMs));
+            String recommendationSubtitle = "Favorito en emisión".equals(recommendation.reason)
+                    ? recommendation.reason + " · " + recommendation.channel.name
+                    : recommendation.reason + " · " + recommendation.channel.name + " · " + when;
+            recommendationCards.add(new StartupHomeHubUiModel.ContinueCard(
+                    recommendation.title,
+                    recommendationSubtitle,
+                    recommendation.channel.logoUrl,
+                    recommendation.channel.name,
                     false,
                     0f,
-                    open.apply(() -> tuneChannelById(reminderChannel.id))
+                    open.apply(() -> tuneChannelById(recommendation.channel.id))
             ));
-            upcomingAdded++;
         }
         if (state != null) {
             int recentAdded = 0;
@@ -15534,6 +15662,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.startup_home_subtitle),
                 primaryCards,
                 continueCards,
+                recommendationCards,
                 shortcuts,
                 open.apply(this::showGlobalSearchDialog),
                 open.apply(() -> showStartupHubSettingsDialog(state)),

@@ -132,6 +132,20 @@ private fun StartupHomeHub(model: StartupHomeHubUiModel, artworkBinder: StartupH
                     model.continueCards.forEach { StartupContinueCard(it, artworkBinder, compact) }
                 }
             }
+            if (model.recommendationCards.isNotEmpty()) {
+                Spacer(Modifier.height(if (compact) 20.dp else 24.dp))
+                StartupSectionTitle("PARA TI", "", compact)
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 7.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    model.recommendationCards.forEach { StartupContinueCard(it, artworkBinder, compact) }
+                }
+            }
             Spacer(Modifier.height(if (compact) 20.dp else 24.dp))
             StartupSectionTitle("ACCESOS RÁPIDOS", "", compact)
             Spacer(Modifier.height(10.dp))

@@ -15,6 +15,7 @@ public final class StartupHomeHubUiModel {
     public final String subtitle;
     public final List<PrimaryCard> primaryCards;
     public final List<ContinueCard> continueCards;
+    public final List<ContinueCard> recommendationCards;
     public final List<Shortcut> shortcuts;
     public final Runnable onSearch;
     public final Runnable onSettings;
@@ -28,6 +29,7 @@ public final class StartupHomeHubUiModel {
             String subtitle,
             List<PrimaryCard> primaryCards,
             List<ContinueCard> continueCards,
+            List<ContinueCard> recommendationCards,
             List<Shortcut> shortcuts,
             Runnable onSearch,
             Runnable onSettings,
@@ -40,6 +42,7 @@ public final class StartupHomeHubUiModel {
         this.subtitle = safe(subtitle);
         this.primaryCards = primaryCards == null ? new ArrayList<>() : new ArrayList<>(primaryCards);
         this.continueCards = continueCards == null ? new ArrayList<>() : new ArrayList<>(continueCards);
+        this.recommendationCards = recommendationCards == null ? new ArrayList<>() : new ArrayList<>(recommendationCards);
         this.shortcuts = shortcuts == null ? new ArrayList<>() : new ArrayList<>(shortcuts);
         this.onSearch = onSearch;
         this.onSettings = onSettings;

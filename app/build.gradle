@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 430
-        versionName "2.0.430-alerts-personal-home"
+        versionCode 431
+        versionName "2.0.431-live-home-recommendations"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

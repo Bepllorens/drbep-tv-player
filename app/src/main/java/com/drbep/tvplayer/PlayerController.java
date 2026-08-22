@@ -714,6 +714,28 @@ final class PlayerController {
         return vlcDirectPlayController != null && vlcDirectPlayController.isActive();
     }
 
+    boolean attachStartupPreview(PlayerView previewView) {
+        if (previewView == null || player == null || isVlcDirectPlayActive()) {
+            return false;
+        }
+        previewView.setUseController(false);
+        previewView.setKeepContentOnPlayerReset(true);
+        previewView.setShutterBackgroundColor(android.graphics.Color.BLACK);
+        PlayerView.switchTargetView(player, playerView, previewView);
+        return previewView.getPlayer() == player;
+    }
+
+    void detachStartupPreview(PlayerView previewView) {
+        if (player == null) {
+            return;
+        }
+        if (previewView != null && previewView.getPlayer() == player) {
+            PlayerView.switchTargetView(player, previewView, playerView);
+        } else if (playerView.getPlayer() != player) {
+            playerView.setPlayer(player);
+        }
+    }
+
     private boolean startVlcDirectPlayback(PlaybackRequest request, PlaybackRouteResolver.Decision decision, long resumePositionMs, boolean autoPlay) {
         VlcDirectPlayController controller = ensureVlcDirectPlayController();
         if (controller == null || !controller.isAvailable()) {

@@ -8,6 +8,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.app.Dialog;
+import android.app.PictureInPictureParams;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.speech.RecognizerIntent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
@@ -16,11 +20,15 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.util.LruCache;
 import android.util.Log;
+import android.util.Rational;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.PixelCopy;
 import android.view.Surface;
+import android.view.SurfaceView;
+import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -53,6 +61,7 @@ import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.videolan.libvlc.util.VLCVideoLayout;
 
 import com.caverock.androidsvg.SVG;
 
@@ -77,11 +86,14 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Function;
 
 import androidx.fragment.app.FragmentActivity;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.load.model.GlideUrl;
+import com.bumptech.glide.load.model.LazyHeaders;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -93,7 +105,12 @@ public class MainActivity extends FragmentActivity {
     private static final long OVERLAY_RENDER_COALESCE_MS = 32L;
     private static final long PLAYBACK_QUALITY_UI_COALESCE_MS = 120L;
     private static final long TOUCH_CONTROLS_HIDE_MS = 3000L;
+    private static final long COMPACT_PLAYBACK_HUD_HIDE_MS = 5500L;
+    private static final long STARTUP_LIVE_PREVIEW_REFRESH_MS = 1500L;
+    private static final int STARTUP_LIVE_PREVIEW_MAX_WIDTH = 480;
     private static final long TV_TIMESHIFT_HUD_HIDE_MS = 3500L;
+    private static final long U7D_SEEK_COMMIT_DELAY_MS = 1_200L;
+    private static final long ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS = 2L * 60L * 60L * 1000L;
     private static final long MENU_DOUBLE_PRESS_MS = 450L;
     private static final long LIVE_BADGE_THRESHOLD_MS = 15000L;
     private static final long OFFLINE_CATALOG_AUTO_REFRESH_MS = 30L * 60L * 1000L;
@@ -101,7 +118,7 @@ public class MainActivity extends FragmentActivity {
     private static final long OFFLINE_CATALOG_RETRY_BASE_MS = 15L * 60L * 1000L;
     private static final long OFFLINE_CATALOG_RETRY_MAX_MS = 60L * 60L * 1000L;
     private static final long OFFLINE_STARTUP_MAINTENANCE_GRACE_MS = 5L * 60L * 1000L;
-    private static final long OFFLINE_APP_UPDATE_STARTUP_DELAY_MS = 2L * 60L * 1000L;
+    private static final long OFFLINE_APP_UPDATE_STARTUP_GATE_MS = 4_000L;
     private static final long OFFLINE_APP_UPDATE_RESUME_CHECK_MS = 15L * 60L * 1000L;
     private static final long OFFLINE_EPG_INITIAL_DELAY_MS = 20L * 1000L;
     private static final long OFFLINE_EPG_PROGRESSIVE_DELAY_MS = 8L * 1000L;
@@ -110,7 +127,12 @@ public class MainActivity extends FragmentActivity {
     private static final long OFFLINE_EPG_LOAD_TIMEOUT_MS = 25L * 1000L;
     private static final int OFFLINE_EPG_VISIBLE_BATCH_LIMIT = 48;
     private static final int OFFLINE_EPG_COMPACT_BATCH_LIMIT = 12;
+    private static final int REQUEST_VOICE_SEARCH = 7041;
     private static final long PLAYBACK_HEARTBEAT_INTERVAL_MS = 30L * 1000L;
+    private static final long REMOTE_COMMAND_POLL_INTERVAL_MS = 15L * 1000L;
+    private static final long PLAYBACK_ROUTE_LEARN_STABILITY_MS = 30L * 1000L;
+    private static final long USER_PREFERENCE_SYNC_DEBOUNCE_MS = 3_000L;
+    private static final long USER_PREFERENCE_PULL_INTERVAL_MS = 5L * 60L * 1000L;
     private static final int OFFLINE_SYNC_HISTORY_LIMIT = 8;
     private static final int CHANNEL_LOGO_PREFETCH_LIMIT = 36;
     private static final int SEARCH_LOGO_PREFETCH_LIMIT = 18;
@@ -133,12 +155,16 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_CHANNEL_PROFILES = "channel_profiles";
     private static final String PREF_PLAYBACK_DIAGNOSTICS = "playback_diagnostics";
     private static final String PREF_PLAYBACK_REPAIR_ENABLED = "playback_repair_enabled";
+    private static final String PREF_PLAYBACK_HUD_MODERN = "playback_hud_modern";
+    private static final String PREF_PLAYBACK_HUD_V413_MIGRATED = "playback_hud_v413_migrated";
+    private static final String PREF_UI_PALETTE = "ui_palette";
     private static final String PREF_PLAYBACK_QUALITY_MODE = "playback_quality_mode";
     private static final String PREF_PLAYBACK_LEARNED_MODES = "playback_learned_modes";
     private static final String PREF_OFFLINE_SYNC_HISTORY = "offline_sync_history";
     private static final String PREF_APP_UPDATE_DIAGNOSTIC = "app_update_diagnostic";
     private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
     private static final String PREF_LAST_UPDATE_PROMPT_VERSION_CODE = "last_update_prompt_version_code";
+    private static final String PREF_LAST_UPDATE_PROMPT_AT_MS = "last_update_prompt_at_ms";
     private static final String PREF_UPDATE_CHANNEL = "update_channel";
     private static final String PREF_LAST_SEEN_APP_VERSION_CODE = "last_seen_app_version_code";
     private static final String PREF_PENDING_UPDATE_HEALTH_VERSION_CODE = "pending_update_health_version_code";
@@ -182,6 +208,12 @@ public class MainActivity extends FragmentActivity {
     private static final String PARENTAL_PREF_PREFIX = "parental_control";
 
     private PlayerView playerView;
+    private VLCVideoLayout vlcVideoLayout;
+    private ImageView startupLivePreviewView;
+    private Bitmap startupLivePreviewBitmap;
+    private boolean startupLivePreviewCapturePending;
+    private int startupLivePreviewGeneration;
+    private final Runnable startupLivePreviewRunnable = this::captureStartupLivePreview;
     private OverlayUiController overlayUiController;
     private ComposeView overlayControlsComposeView;
     private View touchHomeHub;
@@ -230,9 +262,16 @@ public class MainActivity extends FragmentActivity {
     private String currentPlaybackU7dBaseUrl;
     private long currentPlaybackU7dDurationMs;
     private long currentPlaybackU7dOffsetMs;
+    private long currentPlaybackU7dProgramStartMs;
+    private long currentPlaybackU7dProgramEndMs;
+    private long pendingU7dSeekTargetMs = -1L;
+    private int pendingU7dSeekGeneration;
+    private Runnable pendingU7dSeekRunnable;
     private String lastVodId;
     private final Map<String, Long> recordingResumePositions = new HashMap<>();
     private final Map<String, Long> vodResumePositions = new HashMap<>();
+    private final Map<String, Long> vodResumeUpdatedAt = new HashMap<>();
+    private final Map<String, ChannelItem> vodResumeItems = new HashMap<>();
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
     private ComposeView zapBanner;
@@ -246,11 +285,18 @@ public class MainActivity extends FragmentActivity {
     private final ExecutorService interactiveExecutor = Executors.newCachedThreadPool();
     // Telemetria y comandos remotos no deben bloquear la resolucion de una reproduccion.
     private final ExecutorService controlExecutor = Executors.newSingleThreadExecutor();
+    // La comprobacion de APK debe adelantarse al catalogo y no compartir cola con
+    // playback, telemetria ni materializacion del snapshot.
+    private final ExecutorService appUpdateExecutor = Executors.newSingleThreadExecutor();
     // Executor dedicado a la carga inicial del catalogo para que NO espere en cola
     // detras del arranque del reproductor (que comparte ioExecutor single-thread).
     private final ExecutorService catalogLoadExecutor = Executors.newSingleThreadExecutor();
+    // El parseo de VOD puede ejercer mucha presion sobre el heap. Nunca debe compartir
+    // cola con la resolucion del stream ni comenzar antes del primer frame.
+    private final ExecutorService catalogHydrationExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private volatile boolean activityDestroyed;
+    private volatile boolean remoteCommandPollInFlight;
     private final Runnable channelOverlayRenderRunnable = new Runnable() {
         @Override
         public void run() {
@@ -270,7 +316,7 @@ public class MainActivity extends FragmentActivity {
             }
             ChannelItem currentChannel = getCurrentPlaybackChannelItem();
             if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
-                updateZapBannerContent(currentChannel);
+                updatePlaybackHudContent(currentChannel);
             }
         }
     };
@@ -313,6 +359,14 @@ public class MainActivity extends FragmentActivity {
             postUiDelayedIfAlive(this, PLAYBACK_HEARTBEAT_INTERVAL_MS);
         }
     };
+    private final Runnable remoteCommandPollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            pollOfflineRemoteCommands();
+            postUiDelayedIfAlive(this, REMOTE_COMMAND_POLL_INTERVAL_MS);
+        }
+    };
+    private final Runnable userPreferencePushRunnable = this::pushUserPreferences;
     private final Runnable progressiveEpgRunnable = new Runnable() {
         @Override
         public void run() {
@@ -323,6 +377,12 @@ public class MainActivity extends FragmentActivity {
     private final List<ChannelItem> allChannels = new ArrayList<>();
     private final List<ChannelItem> cachedMovistarVodItems = new ArrayList<>();
     private boolean cachedMovistarVodItemsValid = false;
+    private boolean dynamicMovistarVodLoaded = false;
+    private boolean dynamicMovistarVodLoading = false;
+    private boolean dynamicDaznVodLoaded = false;
+    private boolean dynamicDaznVodLoading = false;
+    private boolean dynamicPrimeVodLoaded = false;
+    private boolean dynamicPrimeVodLoading = false;
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
@@ -348,6 +408,11 @@ public class MainActivity extends FragmentActivity {
     };
     private CatalogRepository catalogRepository;
     private CatalogSnapshotStore catalogSnapshotStore;
+    private UserPreferenceSyncRepository userPreferenceSyncRepository;
+    private boolean userPreferencesReady;
+    private boolean userPreferencesLoading;
+    private long lastUserPreferencePullMs;
+    private JSONObject remoteUserPreferences = new JSONObject();
     private boolean u7dProgramsLoading;
     private EpgRepository epgRepository;
     private RecordingsRepository recordingsRepository;
@@ -363,6 +428,8 @@ public class MainActivity extends FragmentActivity {
     private ChannelOverlayCoordinator channelOverlayCoordinator;
     private RemoteInputRouter remoteInputRouter;
     private TouchControlsController touchControlsController;
+    private boolean compactPlaybackHud;
+    private boolean modernPlaybackHud = true;
     private HttpClient httpClient;
     private AppUpdateManager appUpdateManager;
     private AudioManager audioManager;
@@ -373,6 +440,7 @@ public class MainActivity extends FragmentActivity {
     private String playbackHeartbeatSessionId;
     private ChannelItem playbackHeartbeatChannel;
     private long playbackHeartbeatStartedAtMs;
+    private String lastRemotePlaybackCommandId = "";
 
     private final OverlayNavigationState overlayNavigationState = new OverlayNavigationState();
     private final OfflineOverlayState overlaySurfaceState = new OfflineOverlayState();
@@ -382,6 +450,8 @@ public class MainActivity extends FragmentActivity {
     private boolean startupHubShown;
     private boolean startupFastPlaybackStarted;
     private boolean startupCatalogHydrationRunning;
+    private boolean startupFirstFrameRendered;
+    private CatalogLoadResult pendingStartupCatalogHydration;
     private String startupFastPlaybackChannelId = "";
     private String lastChannelId;
     private final List<String> globalSearchRecents = new ArrayList<>();
@@ -414,6 +484,8 @@ public class MainActivity extends FragmentActivity {
     private float touchGestureLastY = Float.NaN;
     private boolean touchGestureVerticalHandled;
     private boolean appUpdateCheckRunning;
+    private boolean startupCatalogReleased;
+    private boolean startupCatalogBlockedForRequiredUpdate;
     private boolean offlineCatalogRefreshRunning;
     private boolean offlineFirstRunDialogShowing;
     private boolean showOfflineActivationSummaryAfterRefresh;
@@ -558,15 +630,17 @@ public class MainActivity extends FragmentActivity {
 
     private static final class StartupHubState {
         final ChannelItem currentChannel;
-        final ChannelItem lastVod;
+        final List<ChannelItem> continueVods;
+        final int vodCount;
         final RecordingsRepository.RecordingItem resumeRecording;
         final String resumeRecordingBasePath;
         final int completedRecordings;
         final int scheduledRecordings;
 
-        StartupHubState(ChannelItem currentChannel, ChannelItem lastVod, RecordingsRepository.RecordingItem resumeRecording, String resumeRecordingBasePath, int completedRecordings, int scheduledRecordings) {
+        StartupHubState(ChannelItem currentChannel, List<ChannelItem> continueVods, int vodCount, RecordingsRepository.RecordingItem resumeRecording, String resumeRecordingBasePath, int completedRecordings, int scheduledRecordings) {
             this.currentChannel = currentChannel;
-            this.lastVod = lastVod;
+            this.continueVods = continueVods == null ? new ArrayList<>() : continueVods;
+            this.vodCount = Math.max(0, vodCount);
             this.resumeRecording = resumeRecording;
             this.resumeRecordingBasePath = resumeRecordingBasePath;
             this.completedRecordings = completedRecordings;
@@ -592,6 +666,10 @@ public class MainActivity extends FragmentActivity {
         devicePerformanceProfile = DevicePerformanceProfile.detect(this);
 
         playerView = findViewById(R.id.playerView);
+        vlcVideoLayout = findViewById(R.id.vlcVideoLayout);
+        playerView.setBackgroundColor(Color.BLACK);
+        playerView.setShutterBackgroundColor(Color.BLACK);
+        vlcVideoLayout.setBackgroundColor(Color.BLACK);
         ComposeView errorText = findViewById(R.id.errorText);
         ComposeView statusText = findViewById(R.id.statusText);
         ComposeView startupLoadingOverlay = findViewById(R.id.startupLoadingOverlay);
@@ -661,6 +739,7 @@ public class MainActivity extends FragmentActivity {
         }
         baseUrl = resolveBaseUrl();
         catalogSnapshotStore = new CatalogSnapshotStore(this);
+        userPreferenceSyncRepository = new UserPreferenceSyncRepository(catalogSnapshotStore);
         catalogRepository = new CatalogRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
         epgRepository = new EpgRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
         recordingsRepository = new RecordingsRepository(baseUrl, catalogSnapshotStore);
@@ -668,6 +747,7 @@ public class MainActivity extends FragmentActivity {
         appUpdateManager = new AppUpdateManager(this, catalogSnapshotStore);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        OfflineTvTheme.applyPalette(prefs.getString(PREF_UI_PALETTE, OfflineTvTheme.PALETTE_AURORA));
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
         recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
         favoriteOrderStore = new FavoriteOrderStore(prefs, PREF_FAVORITE_ORDER);
@@ -678,6 +758,7 @@ public class MainActivity extends FragmentActivity {
         parentalControlStore = new ParentalControlStore(prefs, PARENTAL_PREF_PREFIX);
         loadRecordingResumePositions();
         loadVodResumePositions();
+        vodResumeItems.putAll(catalogSnapshotStore.loadVodResumeItems());
         loadGlobalSearchRecents();
         loadLearnedPlaybackModes();
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore, parentalControlStore);
@@ -778,6 +859,15 @@ public class MainActivity extends FragmentActivity {
         overlayNavigationState.selectedFilterKey = prefs.getString(PREF_LAST_FILTER_KEY, "all");
         overlayNavigationState.favoritesOnly = prefs.getBoolean(PREF_FAVORITES_ONLY, false);
         playbackRepairEnabled = prefs.getBoolean(PREF_PLAYBACK_REPAIR_ENABLED, true);
+        boolean playbackHudV413Migrated = prefs.getBoolean(PREF_PLAYBACK_HUD_V413_MIGRATED, false);
+        boolean storedModernPlaybackHud = prefs.getBoolean(PREF_PLAYBACK_HUD_MODERN, true);
+        modernPlaybackHud = PlaybackHudPreferenceMigration.resolveModernHud(storedModernPlaybackHud, playbackHudV413Migrated);
+        if (!playbackHudV413Migrated) {
+            prefs.edit()
+                    .putBoolean(PREF_PLAYBACK_HUD_MODERN, true)
+                    .putBoolean(PREF_PLAYBACK_HUD_V413_MIGRATED, true)
+                    .apply();
+        }
         playbackQualityMode = PlaybackQualityPolicy.normalize(prefs.getString(PREF_PLAYBACK_QUALITY_MODE, PlaybackQualityPolicy.AUTO));
         lastVodId = prefs.getString(PREF_LAST_VOD_ID, "");
         overlayNavigationState.favoritesOnly = false;
@@ -808,10 +898,9 @@ public class MainActivity extends FragmentActivity {
         setupTouchControls();
         enableImmersiveMode();
         tryFastStartupPlaybackFromCache();
-        loadChannels();
         detectUnfinishedAppUpdateIfNeeded();
         showPostUpdateNotesIfNeeded();
-        scheduleAppUpdateCheckOnStartup();
+        startUpdaterFirstStartup();
         scheduleOfflineCatalogAutoRefresh();
         postUiDelayedIfAlive(reminderTickRunnable, 30000L);
         postUiDelayedIfAlive(vodProgressSaveRunnable, 15_000L);
@@ -822,16 +911,87 @@ public class MainActivity extends FragmentActivity {
         super.onResume();
         maybeCheckAppUpdateOnResume();
         maybeRefreshOfflineCatalogOnResume();
+        uiHandler.removeCallbacks(remoteCommandPollRunnable);
+        pollOfflineRemoteCommands();
+        postUiDelayedIfAlive(remoteCommandPollRunnable, REMOTE_COMMAND_POLL_INTERVAL_MS);
         if (playbackHeartbeatChannel != null) {
             uiHandler.removeCallbacks(playbackHeartbeatRunnable);
             postUiDelayedIfAlive(playbackHeartbeatRunnable, PLAYBACK_HEARTBEAT_INTERVAL_MS);
+        }
+        if (System.currentTimeMillis() - lastUserPreferencePullMs >= USER_PREFERENCE_PULL_INTERVAL_MS) {
+            pullUserPreferences();
         }
     }
 
     @Override
     protected void onPause() {
-        stopPlaybackHeartbeat("stop");
+        uiHandler.removeCallbacks(remoteCommandPollRunnable);
+        // Playback continues while Android places the video in PiP, so keep the
+        // monitoring session alive instead of reporting a false stop event.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode()) {
+            stopPlaybackHeartbeat("stop");
+        }
         super.onPause();
+    }
+
+    private void startVoiceSearch() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                .putExtra(RecognizerIntent.EXTRA_PROMPT, getString(R.string.title_global_search));
+        try {
+            startActivityForResult(intent, REQUEST_VOICE_SEARCH);
+        } catch (Exception e) {
+            Log.w(TAG, "voice search unavailable", e);
+            showStatus(getString(R.string.status_voice_search_unavailable));
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_VOICE_SEARCH || resultCode != RESULT_OK || data == null) {
+            return;
+        }
+        ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+        String query = results == null || results.isEmpty() || results.get(0) == null
+                ? ""
+                : results.get(0).trim();
+        if (query.isEmpty()) {
+            showStatus(getString(R.string.status_voice_search_unavailable));
+            return;
+        }
+        showGlobalSearchDialog(query);
+    }
+
+    private void enterVideoPictureInPicture() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O
+                || !getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+                || getCurrentPlaybackChannelItem() == null) {
+            showStatus(getString(R.string.status_pip_unavailable));
+            return;
+        }
+        hideOverlay();
+        hideRecordingsPanel();
+        clearQuickSearchOverlay();
+        hideZapBanner();
+        if (touchControlsBar != null) {
+            touchControlsBar.setVisibility(View.GONE);
+        }
+        PictureInPictureParams params = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(16, 9))
+                .build();
+        if (!enterPictureInPictureMode(params)) {
+            showStatus(getString(R.string.status_pip_unavailable));
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        if (!isInPictureInPictureMode && touchDeviceMode) {
+            showTouchControlsTemporarily();
+        }
     }
 
     private String resolveBaseUrl() {
@@ -876,7 +1036,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void setupPlayer() {
-        playerController = new PlayerController(this, playerView, baseUrl, ioExecutor, uiHandler, new PlayerController.Host() {
+        playerController = new PlayerController(this, playerView, vlcVideoLayout, baseUrl, ioExecutor, uiHandler, new PlayerController.Host() {
             @Override
             public void showStatus(String text) {
                 MainActivity.this.showStatus(text);
@@ -899,6 +1059,11 @@ public class MainActivity extends FragmentActivity {
                         && channelId.equals(startupFastPlaybackChannelId)) {
                     return true;
                 }
+                if (currentPlaybackTransientItem != null
+                        && channelId != null
+                        && channelId.equals(currentPlaybackTransientItem.id)) {
+                    return true;
+                }
                 ChannelItem current = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : null;
                 return current != null && channelId != null && channelId.equals(current.id);
             }
@@ -915,7 +1080,9 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean isCompactTouchDeviceMode() {
-                return MainActivity.this.useCompactTouchEpgMode();
+                // Playback buffering/recovery applies to every touch device,
+                // including large-screen tablets. EPG compactness is unrelated.
+                return MainActivity.this.touchDeviceMode;
             }
 
             @Override
@@ -929,17 +1096,30 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
-            public void onPlaybackReady(PlayerController.PlaybackRequest request) {
-                MainActivity.this.stopVodLoadingOverlay(request == null ? "" : request.channelId);
-                MainActivity.this.hideStartupLoading();
+            public void onPlaybackReady(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics, boolean recoveredFromRebuffer) {
+                if (shouldKeepLoadingUntilFirstFrame(request) && MainActivity.this.isVodLoadingActive()) {
+                    ChannelItem current = MainActivity.this.getCurrentPlaybackChannelItem();
+                    MainActivity.this.updateVodLoadingState(
+                            current,
+                            MainActivity.this.getVodLoadingTitle(current),
+                            getString(R.string.vod_loading_step_buffering),
+                            getString(R.string.vod_loading_detail_buffering)
+                    );
+                } else {
+                    MainActivity.this.stopVodLoadingOverlay(request == null ? "" : request.channelId);
+                    MainActivity.this.hideStartupLoading();
+                }
                 MainActivity.this.markPostUpdatePlaybackHealthy(request == null ? "" : request.channelId);
-                MainActivity.this.sendPlaybackHeartbeat("ready");
+                MainActivity.this.sendPlaybackHeartbeat(recoveredFromRebuffer ? "recovered" : "ready");
             }
 
             @Override
             public void onFirstVideoFrameRendered(String channelId) {
                 MainActivity.this.stopVodLoadingOverlay(channelId);
                 MainActivity.this.hideStartupLoading();
+                MainActivity.this.persistVerifiedStartupChannel(channelId);
+                MainActivity.this.startupFirstFrameRendered = true;
+                MainActivity.this.schedulePendingStartupCatalogHydration();
                 MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
                 MainActivity.this.markPostUpdatePlaybackHealthy(channelId);
             }
@@ -952,6 +1132,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void onPlaybackAutoRecoveryReady(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics, String reason) {
                 MainActivity.this.handlePlaybackAutoRecoveryReady(request, diagnostics, reason);
+            }
+
+            @Override
+            public void onPlaybackStalled(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
+                MainActivity.this.sendPlaybackHeartbeat("stalled");
             }
         });
         playerController.initialize();
@@ -971,8 +1156,8 @@ public class MainActivity extends FragmentActivity {
         applyBoundedPanelWidth(quickSearchOverlay, screenWidth, R.dimen.quick_search_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin) * 2);
         applyChannelOverlayWidth(screenWidth);
         applyBoundedPanelWidth(recordingsPanel, screenWidth, R.dimen.recordings_panel_width, getResources().getDimensionPixelSize(R.dimen.player_edge_margin));
-        applyBoundedPanelWidth(timeshiftBarContainer, screenWidth, R.dimen.touch_surface_panel_max_width, getResources().getDimensionPixelSize(R.dimen.touch_surface_panel_side_margin) * 2);
-        applyBoundedPanelWidth(touchHomeHub, screenWidth, R.dimen.touch_home_hub_max_width, getResources().getDimensionPixelSize(R.dimen.touch_home_hub_side_margin) * 2);
+        applyTouchSurfacePanelWidth(timeshiftBarContainer, screenWidth, R.dimen.touch_surface_panel_max_width, getResources().getDimensionPixelSize(R.dimen.touch_surface_panel_side_margin) * 2);
+        applyTouchSurfacePanelWidth(touchHomeHub, screenWidth, R.dimen.touch_home_hub_max_width, getResources().getDimensionPixelSize(R.dimen.touch_home_hub_side_margin) * 2);
         applyOverlayPanelMode();
     }
 
@@ -1022,12 +1207,25 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void applyBoundedPanelWidth(View view, int screenWidthPx, int maxWidthDimenRes, int reservedHorizontalPx) {
+        applyPanelWidth(view, screenWidthPx, maxWidthDimenRes, reservedHorizontalPx, false);
+    }
+
+    private void applyTouchSurfacePanelWidth(View view, int screenWidthPx, int maxWidthDimenRes, int reservedHorizontalPx) {
+        applyPanelWidth(view, screenWidthPx, maxWidthDimenRes, reservedHorizontalPx, touchDeviceMode && !isLargeTouchScreen());
+    }
+
+    private void applyPanelWidth(View view, int screenWidthPx, int maxWidthDimenRes, int reservedHorizontalPx, boolean expandForPhoneTouch) {
         if (view == null) {
             return;
         }
         int maxWidth = getResources().getDimensionPixelSize(maxWidthDimenRes);
-        int availableWidth = Math.max(dp(220), screenWidthPx - Math.max(0, reservedHorizontalPx));
-        int targetWidth = Math.min(maxWidth, availableWidth);
+        int targetWidth = ResponsiveSurfaceWidthPolicy.resolvePanelWidth(
+                screenWidthPx,
+                reservedHorizontalPx,
+                maxWidth,
+                dp(220),
+                expandForPhoneTouch
+        );
         ViewGroup.LayoutParams rawParams = view.getLayoutParams();
         if (rawParams == null) {
             return;
@@ -1074,12 +1272,17 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hasSeekablePlayback() {
-                return playerController != null && (playerController.getPlaybackSeekState() != null || getCurrentU7dSeekState() != null);
+                return getEffectivePlaybackSeekState() != null;
             }
 
             @Override
             public boolean isTimeshiftSeekInProgress() {
                 return timeshiftSeekUserDragging;
+            }
+
+            @Override
+            public boolean isTimeshiftFocused() {
+                return !touchDeviceMode && touchControlsFocusState.timeshiftFocused();
             }
 
             @Override
@@ -1169,21 +1372,27 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         updateVodTouchControlsState();
+        if (modernPlaybackHud) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+            overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
+            updatePlaybackStateBadge(playerController.getTimeshiftState());
+            return;
+        }
         boolean showForTouch = touchDeviceMode
-                && touchSurfaceHudVisible;
+                && touchSurfaceHudVisible
+                && !compactPlaybackHud;
         boolean showForTv = !touchDeviceMode
                 && ((touchControlsController != null && touchControlsController.isTvTimeshiftHudVisible())
-                || (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE));
+                || (touchControlsBar != null
+                && touchControlsBar.getVisibility() == View.VISIBLE
+                && !compactPlaybackHud));
         if ((!showForTouch && !showForTv) || hasBlockingOverlaySurfaceVisible()) {
             timeshiftBarContainer.setVisibility(View.GONE);
             overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
             updatePlaybackStateBadge(playerController.getTimeshiftState());
             return;
         }
-        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
-        if (state == null) {
-            state = getCurrentU7dSeekState();
-        }
+        PlayerController.PlaybackSeekState state = getEffectivePlaybackSeekState();
         if (state == null) {
             timeshiftBarContainer.setVisibility(View.GONE);
             overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
@@ -1220,7 +1429,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean resumeLive() {
-                return playerController != null && playerController.resumeTimeshiftLive();
+                return resumeCurrentPlaybackLive();
             }
 
             @Override
@@ -1240,8 +1449,12 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void seekTo(long targetMs) {
-                if (isCurrentU7dPlayback()) {
+                if (isCurrentOrangeVirtualTimeshiftPlayback()) {
+                    seekOrangeLiveArchiveTo(targetMs);
+                } else if (isCurrentU7dPlayback()) {
                     seekCurrentU7dPlaybackTo(targetMs);
+                } else if (isCurrentOrangeLivePlayback()) {
+                    seekOrangeLiveArchiveTo(targetMs);
                 } else if (playerController != null) {
                     playerController.seekTimeshiftTo(targetMs);
                 }
@@ -1254,7 +1467,7 @@ public class MainActivity extends FragmentActivity {
         });
         if (!touchDeviceMode || model == null || !model.liveVisible) {
             if (model == null || !touchControlsFocusState.timeshiftFocused()) {
-                return model;
+                return model == null ? null : model.withModernStyle(modernPlaybackHud);
             }
             return new TimeshiftBarUiModel(
                     model.statusLabel,
@@ -1262,10 +1475,11 @@ public class MainActivity extends FragmentActivity {
                     model.liveVisible,
                     model.onLiveClick,
                     model.onSeekStart,
+                    model.onSeekEnd,
                     model.previewLabelProvider,
                     model.seekCommitHandler,
                     true
-            );
+            ).withModernStyle(modernPlaybackHud);
         }
         return new TimeshiftBarUiModel(
                 model.statusLabel,
@@ -1273,10 +1487,11 @@ public class MainActivity extends FragmentActivity {
                 false,
                 null,
                 model.onSeekStart,
+                model.onSeekEnd,
                 model.previewLabelProvider,
                 model.seekCommitHandler,
                 touchControlsFocusState.timeshiftFocused()
-        );
+        ).withModernStyle(modernPlaybackHud);
     }
 
     private String buildPlaybackSeekLabel(PlayerController.PlaybackSeekState state) {
@@ -1284,7 +1499,7 @@ public class MainActivity extends FragmentActivity {
             return "";
         }
         ChannelItem current = getCurrentPlaybackChannelItem();
-        if (current != null && current.isVod && !state.liveCapable) {
+        if (current != null && current.isVod && !isU7dReplayItem(current) && !state.liveCapable) {
             return getString(R.string.vod_playback_seek_label, displayName(current), formatDurationLabel(state.currentMs), formatDurationLabel(state.endMs));
         }
         return state.label;
@@ -1297,23 +1512,143 @@ public class MainActivity extends FragmentActivity {
                 && !currentPlaybackU7dBaseUrl.trim().isEmpty();
     }
 
+    private boolean isCurrentOrangeLivePlayback() {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        return !isCurrentU7dPlayback()
+                && current != null
+                && !current.isVod
+                && isOrangeChannel(current);
+    }
+
+    private boolean isCurrentOrangeVirtualTimeshiftPlayback() {
+        return isCurrentU7dPlayback()
+                && currentPlaybackU7dBaseUrl.contains("/u7d/orange/")
+                && currentPlaybackU7dProgramEndMs >= System.currentTimeMillis() - ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS;
+    }
+
+    private PlayerController.PlaybackSeekState getEffectivePlaybackSeekState() {
+        if (isCurrentOrangeVirtualTimeshiftPlayback()) {
+            long localPositionMs = playerController == null
+                    ? 0L
+                    : Math.max(0L, playerController.getCurrentPlaybackPosition());
+            long playbackWallClockMs = currentPlaybackU7dProgramStartMs
+                    + currentPlaybackU7dOffsetMs
+                    + localPositionMs;
+            long windowStartMs = System.currentTimeMillis() - ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS;
+            long currentMs = Math.max(
+                    0L,
+                    Math.min(ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS, playbackWallClockMs - windowStartMs)
+            );
+            return new PlayerController.PlaybackSeekState(
+                    0L,
+                    ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS,
+                    currentMs,
+                    formatDurationLabel(currentMs) + " / " + formatDurationLabel(ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS),
+                    true
+            );
+        }
+        PlayerController.PlaybackSeekState replay = getCurrentU7dSeekState();
+        if (replay != null) {
+            return replay;
+        }
+        if (isCurrentOrangeLivePlayback()) {
+            return new PlayerController.PlaybackSeekState(
+                    0L,
+                    ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS,
+                    ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS,
+                    getString(R.string.timeshift_status_live),
+                    true
+            );
+        }
+        return playerController == null ? null : playerController.getPlaybackSeekState();
+    }
+
+    private void seekOrangeLiveArchiveTo(long targetMs) {
+        ChannelItem channel = getCurrentPlaybackChannelItem();
+        if (isCurrentOrangeVirtualTimeshiftPlayback()) {
+            channel = findChannelItemById(lastChannelId);
+        }
+        if (channel == null || !isOrangeChannel(channel)) {
+            showStatus(getString(R.string.timeshift_status_unavailable));
+            return;
+        }
+        long boundedTarget = Math.max(0L, Math.min(ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS, targetMs));
+        long delayMs = ORANGE_VIRTUAL_TIMESHIFT_WINDOW_MS - boundedTarget;
+        if (delayMs < LIVE_BADGE_THRESHOLD_MS) {
+            showStatus(getString(R.string.timeshift_status_live));
+            return;
+        }
+        if (u7dProgramsLoading) {
+            showStatus(getString(R.string.status_loading_u7d));
+            return;
+        }
+        final ChannelItem archiveChannel = channel;
+        final long targetWallClockMs = System.currentTimeMillis() - delayMs;
+        u7dProgramsLoading = true;
+        showLoading(
+                getString(R.string.u7d_menu_title, displayName(channel)),
+                getString(R.string.u7d_loading_step_programs),
+                formatPlaybackPreviewLabel(getEffectivePlaybackSeekState(), boundedTarget)
+        );
+        interactiveExecutor.execute(() -> {
+            try {
+                List<EpgRepository.EpgProgram> programs = fetchMovistarIsmU7dPrograms(archiveChannel);
+                EpgRepository.EpgProgram match = null;
+                for (EpgRepository.EpgProgram candidate : programs) {
+                    long start = parseIsoMillis(candidate == null ? "" : candidate.startTime);
+                    long end = parseIsoMillis(candidate == null ? "" : candidate.endTime);
+                    if (start > 0L && end > start && targetWallClockMs >= start && targetWallClockMs < end) {
+                        match = candidate;
+                        break;
+                    }
+                }
+                EpgRepository.EpgProgram selected = match;
+                if (selected == null) {
+                    throw new IllegalStateException("Orange U7D program not found for requested time");
+                }
+                long offsetMs = Math.max(0L, targetWallClockMs - parseIsoMillis(selected.startTime));
+                postUiIfAlive(() -> {
+                    u7dProgramsLoading = false;
+                    hideStartupLoading();
+                    playMovistarIsmU7dProgram(archiveChannel, selected, offsetMs);
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "Orange virtual timeshift seek failed channel=" + archiveChannel.id, e);
+                postUiIfAlive(() -> {
+                    u7dProgramsLoading = false;
+                    hideStartupLoading();
+                    showError(getString(R.string.status_u7d_load_failed));
+                });
+            }
+        });
+    }
+
     private boolean isU7dReplayItem(ChannelItem item) {
         return item != null && "u7d_proxy".equals(safeLower(item.playbackProfile));
     }
 
     private void clearCurrentU7dPlayback() {
+        cancelPendingU7dSeek();
         currentPlaybackU7dItem = null;
         currentPlaybackU7dBaseUrl = "";
         currentPlaybackU7dDurationMs = 0L;
         currentPlaybackU7dOffsetMs = 0L;
+        currentPlaybackU7dProgramStartMs = 0L;
+        currentPlaybackU7dProgramEndMs = 0L;
     }
 
     private PlayerController.PlaybackSeekState getCurrentU7dSeekState() {
         if (!isCurrentU7dPlayback()) {
             return null;
         }
-        long localPositionMs = playerController == null ? 0L : Math.max(0L, playerController.getCurrentPlaybackPosition());
-        long currentMs = Math.max(0L, Math.min(currentPlaybackU7dDurationMs, currentPlaybackU7dOffsetMs + localPositionMs));
+        long currentMs;
+        if (pendingU7dSeekTargetMs >= 0L) {
+            currentMs = pendingU7dSeekTargetMs;
+        } else {
+            long localPositionMs = playerController == null ? 0L : Math.max(0L, playerController.getCurrentPlaybackPosition());
+            currentMs = currentPlaybackU7dOffsetMs + localPositionMs;
+        }
+        currentMs = Math.max(0L, Math.min(currentPlaybackU7dDurationMs, currentMs));
         return new PlayerController.PlaybackSeekState(
                 0L,
                 currentPlaybackU7dDurationMs,
@@ -1329,14 +1664,47 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         long offsetMs = Math.max(0L, Math.min(currentPlaybackU7dDurationMs, targetMs));
+        pendingU7dSeekTargetMs = offsetMs;
+        int generation = ++pendingU7dSeekGeneration;
+        if (pendingU7dSeekRunnable != null) {
+            uiHandler.removeCallbacks(pendingU7dSeekRunnable);
+        }
+        pendingU7dSeekRunnable = () -> commitPendingU7dSeek(generation);
+        postUiDelayedIfAlive(pendingU7dSeekRunnable, U7D_SEEK_COMMIT_DELAY_MS);
+        touchControlsFocusState.focusTimeshift();
+        showStatus(formatDurationLabel(offsetMs) + " / " + formatDurationLabel(currentPlaybackU7dDurationMs));
+        updateTimeshiftBar();
+        scheduleTouchControlsAutoHide();
+    }
+
+    private void commitPendingU7dSeek(int generation) {
+        if (generation != pendingU7dSeekGeneration
+                || pendingU7dSeekTargetMs < 0L
+                || !isCurrentU7dPlayback()) {
+            return;
+        }
+        long offsetMs = pendingU7dSeekTargetMs;
+        pendingU7dSeekTargetMs = -1L;
+        pendingU7dSeekRunnable = null;
         currentPlaybackU7dOffsetMs = offsetMs;
         ChannelItem source = currentPlaybackU7dItem;
         String seekUrl = buildU7dUrlWithOffset(currentPlaybackU7dBaseUrl, offsetMs);
         ChannelItem seekItem = clonePlaybackItemWithUrl(source, seekUrl);
         currentPlaybackU7dItem = seekItem;
         currentPlaybackTransientItem = seekItem;
-        showStatus(formatDurationLabel(offsetMs) + " / " + formatDurationLabel(currentPlaybackU7dDurationMs));
+        if (playerController != null) {
+            playerController.stopForSourceSwitch();
+        }
         playChannelItemInternal(seekItem, true, 0L);
+    }
+
+    private void cancelPendingU7dSeek() {
+        pendingU7dSeekGeneration++;
+        pendingU7dSeekTargetMs = -1L;
+        if (pendingU7dSeekRunnable != null) {
+            uiHandler.removeCallbacks(pendingU7dSeekRunnable);
+            pendingU7dSeekRunnable = null;
+        }
     }
 
     private String buildU7dUrlWithOffset(String baseReplayUrl, long offsetMs) {
@@ -1354,7 +1722,7 @@ public class MainActivity extends FragmentActivity {
         if (source == null) {
             return null;
         }
-        return new ChannelItem(
+        ChannelItem clone = new ChannelItem(
                 source.id,
                 source.name,
                 source.tvgId,
@@ -1378,6 +1746,9 @@ public class MainActivity extends FragmentActivity {
                 source.vodDurationSeconds,
                 source.playbackProfile
         );
+        clone.nowProgram = source.nowProgram;
+        clone.nextProgram = source.nextProgram;
+        return clone;
     }
 
     private void updateVodTouchControlsState() {
@@ -1406,7 +1777,7 @@ public class MainActivity extends FragmentActivity {
 
     private TouchControlsBarUiModel buildTouchControlsBarUiModel() {
         TouchControlsNowPlayingUiModel nowPlaying = buildTouchControlsNowPlayingUiModel(getCurrentPlaybackChannelItem());
-        return TouchControlsUiFactory.build(new TouchControlsUiFactory.Host() {
+        TouchControlsBarUiModel model = TouchControlsUiFactory.build(new TouchControlsUiFactory.Host() {
             @Override
             public String text(int resId) {
                 return getString(resId);
@@ -1449,6 +1820,9 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void showOverlay() {
+                if (!touchDeviceMode) {
+                    hideTouchControlsForRemote();
+                }
                 MainActivity.this.showOverlay();
             }
 
@@ -1459,6 +1833,8 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void showVodLibrary() {
+                hideTouchControlsForRemote();
+                hideZapBanner();
                 showVodLibraryDialog();
             }
 
@@ -1471,11 +1847,13 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean supportsU7d(ChannelItem item) {
-                return isMovistarIsmChannel(item);
+                return MainActivity.this.supportsU7d(item);
             }
 
             @Override
             public void openU7d(ChannelItem item) {
+                hideTouchControlsForRemote();
+                hideZapBanner();
                 openMovistarIsmU7d(item);
             }
 
@@ -1556,11 +1934,71 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         }, touchControlsFocusState.actionIndex(), nowPlaying);
+        PlayerController.PlaybackSeekState integratedSeekState = modernPlaybackHud && !compactPlaybackHud
+                ? getEffectivePlaybackSeekState()
+                : null;
+        TimeshiftBarUiModel integratedTimeshift = integratedSeekState == null
+                ? null
+                : buildTimeshiftBarUiModel(integratedSeekState);
+        return new TouchControlsBarUiModel(
+                model.contextTitle,
+                model.contextSubtitle,
+                model.onContextClick,
+                model.actions,
+                model.focusedActionIndex,
+                model.nowPlaying,
+                !compactPlaybackHud,
+                modernPlaybackHud,
+                integratedTimeshift
+        );
     }
 
     private TouchControlsNowPlayingUiModel buildTouchControlsNowPlayingUiModel(ChannelItem channel) {
-        if (channel == null || channel.isVod) {
+        if (channel == null) {
             return TouchControlsNowPlayingUiModel.EMPTY;
+        }
+        if (channel.isVod && !isU7dReplayItem(channel)) {
+            long positionMs = playerController == null ? 0L : Math.max(0L, playerController.getCurrentPlaybackPosition());
+            long durationMs = Math.max(0L, channel.vodDurationSeconds * 1_000L);
+            int progress = durationMs <= 0L ? 0 : (int) Math.min(100L, (positionMs * 100L) / durationMs);
+            String remaining = durationMs > positionMs
+                    ? getString(R.string.zap_banner_remaining, formatDurationShort(durationMs - positionMs))
+                    : "";
+            return new TouchControlsNowPlayingUiModel(
+                    true,
+                    channel.logoUrl,
+                    "",
+                    getString(R.string.tools_section_vod),
+                    displayName(channel),
+                    buildVodInfoMeta(channel),
+                    "",
+                    false,
+                    channel.logoUrl,
+                    remaining,
+                    progress,
+                    durationMs > 0L,
+                    ""
+            );
+        }
+        if (isU7dReplayItem(channel)) {
+            String programTitle = channel.nowProgram == null || channel.nowProgram.trim().isEmpty()
+                    ? displayName(channel)
+                    : channel.nowProgram.trim();
+            return new TouchControlsNowPlayingUiModel(
+                    true,
+                    channel.logoUrl,
+                    "",
+                    getString(R.string.u7d_replay_group),
+                    programTitle,
+                    buildVodInfoMeta(channel),
+                    "",
+                    false,
+                    channel.logoUrl,
+                    "",
+                    0,
+                    false,
+                    ""
+            );
         }
         ensureTouchControlsEpgPair(channel);
         EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channel.id);
@@ -1707,6 +2145,7 @@ public class MainActivity extends FragmentActivity {
 
     private void showTouchControlsTemporarily() {
         hideZapBanner();
+        compactPlaybackHud = false;
         if (touchControlsController != null) {
             touchControlsController.showTouchControlsTemporarily();
             ensureTouchControlsEpgPair(getCurrentPlaybackChannelItem());
@@ -2079,33 +2518,55 @@ public class MainActivity extends FragmentActivity {
                 || startupResult == null
                 || !startupResult.liveOnly
                 || startupCatalogHydrationRunning
-                || catalogRepository == null
-                || ioExecutor == null) {
+                || catalogRepository == null) {
             return;
         }
+        pendingStartupCatalogHydration = startupResult;
+        schedulePendingStartupCatalogHydration();
+    }
+
+    private void schedulePendingStartupCatalogHydration() {
+        if (!startupFirstFrameRendered
+                || pendingStartupCatalogHydration == null
+                || startupCatalogHydrationRunning
+                || activityDestroyed) {
+            return;
+        }
+        CatalogLoadResult startupResult = pendingStartupCatalogHydration;
+        pendingStartupCatalogHydration = null;
         startupCatalogHydrationRunning = true;
-        long startMs = System.currentTimeMillis();
-        Log.w(TAG, "startup catalog hydration scheduled after live-first load channels="
+        Log.w(TAG, "startup catalog hydration deferred until playback is stable channels="
                 + (startupResult.channels == null ? 0 : startupResult.channels.size()));
-        ioExecutor.execute(() -> {
-            try {
-                CatalogLoadResult hydrated = catalogRepository.hydrateFullStartupCatalog();
-                long durationMs = System.currentTimeMillis() - startMs;
-                postUiIfAlive(() -> {
-                    startupCatalogHydrationRunning = false;
-                    logCatalogStartupMetrics("startup-hydrate", hydrated, durationMs);
-                    applyHydratedStartupCatalog(hydrated);
-                    showStatus("Catalogo completo preparado: TV "
-                            + (hydrated == null ? 0 : hydrated.liveItems)
-                            + " · VOD "
-                            + (hydrated == null ? 0 : hydrated.vodItems));
-                });
-            } catch (Exception | OutOfMemoryError e) {
-                long durationMs = System.currentTimeMillis() - startMs;
-                Log.w(TAG, "startup catalog hydration failed durationMs=" + durationMs, e);
-                postUiIfAlive(() -> startupCatalogHydrationRunning = false);
+        postUiDelayedIfAlive(() -> {
+            if (activityDestroyed) {
+                startupCatalogHydrationRunning = false;
+                return;
             }
-        });
+            long startMs = System.currentTimeMillis();
+            catalogHydrationExecutor.execute(() -> {
+                try {
+                    CatalogLoadResult hydrated = catalogRepository.hydrateFullStartupCatalog();
+                    long durationMs = System.currentTimeMillis() - startMs;
+                    postUiIfAlive(() -> {
+                        startupCatalogHydrationRunning = false;
+                        if (hydrated == null) {
+                            Log.w(TAG, "startup catalog hydration skipped: full parsed cache not ready");
+                            return;
+                        }
+                        logCatalogStartupMetrics("startup-hydrate", hydrated, durationMs);
+                        applyHydratedStartupCatalog(hydrated);
+                        showStatus("Catalogo completo preparado: TV "
+                                + (hydrated == null ? 0 : hydrated.liveItems)
+                                + " · VOD "
+                                + (hydrated == null ? 0 : hydrated.vodItems));
+                    });
+                } catch (Exception | OutOfMemoryError e) {
+                    long durationMs = System.currentTimeMillis() - startMs;
+                    Log.w(TAG, "startup catalog hydration failed durationMs=" + durationMs, e);
+                    postUiIfAlive(() -> startupCatalogHydrationRunning = false);
+                }
+            });
+        }, 25_000L);
     }
 
     private void applyHydratedStartupCatalog(CatalogLoadResult result) {
@@ -2117,6 +2578,9 @@ public class MainActivity extends FragmentActivity {
         String keepChannelId = current == null ? lastChannelId : current.id;
         currentOfflinePermissions = result.offlinePermissions == null ? new OfflinePermissions() : result.offlinePermissions;
         syncOverlayCoordinator();
+        dynamicMovistarVodLoaded = false;
+        dynamicDaznVodLoaded = false;
+		dynamicPrimeVodLoaded = false;
         invalidateVodDerivedCaches();
         channelOverlayCoordinator.applyLoadedChannels(result, keepChannelId);
         syncOverlayStateFromCoordinator();
@@ -2126,7 +2590,7 @@ public class MainActivity extends FragmentActivity {
         updateOverlaySearchState();
         refreshTouchControlsBar();
         if (current != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
-            updateZapBannerContent(getCurrentPlaybackChannelItem());
+            updatePlaybackHudContent(getCurrentPlaybackChannelItem());
         }
         Log.w(TAG, "startup catalog hydrated applied total=" + allChannels.size()
                 + " visible=" + channels.size()
@@ -2144,7 +2608,9 @@ public class MainActivity extends FragmentActivity {
             if (cached == null) {
                 return;
             }
-            if (lastChannelId != null && !lastChannelId.trim().isEmpty() && !lastChannelId.equals(cached.id)) {
+            if (!StartupChannelPolicy.shouldUseCachedFastChannel(lastChannelId, cached.id)) {
+                Log.w(TAG, "startup fast playback skipped because cache is stale cached=" + cached.id
+                        + " lastLive=" + lastChannelId);
                 return;
             }
             if (isProtectedItem(cached) && isProtectedContentLocked()) {
@@ -2195,10 +2661,13 @@ public class MainActivity extends FragmentActivity {
         epgLoadedFilterKeys.clear();
         epgQueuedFilterKeys.clear();
         epgFilterOffsets.clear();
+        dynamicMovistarVodLoaded = false;
+        dynamicDaznVodLoaded = false;
+		dynamicPrimeVodLoaded = false;
         invalidateVodDerivedCaches();
         uiHandler.removeCallbacks(progressiveEpgRunnable);
         long coordinatorStartMs = System.currentTimeMillis();
-        channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId);
+        channelOverlayCoordinator.applyLoadedChannels(result, lastChannelId, true);
         long coordinatorMs = System.currentTimeMillis() - coordinatorStartMs;
         long overlayStartMs = System.currentTimeMillis();
         syncOverlayStateFromCoordinator();
@@ -2263,6 +2732,7 @@ public class MainActivity extends FragmentActivity {
             postUiDelayedIfAlive(() -> loadEpgNow(false), 450L);
         }
         postUiDelayedIfAlive(this::maybeShowStartupHub, 700L);
+        pullUserPreferences();
     }
 
     private void selectChannelIndex(int index) {
@@ -2350,7 +2820,9 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         stopPlaybackHeartbeat("stop");
-        saveLastChannelId(ch.id);
+        if (StartupChannelPolicy.shouldRememberAsLastLive(ch.isVod, isU7dReplayItem(ch))) {
+            saveLastChannelId(ch.id);
+        }
         currentPlaybackTransientItem = findChannelIndexById(ch.id) < 0 ? ch : null;
         if (!isU7dReplayItem(ch)) {
             clearCurrentU7dPlayback();
@@ -2367,9 +2839,12 @@ public class MainActivity extends FragmentActivity {
         if (ch.isVod) {
             currentPlaybackVodId = ch.id;
             lastVodId = ch.id;
+            rememberVodResumeItem(ch);
             if (prefs != null) {
                 prefs.edit().putString(PREF_LAST_VOD_ID, ch.id).apply();
             }
+        }
+        if (ch.isVod || isU7dReplayItem(ch)) {
             startVodLoadingOverlay(ch);
         } else {
             stopVodLoadingOverlay("");
@@ -2394,7 +2869,7 @@ public class MainActivity extends FragmentActivity {
         if (isOverlayVisible()) {
             requestChannelOverlaySurfaceRender();
         }
-        showZapBanner(ch);
+        showCompactPlaybackHud(ch);
         startPlaybackHeartbeat(ch);
     }
 
@@ -2402,34 +2877,20 @@ public class MainActivity extends FragmentActivity {
         return !isFinishing() && (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 || !isDestroyed());
     }
 
+    static boolean shouldKeepLoadingUntilFirstFrame(PlayerController.PlaybackRequest request) {
+        return request != null && (request.vod || "u7d_proxy".equals(safeLower(request.playbackProfile)));
+    }
+
     private boolean shouldResolveStreamInfoBeforePlayback(ChannelItem channel, PlayerController.PlaybackRequest request) {
         return PlaybackStreamInfoPolicy.shouldResolveBeforePlayback(BuildConfig.STANDALONE_MODE, channel, request, displayName(channel));
     }
 
-    private boolean isMovistarIsmChannel(ChannelItem channel) {
-        if (channel == null || channel.isVod) {
-            return false;
-        }
-        String platform = safeLower(channel.platformName);
-        String group = safeLower(channel.group);
-        String name = safeLower(displayName(channel));
-        String playUrl = safeLower(channel.playUrl);
-        String fallbackUrl = safeLower(channel.fallbackPlayUrl);
-        boolean movistar = platform.contains("movistar ism")
-                || (platform.contains("movistar") && group.contains("movistar"))
-                || playUrl.contains("movistarplus")
-                || isMovistarIsmBackendUrl(fallbackUrl);
-        boolean smooth = platform.contains("ism")
-                || playUrl.contains(".isml/manifest")
-                || playUrl.contains(".ism/manifest")
-                || isMovistarIsmBackendUrl(fallbackUrl);
-        return movistar && smooth && !name.trim().isEmpty();
+    private boolean isOrangeChannel(ChannelItem channel) {
+        return U7dChannelPolicy.isOrangeChannel(channel);
     }
 
-    private boolean isMovistarIsmBackendUrl(String url) {
-        return url != null
-                && (url.contains("/hls/ism/")
-                || url.contains("/hls/ism-mux/"));
+    private boolean supportsU7d(ChannelItem channel) {
+        return U7dChannelPolicy.supports(channel);
     }
 
     private String displayName(ChannelItem channelItem) {
@@ -2567,7 +3028,7 @@ public class MainActivity extends FragmentActivity {
                     updateOverlayPanel();
                     ChannelItem currentChannel = getCurrentPlaybackChannelItem();
                     if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
-                        showZapBanner(currentChannel);
+                        showCompactPlaybackHud(currentChannel);
                     }
                 });
             } catch (Exception e) {
@@ -2988,7 +3449,7 @@ public class MainActivity extends FragmentActivity {
                     updateOverlayPanel();
                     ChannelItem currentChannel = getCurrentPlaybackChannelItem();
                     if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
-                        showZapBanner(currentChannel);
+                        showCompactPlaybackHud(currentChannel);
                     }
                     if (continueProgressive && !compactEpgMode) {
                         scheduleNextProgressiveEpgLoad(batchSnapshot.complete
@@ -4111,7 +4572,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openMovistarIsmU7d(ChannelItem channel) {
-        if (!isMovistarIsmChannel(channel)) {
+        if (!supportsU7d(channel)) {
             showStatus(getString(R.string.status_u7d_unavailable));
             return;
         }
@@ -4159,9 +4620,6 @@ public class MainActivity extends FragmentActivity {
             return result;
         }
         List<String> candidates = new ArrayList<>();
-        // El host IPTV publica la API U7D; fire.tvbep.com puede ser solo el host de media.
-        // Priorizarlo evita un 404 y el timeout/fallback visible al abrir el menu.
-        addUniqueU7dBaseUrl(candidates, "https://iptv.bepllorens.com");
         addUniqueU7dBaseUrl(candidates, baseUrl);
         String token = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
         String deviceId = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getDeviceId();
@@ -4202,7 +4660,7 @@ public class MainActivity extends FragmentActivity {
                 .appendPath("api")
                 .appendPath("offline")
                 .appendPath("u7d")
-                .appendPath("movistar-ism")
+                .appendPath(isOrangeChannel(channel) ? "orange" : "movistar-ism")
                 .appendPath("programs");
         if (channel != null) {
             if (channel.id != null && !channel.id.trim().isEmpty()) {
@@ -4260,7 +4718,9 @@ public class MainActivity extends FragmentActivity {
                     continue;
                 }
                 String title = firstNonEmpty(program.optString("display_name", ""), program.optString("title", ""));
-                String icon = firstNonEmpty(program.optString("poster", ""), program.optString("logo", ""), row.optString("logo", ""), channel.logoUrl);
+                String icon = isOrangeChannel(channel)
+                        ? firstNonEmpty(channel.logoUrl, program.optString("logo", ""), program.optString("poster", ""))
+                        : firstNonEmpty(program.optString("poster", ""), program.optString("logo", ""), row.optString("logo", ""), channel.logoUrl);
                 String description = firstNonEmpty(program.optString("description", ""), program.optString("genre", ""));
                 result.add(new EpgRepository.EpgProgram(
                         channel.id,
@@ -4307,7 +4767,9 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             String title = firstNonEmpty(program.optString("display_name", ""), program.optString("title", ""));
-            String icon = firstNonEmpty(program.optString("poster", ""), program.optString("logo", ""), channel.logoUrl);
+            String icon = isOrangeChannel(channel)
+                    ? firstNonEmpty(channel.logoUrl, program.optString("logo", ""), program.optString("poster", ""))
+                    : firstNonEmpty(program.optString("poster", ""), program.optString("logo", ""), channel.logoUrl);
             String description = firstNonEmpty(program.optString("description", ""), program.optString("genre", ""));
             result.add(new EpgRepository.EpgProgram(
                     channel.id,
@@ -4407,7 +4869,9 @@ public class MainActivity extends FragmentActivity {
         }
         showTvOptionsDialog(
                 getString(R.string.u7d_menu_title, displayName(channel)),
-                getString(R.string.u7d_menu_message),
+                getString(isOrangeChannel(channel)
+                        ? R.string.u7d_menu_message_orange
+                        : R.string.u7d_menu_message),
                 options,
                 actions
         );
@@ -4417,14 +4881,26 @@ public class MainActivity extends FragmentActivity {
         return !touchDeviceMode && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE;
     }
 
+    private boolean isTouchControlsExpandedForRemote() {
+        return !compactPlaybackHud;
+    }
+
     private void hideTouchControlsForRemote() {
         if (touchControlsController != null) {
             touchControlsController.hideAllTransientControls();
-        } else if (touchControlsBar != null) {
+            touchControlsController.cancelTimers();
+        }
+        if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
         }
+        if (timeshiftBarContainer != null) {
+            timeshiftBarContainer.setVisibility(View.GONE);
+        }
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, false);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
         touchControlsFocusState.clear();
         currentTouchControlsBarModel = null;
+        compactPlaybackHud = false;
     }
 
     private void resetTouchControlsFocus() {
@@ -4468,30 +4944,42 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean canSeekPlaybackBack() {
-        PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
-        if (state == null && playerController != null) {
-            state = playerController.getPlaybackSeekState();
-        }
+        PlayerController.PlaybackSeekState state = getEffectivePlaybackSeekState();
         return state != null && state.currentMs > state.startMs;
     }
 
     private boolean canSeekPlaybackForward() {
-        PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
-        if (state == null && playerController != null) {
-            state = playerController.getPlaybackSeekState();
-        }
+        PlayerController.PlaybackSeekState state = getEffectivePlaybackSeekState();
         return state != null && state.currentMs < state.endMs;
     }
 
     private boolean canResumeLivePlayback() {
-        if (playerController == null) {
-            return false;
+        if (isCurrentOrangeVirtualTimeshiftPlayback()) {
+            ChannelItem liveChannel = findChannelItemById(lastChannelId);
+            return liveChannel != null && isOrangeChannel(liveChannel);
         }
-        PlayerController.PlaybackSeekState state = playerController.getPlaybackSeekState();
+        PlayerController.PlaybackSeekState state = getEffectivePlaybackSeekState();
         return state != null && state.liveCapable && state.currentMs < state.endMs;
     }
 
+    private boolean resumeCurrentPlaybackLive() {
+        if (isCurrentOrangeVirtualTimeshiftPlayback()) {
+            ChannelItem liveChannel = findChannelItemById(lastChannelId);
+            if (liveChannel != null && isOrangeChannel(liveChannel)) {
+                clearCurrentU7dPlayback();
+                playChannelItemInternal(liveChannel, true, 0L);
+                return true;
+            }
+        }
+        return playerController != null && playerController.resumeTimeshiftLive();
+    }
+
     private boolean seekTouchControlsBack() {
+        if (isCurrentOrangeVirtualTimeshiftPlayback()) {
+            PlayerController.PlaybackSeekState state = getEffectivePlaybackSeekState();
+            seekOrangeLiveArchiveTo(state.currentMs - 30_000L);
+            return true;
+        }
         if (isCurrentU7dPlayback()) {
             PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
             if (state == null) {
@@ -4500,10 +4988,28 @@ public class MainActivity extends FragmentActivity {
             seekCurrentU7dPlaybackTo(state.currentMs - 30_000L);
             return true;
         }
+        if (isCurrentOrangeLivePlayback()) {
+            PlayerController.PlaybackSeekState state = getEffectivePlaybackSeekState();
+            seekOrangeLiveArchiveTo(state.currentMs - 30_000L);
+            return true;
+        }
         return playerController != null && playerController.seekTimeshiftBack();
     }
 
     private boolean seekTouchControlsForward() {
+        if (isCurrentOrangeVirtualTimeshiftPlayback()) {
+            PlayerController.PlaybackSeekState state = getEffectivePlaybackSeekState();
+            if (state.currentMs + 30_000L >= state.endMs) {
+                ChannelItem liveChannel = findChannelItemById(lastChannelId);
+                if (liveChannel != null) {
+                    clearCurrentU7dPlayback();
+                    playChannelItemInternal(liveChannel, true, 0L);
+                    return true;
+                }
+            }
+            seekOrangeLiveArchiveTo(state.currentMs + 30_000L);
+            return true;
+        }
         if (isCurrentU7dPlayback()) {
             PlayerController.PlaybackSeekState state = getCurrentU7dSeekState();
             if (state == null) {
@@ -4512,11 +5018,14 @@ public class MainActivity extends FragmentActivity {
             seekCurrentU7dPlaybackTo(state.currentMs + 30_000L);
             return true;
         }
+        if (isCurrentOrangeLivePlayback()) {
+            return false;
+        }
         return playerController != null && playerController.seekTimeshiftForward();
     }
 
     private void focusTouchControlsTimeshift() {
-        if (playerController == null || (playerController.getPlaybackSeekState() == null && getCurrentU7dSeekState() == null)) {
+        if (getEffectivePlaybackSeekState() == null) {
             scheduleTouchControlsAutoHide();
             return;
         }
@@ -4565,17 +5074,29 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void playMovistarIsmU7dProgram(ChannelItem channel, EpgRepository.EpgProgram program) {
+        playMovistarIsmU7dProgram(channel, program, 0L);
+    }
+
+    private void playMovistarIsmU7dProgram(
+            ChannelItem channel,
+            EpgRepository.EpgProgram program,
+            long requestedOffsetMs
+    ) {
         if (channel == null || program == null) {
             showStatus(getString(R.string.status_u7d_unavailable));
             return;
         }
-        String replayUrl = buildMovistarIsmU7dUrl(channel, program);
-        if (replayUrl.isEmpty()) {
+        cancelPendingU7dSeek();
+        String baseReplayUrl = buildMovistarIsmU7dUrl(channel, program);
+        if (baseReplayUrl.isEmpty()) {
             showStatus(getString(R.string.status_u7d_unavailable));
             return;
         }
         long startMs = parseIsoMillis(program.startTime);
         long endMs = parseIsoMillis(program.endTime);
+        long durationMs = Math.max(0L, endMs - startMs);
+        long offsetMs = Math.max(0L, Math.min(Math.max(0L, durationMs - 1_000L), requestedOffsetMs));
+        String replayUrl = buildU7dUrlWithOffset(baseReplayUrl, offsetMs);
         String programTitle = program.title == null || program.title.trim().isEmpty()
                 ? displayName(channel)
                 : program.title.trim();
@@ -4589,10 +5110,12 @@ public class MainActivity extends FragmentActivity {
                 "",
                 channel.originalOrder,
                 channel.dashboardOrder,
-                true,
+                false,
                 false,
                 channel.platformId,
-                getString(R.string.u7d_replay_platform),
+                getString(isOrangeChannel(channel)
+                        ? R.string.u7d_replay_platform_orange
+                        : R.string.u7d_replay_platform),
                 new ArrayList<>(),
                 "",
                 "",
@@ -4603,9 +5126,17 @@ public class MainActivity extends FragmentActivity {
                 endMs > startMs ? (endMs - startMs) / 1000L : 0L,
                 "u7d_proxy"
         );
-        currentPlaybackU7dBaseUrl = replayUrl;
-        currentPlaybackU7dDurationMs = Math.max(0L, endMs - startMs);
-        currentPlaybackU7dOffsetMs = 0L;
+        replayItem.nowProgram = programTitle;
+        replayItem.nextProgram = "";
+        epgProgramPairByChannelId.put(
+                replayItem.id,
+                new EpgRepository.EpgProgramPair(program, null)
+        );
+        currentPlaybackU7dBaseUrl = baseReplayUrl;
+        currentPlaybackU7dDurationMs = durationMs;
+        currentPlaybackU7dOffsetMs = offsetMs;
+        currentPlaybackU7dProgramStartMs = startMs;
+        currentPlaybackU7dProgramEndMs = endMs;
         currentPlaybackU7dItem = replayItem;
         currentPlaybackTransientItem = replayItem;
         String previousLastChannelId = lastChannelId;
@@ -4633,7 +5164,7 @@ public class MainActivity extends FragmentActivity {
                     .appendPath("api")
                     .appendPath("offline")
                     .appendPath("u7d")
-                    .appendPath("movistar-ism")
+                    .appendPath(isOrangeChannel(channel) ? "orange" : "movistar-ism")
                     .appendPath("stream")
                     .appendQueryParameter("channel_id", channel.id)
                     .appendQueryParameter("tvg_id", channel.tvgId)
@@ -4658,14 +5189,10 @@ public class MainActivity extends FragmentActivity {
 
     private String resolveMovistarU7dStreamBaseUrl() {
         String normalized = normalizeBaseUrl(baseUrl);
-        try {
-            String host = Uri.parse(normalized).getHost();
-            if ("fire.tvbep.com".equalsIgnoreCase(host)) {
-                return "https://iptv.bepllorens.com";
-            }
-        } catch (Exception ignored) {
+        if (!normalized.isEmpty()) {
+            return normalized;
         }
-        return normalized.isEmpty() ? "https://iptv.bepllorens.com" : normalized;
+        return normalizeBaseUrl(BuildConfig.OFFLINE_BASE_URL);
     }
 
     private void showAboutDialog() {
@@ -4685,6 +5212,10 @@ public class MainActivity extends FragmentActivity {
         if (channel == null) {
             return;
         }
+        if (isPrimeSeriesGroup(channel)) {
+            showPrimeSeriesEpisodes(channel, onBack);
+            return;
+        }
         if (isProtectedItem(channel) && isProtectedContentLocked()) {
             ensureParentalAccessForItem(channel, () -> showVodInfoDialog(channel, onBack));
             return;
@@ -4699,29 +5230,32 @@ public class MainActivity extends FragmentActivity {
             dismissModalForNextAction(dialogHolder[0], onBack);
         };
         List<VodPanelActionUiModel> primaryActions = new ArrayList<>();
-        primaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_play), true, () -> {
-            Dialog activeDialog = dialogHolder[0];
-            if (activeDialog != null && activeDialog.isShowing()) {
-                activeDialog.dismiss();
-            }
-            playVodItem(channel, true);
-        }));
-        if (resumeMs > 30_000L) {
-            primaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_continue), true, () -> {
-                Dialog activeDialog = dialogHolder[0];
-                if (activeDialog != null && activeDialog.isShowing()) {
-                    activeDialog.dismiss();
-                }
-                playChannelItemInternal(channel, true, getVodResumePosition(channel.id));
-            }));
-            primaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_start_over), true, () -> {
-                Dialog activeDialog = dialogHolder[0];
-                if (activeDialog != null && activeDialog.isShowing()) {
-                    activeDialog.dismiss();
-                }
-                clearVodResumePosition(channel.id);
-                playChannelItemInternal(channel, true, 0L);
-            }));
+        if (resumeMs <= 30_000L) {
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.vod_action_play),
+                    true,
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> {
+                        clearVodResumePosition(channel.id);
+                        playChannelItemInternal(channel, true, 0L);
+                    })
+            ));
+        } else {
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.vod_action_continue),
+                    true,
+                    () -> dismissModalForNextAction(
+                            dialogHolder[0],
+                            () -> playChannelItemInternal(channel, true, getVodResumePosition(channel.id))
+                    )
+            ));
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.vod_action_start_over),
+                    true,
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> {
+                        clearVodResumePosition(channel.id);
+                        playChannelItemInternal(channel, true, 0L);
+                    })
+            ));
         }
         List<VodPanelActionUiModel> secondaryActions = new ArrayList<>();
         secondaryActions.add(new VodPanelActionUiModel(getString(R.string.vod_action_more_vod), false, () -> {
@@ -4769,6 +5303,46 @@ public class MainActivity extends FragmentActivity {
             });
         }
         handleModalShown();
+    }
+
+    private boolean isPrimeSeriesGroup(ChannelItem item) {
+        return item != null
+                && item.playUrl != null
+                && item.playUrl.startsWith("prime-series:");
+    }
+
+    private void showPrimeSeriesEpisodes(ChannelItem series, Runnable onBack) {
+        if (catalogRepository == null || series == null) {
+            return;
+        }
+        String assetId = series.playUrl.substring("prime-series:".length()).trim();
+        showLoading(getString(R.string.tools_section_vod), series.name, "Cargando temporadas y episodios");
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> episodes = new ArrayList<>();
+            Exception failure = null;
+            try {
+                episodes.addAll(catalogRepository.fetchPrimeSeriesEpisodes(assetId));
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "Prime series episodes request failed series=" + series.name, e);
+            }
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                if (finalFailure != null) {
+                    showStatus("No se pudieron cargar los episodios de Prime Video");
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                episodes.sort((left, right) -> {
+                    int byOrder = Integer.compare(left == null ? 0 : left.originalOrder, right == null ? 0 : right.originalOrder);
+                    return byOrder != 0 ? byOrder : displayName(left).compareToIgnoreCase(displayName(right));
+                });
+                showPagedVodLibraryList(series.name, episodes, onBack, 0);
+            });
+        });
     }
 
     private String buildVodProgressLabel(ChannelItem channel, long resumeMs) {
@@ -5244,16 +5818,16 @@ public class MainActivity extends FragmentActivity {
                 RecordingsRepository.RecordingsResult fetchedPrimaryResult = scheduledMode
                         ? recordingsRepository.fetchScheduledRecordings()
                         : recordingsRepository.fetchCompletedRecordings();
-                RecordingsRepository.RecordingsResult fetchedAlternateResult = scheduledMode
-                        ? recordingsRepository.fetchCompletedRecordings()
-                        : recordingsRepository.fetchScheduledRecordings();
                 final RecordingsRepository.RecordingsResult primaryResult = filterRecordingsResult(fetchedPrimaryResult);
-                final RecordingsRepository.RecordingsResult alternateResult = filterRecordingsResult(fetchedAlternateResult);
                 if (!primaryResult.items.isEmpty()) {
                     Log.d(TAG, "loadRecordingsPanel primary scheduled=" + primaryResult.scheduledMode + " count=" + primaryResult.items.size());
                     postUiIfAlive(() -> showRecordingsPanel(primaryResult, desiredId));
                     return;
                 }
+                RecordingsRepository.RecordingsResult fetchedAlternateResult = scheduledMode
+                        ? recordingsRepository.fetchCompletedRecordings()
+                        : recordingsRepository.fetchScheduledRecordings();
+                final RecordingsRepository.RecordingsResult alternateResult = filterRecordingsResult(fetchedAlternateResult);
                 if (!alternateResult.items.isEmpty()) {
                     Log.d(TAG, "loadRecordingsPanel alternate scheduled=" + alternateResult.scheduledMode + " count=" + alternateResult.items.size());
                     postUiIfAlive(() -> {
@@ -5643,6 +6217,18 @@ public class MainActivity extends FragmentActivity {
         if (prefs != null && channelID != null) {
             prefs.edit().putString(PREF_LAST_CHANNEL_ID, channelID).apply();
         }
+        scheduleUserPreferencePush();
+    }
+
+    private void persistVerifiedStartupChannel(String channelID) {
+        if (catalogSnapshotStore == null || channelID == null || !channelID.equals(lastChannelId)) {
+            return;
+        }
+        ChannelItem channel = findChannelItemById(channelID);
+        if (!isLinearStartupChannel(channel) || isProtectedItem(channel)) {
+            return;
+        }
+        catalogSnapshotStore.saveStartupPlaybackChannel(BuildConfig.CATALOG_SNAPSHOT_URL, channel);
     }
 
     private void persistNavigationState() {
@@ -5831,6 +6417,12 @@ public class MainActivity extends FragmentActivity {
             ensureParentalAccessForFilterKey(filter.key, () -> applySelectedFilterFromPicker(filter));
             return;
         }
+        if (BuildConfig.STANDALONE_MODE
+                && (filter.type == FILTER_VOD || filter.type == FILTER_VOD_ADULT)
+                && !hasLoadedVodItems()) {
+            prepareVodCatalogOnDemand(filter);
+            return;
+        }
         syncOverlayCoordinator();
         channelOverlayCoordinator.setSearchQuery("");
         channelOverlayCoordinator.setFavoritesOnly("favorites".equals(filter.key));
@@ -5855,6 +6447,53 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_filter_changed, decorateProtectedFilterLabel(filter)));
         scheduleVisibleEpgLoad(OFFLINE_EPG_PRIORITY_DELAY_MS);
         showOverlay();
+    }
+
+    private boolean hasLoadedVodItems() {
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.isVod) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void prepareVodCatalogOnDemand(ChannelFilter requestedFilter) {
+        if (catalogRepository == null || offlineCatalogRefreshRunning) {
+            showStatus("Preparando el catalogo VOD…");
+            return;
+        }
+        offlineCatalogRefreshRunning = true;
+        if (playerController != null) {
+            playerController.setPlayWhenReady(false);
+        }
+        showStatus("Preparando el catalogo VOD. La TV queda en pausa mientras termina.");
+        long startMs = System.currentTimeMillis();
+        catalogHydrationExecutor.execute(() -> {
+            try {
+                CatalogLoadResult result = catalogRepository.hydrateFullStartupCatalog();
+                if (result == null) {
+                    result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
+                }
+                CatalogLoadResult finalResult = result;
+                long durationMs = System.currentTimeMillis() - startMs;
+                postUiIfAlive(() -> {
+                    offlineCatalogRefreshRunning = false;
+                    applyHydratedStartupCatalog(finalResult);
+                    applySelectedFilterFromPicker(requestedFilter);
+                    showStatus("Catalogo VOD preparado en " + durationMs + " ms");
+                });
+            } catch (Exception | OutOfMemoryError e) {
+                Log.e(TAG, "on-demand VOD catalog preparation failed", e);
+                postUiIfAlive(() -> {
+                    offlineCatalogRefreshRunning = false;
+                    if (playerController != null) {
+                        playerController.setPlayWhenReady(true);
+                    }
+                    showError("No se pudo preparar VOD: " + fallbackUnknown(e.getMessage()));
+                });
+            }
+        });
     }
 
     private ChannelFilter findAdjacentFilter(int delta) {
@@ -5913,6 +6552,223 @@ public class MainActivity extends FragmentActivity {
             prefs.edit().putStringSet(PREF_FAVORITES, new HashSet<>(favoriteChannelIds)).apply();
         }
         favoriteOrderStore.syncToFavorites(favoriteChannelIds);
+        scheduleUserPreferencePush();
+    }
+
+    private void pullUserPreferences() {
+        if (!BuildConfig.STANDALONE_MODE
+                || userPreferenceSyncRepository == null
+                || !userPreferenceSyncRepository.isConfigured()
+                || userPreferencesLoading
+                || activityDestroyed) {
+            return;
+        }
+        userPreferencesLoading = true;
+        submitControlTask("user-preferences-pull", () -> {
+            try {
+                JSONObject payload = userPreferenceSyncRepository.load(BuildConfig.OFFLINE_BASE_URL);
+                postUiIfAlive(() -> {
+                    userPreferencesLoading = false;
+                    lastUserPreferencePullMs = System.currentTimeMillis();
+                    applyRemoteUserPreferences(payload);
+                    userPreferencesReady = true;
+                    if (!payload.optBoolean("exists", false)) {
+                        scheduleUserPreferencePush();
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "user preference pull failed; keeping local state", e);
+                postUiIfAlive(() -> {
+                    userPreferencesLoading = false;
+                    userPreferencesReady = true;
+                });
+            }
+        });
+    }
+
+    private void applyRemoteUserPreferences(JSONObject payload) {
+        if (payload == null || !payload.optBoolean("exists", false)) {
+            remoteUserPreferences = payload == null ? new JSONObject() : payload;
+            return;
+        }
+        remoteUserPreferences = payload;
+        favoriteChannelIds.clear();
+        favoriteChannelIds.addAll(jsonStringList(payload.optJSONArray("favorites"), 500));
+        if (prefs != null) {
+            prefs.edit().putStringSet(PREF_FAVORITES, new HashSet<>(favoriteChannelIds)).apply();
+        }
+        if (favoriteOrderStore != null) {
+            favoriteOrderStore.syncToFavorites(favoriteChannelIds);
+        }
+
+        String remoteLastChannel = payload.optString("last_channel_id", "").trim();
+        boolean localLastChannelAvailable = findChannelItemById(lastChannelId) != null;
+        if (!remoteLastChannel.isEmpty()
+                && findChannelItemById(remoteLastChannel) != null
+                && StartupChannelPolicy.shouldApplyRemoteLastChannel(lastChannelId, localLastChannelAvailable)) {
+            lastChannelId = remoteLastChannel;
+            if (prefs != null) {
+                prefs.edit().putString(PREF_LAST_CHANNEL_ID, remoteLastChannel).apply();
+            }
+        }
+
+        if (recentChannelsStore != null) {
+            Map<String, String> namesById = new HashMap<>();
+            for (ChannelItem item : allChannels) {
+                if (item != null && item.id != null) {
+                    namesById.put(item.id, displayName(item));
+                }
+            }
+            recentChannelsStore.mergeIds(jsonStringList(payload.optJSONArray("recents"), 50), namesById);
+        }
+
+        JSONObject progress = payload.optJSONObject("vod_progress");
+        if (progress != null) {
+            Map<String, Long> localPositions = new HashMap<>(vodResumePositions);
+            Map<String, Long> localUpdatedAt = new HashMap<>(vodResumeUpdatedAt);
+            long remotePayloadUpdatedAt = parseIsoMillis(payload.optString("updated_at", ""));
+            vodResumePositions.clear();
+            vodResumeUpdatedAt.clear();
+            java.util.Iterator<String> keys = progress.keys();
+            while (keys.hasNext()) {
+                String id = keys.next();
+                JSONObject entry = progress.optJSONObject(id);
+                if (entry == null) {
+                    continue;
+                }
+                long positionMs = Math.max(0L, Math.round(entry.optDouble("position", 0d) * 1000d));
+                long durationMs = Math.max(0L, Math.round(entry.optDouble("duration", 0d) * 1000d));
+                if (positionMs > 0L && durationMs > 60_000L && positionMs < durationMs * 0.98d) {
+                    vodResumePositions.put(id, positionMs);
+                    vodResumeUpdatedAt.put(id, Math.max(0L, entry.optLong("updated_at", remotePayloadUpdatedAt)));
+                }
+            }
+            boolean preservedLocal = false;
+            for (Map.Entry<String, Long> local : localPositions.entrySet()) {
+                long localTime = Math.max(0L, localUpdatedAt.getOrDefault(local.getKey(), 0L));
+                if (!vodResumePositions.containsKey(local.getKey())
+                        && local.getValue() != null
+                        && local.getValue() > 0L
+                        && localTime > remotePayloadUpdatedAt) {
+                    vodResumePositions.put(local.getKey(), local.getValue());
+                    vodResumeUpdatedAt.put(local.getKey(), localTime);
+                    preservedLocal = true;
+                }
+            }
+            saveVodResumePositions(false);
+            invalidateVodDerivedCaches();
+            if (preservedLocal) {
+                postUiDelayedIfAlive(this::scheduleUserPreferencePush, 100L);
+            }
+        }
+
+        JSONObject presets = payload.optJSONObject("multiview_presets");
+        if (presets != null && prefs != null) {
+            java.util.Iterator<String> names = presets.keys();
+            int index = 0;
+            SharedPreferences.Editor editor = prefs.edit();
+            while (names.hasNext() && index < MULTIVIEW_PRESET_COUNT) {
+                List<String> ids = jsonStringList(presets.optJSONArray(names.next()), 4);
+                if (ids.size() >= 2) {
+                    editor.putString(getMultiViewPresetKey(index++), String.join("|", ids));
+                }
+            }
+            editor.apply();
+        }
+        refreshOverlayChannelList();
+        updateOverlaySearchState();
+        refreshTouchControlsBar();
+    }
+
+    private void scheduleUserPreferencePush() {
+        if (!userPreferencesReady || activityDestroyed) {
+            return;
+        }
+        uiHandler.removeCallbacks(userPreferencePushRunnable);
+        postUiDelayedIfAlive(userPreferencePushRunnable, USER_PREFERENCE_SYNC_DEBOUNCE_MS);
+    }
+
+    private void pushUserPreferences() {
+        if (!userPreferencesReady
+                || userPreferenceSyncRepository == null
+                || !userPreferenceSyncRepository.isConfigured()
+                || activityDestroyed) {
+            return;
+        }
+        JSONObject payload = buildUserPreferencePayload();
+        submitControlTask("user-preferences-push", () -> {
+            try {
+                JSONObject stored = userPreferenceSyncRepository.save(BuildConfig.OFFLINE_BASE_URL, payload);
+                postUiIfAlive(() -> remoteUserPreferences = stored == null ? new JSONObject() : stored);
+            } catch (Exception e) {
+                Log.w(TAG, "user preference push failed", e);
+            }
+        });
+    }
+
+    private JSONObject buildUserPreferencePayload() {
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("favorites", new JSONArray(favoriteChannelIds));
+            List<String> recents = new ArrayList<>();
+            if (recentChannelsStore != null) {
+                for (RecentChannelsStore.RecentChannelItem item : recentChannelsStore.getItems()) {
+                    if (item != null && item.channelId != null && !item.channelId.trim().isEmpty()) {
+                        recents.add(item.channelId.trim());
+                    }
+                }
+            }
+            payload.put("recents", new JSONArray(recents));
+            payload.put("last_channel_id", lastChannelId == null ? "" : lastChannelId);
+
+            JSONObject progress = new JSONObject();
+            for (Map.Entry<String, Long> saved : vodResumePositions.entrySet()) {
+                ChannelItem item = findChannelItemById(saved.getKey());
+                if (item == null) {
+                    item = vodResumeItems.get(saved.getKey());
+                }
+                long durationMs = item == null ? 0L : Math.max(0L, item.vodDurationSeconds * 1000L);
+                long positionMs = saved.getValue() == null ? 0L : Math.max(0L, saved.getValue());
+                if (durationMs <= 60_000L || positionMs <= 0L || positionMs >= durationMs * 0.98d) {
+                    continue;
+                }
+                progress.put(saved.getKey(), new JSONObject()
+                        .put("position", positionMs / 1000d)
+                        .put("duration", durationMs / 1000d)
+                        .put("updated_at", Math.max(0L, vodResumeUpdatedAt.getOrDefault(saved.getKey(), System.currentTimeMillis()))));
+            }
+            payload.put("vod_progress", progress);
+            payload.put("watchlist", remoteUserPreferences.optJSONArray("watchlist") == null
+                    ? new JSONArray()
+                    : new JSONArray(remoteUserPreferences.optJSONArray("watchlist").toString()));
+
+            JSONObject presets = new JSONObject();
+            for (int index = 0; index < MULTIVIEW_PRESET_COUNT; index++) {
+                List<String> ids = getMultiViewPresetIds(index);
+                if (ids.size() >= 2) {
+                    presets.put("Offline " + (index + 1), new JSONArray(ids));
+                }
+            }
+            payload.put("multiview_presets", presets);
+        } catch (Exception e) {
+            Log.w(TAG, "failed to build user preference payload", e);
+        }
+        return payload;
+    }
+
+    private static List<String> jsonStringList(JSONArray values, int limit) {
+        List<String> out = new ArrayList<>();
+        if (values == null || limit <= 0) {
+            return out;
+        }
+        Set<String> seen = new HashSet<>();
+        for (int index = 0; index < values.length() && out.size() < limit; index++) {
+            String value = values.optString(index, "").trim();
+            if (!value.isEmpty() && seen.add(value)) {
+                out.add(value);
+            }
+        }
+        return out;
     }
 
     private void toggleFavoriteSelected() {
@@ -6081,6 +6937,9 @@ public class MainActivity extends FragmentActivity {
         hideZapBanner();
         hideRecordingsPanel();
         closeMultiView();
+        if (!touchDeviceMode && isTouchControlsVisibleForRemote()) {
+            hideTouchControlsForRemote();
+        }
         if (touchDeviceMode) {
             if (touchControlsController != null) {
                 touchControlsController.cancelTimers();
@@ -6092,6 +6951,7 @@ public class MainActivity extends FragmentActivity {
         }
         updateOverlayPanel();
         updateOverlaySearchState();
+        channelOverlay.bringToFront();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, touchDeviceMode ? 0L : OVERLAY_HIDE_MS);
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, true);
     }
@@ -6507,13 +7367,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void startVodLoadingOverlay(ChannelItem item) {
-        if (item == null || !item.isVod || item.id == null || item.id.trim().isEmpty()) {
+        if (item == null || (!item.isVod && !isU7dReplayItem(item)) || item.id == null || item.id.trim().isEmpty()) {
             return;
         }
         vodLoadingChannelId = item.id.trim();
         vodLoadingStartedAtMs = System.currentTimeMillis();
         uiHandler.removeCallbacks(vodLoadingProgressRunnable);
-        updateVodLoadingState(
+        showVodLoadingState(
                 item,
                 getVodLoadingTitle(item),
                 isU7dReplayItem(item) ? getString(R.string.u7d_loading_step_manifest) : getString(R.string.vod_loading_step_preparing),
@@ -6525,7 +7385,7 @@ public class MainActivity extends FragmentActivity {
     private void updateVodLoadingOverlay() {
         ChannelItem current = getCurrentPlaybackChannelItem();
         if (current == null || current.id == null || vodLoadingChannelId == null
-                || !current.id.equals(vodLoadingChannelId) || !current.isVod) {
+                || !current.id.equals(vodLoadingChannelId) || (!current.isVod && !isU7dReplayItem(current))) {
             stopVodLoadingOverlay("");
             return;
         }
@@ -6582,11 +7442,20 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void updateVodLoadingState(ChannelItem item, String title, String step, String detail) {
+        setVodLoadingState(item, title, step, detail);
+        updateLoading(vodLoadingTitle, vodLoadingStep, vodLoadingDetail);
+    }
+
+    private void showVodLoadingState(ChannelItem item, String title, String step, String detail) {
+        setVodLoadingState(item, title, step, detail);
+        showLoading(vodLoadingTitle, vodLoadingStep, vodLoadingDetail);
+    }
+
+    private void setVodLoadingState(ChannelItem item, String title, String step, String detail) {
         vodLoadingKind = isU7dReplayItem(item) ? "u7d" : isMovistarVodItem(item) ? "movistar_vod" : "vod";
         vodLoadingTitle = title == null ? "" : title.trim();
         vodLoadingStep = step == null ? "" : step.trim();
         vodLoadingDetail = detail == null ? "" : detail.trim();
-        updateLoading(vodLoadingTitle, vodLoadingStep, vodLoadingDetail);
     }
 
     private void stopVodLoadingOverlay(String channelId) {
@@ -6727,6 +7596,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean isTouchControlsExpanded() {
+                return MainActivity.this.isTouchControlsExpandedForRemote();
+            }
+
+            @Override
             public boolean isTouchControlsTimeshiftFocused() {
                 return MainActivity.this.isTouchControlsTimeshiftFocused();
             }
@@ -6738,7 +7612,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean resumeTimeshiftLive() {
-                return playerController != null && playerController.resumeTimeshiftLive();
+                return MainActivity.this.resumeCurrentPlaybackLive();
             }
 
             @Override
@@ -6768,7 +7642,13 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hasSeekablePlayback() {
-                return playerController != null && (playerController.getPlaybackSeekState() != null || getCurrentU7dSeekState() != null);
+                return getEffectivePlaybackSeekState() != null;
+            }
+
+            @Override
+            public boolean isVodPlayback() {
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                return current != null && current.isVod;
             }
 
             @Override
@@ -6855,6 +7735,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void hideTouchControls() {
                 MainActivity.this.hideTouchControlsForRemote();
+            }
+
+            @Override
+            public void keepTouchControlsVisible() {
+                MainActivity.this.scheduleTouchControlsAutoHide();
             }
 
             @Override
@@ -7122,7 +8007,9 @@ public class MainActivity extends FragmentActivity {
         epgExecutor.shutdownNow();
         interactiveExecutor.shutdownNow();
         controlExecutor.shutdownNow();
+        appUpdateExecutor.shutdownNow();
         catalogLoadExecutor.shutdownNow();
+        catalogHydrationExecutor.shutdownNow();
         if (playerController != null) {
             playerController.release();
             playerController = null;
@@ -7162,11 +8049,11 @@ public class MainActivity extends FragmentActivity {
                 channelItem.id,
                 displayName(channelItem),
                 channelItem.platformName,
-                channelItem.playUrl,
-                channelItem.fallbackPlayUrl,
+                PublicBackendUrlPolicy.rebaseLegacyUrl(channelItem.playUrl, baseUrl),
+                PublicBackendUrlPolicy.rebaseLegacyUrl(channelItem.fallbackPlayUrl, baseUrl),
                 resolvePlaybackModeForRequest(channelItem),
                 channelItem.drmScheme,
-                channelItem.drmLicenseUrl,
+                PublicBackendUrlPolicy.rebaseLegacyUrl(channelItem.drmLicenseUrl, baseUrl),
                 channelItem.directPlayback,
                 channelItem.isVod,
                 channelItem.playbackProfile
@@ -7616,21 +8503,17 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean shouldShowGenericVodQuickTarget(boolean adult) {
+        // Provider-specific VOD filters (Prime movies/series, DAZN, Plex, ...)
+        // refine the library; they must not remove the library entry point from
+        // the startup hub. At startup the snapshot can advertise VOD before all
+        // rows have been materialized in allChannels, so filter presence is the
+        // reliable early signal and the item count remains the fallback.
         for (ChannelFilter filter : filters) {
-            if (filter == null || filter.key == null) {
-                continue;
-            }
-            if (adult) {
-                if (filter.type == FILTER_VOD_ADULT && !"vod-adult".equals(filter.key)) {
-                    return false;
-                }
-            } else {
-                if (filter.type == FILTER_VOD && !"vod".equals(filter.key)) {
-                    return false;
-                }
+            if (filter != null && (adult ? filter.type == FILTER_VOD_ADULT : filter.type == FILTER_VOD)) {
+                return true;
             }
         }
-        return true;
+        return countItemsForQuickTarget(adult ? "vod-adult" : "vod") > 0;
     }
 
     private int countItemsForQuickTarget(String targetKey) {
@@ -8233,7 +9116,7 @@ public class MainActivity extends FragmentActivity {
                 }
 
                 @Override
-                public void onPlaybackReady(PlayerController.PlaybackRequest request) {
+                public void onPlaybackReady(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics, boolean recoveredFromRebuffer) {
                 }
 
                 @Override
@@ -8352,6 +9235,7 @@ public class MainActivity extends FragmentActivity {
             }
         }
         prefs.edit().putString(getMultiViewPresetKey(presetIndex), String.join("|", ids)).apply();
+        scheduleUserPreferencePush();
     }
 
     private String buildMultiViewPresetLabel(int presetIndex) {
@@ -8554,8 +9438,8 @@ public class MainActivity extends FragmentActivity {
             boolean hasChannel = i < multiViewChannels.size();
             boolean active = i == multiViewActiveIndex && hasChannel;
             GradientDrawable tileBackground = new GradientDrawable();
-            tileBackground.setColor(Color.parseColor("#FF1A2430"));
-            tileBackground.setStroke(active ? dpToPx(4) : dpToPx(2), active ? Color.parseColor("#FFCC7A00") : Color.parseColor("#55384B5E"));
+            tileBackground.setColor(Color.parseColor("#FF1A1730"));
+            tileBackground.setStroke(active ? dpToPx(4) : dpToPx(2), active ? Color.parseColor("#FFA889FF") : Color.parseColor("#663A2857"));
             multiTiles[i].setBackground(tileBackground);
             multiTiles[i].setAlpha(hasChannel ? 1f : 0.7f);
         }
@@ -8806,6 +9690,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean mobileTouchMode() {
+                return touchDeviceMode && !isLargeTouchScreen();
+            }
+
+            @Override
             public boolean isProtectedItem(ChannelItem item) {
                 return MainActivity.this.isProtectedItem(item);
             }
@@ -8882,7 +9771,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean supportsU7d(ChannelItem item) {
-                return isMovistarIsmChannel(item);
+                return MainActivity.this.supportsU7d(item);
             }
 
             @Override
@@ -8962,7 +9851,7 @@ public class MainActivity extends FragmentActivity {
         }
         toggleFavoriteForChannel(currentChannel);
         if (isZapBannerVisible()) {
-            updateZapBannerContent(currentChannel);
+            updatePlaybackHudContent(currentChannel);
             zapBannerController.refreshAutoHideTimer();
         }
     }
@@ -9049,7 +9938,49 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodLibraryDialog(Runnable onBack) {
+        if (BuildConfig.STANDALONE_MODE && !hasLoadedVodItems()) {
+            prepareVodVisualCatalogOnDemand(onBack);
+            return;
+        }
         showVodVisualLibraryDialog(onBack);
+    }
+
+    private void prepareVodVisualCatalogOnDemand(Runnable onBack) {
+        if (catalogRepository == null || offlineCatalogRefreshRunning) {
+            showStatus("Preparando el catalogo VOD…");
+            return;
+        }
+        offlineCatalogRefreshRunning = true;
+        showLoading(
+                getString(R.string.tools_section_vod),
+                "Preparando peliculas y series",
+                "Cargando el catalogo guardado en el dispositivo"
+        );
+        long startMs = System.currentTimeMillis();
+        catalogHydrationExecutor.execute(() -> {
+            try {
+                CatalogLoadResult result = catalogRepository.hydrateFullStartupCatalog();
+                if (result == null) {
+                    result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
+                }
+                CatalogLoadResult finalResult = result;
+                long durationMs = System.currentTimeMillis() - startMs;
+                postUiIfAlive(() -> {
+                    offlineCatalogRefreshRunning = false;
+                    hideStartupLoading();
+                    applyHydratedStartupCatalog(finalResult);
+                    Log.i(TAG, "visual VOD catalog prepared items=" + finalResult.vodItems + " durationMs=" + durationMs);
+                    showVodVisualLibraryDialog(onBack);
+                });
+            } catch (Exception | OutOfMemoryError e) {
+                Log.e(TAG, "visual VOD catalog preparation failed", e);
+                postUiIfAlive(() -> {
+                    offlineCatalogRefreshRunning = false;
+                    hideStartupLoading();
+                    showError("No se pudo preparar VOD: " + fallbackUnknown(e.getMessage()));
+                });
+            }
+        });
     }
 
     private void showVodVisualLibraryDialog() {
@@ -9205,6 +10136,99 @@ public class MainActivity extends FragmentActivity {
         handleModalShown();
     }
 
+    private void showVodPlatformFilterDialog(
+            VodVisualTypeFilter typeFilter,
+            VodVisualPlatformFilter currentPlatformFilter,
+            VodVisualStatusFilter statusFilter,
+            VodVisualSortFilter sortFilter,
+            String query,
+            Runnable onBack
+    ) {
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (VodVisualPlatformFilter candidate : VodVisualPlatformFilter.values()) {
+            int count = buildVodVisualFilteredItems(typeFilter, candidate, statusFilter, sortFilter, query).size();
+            if (!isVodPlatformFilterAvailable(candidate, count)) {
+                continue;
+            }
+			boolean pendingDynamicLoad = (candidate == VodVisualPlatformFilter.DAZN && !dynamicDaznVodLoaded
+					|| candidate == VodVisualPlatformFilter.PRIME && !dynamicPrimeVodLoaded) && count == 0;
+            if (pendingDynamicLoad) {
+                options.add(getString(
+                        candidate == currentPlatformFilter
+                                ? R.string.vod_visual_platform_picker_option_pending_selected
+                                : R.string.vod_visual_platform_picker_option_pending,
+                        candidate.label
+                ));
+            } else {
+                options.add(getString(
+                        candidate == currentPlatformFilter
+                                ? R.string.vod_visual_platform_picker_option_selected
+                                : R.string.vod_visual_platform_picker_option,
+                        candidate.label,
+                        count
+                ));
+            }
+            actions.add(() -> openVodVisualPlatformSelection(candidate, typeFilter, statusFilter, sortFilter, query, onBack));
+        }
+        Runnable returnToVod = () -> showVodVisualLibraryDialog(typeFilter, currentPlatformFilter, statusFilter, sortFilter, query, onBack);
+        showTvOptionsDialog(
+                R.string.vod_visual_platform_picker_title,
+                getString(R.string.vod_visual_platform_picker_message),
+                options,
+                actions,
+                returnToVod
+        );
+    }
+
+    private boolean isVodPlatformFilterAvailable(VodVisualPlatformFilter filter, int visibleCount) {
+        if (filter == VodVisualPlatformFilter.ALL || filter == VodVisualPlatformFilter.DAZN || filter == VodVisualPlatformFilter.PRIME) {
+            return true;
+        }
+        if (filter == VodVisualPlatformFilter.MOVISTAR) {
+            return currentOfflinePermissions == null || currentOfflinePermissions.allowsMovistarVod();
+        }
+        if (filter == VodVisualPlatformFilter.TIVIFY) {
+            return currentOfflinePermissions == null || currentOfflinePermissions.allowsTivifyVod();
+        }
+        if (filter == VodVisualPlatformFilter.RUNTIME) {
+            return currentOfflinePermissions == null || currentOfflinePermissions.allowsRuntimeVod();
+        }
+        if (filter == VodVisualPlatformFilter.PLEX) {
+            return currentOfflinePermissions == null || currentOfflinePermissions.allowsPlexVod();
+        }
+		if (filter == VodVisualPlatformFilter.PRIME) {
+			return currentOfflinePermissions == null || currentOfflinePermissions.allowsPrimeVod();
+		}
+        return visibleCount > 0;
+    }
+
+    private void openVodVisualPlatformSelection(
+            VodVisualPlatformFilter platformFilter,
+            VodVisualTypeFilter typeFilter,
+            VodVisualStatusFilter statusFilter,
+            VodVisualSortFilter sortFilter,
+            String query,
+            Runnable onBack
+    ) {
+        Runnable openSelectedPlatform = () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack);
+        if (platformFilter == VodVisualPlatformFilter.MOVISTAR
+                && !dynamicMovistarVodLoaded
+                && !dynamicMovistarVodLoading) {
+            loadDynamicMovistarVodCatalog("", openSelectedPlatform);
+        } else if (platformFilter == VodVisualPlatformFilter.DAZN
+                && !dynamicDaznVodLoaded
+                && !dynamicDaznVodLoading) {
+            loadDynamicDaznVodCatalog(openSelectedPlatform);
+		} else if (platformFilter == VodVisualPlatformFilter.PRIME
+				&& !dynamicPrimeVodLoaded
+				&& !dynamicPrimeVodLoading) {
+			loadDynamicPrimeVodCatalog(openSelectedPlatform);
+        } else {
+            openSelectedPlatform.run();
+        }
+    }
+
     private VodVisualPanelUiModel buildVodVisualPanelModel(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String trimmedSearchQuery, Dialog[] dialogHolder, Runnable onBack) {
         return VodVisualUiFactory.build(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, new VodVisualUiFactory.Host() {
             @Override
@@ -9278,6 +10302,33 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public List<ChannelItem> plexItems() {
+                List<ChannelItem> items = new ArrayList<>();
+                items.addAll(buildVodItemsByFilter("vod:plex:movies", false));
+                items.addAll(buildVodItemsByFilter("vod:plex:series", false));
+                return items;
+            }
+
+            @Override
+            public List<ChannelItem> daznItems() {
+                List<ChannelItem> items = new ArrayList<>();
+                items.addAll(buildVodItemsByFilter("vod:dazn:live", false));
+                items.addAll(buildVodItemsByFilter("vod:dazn:replay", false));
+                items.addAll(buildVodItemsByFilter("vod:dazn:ondemand", false));
+                return items;
+            }
+
+            @Override
+            public boolean plexBrowserAvailable() {
+                return currentOfflinePermissions == null || currentOfflinePermissions.allowsPlexVod();
+            }
+
+            @Override
+            public void openPlexBrowser() {
+                dismissModalForNextAction(dialogHolder[0], () -> showPlexVodBrowser(onBack));
+            }
+
+            @Override
             public List<ChannelItem> progressItems() {
                 return buildVodProgressItems();
             }
@@ -9324,8 +10375,15 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
-            public void openPlatform(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter nextPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter, String query) {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(currentTypeFilter, nextPlatformFilter, currentStatusFilter, currentSortFilter, query, onBack));
+            public void choosePlatform(VodVisualTypeFilter currentTypeFilter, VodVisualPlatformFilter currentPlatformFilter, VodVisualStatusFilter currentStatusFilter, VodVisualSortFilter currentSortFilter, String query) {
+                dismissModalForNextAction(dialogHolder[0], () -> showVodPlatformFilterDialog(
+                        currentTypeFilter,
+                        currentPlatformFilter,
+                        currentStatusFilter,
+                        currentSortFilter,
+                        query,
+                        onBack
+                ));
             }
 
             @Override
@@ -9471,6 +10529,22 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public String uiPaletteLabel() {
+                return MainActivity.this.uiPaletteLabel(OfflineTvTheme.activePaletteId());
+            }
+
+            @Override
+            public boolean modernPlaybackHudEnabled() {
+                return modernPlaybackHud;
+            }
+
+            @Override
+            public void openLive() {
+                applyQuickOverlayTarget("tv");
+                showOverlay();
+            }
+
+            @Override
             public void openTvGuide() {
                 showTvAndGuideToolsDialog(currentMenu);
             }
@@ -9556,6 +10630,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public void openVoiceSearch() {
+                startVoiceSearch();
+            }
+
+            @Override
             public void openGlobalSearch() {
                 showGlobalSearchDialog();
             }
@@ -9631,6 +10710,23 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public void openPictureInPicture() {
+                enterVideoPictureInPicture();
+            }
+
+            @Override
+            public void togglePlaybackHud() {
+                modernPlaybackHud = !modernPlaybackHud;
+                prefs.edit().putBoolean(PREF_PLAYBACK_HUD_MODERN, modernPlaybackHud).apply();
+                refreshTouchControlsBar();
+                updateTimeshiftBar();
+                showStatus(getString(modernPlaybackHud ? R.string.status_hud_modern : R.string.status_hud_classic));
+                if (currentMenu != null) {
+                    currentMenu.run();
+                }
+            }
+
+            @Override
             public void openQuickHub() {
                 showQuickHubDialog();
             }
@@ -9666,8 +10762,18 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public void openUiPalette() {
+                showUiPaletteDialog(currentMenu);
+            }
+
+            @Override
             public void openSettingsDiagnostics() {
                 showSettingsDiagnosticsDialog(onBack);
+            }
+
+            @Override
+            public void sendSupportBundle() {
+                sendSupportBundleNow();
             }
 
             @Override
@@ -9783,6 +10889,73 @@ public class MainActivity extends FragmentActivity {
                 java.util.Collections.singletonList(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null)),
                 null
         );
+    }
+
+    private void showUiPaletteDialog(Runnable onBack) {
+        List<String> paletteIds = Arrays.asList(
+                OfflineTvTheme.PALETTE_AURORA,
+                OfflineTvTheme.PALETTE_GRAPHITE,
+                OfflineTvTheme.PALETTE_EMERALD
+        );
+        String currentPalette = OfflineTvTheme.activePaletteId();
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (String paletteId : paletteIds) {
+            String label = uiPaletteLabel(paletteId);
+            String description = uiPaletteDescription(paletteId);
+            options.add(getString(
+                    paletteId.equals(currentPalette)
+                            ? R.string.ui_palette_option_selected
+                            : R.string.ui_palette_option,
+                    label,
+                    description
+            ));
+            actions.add(() -> applyUiPalette(paletteId, onBack));
+        }
+        showTvOptionsDialog(
+                R.string.ui_palette_title,
+                getString(R.string.ui_palette_message),
+                options,
+                actions,
+                onBack
+        );
+    }
+
+    private void applyUiPalette(String paletteId, Runnable returnAction) {
+        String normalized = OfflineTvTheme.normalizePaletteId(paletteId);
+        OfflineTvTheme.applyPalette(normalized);
+        if (prefs != null) {
+            prefs.edit().putString(PREF_UI_PALETTE, normalized).apply();
+        }
+        refreshTouchControlsBar();
+        updateTimeshiftBar();
+        getWindow().getDecorView().invalidate();
+        showStatus(getString(R.string.status_ui_palette_changed, uiPaletteLabel(normalized)));
+        if (returnAction != null) {
+            returnAction.run();
+        }
+    }
+
+    private String uiPaletteLabel(String paletteId) {
+        String normalized = OfflineTvTheme.normalizePaletteId(paletteId);
+        if (OfflineTvTheme.PALETTE_GRAPHITE.equals(normalized)) {
+            return getString(R.string.ui_palette_graphite);
+        }
+        if (OfflineTvTheme.PALETTE_EMERALD.equals(normalized)) {
+            return getString(R.string.ui_palette_emerald);
+        }
+        return getString(R.string.ui_palette_aurora);
+    }
+
+    private String uiPaletteDescription(String paletteId) {
+        String normalized = OfflineTvTheme.normalizePaletteId(paletteId);
+        if (OfflineTvTheme.PALETTE_GRAPHITE.equals(normalized)) {
+            return getString(R.string.ui_palette_graphite_description);
+        }
+        if (OfflineTvTheme.PALETTE_EMERALD.equals(normalized)) {
+            return getString(R.string.ui_palette_emerald_description);
+        }
+        return getString(R.string.ui_palette_aurora_description);
     }
 
     private void showSettingsCenterDialog() {
@@ -10328,8 +11501,16 @@ public class MainActivity extends FragmentActivity {
                 java.util.Collections.singletonList(new TvTextInputFieldUiModel(getString(R.string.parental_pin_hint), "", true, true)),
                 values -> {
                     String value = values == null || values.isEmpty() ? "" : values.get(0);
+                    long blockedBeforeMs = parentalControlStore.getBlockedRemainingMs();
+                    if (blockedBeforeMs > 0L) {
+                        showStatus(getString(R.string.parental_pin_temporarily_blocked, Math.max(1L, (blockedBeforeMs + 999L) / 1000L)));
+                        return;
+                    }
                     if (!parentalControlStore.verifyPin(value)) {
-                        showStatus(getString(R.string.parental_pin_wrong));
+                        long blockedAfterMs = parentalControlStore.getBlockedRemainingMs();
+                        showStatus(blockedAfterMs > 0L
+                                ? getString(R.string.parental_pin_temporarily_blocked, Math.max(1L, (blockedAfterMs + 999L) / 1000L))
+                                : getString(R.string.parental_pin_wrong));
                         return;
                     }
                     parentalControlStore.unlockSession();
@@ -10951,6 +12132,14 @@ public class MainActivity extends FragmentActivity {
         if (!BuildConfig.STANDALONE_MODE && !manual) {
             return;
         }
+        if (!manual
+                && !force
+                && BuildConfig.STANDALONE_MODE
+                && catalogRepository != null
+                && !catalogRepository.hasFullParsedCatalogCache()) {
+            Log.i(TAG, "automatic full catalog refresh deferred until VOD is requested");
+            return;
+        }
         if (catalogRepository == null || catalogSnapshotStore == null || offlineCatalogRefreshRunning) {
             return;
         }
@@ -10978,7 +12167,7 @@ public class MainActivity extends FragmentActivity {
         lastOfflineCatalogRefreshAttemptMs = startMs;
         lastOfflineCatalogRefreshError = "";
         boolean shouldFallbackOnFailure = preferFallbackOnFailure || allChannels.isEmpty();
-        ioExecutor.execute(() -> {
+        catalogHydrationExecutor.execute(() -> {
             try {
                 CatalogLoadResult result = catalogRepository.refreshSnapshotFromConfiguredUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
                 long durationMs = System.currentTimeMillis() - startMs;
@@ -10998,7 +12187,9 @@ public class MainActivity extends FragmentActivity {
                     if (result != null && "refresh-unchanged".equals(result.loadSource)) {
                         Log.i(TAG, "catalog refresh unchanged; keeping current UI state");
                     } else {
-                        applyLoadedChannels(result);
+                        // Una sincronizacion en background no debe reiniciar ni volver a
+                        // sintonizar el canal que ya esta reproduciendose.
+                        applyHydratedStartupCatalog(result);
                         runPostUpdateStartupHealthCheck("catalog-refresh", result);
                     }
                     if (manual) {
@@ -11067,6 +12258,36 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private void pollOfflineRemoteCommands() {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || controlExecutor == null || remoteCommandPollInFlight) {
+            return;
+        }
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        JSONObject extra = buildOfflineDeviceStatusExtra();
+        remoteCommandPollInFlight = true;
+        boolean submitted = submitControlTask("remote-command-poll", () -> {
+            try {
+                JSONObject response = catalogSnapshotStore.reportDeviceStatus(
+                        BuildConfig.OFFLINE_BASE_URL,
+                        status,
+                        "heartbeat",
+                        true,
+                        0L,
+                        "App activa",
+                        extra
+                );
+                handleOfflineRemoteCommands(response);
+            } catch (Exception e) {
+                Log.d(TAG, "remote command poll failed", e);
+            } finally {
+                remoteCommandPollInFlight = false;
+            }
+        });
+        if (!submitted) {
+            remoteCommandPollInFlight = false;
+        }
+    }
+
     private void handleOfflineRemoteCommands(JSONObject response) {
         if (response == null || uiHandler == null) {
             return;
@@ -11074,9 +12295,29 @@ public class MainActivity extends FragmentActivity {
         boolean forceCatalogRefresh = response.optBoolean("force_catalog_refresh_requested", false);
         boolean appUpdateCheck = response.optBoolean("app_update_check_requested", false);
         boolean wipeRequested = response.optBoolean("wipe_requested", false);
-        if (!forceCatalogRefresh && !appUpdateCheck && !wipeRequested) {
+        String playChannelId = response.optString("play_channel_id", "").trim();
+        String playbackCommand = response.optString("playback_command", "").trim().toLowerCase(Locale.ROOT);
+        String playbackContentType = response.optString("play_content_type", "live").trim().toLowerCase(Locale.ROOT);
+        String playbackContentId = response.optString("play_content_id", "").trim();
+        long playbackPositionMs = Math.max(0L, response.optLong("play_position_ms", 0L));
+        String commandId = response.optString("command_id", "").trim();
+        if (!commandId.isEmpty() && commandId.equals(lastRemotePlaybackCommandId)) {
+            playbackCommand = "";
+            playChannelId = "";
+        } else if (!commandId.isEmpty()) {
+            lastRemotePlaybackCommandId = commandId;
+        }
+        if (!playbackCommand.isEmpty()) {
+            playChannelId = "";
+        }
+        if (!forceCatalogRefresh && !appUpdateCheck && !wipeRequested && playChannelId.isEmpty() && playbackCommand.isEmpty()) {
             return;
         }
+        String finalPlaybackCommand = playbackCommand;
+        String finalPlaybackContentType = playbackContentType;
+        String finalPlaybackContentId = playbackContentId;
+        long finalPlaybackPositionMs = playbackPositionMs;
+        String finalPlayChannelId = playChannelId;
         postUiIfAlive(() -> {
             if (wipeRequested) {
                 performOfflineRemoteWipe();
@@ -11089,7 +12330,63 @@ public class MainActivity extends FragmentActivity {
             if (appUpdateCheck) {
                 checkAppUpdate(false);
             }
+            if (!finalPlaybackCommand.isEmpty()) {
+                applyRemotePlaybackCommand(finalPlaybackCommand, finalPlaybackContentType, finalPlaybackContentId, finalPlaybackPositionMs);
+            } else if (!finalPlayChannelId.isEmpty()) {
+                tuneChannelById(finalPlayChannelId);
+            }
         });
+    }
+
+    private void applyRemotePlaybackCommand(String command, String contentType, String contentId, long positionMs) {
+        if ("pause".equals(command)) {
+            if (playerController != null) {
+                playerController.setPlayWhenReady(false);
+                showStatus("Reproduccion pausada desde otro dispositivo");
+            }
+            return;
+        }
+        if ("resume".equals(command)) {
+            if (playerController != null) {
+                playerController.setPlayWhenReady(true);
+                showStatus("Reproduccion reanudada desde otro dispositivo");
+            }
+            return;
+        }
+        if ("stop".equals(command)) {
+            rememberCurrentVodPosition();
+            stopPlaybackHeartbeat("stop");
+            if (playerController != null) {
+                playerController.stopForSourceSwitch();
+            }
+            showStatus("Reproduccion detenida desde otro dispositivo");
+            return;
+        }
+        if (!"play".equals(command) || contentId == null || contentId.trim().isEmpty()) {
+            return;
+        }
+        if (!"vod".equals(contentType)) {
+            tuneChannelById(contentId);
+            return;
+        }
+        ChannelItem item = findChannelItemById(contentId);
+        if (item == null || !item.isVod) {
+            showStatus("El titulo enviado no esta disponible en este dispositivo");
+            return;
+        }
+        Runnable play = () -> {
+            rememberCurrentVodPosition();
+            vodResumePositions.put(item.id, Math.max(0L, positionMs));
+            vodResumeUpdatedAt.put(item.id, System.currentTimeMillis());
+            rememberVodResumeItem(item);
+            saveVodResumePositions();
+            playChannelItemInternal(item, true, Math.max(0L, positionMs));
+        };
+        if (isProtectedItem(item) && isProtectedContentLocked()) {
+            ensureParentalAccessForItem(item, play);
+        } else {
+            play.run();
+        }
     }
 
     private void sendRemoteDiagnosticReport(CatalogSnapshotStore.SnapshotStatus status) {
@@ -11108,6 +12405,34 @@ public class MainActivity extends FragmentActivity {
         } catch (Exception e) {
             Log.d(TAG, "remote diagnostic report failed", e);
         }
+    }
+
+    private void sendSupportBundleNow() {
+        if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null) {
+            showStatus(getString(R.string.status_support_bundle_failed));
+            return;
+        }
+        showStatus(getString(R.string.status_support_bundle_sending));
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        submitControlTask("support-bundle", () -> {
+            try {
+                JSONObject extra = buildOfflineDeviceStatusExtra();
+                extra.put("remote_diagnostic", buildRemoteDiagnosticPayload(status));
+                catalogSnapshotStore.reportDeviceStatus(
+                        BuildConfig.OFFLINE_BASE_URL,
+                        status,
+                        "Diagnostico manual",
+                        true,
+                        0L,
+                        "Diagnostico solicitado desde el dispositivo",
+                        extra
+                );
+                postUiIfAlive(() -> showStatus(getString(R.string.status_support_bundle_sent)));
+            } catch (Exception e) {
+                Log.w(TAG, "manual support bundle failed", e);
+                postUiIfAlive(() -> showStatus(getString(R.string.status_support_bundle_failed)));
+            }
+        });
     }
 
     private JSONObject buildRemoteDiagnosticPayload(CatalogSnapshotStore.SnapshotStatus status) {
@@ -11262,12 +12587,15 @@ public class MainActivity extends FragmentActivity {
         }
         long positionMs = playerController == null ? 0L : playerController.getCurrentPlaybackPosition();
         PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
-        long startupMs = playbackHeartbeatStartedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - playbackHeartbeatStartedAtMs);
+        long sessionElapsedMs = playbackHeartbeatStartedAtMs <= 0L ? 0L : Math.max(0L, System.currentTimeMillis() - playbackHeartbeatStartedAtMs);
         String normalizedState = state == null ? "heartbeat" : state.trim();
         boolean actualDirectPlayback = isDirectPlaybackHeartbeat(channel, diagnostics);
         boolean serverTraffic = isServerTrafficHeartbeat(channel, diagnostics);
         double estimatedMbps = estimatePlaybackMbps(diagnostics);
-        PlaybackHealthClassifier.Result playbackHealth = PlaybackHealthClassifier.classify(diagnostics, startupMs);
+        PlaybackHealthClassifier.Result playbackHealth = PlaybackHealthClassifier.classify(diagnostics, sessionElapsedMs);
+        long startupMs = "ready".equalsIgnoreCase(normalizedState) && diagnostics != null
+                ? diagnostics.readyElapsedMs
+                : 0L;
         JSONObject payload = new JSONObject();
         try {
             payload.put("session_id", sessionId)
@@ -11535,7 +12863,9 @@ public class MainActivity extends FragmentActivity {
                 || normalizedTarget.contains("/live/")
                 || normalizedTarget.contains("/hls/")
                 || normalizedTarget.contains("/drm/")
+                || normalizedTarget.contains("/api/vod/plex/")
                 || normalizedTarget.contains("/api/vod/movistar/")
+                || normalizedTarget.contains("/api/vod/dazn/")
                 || normalizedTarget.contains("/api/u7d/movistar/")
                 || normalizedTarget.contains("/api/offline/u7d/");
     }
@@ -11840,6 +13170,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshStandaloneCatalogInBackgroundIfPossible() {
+        if (BuildConfig.STANDALONE_MODE
+                && catalogRepository != null
+                && !catalogRepository.hasFullParsedCatalogCache()) {
+            Log.i(TAG, "automatic full catalog refresh deferred until VOD is requested");
+            return;
+        }
         if (BuildConfig.STANDALONE_MODE && !allChannels.isEmpty() && isWithinStartupMaintenanceGrace()) {
             CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
                     ? null
@@ -11894,8 +13230,11 @@ public class MainActivity extends FragmentActivity {
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         boolean missingToken = !status.hasAccessToken;
         boolean missingUrl = status.sourceUrl == null || status.sourceUrl.trim().isEmpty();
-        boolean missingCatalog = !status.available && !status.hasLastGoodBackup;
-        if (!missingToken && !missingUrl && !missingCatalog) {
+        // Si conservamos credenciales, la ausencia del fichero local es recuperable:
+        // loadChannels descargará automáticamente el bootstrap ligero. Mostrar aquí
+        // el asistente de activación corta el flujo y deja el arranque en
+        // "Validando catálogo" al cerrar el diálogo.
+        if (!missingToken && !missingUrl) {
             return false;
         }
         if (offlineFirstRunDialogShowing) {
@@ -12231,12 +13570,77 @@ public class MainActivity extends FragmentActivity {
         checkAppUpdate(false);
     }
 
-    private void scheduleAppUpdateCheckOnStartup() {
-        if (BuildConfig.STANDALONE_MODE) {
-            postUiDelayedIfAlive(this::checkAppUpdateOnStartup, OFFLINE_APP_UPDATE_STARTUP_DELAY_MS);
-        } else {
+    private void startUpdaterFirstStartup() {
+        if (!BuildConfig.STANDALONE_MODE || appUpdateManager == null) {
+            releaseStartupCatalog("updater-first-disabled");
             checkAppUpdateOnStartup();
+            return;
         }
+        appUpdateCheckRunning = true;
+        postUiDelayedIfAlive(
+                () -> releaseStartupCatalog("updater-first-timeout"),
+                OFFLINE_APP_UPDATE_STARTUP_GATE_MS
+        );
+        long startMs = System.currentTimeMillis();
+        appUpdateExecutor.execute(() -> {
+            try {
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(
+                        BuildConfig.OFFLINE_BASE_URL,
+                        currentUpdateChannel()
+                );
+                long durationMs = System.currentTimeMillis() - startMs;
+                postUiIfAlive(() -> applyUpdaterFirstResult(info, durationMs));
+            } catch (Exception e) {
+                Log.w(TAG, "updater-first app update check failed; releasing catalog", e);
+                long durationMs = System.currentTimeMillis() - startMs;
+                postUiIfAlive(() -> {
+                    appUpdateCheckRunning = false;
+                    lastAppUpdateCheckMs = System.currentTimeMillis();
+                    lastAppUpdateError = e.getMessage();
+                    recordAppUpdateDiagnostic("startup-check", false, null, null, durationMs, e.getMessage());
+                    releaseStartupCatalog("updater-first-error");
+                });
+            }
+        });
+    }
+
+    private void applyUpdaterFirstResult(AppUpdateManager.UpdateInfo info, long durationMs) {
+        appUpdateCheckRunning = false;
+        adoptEffectiveUpdateChannel(info);
+        lastKnownAppUpdateInfo = info;
+        lastAppUpdateCheckMs = System.currentTimeMillis();
+        lastAppUpdateError = "";
+        boolean newer = info != null && info.isNewerThanCurrent();
+        String detail = newer
+                ? getString(R.string.settings_update_state_available_short, safeUpdateVersionName(info), info.versionCode)
+                : getString(R.string.app_update_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE);
+        recordAppUpdateDiagnostic("startup-check", true, info, null, durationMs, detail);
+        recordOfflineSyncEvent(getString(R.string.settings_offline_sync_app_update), true, durationMs, detail);
+        reportOfflineDeviceStatus(getString(R.string.settings_offline_sync_app_update), true, durationMs, detail);
+
+        if (newer && info.required && !startupCatalogReleased) {
+            startupCatalogBlockedForRequiredUpdate = true;
+            showAndRememberAppUpdateAvailableDialog(info);
+            return;
+        }
+
+        releaseStartupCatalog(newer ? "updater-first-optional-update" : "updater-first-current");
+        if (!newer) {
+            return;
+        }
+        if (!shouldPromptAppUpdate(info)) {
+            return;
+        }
+        showAndRememberAppUpdateAvailableDialog(info);
+    }
+
+    private void releaseStartupCatalog(String reason) {
+        if (startupCatalogReleased || startupCatalogBlockedForRequiredUpdate || activityDestroyed) {
+            return;
+        }
+        startupCatalogReleased = true;
+        Log.i(TAG, "startup catalog released reason=" + reason);
+        loadChannels();
     }
 
     private void maybeCheckAppUpdateOnResume() {
@@ -12342,6 +13746,7 @@ public class MainActivity extends FragmentActivity {
                         prefs.edit()
                                 .putString(PREF_UPDATE_CHANNEL, selectedChannel)
                                 .putInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, 0)
+                                .putLong(PREF_LAST_UPDATE_PROMPT_AT_MS, 0L)
                                 .apply();
                     }
                     String detail = getString(R.string.app_update_channel_saved, selectedLabel);
@@ -12437,14 +13842,10 @@ public class MainActivity extends FragmentActivity {
                                     : getString(R.string.app_update_none, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
                     );
                     if (info.isNewerThanCurrent()) {
-                        int lastPrompted = prefs == null ? 0 : prefs.getInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, 0);
-                        if (!manual && !info.required && lastPrompted >= info.versionCode) {
+                        if (!manual && !shouldPromptAppUpdate(info)) {
                             return;
                         }
-                        if (prefs != null) {
-                            prefs.edit().putInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, info.versionCode).apply();
-                        }
-                        showAppUpdateAvailableDialog(info);
+                        showAndRememberAppUpdateAvailableDialog(info);
                     } else if (manual) {
                         showSettingsInfoDialog(R.string.app_update_action_check, buildAppUpdateStateSummary());
                     }
@@ -12539,7 +13940,35 @@ public class MainActivity extends FragmentActivity {
                 downloadAndInstallAppUpdate(updateInfo);
             }
         });
-        showStructuredStatusPanel(model.title, model.subtitle, model.summary, model.rows, model.notes, model.actions);
+        Runnable onCancel = info != null && info.required
+                ? () -> showAppUpdateAvailableDialog(info)
+                : null;
+        showStructuredStatusPanel(model.title, model.subtitle, model.summary, model.rows, model.notes, model.actions, onCancel);
+    }
+
+    private boolean shouldPromptAppUpdate(AppUpdateManager.UpdateInfo info) {
+        if (info == null) {
+            return false;
+        }
+        int lastVersion = prefs == null ? 0 : prefs.getInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, 0);
+        long lastPromptAtMs = prefs == null ? 0L : prefs.getLong(PREF_LAST_UPDATE_PROMPT_AT_MS, 0L);
+        return AppUpdatePromptPolicy.shouldPrompt(
+                info.versionCode,
+                info.required,
+                lastVersion,
+                lastPromptAtMs,
+                System.currentTimeMillis()
+        );
+    }
+
+    private void showAndRememberAppUpdateAvailableDialog(AppUpdateManager.UpdateInfo info) {
+        showAppUpdateAvailableDialog(info);
+        if (prefs != null && info != null) {
+            prefs.edit()
+                    .putInt(PREF_LAST_UPDATE_PROMPT_VERSION_CODE, info.versionCode)
+                    .putLong(PREF_LAST_UPDATE_PROMPT_AT_MS, System.currentTimeMillis())
+                    .apply();
+        }
     }
 
     private void downloadAndInstallAppUpdate(AppUpdateManager.UpdateInfo info) {
@@ -12846,6 +14275,10 @@ public class MainActivity extends FragmentActivity {
     private void showPostUpdateRecoveryDialog(String reason) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        if (BuildConfig.STANDALONE_MODE) {
+            options.add(getString(R.string.offline_recovery_action_activate));
+            actions.add(this::startOfflineActivationCodeFlow);
+        }
         options.add(getString(R.string.diagnostics_action_retry));
         actions.add(this::retryCurrentPlayback);
         options.add(getString(R.string.app_update_action_rescue));
@@ -13136,6 +14569,11 @@ public class MainActivity extends FragmentActivity {
     private void clearAllVodProgress() {
         rememberCurrentVodPosition();
         vodResumePositions.clear();
+        vodResumeUpdatedAt.clear();
+        vodResumeItems.clear();
+        if (catalogSnapshotStore != null) {
+            catalogSnapshotStore.clearVodResumeItems();
+        }
         if (prefs != null) {
             prefs.edit().remove(PREF_VOD_RESUME_POSITIONS).apply();
         }
@@ -13307,23 +14745,15 @@ public class MainActivity extends FragmentActivity {
 
     private void dismissModalForNextAction(Dialog dialog, Runnable nextAction) {
         beginModalTransition(null);
-        if (nextAction != null) {
-            postUiIfAlive(() -> {
-                nextAction.run();
-                postUiDelayedIfAlive(() -> {
-                    modalTransitionInProgress = true;
-                    if (dialog != null) {
-                        dialog.dismiss();
-                    }
-                    finishModalTransitionAfterDelay();
-                }, 80L);
-            });
-            return;
-        }
-        if (dialog != null) {
+        if (dialog != null && dialog.isShowing()) {
             dialog.dismiss();
         }
-        finishModalTransitionAfterDelay();
+        postUiDelayedIfAlive(() -> {
+            if (nextAction != null) {
+                nextAction.run();
+            }
+            finishModalTransitionAfterDelay();
+        }, 80L);
     }
 
     private void handleModalShown() {
@@ -13560,9 +14990,25 @@ public class MainActivity extends FragmentActivity {
         if (isFinishing()) {
             return;
         }
+        if (BuildConfig.STANDALONE_MODE
+                && userPreferencesLoading
+                && System.currentTimeMillis() - activityCreatedAtMs < 6_000L) {
+            postUiDelayedIfAlive(this::loadStartupHubStateAndShow, 250L);
+            return;
+        }
         ChannelItem current = getCurrentPlaybackChannelItem();
-        ChannelItem lastVod = findChannelItemById(lastVodId);
         ioExecutor.execute(() -> {
+            int vodCount = countItemsForQuickTarget("vod");
+            if (catalogSnapshotStore != null) {
+                CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+                vodCount = Math.max(vodCount, status == null ? 0 : status.vodCount);
+                try {
+                    vodCount = Math.max(vodCount, catalogSnapshotStore.fetchRemoteVodCount(BuildConfig.CATALOG_SNAPSHOT_URL));
+                } catch (Exception e) {
+                    Log.w(TAG, "startup VOD count refresh failed", e);
+                }
+            }
+            List<ChannelItem> continueVods = resolveStartupContinueVodItems();
             RecordingsRepository.RecordingItem resumeRecording = null;
             String recordingBasePath = "";
             int completedCount = 0;
@@ -13583,9 +15029,54 @@ public class MainActivity extends FragmentActivity {
                     Log.w(TAG, "startup scheduled recordings summary failed", e);
                 }
             }
-            StartupHubState state = new StartupHubState(current, lastVod, resumeRecording, recordingBasePath, completedCount, scheduledCount);
+            StartupHubState state = new StartupHubState(current, continueVods, vodCount, resumeRecording, recordingBasePath, completedCount, scheduledCount);
             postUiIfAlive(() -> showStartupHubDialog(state));
         });
+    }
+
+    private List<ChannelItem> resolveStartupContinueVodItems() {
+        Set<String> requestedIds = new java.util.LinkedHashSet<>();
+        for (Map.Entry<String, Long> entry : vodResumePositions.entrySet()) {
+            if (entry != null && entry.getKey() != null && entry.getValue() != null && entry.getValue() > 30_000L) {
+                requestedIds.add(entry.getKey());
+            }
+        }
+        List<ChannelItem> resolved = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        for (String id : requestedIds) {
+            ChannelItem cached = vodResumeItems.get(id);
+            if (cached != null && cached.isVod && !shouldHideProtectedItem(cached) && added.add(cached.id)) {
+                resolved.add(cached);
+            }
+        }
+        for (String id : requestedIds) {
+            ChannelItem item = findChannelItemById(id);
+            if (item != null && item.isVod && !shouldHideProtectedItem(item) && added.add(item.id)) {
+                resolved.add(item);
+            }
+        }
+        if (catalogSnapshotStore != null && added.size() < requestedIds.size()) {
+            for (ChannelItem item : catalogSnapshotStore.loadFullParsedChannelsByIds(BuildConfig.CATALOG_SNAPSHOT_URL, requestedIds)) {
+                if (item != null && !shouldHideProtectedItem(item) && added.add(item.id)) {
+                    resolved.add(item);
+                    rememberVodResumeItem(item);
+                }
+            }
+        }
+        if (added.size() < requestedIds.size()) {
+            try {
+                for (ChannelItem item : catalogRepository.fetchPlexVodCatalog()) {
+                    if (item != null && requestedIds.contains(item.id) && !shouldHideProtectedItem(item) && added.add(item.id)) {
+                        resolved.add(item);
+                        rememberVodResumeItem(item);
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "startup Plex continue lookup failed", e);
+            }
+        }
+        resolved.sort((left, right) -> Long.compare(getVodResumePosition(right.id), getVodResumePosition(left.id)));
+        return resolved;
     }
 
     private RecordingsRepository.RecordingItem findResumeRecording(RecordingsRepository.RecordingsResult completed) {
@@ -13616,6 +15107,278 @@ public class MainActivity extends FragmentActivity {
         if (isFinishing()) {
             return;
         }
+        prepareModalSurface();
+        final Dialog[] dialogHolder = new Dialog[1];
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        Function<Runnable, Runnable> open = action -> () -> dismissModalForNextAction(dialogHolder[0], action);
+        Runnable close = () -> {
+            if (dialogHolder[0] != null && dialogHolder[0].isShowing()) {
+                dialogHolder[0].dismiss();
+            }
+        };
+        StartupHomeHubUiModel model = buildStartupHomeHubModel(state, open, close);
+        StartupHomeHubComposeBinder.bind(composeView, model, new StartupHomeHubArtworkBinder() {
+            @Override
+            public void bindLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
+                bindChannelLogo(imageView, logoUrl, channelName, widthDp, heightDp);
+            }
+
+            @Override
+            public void bindPoster(ImageView imageView, String posterUrl) {
+                bindProgramPoster(imageView, posterUrl);
+            }
+
+            @Override
+            public void bindLivePreview(ImageView imageView, String fallbackLogoUrl, String channelName, int widthDp, int heightDp) {
+                bindStartupLivePreview(imageView, fallbackLogoUrl, channelName, widthDp, heightDp);
+            }
+        });
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
+            stopStartupLivePreview();
+            handleModalDismissed();
+        });
+        dialogHolder[0] = dialog;
+        dialog.setOnKeyListener((ignored, keyCode, event) -> {
+            if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
+                close.run();
+                return true;
+            }
+            return false;
+        });
+        handleModalShown();
+    }
+
+    private void bindStartupLivePreview(ImageView imageView, String fallbackLogoUrl, String channelName, int widthDp, int heightDp) {
+        if (imageView == null) {
+            return;
+        }
+        if (startupLivePreviewView != imageView) {
+            stopStartupLivePreview();
+            startupLivePreviewView = imageView;
+            startupLivePreviewGeneration++;
+            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            bindChannelLogo(imageView, fallbackLogoUrl, channelName, widthDp, heightDp);
+        }
+        uiHandler.removeCallbacks(startupLivePreviewRunnable);
+        if (!startupLivePreviewCapturePending) {
+            uiHandler.postDelayed(startupLivePreviewRunnable, 350L);
+        }
+    }
+
+    private void captureStartupLivePreview() {
+        ImageView targetView = startupLivePreviewView;
+        if (targetView == null || !targetView.isAttachedToWindow() || isFinishing()) {
+            stopStartupLivePreview();
+            return;
+        }
+        View videoSurface = playerView == null ? null : playerView.getVideoSurfaceView();
+        if (videoSurface == null || !videoSurface.isAttachedToWindow() || videoSurface.getWidth() <= 0 || videoSurface.getHeight() <= 0) {
+            scheduleStartupLivePreview();
+            return;
+        }
+        int cardWidth = targetView.getWidth() > 0 ? targetView.getWidth() : dp(260);
+        int cardHeight = targetView.getHeight() > 0 ? targetView.getHeight() : dp(112);
+        int bitmapWidth = Math.max(160, Math.min(STARTUP_LIVE_PREVIEW_MAX_WIDTH, cardWidth));
+        int bitmapHeight = Math.max(72, Math.round(bitmapWidth * (cardHeight / (float) Math.max(1, cardWidth))));
+        if (startupLivePreviewBitmap == null
+                || startupLivePreviewBitmap.getWidth() != bitmapWidth
+                || startupLivePreviewBitmap.getHeight() != bitmapHeight) {
+            try {
+                startupLivePreviewBitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "startup live preview bitmap allocation failed", e);
+                scheduleStartupLivePreview();
+                return;
+            }
+        }
+        Bitmap targetBitmap = startupLivePreviewBitmap;
+        int generation = startupLivePreviewGeneration;
+        if (videoSurface instanceof TextureView) {
+            try {
+                Bitmap captured = ((TextureView) videoSurface).getBitmap(targetBitmap);
+                if (generation == startupLivePreviewGeneration && captured != null && isUsableStartupLivePreview(captured)) {
+                    Glide.with(targetView.getContext()).clear(targetView);
+                    targetView.setImageBitmap(captured);
+                    targetView.invalidate();
+                }
+            } catch (RuntimeException e) {
+                Log.w(TAG, "startup live preview texture capture failed", e);
+            }
+            scheduleStartupLivePreview();
+            return;
+        }
+        if (videoSurface instanceof SurfaceView && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            Surface surface = ((SurfaceView) videoSurface).getHolder().getSurface();
+            if (surface == null || !surface.isValid()) {
+                scheduleStartupLivePreview();
+                return;
+            }
+            startupLivePreviewCapturePending = true;
+            try {
+                PixelCopy.request((SurfaceView) videoSurface, targetBitmap, result -> {
+                    if (generation != startupLivePreviewGeneration) {
+                        return;
+                    }
+                    startupLivePreviewCapturePending = false;
+                    ImageView currentTarget = startupLivePreviewView;
+                    if (result == PixelCopy.SUCCESS
+                            && currentTarget == targetView
+                            && currentTarget.isAttachedToWindow()
+                            && isUsableStartupLivePreview(targetBitmap)) {
+                        Glide.with(currentTarget.getContext()).clear(currentTarget);
+                        currentTarget.setImageBitmap(targetBitmap);
+                        currentTarget.invalidate();
+                    }
+                    scheduleStartupLivePreview();
+                }, uiHandler);
+            } catch (RuntimeException e) {
+                startupLivePreviewCapturePending = false;
+                Log.w(TAG, "startup live preview surface capture failed", e);
+                scheduleStartupLivePreview();
+            }
+            return;
+        }
+        scheduleStartupLivePreview();
+    }
+
+    private boolean isUsableStartupLivePreview(Bitmap bitmap) {
+        if (bitmap == null || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
+            return false;
+        }
+        int brightest = 0;
+        int opaqueSamples = 0;
+        for (int yStep = 1; yStep <= 3; yStep++) {
+            int y = Math.min(bitmap.getHeight() - 1, bitmap.getHeight() * yStep / 4);
+            for (int xStep = 1; xStep <= 5; xStep++) {
+                int x = Math.min(bitmap.getWidth() - 1, bitmap.getWidth() * xStep / 6);
+                int color = bitmap.getPixel(x, y);
+                if (Color.alpha(color) >= 220) {
+                    opaqueSamples++;
+                    brightest = Math.max(brightest, Math.max(Color.red(color), Math.max(Color.green(color), Color.blue(color))));
+                }
+            }
+        }
+        return opaqueSamples >= 8 && brightest >= 18;
+    }
+
+    private void scheduleStartupLivePreview() {
+        uiHandler.removeCallbacks(startupLivePreviewRunnable);
+        if (startupLivePreviewView != null && startupLivePreviewView.isAttachedToWindow() && !isFinishing()) {
+            uiHandler.postDelayed(startupLivePreviewRunnable, STARTUP_LIVE_PREVIEW_REFRESH_MS);
+        }
+    }
+
+    private void stopStartupLivePreview() {
+        uiHandler.removeCallbacks(startupLivePreviewRunnable);
+        startupLivePreviewGeneration++;
+        startupLivePreviewCapturePending = false;
+        startupLivePreviewView = null;
+        startupLivePreviewBitmap = null;
+    }
+
+    private StartupHomeHubUiModel buildStartupHomeHubModel(StartupHubState state, Function<Runnable, Runnable> open, Runnable close) {
+        ChannelItem current = state == null ? getCurrentPlaybackChannelItem() : state.currentChannel;
+        int tvCount = countItemsForQuickTarget("tv");
+        int vodCount = state == null ? countItemsForQuickTarget("vod") : state.vodCount;
+        int completedCount = state == null ? 0 : state.completedRecordings;
+        int scheduledCount = state == null ? 0 : state.scheduledRecordings;
+
+        List<StartupHomeHubUiModel.PrimaryCard> primaryCards = new ArrayList<>();
+        primaryCards.add(new StartupHomeHubUiModel.PrimaryCard(
+                getString(R.string.startup_home_live_eyebrow),
+                getString(R.string.startup_home_live_title),
+                getString(R.string.startup_home_live_subtitle),
+                getResources().getQuantityString(R.plurals.startup_home_channels, tvCount, tvCount),
+                false,
+                open.apply(() -> applyQuickOverlayTarget("tv"))
+        ));
+        if (StartupHomeHubUiModel.shouldIncludeVodCard(vodCount, shouldShowGenericVodQuickTarget(false))) {
+            primaryCards.add(new StartupHomeHubUiModel.PrimaryCard(
+                    getString(R.string.startup_home_vod_eyebrow),
+                    getString(R.string.startup_home_vod_title),
+                    getString(R.string.startup_home_vod_subtitle),
+                    getResources().getQuantityString(R.plurals.startup_home_titles, vodCount, vodCount),
+                    true,
+                    open.apply(() -> showVodLibraryDialog(() -> showStartupHubDialog(state)))
+            ));
+        }
+
+        List<StartupHomeHubUiModel.ContinueCard> continueCards = new ArrayList<>();
+        if (current != null && !current.isVod && !shouldHideProtectedItem(current)) {
+            String currentMeta = current.nowProgram == null || current.nowProgram.trim().isEmpty()
+                    ? getString(R.string.startup_home_live_now)
+                    : current.nowProgram.trim();
+            continueCards.add(new StartupHomeHubUiModel.ContinueCard(
+                    displayName(current),
+                    currentMeta,
+                    current.logoUrl,
+                    displayName(current),
+                    false,
+                    true,
+                    0f,
+                    open.apply(() -> tuneChannelById(current.id))
+            ));
+        }
+        List<ChannelItem> continueVods = state == null ? buildVodContinueItems() : state.continueVods;
+        for (ChannelItem vod : continueVods) {
+            if (vod == null || !vod.isVod || shouldHideProtectedItem(vod)) {
+                continue;
+            }
+            long resumeMs = getVodResumePosition(vod.id);
+            long durationMs = Math.max(0L, vod.vodDurationSeconds * 1000L);
+            float progress = durationMs > 0L ? Math.min(1f, (float) resumeMs / (float) durationMs) : 0f;
+            continueCards.add(new StartupHomeHubUiModel.ContinueCard(
+                    decorateProtectedItemTitle(vod, displayName(vod)),
+                    getString(R.string.startup_home_vod_progress, formatDurationShort(resumeMs)),
+                    vod.logoUrl,
+                    displayName(vod),
+                    true,
+                    progress,
+                    open.apply(() -> showVodInfoDialog(vod))
+            ));
+        }
+        RecordingsRepository.RecordingItem resumeRecording = state == null ? null : state.resumeRecording;
+        if (resumeRecording != null) {
+            long resumeMs = getRecordingResumePosition(resumeRecording.id);
+            String basePath = state.resumeRecordingBasePath == null ? "" : state.resumeRecordingBasePath;
+            continueCards.add(new StartupHomeHubUiModel.ContinueCard(
+                    buildRecordingTitle(resumeRecording),
+                    getString(R.string.startup_home_recording_progress, formatPlaybackPosition(resumeMs)),
+                    resumeRecording.poster,
+                    buildRecordingTitle(resumeRecording),
+                    true,
+                    0f,
+                    open.apply(() -> playRecording(resumeRecording, basePath))
+            ));
+        }
+
+        List<StartupHomeHubUiModel.Shortcut> shortcuts = new ArrayList<>();
+        shortcuts.add(new StartupHomeHubUiModel.Shortcut("▤", getString(R.string.startup_home_guide), getString(R.string.startup_home_guide_subtitle), open.apply(this::openTimelineGuideForCurrentPlayback)));
+        if (!isOfflineRecordingsDisabled()) {
+            shortcuts.add(new StartupHomeHubUiModel.Shortcut("●", getString(R.string.quick_hub_recordings), getString(R.string.startup_home_recordings_subtitle, completedCount, scheduledCount), open.apply(this::openRecordingsBrowser)));
+        }
+        shortcuts.add(new StartupHomeHubUiModel.Shortcut("★", getString(R.string.quick_hub_favorites), getResources().getQuantityString(R.plurals.startup_home_favorites, buildFavoriteQuickChannels().size(), buildFavoriteQuickChannels().size()), open.apply(this::showFavoriteChannelsQuickDialog)));
+        shortcuts.add(new StartupHomeHubUiModel.Shortcut("▦", getString(R.string.startup_home_multiview), getString(R.string.startup_home_multiview_subtitle), open.apply(this::openMultiView)));
+
+        String clock = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
+        String summary = getString(R.string.startup_home_catalog_summary, tvCount, vodCount);
+        return new StartupHomeHubUiModel(
+                getString(R.string.startup_home_brand),
+                clock,
+                summary,
+                getString(R.string.startup_home_title),
+                getString(R.string.startup_home_subtitle),
+                primaryCards,
+                continueCards,
+                shortcuts,
+                open.apply(this::showGlobalSearchDialog),
+                open.apply(() -> showStartupHubSettingsDialog(state)),
+                close
+        );
+    }
+
+    private void showStartupHubSettingsDialog(StartupHubState state) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         ChannelItem current = state == null ? getCurrentPlaybackChannelItem() : state.currentChannel;
@@ -13625,7 +15388,8 @@ public class MainActivity extends FragmentActivity {
                 tuneChannelById(current.id);
             }
         });
-        ChannelItem lastVod = state == null ? findChannelItemById(lastVodId) : state.lastVod;
+        ChannelItem lastVod = state == null ? findChannelItemById(lastVodId)
+                : (state.continueVods.isEmpty() ? null : state.continueVods.get(0));
         if (lastVod != null && lastVod.isVod) {
             long resumeMs = getVodResumePosition(lastVod.id);
             options.add(resumeMs > 30_000L
@@ -13670,10 +15434,11 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::refreshOfflineCatalogFromSettings);
 
         showTvOptionsDialog(
-                R.string.startup_hub_title,
+                R.string.startup_home_settings,
                 buildStartupHubMessage(state),
                 options,
-                actions
+                actions,
+                () -> showStartupHubDialog(state)
         );
     }
 
@@ -13805,7 +15570,219 @@ public class MainActivity extends FragmentActivity {
             showVodVisualLibraryDialog(onBack);
             return;
         }
-        showVodVisualLibraryDialog(VodVisualTypeFilter.ALL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, trimmed, onBack);
+        // La vista general y su buscador trabajan sobre el catalogo ya disponible.
+        // Movistar se actualiza unicamente cuando el usuario selecciona ese origen.
+        showVodVisualLibraryDialog(
+                VodVisualTypeFilter.ALL,
+                VodVisualPlatformFilter.ALL,
+                VodVisualStatusFilter.ALL,
+                VodVisualSortFilter.SMART,
+                trimmed,
+                onBack
+        );
+    }
+
+    private void loadDynamicMovistarVodCatalog(String query, Runnable onReady) {
+        String trimmedQuery = query == null ? "" : query.trim();
+        boolean bootstrap = trimmedQuery.isEmpty();
+        if (catalogRepository == null) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        if (bootstrap && dynamicMovistarVodLoaded) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        if (bootstrap) {
+            dynamicMovistarVodLoading = true;
+        }
+        showLoading(
+                getString(R.string.tools_section_vod),
+                bootstrap ? "Actualizando Movistar" : "Buscando en Movistar",
+                bootstrap ? "Cargando catalogo reciente sin guardarlo entero en el dispositivo" : trimmedQuery
+        );
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> loaded = new ArrayList<>();
+            Exception failure = null;
+            boolean replaceMovistar = false;
+            boolean replaceTivify = false;
+            boolean replaceRuntime = false;
+            if (bootstrap) {
+                try {
+                    List<ChannelItem> movistar = new ArrayList<>();
+                    movistar.addAll(catalogRepository.fetchMovistarVodCatalog("movies", "", 0, 100));
+                    movistar.addAll(catalogRepository.fetchMovistarVodCatalog("series", "", 0, 100));
+                    loaded.addAll(movistar);
+                    replaceMovistar = true;
+                } catch (Exception e) {
+                    failure = e;
+                    Log.w(TAG, "dynamic Movistar VOD bootstrap failed", e);
+                }
+            } else {
+                try {
+                    loaded.addAll(catalogRepository.fetchMovistarVodCatalog("all", trimmedQuery, 0, 100));
+                } catch (Exception e) {
+                    failure = e;
+                    Log.w(TAG, "dynamic Movistar VOD request failed query=" + trimmedQuery, e);
+                }
+            }
+            Exception finalFailure = failure;
+            boolean finalReplaceMovistar = replaceMovistar;
+            boolean finalReplaceTivify = replaceTivify;
+            boolean finalReplaceRuntime = replaceRuntime;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                if (bootstrap) {
+                    dynamicMovistarVodLoading = false;
+                    dynamicMovistarVodLoaded = finalReplaceMovistar;
+                }
+                if (!loaded.isEmpty()) {
+                    mergeDynamicVodItems(loaded, finalReplaceMovistar, finalReplaceTivify, finalReplaceRuntime);
+                } else if (finalFailure != null) {
+                    showStatus("Movistar no disponible; usando el catalogo guardado");
+                }
+                if (onReady != null) {
+                    onReady.run();
+                }
+            });
+        });
+    }
+
+    private void loadDynamicDaznVodCatalog(Runnable onReady) {
+        if (catalogRepository == null) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        if (dynamicDaznVodLoaded) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        dynamicDaznVodLoading = true;
+        showLoading(
+                getString(R.string.tools_section_vod),
+                "Actualizando DAZN",
+                "Cargando eventos en directo, repeticiones y contenido bajo demanda"
+        );
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> loaded = new ArrayList<>();
+            Exception failure = null;
+            try {
+                loaded.addAll(catalogRepository.fetchDaznVodCatalog());
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "dynamic DAZN VOD request failed", e);
+            }
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                dynamicDaznVodLoading = false;
+                dynamicDaznVodLoaded = finalFailure == null;
+                if (!loaded.isEmpty()) {
+                    mergeDynamicVodItems(loaded, false, false, false, true);
+                } else if (finalFailure != null) {
+                    showStatus("DAZN no disponible; vuelve a intentarlo en unos segundos");
+                } else {
+                    showStatus("DAZN no tiene contenido disponible ahora mismo");
+                }
+                if (onReady != null) {
+                    onReady.run();
+                }
+            });
+        });
+    }
+
+    private void loadDynamicPrimeVodCatalog(Runnable onReady) {
+        if (catalogRepository == null) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        if (dynamicPrimeVodLoaded) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        dynamicPrimeVodLoading = true;
+        showLoading(
+                getString(R.string.tools_section_vod),
+                "Actualizando Prime Video",
+                "Cargando películas y episodios de series"
+        );
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> loaded = new ArrayList<>();
+            Exception failure = null;
+            try {
+                loaded.addAll(catalogRepository.fetchPrimeVodCatalog());
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "dynamic Prime Video VOD request failed", e);
+            }
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                dynamicPrimeVodLoading = false;
+                dynamicPrimeVodLoaded = finalFailure == null;
+                if (!loaded.isEmpty()) {
+                    mergeDynamicVodItems(loaded, false, false, false, false, true);
+                } else if (finalFailure != null) {
+                    showStatus("Prime Video no disponible; vuelve a intentarlo en unos segundos");
+                } else {
+                    showStatus("Prime Video no tiene contenido disponible ahora mismo");
+                }
+                if (onReady != null) {
+                    onReady.run();
+                }
+            });
+        });
+    }
+
+    private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime) {
+		mergeDynamicVodItems(loaded, replaceMovistar, replaceTivify, replaceRuntime, false, false);
+    }
+
+    private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime, boolean replaceDazn) {
+		mergeDynamicVodItems(loaded, replaceMovistar, replaceTivify, replaceRuntime, replaceDazn, false);
+	}
+
+	private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime, boolean replaceDazn, boolean replacePrime) {
+        if (loaded == null || loaded.isEmpty()) {
+            return;
+        }
+        Map<String, ChannelItem> merged = new LinkedHashMap<>();
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.isVod) {
+                String filterKey = safeLower(item.vodFilterKey);
+                String platform = safeLower(item.platformName);
+                if ((replaceMovistar && (filterKey.contains("movistar") || platform.contains("movistar")))
+                        || (replaceTivify && (filterKey.contains("tivify") || platform.contains("tivify")))
+                        || (replaceRuntime && (filterKey.contains("runtime") || platform.contains("runtime")))
+						|| (replaceDazn && (filterKey.contains("dazn") || platform.contains("dazn")))
+						|| (replacePrime && (filterKey.contains("prime") || platform.contains("prime")))) {
+                    continue;
+                }
+            }
+            if (item != null && item.id != null && !item.id.isEmpty()) {
+                merged.put(item.id, item);
+            }
+        }
+        for (ChannelItem item : loaded) {
+            if (item != null && item.id != null && !item.id.isEmpty()) {
+                merged.put(item.id, item);
+            }
+        }
+        allChannels.clear();
+        allChannels.addAll(merged.values());
+        invalidateVodDerivedCaches();
     }
 
     private void showVodLibraryList(int titleResId, List<ChannelItem> items, boolean progressFirst) {
@@ -13870,6 +15847,382 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
+    private void showPlexVodBrowser(Runnable onBack) {
+        if (catalogRepository == null) {
+            showStatus(getString(R.string.vod_plex_unavailable));
+            return;
+        }
+        showLoading(
+                getString(R.string.vod_library_plex),
+                getString(R.string.vod_plex_loading),
+                getString(R.string.vod_plex_all_libraries)
+        );
+        interactiveExecutor.execute(() -> {
+            List<PlexVodLibrary> libraries = null;
+            Exception failure = null;
+            try {
+                libraries = catalogRepository.fetchPlexVodLibraries();
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "Plex VOD libraries request failed", e);
+            }
+            List<PlexVodLibrary> loaded = libraries == null ? new ArrayList<>() : libraries;
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                if (finalFailure != null || loaded.isEmpty()) {
+                    showStatus(getString(R.string.vod_plex_unavailable));
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                showPlexVodTypeDialog(loaded, onBack);
+            });
+        });
+    }
+
+    private void showPlexVodTypeDialog(List<PlexVodLibrary> libraries, Runnable onBack) {
+        int movies = 0;
+        int series = 0;
+        int episodes = 0;
+        for (PlexVodLibrary library : libraries) {
+            if (library == null) {
+                continue;
+            }
+            movies += library.movies;
+            series += library.series;
+            episodes += library.episodes;
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        options.add(getString(R.string.vod_plex_library_count, getString(R.string.vod_plex_movies), movies));
+        actions.add(() -> showPlexVodLibrariesDialog("movies", libraries, () -> showPlexVodTypeDialog(libraries, onBack)));
+        options.add(getString(R.string.vod_plex_series_count, getString(R.string.vod_plex_series), series, episodes));
+        actions.add(() -> showPlexVodLibrariesDialog("series", libraries, () -> showPlexVodTypeDialog(libraries, onBack)));
+        showTvOptionsDialog(R.string.vod_library_plex, null, options, actions, onBack);
+    }
+
+    private void showPlexVodLibrariesDialog(String kind, List<PlexVodLibrary> libraries, Runnable onBack) {
+        boolean series = "series".equals(kind);
+        int total = 0;
+        for (PlexVodLibrary library : libraries) {
+            if (library != null) {
+                total += series ? library.series : library.movies;
+            }
+        }
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        String allLabel = series
+                ? getString(R.string.vod_plex_series_count, getString(R.string.vod_plex_all_libraries), total, plexEpisodeCount(libraries))
+                : getString(R.string.vod_plex_library_count, getString(R.string.vod_plex_all_libraries), total);
+        options.add(allLabel);
+        actions.add(() -> openPlexVodSelection(kind, 0L, getString(R.string.vod_plex_all_libraries), "", "recent", 0, () -> showPlexVodLibrariesDialog(kind, libraries, onBack)));
+        for (PlexVodLibrary library : libraries) {
+            if (library == null) {
+                continue;
+            }
+            int count = series ? library.series : library.movies;
+            if (count <= 0) {
+                continue;
+            }
+            String baseLabel = library.sourceName + " · " + library.title;
+            String label = series
+                    ? getString(R.string.vod_plex_series_count, baseLabel, library.series, library.episodes)
+                    : getString(R.string.vod_plex_library_count, baseLabel, library.movies);
+            options.add(label);
+            actions.add(() -> openPlexVodSelection(kind, library.id, baseLabel, "", "recent", 0, () -> showPlexVodLibrariesDialog(kind, libraries, onBack)));
+        }
+        showTvOptionsDialog(
+                R.string.vod_library_plex,
+                series ? getString(R.string.vod_plex_series) : getString(R.string.vod_plex_movies),
+                options,
+                actions,
+                onBack
+        );
+    }
+
+    private int plexEpisodeCount(List<PlexVodLibrary> libraries) {
+        int total = 0;
+        if (libraries != null) {
+            for (PlexVodLibrary library : libraries) {
+                if (library != null) {
+                    total += library.episodes;
+                }
+            }
+        }
+        return total;
+    }
+
+    private void openPlexVodSelection(String kind, long libraryId, String libraryLabel, String query, String sort, int offset, Runnable onBack) {
+        if ("series".equals(kind)) {
+            showPlexSeriesPage(libraryId, libraryLabel, query, sort, offset, onBack);
+        } else {
+            showPlexMoviesPage(libraryId, libraryLabel, query, sort, offset, onBack);
+        }
+    }
+
+    private void showPlexMoviesPage(long libraryId, String libraryLabel, String query, String sort, int offset, Runnable onBack) {
+        showLoading(getString(R.string.vod_library_plex), getString(R.string.vod_plex_loading), libraryLabel);
+        interactiveExecutor.execute(() -> {
+            PlexVodPage page = null;
+            Exception failure = null;
+            try {
+                page = catalogRepository.fetchPlexVodPage("movies", libraryId, "", query, offset, 100, sort);
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "Plex movies request failed library=" + libraryId + " offset=" + offset, e);
+            }
+            PlexVodPage loaded = page;
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                if (finalFailure != null || loaded == null) {
+                    showStatus(getString(R.string.vod_plex_unavailable));
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                if (loaded.items.isEmpty()) {
+                    showStatus(getString(R.string.vod_plex_empty));
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                Runnable returnToPage = () -> showPlexMoviesPage(libraryId, libraryLabel, query, sort, loaded.offset, onBack);
+                List<ZapActionItem> panelActions = buildPlexPageActions(
+                        loaded.offset,
+                        loaded.nextOffset,
+                        loaded.hasMore,
+                        () -> showPlexMoviesPage(libraryId, libraryLabel, query, sort, Math.max(0, loaded.offset - 100), onBack),
+                        () -> showPlexMoviesPage(libraryId, libraryLabel, query, sort, loaded.nextOffset, onBack),
+                        () -> showPlexSearchDialog("movies", libraryId, libraryLabel, query, sort, onBack),
+                        "recent".equals(sort),
+                        () -> showPlexMoviesPage(libraryId, libraryLabel, query, nextPlexSort(sort), 0, onBack)
+                );
+                showQuickChannelListDialog(
+                        getString(R.string.vod_plex_movies) + " · " + libraryLabel,
+                        plexPageSubtitle(loaded.offset, loaded.items.size(), loaded.total),
+                        loaded.items,
+                        getString(R.string.vod_plex_empty),
+                        item -> showVodInfoDialog(item, returnToPage),
+                        onBack,
+                        panelActions
+                );
+            });
+        });
+    }
+
+    private void showPlexSeriesPage(long libraryId, String libraryLabel, String query, String sort, int offset, Runnable onBack) {
+        showLoading(getString(R.string.vod_library_plex), getString(R.string.vod_plex_loading), libraryLabel);
+        interactiveExecutor.execute(() -> {
+            PlexVodSeriesPage page = null;
+            Exception failure = null;
+            try {
+                page = catalogRepository.fetchPlexVodSeriesPage(libraryId, query, offset, 100, sort);
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "Plex series request failed library=" + libraryId + " offset=" + offset, e);
+            }
+            PlexVodSeriesPage loaded = page;
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                if (finalFailure != null || loaded == null) {
+                    showStatus(getString(R.string.vod_plex_unavailable));
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                if (loaded.items.isEmpty()) {
+                    showStatus(getString(R.string.vod_plex_empty));
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                List<ChannelItem> displayItems = new ArrayList<>();
+                Map<String, PlexVodSeries> byID = new LinkedHashMap<>();
+                int order = 1;
+                for (PlexVodSeries series : loaded.items) {
+                    String id = "plex-series-" + series.libraryId + "-" + Integer.toHexString(series.title.hashCode());
+                    ChannelItem item = new ChannelItem(
+                            id,
+                            series.title,
+                            "",
+                            series.posterUrl,
+                            series.libraryTitle,
+                            "",
+                            "",
+                            order,
+                            order,
+                            true,
+                            false,
+                            0,
+                            series.sourceName.isEmpty() ? "Plex" : "Plex · " + series.sourceName,
+                            new ArrayList<>(),
+                            "",
+                            "",
+                            "vod:plex:series",
+                            false,
+                            getString(R.string.vod_plex_series_meta, series.seasons, series.episodes),
+                            series.year > 0 ? String.valueOf(series.year) : "",
+                            0L
+                    );
+                    displayItems.add(item);
+                    byID.put(id, series);
+                    order++;
+                }
+                Runnable returnToPage = () -> showPlexSeriesPage(libraryId, libraryLabel, query, sort, loaded.offset, onBack);
+                List<ZapActionItem> panelActions = buildPlexPageActions(
+                        loaded.offset,
+                        loaded.nextOffset,
+                        loaded.hasMore,
+                        () -> showPlexSeriesPage(libraryId, libraryLabel, query, sort, Math.max(0, loaded.offset - 100), onBack),
+                        () -> showPlexSeriesPage(libraryId, libraryLabel, query, sort, loaded.nextOffset, onBack),
+                        () -> showPlexSearchDialog("series", libraryId, libraryLabel, query, sort, onBack),
+                        "recent".equals(sort),
+                        () -> showPlexSeriesPage(libraryId, libraryLabel, query, nextPlexSort(sort), 0, onBack)
+                );
+                showQuickChannelListDialog(
+                        getString(R.string.vod_plex_series) + " · " + libraryLabel,
+                        plexPageSubtitle(loaded.offset, displayItems.size(), loaded.total),
+                        displayItems,
+                        getString(R.string.vod_plex_empty),
+                        item -> {
+                            PlexVodSeries selected = item == null ? null : byID.get(item.id);
+                            if (selected != null) {
+                                showPlexEpisodesPage(selected, 0, returnToPage);
+                            }
+                        },
+                        onBack,
+                        panelActions
+                );
+            });
+        });
+    }
+
+    private void showPlexEpisodesPage(PlexVodSeries series, int offset, Runnable onBack) {
+        showLoading(getString(R.string.vod_library_plex), getString(R.string.vod_plex_loading), series.title);
+        interactiveExecutor.execute(() -> {
+            PlexVodPage page = null;
+            Exception failure = null;
+            try {
+                page = catalogRepository.fetchPlexVodPage("series", series.libraryId, series.title, "", offset, 100);
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "Plex episodes request failed series=" + series.title + " offset=" + offset, e);
+            }
+            PlexVodPage loaded = page;
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                if (finalFailure != null || loaded == null || loaded.items.isEmpty()) {
+                    showStatus(finalFailure == null ? getString(R.string.vod_plex_empty) : getString(R.string.vod_plex_unavailable));
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                Runnable returnToPage = () -> showPlexEpisodesPage(series, loaded.offset, onBack);
+                List<ZapActionItem> actions = buildPlexPageActions(
+                        loaded.offset,
+                        loaded.nextOffset,
+                        loaded.hasMore,
+                        () -> showPlexEpisodesPage(series, Math.max(0, loaded.offset - 100), onBack),
+                        () -> showPlexEpisodesPage(series, loaded.nextOffset, onBack),
+                        null,
+                        false,
+                        null
+                );
+                showQuickChannelListDialog(
+                        series.title,
+                        plexPageSubtitle(loaded.offset, loaded.items.size(), loaded.total),
+                        loaded.items,
+                        getString(R.string.vod_plex_empty),
+                        item -> showVodInfoDialog(item, returnToPage),
+                        onBack,
+                        actions
+                );
+            });
+        });
+    }
+
+    private List<ZapActionItem> buildPlexPageActions(
+            int offset,
+            int nextOffset,
+            boolean hasMore,
+            Runnable previous,
+            Runnable next,
+            Runnable search,
+            boolean recentSort,
+            Runnable toggleSort
+    ) {
+        List<ZapActionItem> actions = new ArrayList<>();
+        actions.add(new ZapActionItem(
+                getString(R.string.vod_dense_prev_page),
+                offset > 0,
+                false,
+                false,
+                offset > 0 ? previous : null
+        ));
+        actions.add(new ZapActionItem(
+                getString(R.string.vod_dense_next_page),
+                hasMore && nextOffset > offset,
+                false,
+                false,
+                hasMore && nextOffset > offset ? next : null
+        ));
+        if (search != null) {
+            actions.add(new ZapActionItem(getString(R.string.vod_plex_search), true, true, false, search));
+        }
+        if (toggleSort != null) {
+            actions.add(new ZapActionItem(
+                    getString(recentSort ? R.string.vod_plex_sort_recent : R.string.vod_plex_sort_title),
+                    true,
+                    false,
+                    recentSort,
+                    toggleSort
+            ));
+        }
+        return actions;
+    }
+
+    private String nextPlexSort(String sort) {
+        return "recent".equals(sort) ? "title" : "recent";
+    }
+
+    private void showPlexSearchDialog(String kind, long libraryId, String libraryLabel, String initialQuery, String sort, Runnable onBack) {
+        showTvTextInputPanel(new TvTextInputPanelUiModel(
+                getString(R.string.vod_plex_search),
+                libraryLabel,
+                getString(R.string.search_channel_dialog_action),
+                getString(R.string.dialog_cancel),
+                getString(R.string.vod_search_all),
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel(
+                        getString(R.string.vod_search_hint),
+                        initialQuery == null ? "" : initialQuery,
+                        false,
+                        false
+                )),
+                values -> {
+                    String query = values == null || values.isEmpty() ? "" : values.get(0);
+                    openPlexVodSelection(kind, libraryId, libraryLabel, query, sort, 0, onBack);
+                },
+                onBack,
+                () -> openPlexVodSelection(kind, libraryId, libraryLabel, "", sort, 0, onBack)
+        ));
+    }
+
+    private String plexPageSubtitle(int offset, int pageSize, int total) {
+        int start = total <= 0 || pageSize <= 0 ? 0 : offset + 1;
+        int end = Math.min(total, offset + pageSize);
+        return getString(R.string.vod_plex_page_subtitle, start, end, total);
+    }
+
     private String buildVodLibrarySummary() {
         int total = 0;
         int adult = 0;
@@ -13902,6 +16255,8 @@ public class MainActivity extends FragmentActivity {
 
     enum VodVisualTypeFilter {
         GENERAL("General"),
+        MOVIES("Peliculas"),
+        SERIES("Series"),
         ADULT("Adulto"),
         ALL("Todo");
 
@@ -13922,6 +16277,9 @@ public class MainActivity extends FragmentActivity {
         MOVISTAR("Movistar"),
         TIVIFY("Tivify"),
         RUNTIME("Runtime"),
+        PLEX("Plex"),
+        DAZN("DAZN"),
+        PRIME("Prime Video"),
         OTHER("Otros");
 
         final String label;
@@ -14043,7 +16401,20 @@ public class MainActivity extends FragmentActivity {
         if (typeFilter == VodVisualTypeFilter.ALL) {
             return true;
         }
-        return typeFilter == VodVisualTypeFilter.ADULT ? item.isAdultVod : !item.isAdultVod;
+        if (typeFilter == VodVisualTypeFilter.ADULT) {
+            return item.isAdultVod;
+        }
+        if (item.isAdultVod) {
+            return false;
+        }
+        String filterKey = item.vodFilterKey == null ? "" : item.vodFilterKey.toLowerCase(Locale.ROOT);
+        if (typeFilter == VodVisualTypeFilter.MOVIES) {
+            return filterKey.contains(":movies") || filterKey.contains(":movie");
+        }
+        if (typeFilter == VodVisualTypeFilter.SERIES) {
+            return filterKey.contains(":series") || filterKey.contains(":show") || filterKey.contains(":episodes");
+        }
+        return true;
     }
 
     private boolean matchesVodVisualPlatform(ChannelItem item, VodVisualPlatformFilter platformFilter) {
@@ -14055,6 +16426,9 @@ public class MainActivity extends FragmentActivity {
         boolean isMovistar = filterKey.contains("movistar") || platform.contains("movistar");
         boolean isTivify = filterKey.contains("tivify") || platform.contains("tivify");
         boolean isRuntime = filterKey.contains("runtime") || platform.contains("runtime");
+        boolean isPlex = filterKey.contains("plex") || platform.contains("plex");
+        boolean isDazn = filterKey.contains("dazn") || platform.contains("dazn");
+        boolean isPrime = filterKey.contains("prime") || platform.contains("prime");
         if (platformFilter == VodVisualPlatformFilter.MOVISTAR) {
             return isMovistar;
         }
@@ -14064,7 +16438,16 @@ public class MainActivity extends FragmentActivity {
         if (platformFilter == VodVisualPlatformFilter.RUNTIME) {
             return isRuntime;
         }
-        return !isMovistar && !isTivify && !isRuntime;
+        if (platformFilter == VodVisualPlatformFilter.PLEX) {
+            return isPlex;
+        }
+        if (platformFilter == VodVisualPlatformFilter.DAZN) {
+            return isDazn;
+        }
+        if (platformFilter == VodVisualPlatformFilter.PRIME) {
+            return isPrime;
+        }
+        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime;
     }
 
     private boolean matchesVodVisualStatus(ChannelItem item, VodVisualStatusFilter statusFilter) {
@@ -15785,10 +18168,32 @@ public class MainActivity extends FragmentActivity {
             navigationHandled[0] = true;
             dismissModalForNextAction(dialogHolder[0], onBack);
         };
+        List<ZapActionItem> modalPanelActions = new ArrayList<>();
+        if (panelActions != null) {
+            for (ZapActionItem panelAction : panelActions) {
+                if (panelAction == null) {
+                    continue;
+                }
+                Runnable wrappedClick = panelAction.onClick == null
+                        ? null
+                        : () -> dismissModalForNextAction(dialogHolder[0], panelAction.onClick);
+                Runnable wrappedLongClick = panelAction.onLongClick == null
+                        ? null
+                        : () -> dismissModalForNextAction(dialogHolder[0], panelAction.onLongClick);
+                modalPanelActions.add(new ZapActionItem(
+                        panelAction.label,
+                        panelAction.enabled,
+                        panelAction.highlighted,
+                        panelAction.selected,
+                        wrappedClick,
+                        wrappedLongClick
+                ));
+            }
+        }
         QuickChannelListComposeBinder.bind(quickChannelListComposeView, buildQuickChannelListUiModel(
                 title,
                 subtitle == null ? QuickChannelDialogUiFactory.subtitle(items, dialogHost) : subtitle,
-                panelActions,
+                modalPanelActions,
                 items,
                 dialogHolder,
                 action,
@@ -16510,6 +18915,16 @@ public class MainActivity extends FragmentActivity {
         if (!playbackRepairEnabled || request == null || request.channelId == null || request.channelId.trim().isEmpty() || request.directPlayback) {
             return;
         }
+        if (invalidateFailedLearnedPlaybackRoute(request)) {
+            showStatus(getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(PlaybackModeStore.MODE_AUTO)));
+            postUiDelayedIfAlive(() -> {
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                if (current != null && request.channelId.equals(current.id)) {
+                    retryCurrentPlayback();
+                }
+            }, 700L);
+            return;
+        }
         String currentMode = sanitizePlaybackMode(request.playbackMode);
         if (PlaybackModeStore.MODE_AUTO.equals(currentMode) || PlaybackModeStore.MODE_PROXY.equals(currentMode)) {
             return;
@@ -16531,6 +18946,26 @@ public class MainActivity extends FragmentActivity {
         }, 700L);
     }
 
+    private boolean invalidateFailedLearnedPlaybackRoute(PlayerController.PlaybackRequest request) {
+        if (request == null || request.channelId == null || request.channelId.trim().isEmpty()) {
+            return false;
+        }
+        String channelId = request.channelId.trim();
+        String failedMode = sanitizePlaybackMode(request.playbackMode);
+        if (PlaybackModeStore.MODE_AUTO.equals(failedMode)
+                || playbackModeStore == null
+                || !PlaybackModeStore.MODE_AUTO.equals(playbackModeStore.getMode(channelId))
+                || temporaryPlaybackModesByChannelId.containsKey(channelId)
+                || !failedMode.equals(playbackRecoveryCoordinator.learnedMode(channelId))) {
+            return false;
+        }
+        playbackRecoveryCoordinator.clearLearnedMode(channelId);
+        playbackRecoveryCoordinator.clearAttempts(channelId);
+        saveLearnedPlaybackModes();
+        Log.w(TAG, "invalidated failed learned playback route channel=" + channelId + " mode=" + failedMode);
+        return true;
+    }
+
     private void handlePlaybackAutoRecoveryReady(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics, String reason) {
         if (!playbackRepairEnabled || request == null || request.channelId == null || request.channelId.trim().isEmpty() || request.directPlayback) {
             return;
@@ -16540,6 +18975,42 @@ public class MainActivity extends FragmentActivity {
             mode = sanitizePlaybackMode(request.playbackMode);
         }
         if (PlaybackModeStore.MODE_AUTO.equals(mode)) {
+            return;
+        }
+        invalidateRecoveredLearnedPlaybackRoute(request, mode);
+        int generation = diagnostics == null ? -1 : diagnostics.attemptGeneration;
+        long initialPositionMs = diagnostics == null ? 0L : diagnostics.positionMs;
+        String stableMode = mode;
+        postUiDelayedIfAlive(
+                () -> learnRecoveredPlaybackRouteIfStillStable(request, stableMode, generation, initialPositionMs, reason),
+                PLAYBACK_ROUTE_LEARN_STABILITY_MS
+        );
+    }
+
+    private void invalidateRecoveredLearnedPlaybackRoute(PlayerController.PlaybackRequest request, String recoveredMode) {
+        if (request == null || request.channelId == null || request.channelId.trim().isEmpty()) {
+            return;
+        }
+        String channelId = request.channelId.trim();
+        String failedMode = sanitizePlaybackMode(request.playbackMode);
+        if (PlaybackModeStore.MODE_AUTO.equals(failedMode)
+                || failedMode.equals(recoveredMode)
+                || playbackModeStore == null
+                || !PlaybackModeStore.MODE_AUTO.equals(playbackModeStore.getMode(channelId))
+                || temporaryPlaybackModesByChannelId.containsKey(channelId)
+                || !failedMode.equals(playbackRecoveryCoordinator.learnedMode(channelId))) {
+            return;
+        }
+        playbackRecoveryCoordinator.clearLearnedMode(channelId);
+        playbackRecoveryCoordinator.clearAttempts(channelId);
+        saveLearnedPlaybackModes();
+        Log.w(TAG, "invalidated recovered learned playback route channel=" + channelId
+                + " failedMode=" + failedMode
+                + " recoveredMode=" + recoveredMode);
+    }
+
+    private void learnRecoveredPlaybackRouteIfStillStable(PlayerController.PlaybackRequest request, String mode, int generation, long initialPositionMs, String reason) {
+        if (request == null || !isLearnedRouteStillStable(request.channelId, mode, generation, initialPositionMs)) {
             return;
         }
         playbackRecoveryCoordinator.clearAttempts(request.channelId);
@@ -16566,27 +19037,60 @@ public class MainActivity extends FragmentActivity {
         if (!playbackRepairEnabled || PlaybackModeStore.MODE_AUTO.equals(mode) || channelId == null || channelId.trim().isEmpty()) {
             return;
         }
-        postUiDelayedIfAlive(() -> learnPlaybackModeIfStillCurrent(channelId, mode), 18_000L);
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        int generation = diagnostics == null ? -1 : diagnostics.attemptGeneration;
+        long initialPositionMs = diagnostics == null ? 0L : diagnostics.positionMs;
+        postUiDelayedIfAlive(
+                () -> learnPlaybackModeIfStillCurrent(channelId, mode, generation, initialPositionMs),
+                PLAYBACK_ROUTE_LEARN_STABILITY_MS
+        );
     }
 
-    private void learnPlaybackModeIfStillCurrent(String channelId, String playbackMode) {
-        ChannelItem current = getCurrentPlaybackChannelItem();
-        if (current == null || !channelId.equals(current.id)) {
-            return;
-        }
-        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
-        if (diagnostics == null || !PlaybackModeStore.MODE_AUTO.equals(sanitizePlaybackMode(diagnostics.playbackMode)) && !playbackMode.equals(sanitizePlaybackMode(diagnostics.playbackMode))) {
-            return;
-        }
-        if (diagnostics.lastError != null && !diagnostics.lastError.trim().isEmpty()) {
-            return;
-        }
-        String state = diagnostics.playbackState == null ? "" : diagnostics.playbackState.trim();
-        if (!"READY".equals(state)) {
+    private void learnPlaybackModeIfStillCurrent(String channelId, String playbackMode, int generation, long initialPositionMs) {
+        if (!isLearnedRouteStillStable(channelId, playbackMode, generation, initialPositionMs)) {
             return;
         }
         playbackRecoveryCoordinator.clearAttempts(channelId);
         setLearnedPlaybackMode(channelId, playbackMode, false);
+    }
+
+    private boolean isLearnedRouteStillStable(String channelId, String expectedMode, int expectedGeneration, long initialPositionMs) {
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current == null || channelId == null || !channelId.equals(current.id)) {
+            return false;
+        }
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        if (diagnostics == null
+                || !expectedMode.equals(inferPlaybackModeFromDiagnostics(diagnostics))) {
+            Log.w(TAG, "playback route learning rejected channel=" + channelId
+                    + " expectedMode=" + expectedMode
+                    + " diagnosticsMode=" + (diagnostics == null ? "missing" : inferPlaybackModeFromDiagnostics(diagnostics)));
+            return false;
+        }
+        boolean stable = PlaybackRouteLearningPolicy.isStable(
+                diagnostics.playbackState,
+                diagnostics.playing,
+                diagnostics.firstFrameRendered,
+                diagnostics.lastError,
+                diagnostics.bufferingCount,
+                initialPositionMs,
+                diagnostics.positionMs,
+                expectedGeneration,
+                diagnostics.attemptGeneration
+        );
+        Log.w(TAG, "playback route learning check channel=" + channelId
+                + " mode=" + expectedMode
+                + " stable=" + stable
+                + " state=" + diagnostics.playbackState
+                + " playing=" + diagnostics.playing
+                + " firstFrame=" + diagnostics.firstFrameRendered
+                + " buffers=" + diagnostics.bufferingCount
+                + " initialPositionMs=" + initialPositionMs
+                + " currentPositionMs=" + diagnostics.positionMs
+                + " expectedGeneration=" + expectedGeneration
+                + " currentGeneration=" + diagnostics.attemptGeneration
+                + " error=" + fallbackUnknown(diagnostics.lastError));
+        return stable;
     }
 
     private void setLearnedPlaybackMode(String channelId, String playbackMode, boolean announce) {
@@ -16796,6 +19300,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String formatPlaybackModeLabel(String playbackMode) {
+        if (PlaybackModeStore.MODE_COMPAT.equals(playbackMode)) {
+            return getString(R.string.diagnostics_route_compat);
+        }
         if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
             return getString(R.string.playback_mode_direct);
         }
@@ -16806,6 +19313,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String sanitizePlaybackMode(String playbackMode) {
+        if (PlaybackModeStore.MODE_COMPAT.equals(playbackMode)) {
+            return PlaybackModeStore.MODE_COMPAT;
+        }
         if (PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
             return PlaybackModeStore.MODE_DIRECT;
         }
@@ -16816,18 +19326,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String inferPlaybackModeFromDiagnostics(PlayerController.PlaybackDiagnostics diagnostics) {
-        String mode = diagnostics == null ? PlaybackModeStore.MODE_AUTO : sanitizePlaybackMode(diagnostics.playbackMode);
-        if (!PlaybackModeStore.MODE_AUTO.equals(mode)) {
-            return mode;
-        }
-        String route = diagnostics == null ? "" : safeLower(diagnostics.routeLabel);
-        if (route.contains("proxy")) {
-            return PlaybackModeStore.MODE_PROXY;
-        }
-        if (route.contains("direct")) {
-            return PlaybackModeStore.MODE_DIRECT;
-        }
-        return PlaybackModeStore.MODE_AUTO;
+        return diagnostics == null
+                ? PlaybackModeStore.MODE_AUTO
+                : PlaybackRouteLearningPolicy.effectiveMode(
+                        diagnostics.playbackMode,
+                        diagnostics.routeLabel,
+                        diagnostics.usingFallback
+                );
     }
 
     private static String safeText(String value) {
@@ -16848,16 +19353,24 @@ public class MainActivity extends FragmentActivity {
         return builder.toString();
     }
 
-    private void showZapBanner(ChannelItem channelItem) {
+    private void showCompactPlaybackHud(ChannelItem channelItem) {
         ensureTouchControlsEpgPair(channelItem);
-        logHudEpgState("showZapBanner", channelItem);
-        zapBannerController.show(channelItem);
+        logHudEpgState("showCompactPlaybackHud", channelItem);
+        hideZapBanner();
+        compactPlaybackHud = true;
+        touchControlsFocusState.clear();
+        refreshTouchControlsBar();
+        if (touchControlsController != null) {
+            touchControlsController.showTouchControlsTemporarily(COMPACT_PLAYBACK_HUD_HIDE_MS);
+        }
     }
 
-    private void updateZapBannerContent(ChannelItem channelItem) {
+    private void updatePlaybackHudContent(ChannelItem channelItem) {
         ensureTouchControlsEpgPair(channelItem);
-        logHudEpgState("updateZapBanner", channelItem);
-        zapBannerController.updateContent(channelItem);
+        logHudEpgState("updatePlaybackHud", channelItem);
+        if (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
+            refreshTouchControlsBar();
+        }
     }
 
     private void logHudEpgState(String source, ChannelItem channelItem) {
@@ -17071,6 +19584,12 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         vodResumePositions.put(currentPlaybackVodId, positionMs);
+        vodResumeUpdatedAt.put(currentPlaybackVodId, System.currentTimeMillis());
+        ChannelItem item = currentPlaybackTransientItem;
+        if (item == null || !currentPlaybackVodId.equals(item.id)) {
+            item = findChannelItemById(currentPlaybackVodId);
+        }
+        rememberVodResumeItem(item);
         invalidateVodDerivedCaches();
         saveVodResumePositions();
     }
@@ -17088,6 +19607,11 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         if (vodResumePositions.remove(vodId) != null) {
+            vodResumeUpdatedAt.remove(vodId);
+            vodResumeItems.remove(vodId);
+            if (catalogSnapshotStore != null) {
+                catalogSnapshotStore.removeVodResumeItem(vodId);
+            }
             invalidateVodDerivedCaches();
             saveVodResumePositions();
         }
@@ -17095,6 +19619,7 @@ public class MainActivity extends FragmentActivity {
 
     private void loadVodResumePositions() {
         vodResumePositions.clear();
+        vodResumeUpdatedAt.clear();
         invalidateVodDerivedCaches();
         if (prefs == null) {
             return;
@@ -17108,7 +19633,20 @@ public class MainActivity extends FragmentActivity {
             java.util.Iterator<String> keys = json.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
-                vodResumePositions.put(key, Math.max(0L, json.optLong(key, 0L)));
+                Object rawValue = json.opt(key);
+                if (rawValue instanceof JSONObject) {
+                    JSONObject entry = (JSONObject) rawValue;
+                    vodResumePositions.put(key, Math.max(0L, entry.optLong("position", 0L)));
+                    vodResumeUpdatedAt.put(key, Math.max(0L, entry.optLong("updated_at", 0L)));
+                } else {
+                    long position = Math.max(0L, json.optLong(key, 0L));
+                    if (position > 0L) {
+                        vodResumePositions.put(key, position);
+                        // Legacy entries did not carry a timestamp. Mark them as local now so
+                        // an older empty server payload cannot erase freshly watched Plex VOD.
+                        vodResumeUpdatedAt.put(key, System.currentTimeMillis());
+                    }
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "failed to load vod resume positions", e);
@@ -17116,6 +19654,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void saveVodResumePositions() {
+        saveVodResumePositions(true);
+    }
+
+    private void saveVodResumePositions(boolean scheduleSync) {
         if (prefs == null) {
             return;
         }
@@ -17127,12 +19669,28 @@ public class MainActivity extends FragmentActivity {
                 }
                 long value = entry.getValue() == null ? 0L : Math.max(0L, entry.getValue());
                 if (value > 0L) {
-                    json.put(entry.getKey(), value);
+                    json.put(entry.getKey(), new JSONObject()
+                            .put("position", value)
+                            .put("updated_at", Math.max(0L, vodResumeUpdatedAt.getOrDefault(entry.getKey(), System.currentTimeMillis()))));
                 }
             }
             prefs.edit().putString(PREF_VOD_RESUME_POSITIONS, json.toString()).apply();
+            if (scheduleSync) {
+                scheduleUserPreferencePush();
+            }
         } catch (Exception e) {
             Log.w(TAG, "failed to save vod resume positions", e);
+        }
+    }
+
+    private void rememberVodResumeItem(ChannelItem item) {
+        if (item == null || !item.isVod || item.id.isEmpty()) {
+            return;
+        }
+        boolean alreadyCached = vodResumeItems.containsKey(item.id);
+        vodResumeItems.put(item.id, item);
+        if (!alreadyCached && catalogSnapshotStore != null) {
+            catalogSnapshotStore.saveVodResumeItem(item);
         }
     }
 
@@ -17593,11 +20151,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void bindVodPosterThumbnail(ImageView imageView, String posterUrl) {
-        bindPoster(imageView, posterUrl, false, 180, 270);
+        bindPoster(imageView, posterUrl, true, 180, 270);
     }
 
     private void bindVodPosterList(ImageView imageView, String posterUrl) {
-        bindPoster(imageView, posterUrl, false, 120, 180);
+        bindPoster(imageView, posterUrl, true, 120, 180);
     }
 
     private void bindPoster(ImageView imageView, String posterUrl, boolean fitInside) {
@@ -17615,12 +20173,13 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String trimmedPosterUrl = posterUrl.trim();
+        Object posterModel = authenticatedPosterModel(trimmedPosterUrl);
         imageView.setVisibility(View.VISIBLE);
         imageView.setTag(trimmedPosterUrl);
         if (fitInside) {
             imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
             Glide.with(imageView.getContext())
-                    .load(trimmedPosterUrl)
+                    .load(posterModel)
                     .fitCenter()
                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                     .override(dp(widthDp), dp(heightDp))
@@ -17629,11 +20188,28 @@ public class MainActivity extends FragmentActivity {
         }
         imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         Glide.with(imageView.getContext())
-                .load(trimmedPosterUrl)
+                .load(posterModel)
                 .centerCrop()
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .override(dp(widthDp), dp(heightDp))
                 .into(imageView);
+    }
+
+    private Object authenticatedPosterModel(String posterUrl) {
+        if (!ProtectedImageRequestPolicy.requiresDeviceAuth(posterUrl, baseUrl, BuildConfig.PLAYER_URL)) {
+            return posterUrl;
+        }
+        String accessToken = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+        if (accessToken == null || accessToken.trim().isEmpty()) {
+            return posterUrl;
+        }
+        LazyHeaders.Builder headers = new LazyHeaders.Builder()
+                .addHeader("Authorization", "Bearer " + accessToken.trim());
+        String deviceId = catalogSnapshotStore.getDeviceId();
+        if (deviceId != null && !deviceId.trim().isEmpty()) {
+            headers.addHeader("X-DRBEP-Device-Id", deviceId.trim());
+        }
+        return new GlideUrl(posterUrl, headers.build());
     }
 
     private static String humanReadableSize(long sizeBytes) {

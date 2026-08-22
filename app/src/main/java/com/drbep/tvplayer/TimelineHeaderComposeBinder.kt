@@ -68,7 +68,7 @@ internal fun TimelineHeader(model: TimelineHeaderUiModel) {
                     text = model.windowLabel,
                     modifier = Modifier.padding(top = 8.dp),
                     style = TextStyle(
-                        color = Color(0xFFDDEBFA),
+                        color = OfflineTvTheme.Colors.textSoft,
                         fontSize = if (compact) 13.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -97,7 +97,7 @@ private fun TimelineHeaderAction(action: TimelineHeaderUiModel.TimelineHeaderAct
         text = action.label,
         modifier = Modifier
             .alpha(if (focused) 1f else 0.9f)
-            .background(if (focused) Color(0xFF2F89C5) else Color(0x264F86A8), RoundedCornerShape(14.dp))
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(action.onClick != null)
             .onPreviewKeyEvent { event ->

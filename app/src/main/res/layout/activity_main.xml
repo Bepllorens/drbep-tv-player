@@ -2,15 +2,26 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="@android:color/black"
         android:keepScreenOn="true"
         android:focusable="true"
-        android:focusableInTouchMode="true" />
+        android:focusableInTouchMode="true"
+        app:shutter_background_color="@android:color/black" />
+
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/vlcVideoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:keepScreenOn="true"
+        android:visibility="gone" />
 
     <View
         android:id="@+id/playbackGestureLayer"
@@ -181,7 +192,7 @@
                         android:layout_height="match_parent"
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:background="#FF1A2430">
+                        android:background="#FF1A1730">
 
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView1"
@@ -203,7 +214,7 @@
                         android:layout_height="match_parent"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:background="#FF1A2430">
+                        android:background="#FF1A1730">
 
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView2"
@@ -233,7 +244,7 @@
                         android:layout_height="match_parent"
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:background="#FF1A2430">
+                        android:background="#FF1A1730">
 
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView3"
@@ -255,7 +266,7 @@
                         android:layout_height="match_parent"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:background="#FF1A2430">
+                        android:background="#FF1A1730">
 
                         <androidx.media3.ui.PlayerView
                             android:id="@+id/multiPlayerView4"

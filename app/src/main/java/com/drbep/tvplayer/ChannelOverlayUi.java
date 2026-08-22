@@ -154,16 +154,16 @@ public final class ChannelOverlayUi {
 
     private static int buildContextAccentColor(String label) {
         int[] palette = new int[]{
-                0xFF3D8BFD,
-                0xFF00A6A6,
-                0xFFFF8A3D,
-                0xFF5B8DEF,
-                0xFF2FAF7B,
+                OfflineTvTheme.chipSelectedArgb(),
+                OfflineTvTheme.accentCyanArgb(),
+                OfflineTvTheme.accentGoldArgb(),
+                OfflineTvTheme.focusArgb(),
+                0xFF3A8C78,
                 0xFFD56A8A
         };
         String clean = safeTrim(label);
         if (clean.isEmpty()) {
-            return 0xFF3D8BFD;
+            return OfflineTvTheme.chipSelectedArgb();
         }
         int index = Math.floorMod(clean.toLowerCase(Locale.ROOT).hashCode(), palette.length);
         return palette[index];

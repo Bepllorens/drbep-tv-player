@@ -57,14 +57,18 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
     }
 
     val latestModel by rememberUpdatedState(model)
+    val panelColor = if (model.modernStyle) OfflineTvTheme.Colors.backdropAccent.copy(alpha = 0.93f) else OfflineTvTheme.Colors.panelGlass
+    val focusColor = if (model.modernStyle) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.focus
+    val textColor = if (model.modernStyle) OfflineTvTheme.Colors.textSoft else OfflineTvTheme.Colors.textSoft
+    val liveColor = if (model.modernStyle) OfflineTvTheme.Colors.card else OfflineTvTheme.Colors.card
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(OfflineTvTheme.Radius.bar))
+            .background(panelColor, RoundedCornerShape(OfflineTvTheme.Radius.bar))
             .border(
                 width = if (model.focused) 2.dp else 0.dp,
-                color = if (model.focused) OfflineTvTheme.Colors.focus else Color.Transparent,
+                color = if (model.focused) focusColor else Color.Transparent,
                 shape = RoundedCornerShape(OfflineTvTheme.Radius.bar)
             )
             .padding(horizontal = 14.dp, vertical = 10.dp)
@@ -77,13 +81,13 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
             BasicText(
                 text = displayLabel,
                 modifier = Modifier.weight(1f),
-                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             )
             if (model.liveVisible) {
                 BasicText(
                     text = stringResource(R.string.timeshift_live_button),
                     modifier = Modifier
-                        .background(OfflineTvTheme.Colors.card, RoundedCornerShape(OfflineTvTheme.Radius.chip))
+                        .background(liveColor, RoundedCornerShape(OfflineTvTheme.Radius.chip))
                         .tvButtonSemantics(model.onLiveClick != null)
                         .clickable(enabled = model.onLiveClick != null) { model.onLiveClick?.run() }
                         .padding(horizontal = 10.dp, vertical = 4.dp),

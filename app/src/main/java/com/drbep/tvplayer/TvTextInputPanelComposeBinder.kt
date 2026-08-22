@@ -73,7 +73,7 @@ private fun TvTextInputPanel(model: TvTextInputPanelUiModel) {
             modifier = Modifier
                 .fillMaxWidth(if (compact) 0.94f else 0.48f)
                 .clip(RoundedCornerShape(if (compact) 22.dp else 28.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xF21A2634), Color(0xF20A1018))))
+                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
                 .padding(if (compact) 16.dp else 22.dp)
         ) {
             BasicText(
@@ -86,7 +86,7 @@ private fun TvTextInputPanel(model: TvTextInputPanelUiModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 BasicText(
                     text = model.message,
-                    style = TextStyle(color = Color(0xFFC4D2E3), fontSize = if (compact) 12.sp else 14.sp),
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp),
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -144,8 +144,8 @@ private fun TvAndroidTextField(field: TvTextInputFieldUiModel, editTexts: Mutabl
                 }
                 background = android.graphics.drawable.GradientDrawable().apply {
                     cornerRadius = 14f
-                    setColor(0xFF203044.toInt())
-                    setStroke(2, 0xFF5E7896.toInt())
+                    setColor(OfflineTvTheme.cardArgb())
+                    setStroke(2, OfflineTvTheme.focusArgb())
                 }
             }
         },
@@ -164,7 +164,7 @@ private fun TvTextInputActionButton(label: String, destructive: Boolean, modifie
         modifier = modifier
             .height(48.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (focused) Color(0xFFFFD47A) else if (destructive) Color(0xFF643040) else Color(0xFF203044))
+            .background(if (focused) OfflineTvTheme.Colors.focus else if (destructive) Color(0xFF643040) else OfflineTvTheme.Colors.chip)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(true)
@@ -173,7 +173,7 @@ private fun TvTextInputActionButton(label: String, destructive: Boolean, modifie
     ) {
         BasicText(
             text = label,
-            style = TextStyle(color = if (focused) Color(0xFF101722) else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

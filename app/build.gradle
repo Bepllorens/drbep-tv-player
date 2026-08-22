@@ -26,6 +26,7 @@ def standaloneMode = (project.findProperty('standaloneMode') ?: 'true').toString
 def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toString()
 def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://fire.tvbep.com').toString()
 def updateChannel = (project.findProperty('updateChannel') ?: 'stable').toString()
+def fireAbiOnly = (project.findProperty('fireAbiOnly') ?: 'false').toString().toBoolean()
 def offlineSnapshotPublicKey = (project.findProperty('offlineSnapshotPublicKey') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArIoIQfhLQG1NRNGVHHHRYJpJ1+epFzzIhXbP2J80kOLEcW57ruhXydBV1sBNpZrUoC2EAy2ISiN7suLTp8NJSD7EqnExg8vJnyhKcUzUYkBksJpuccWUqSuQhIe43TABw8OM2+OmTT9QgZBgbk9CbgP+zehssXzH1w0OL6RQ/vWMFsmxO9dieqKafdxn4IQLJEVZc7IDIPsk67HwlTfPT+1gmoCEsy7nn3gD8bs++Sz2e4mVwGgjqaqSHU4SJILleQJ17MC/I+DLI/EHLwIJ/5577c+foZS4rDPIRHf9puCcuhiXCTRMX92KsSj6FVhwgklVhFgyxjoKh8y7pUft/QIDAQAB').toString()
 def offlineSnapshotKeyId = (project.findProperty('offlineSnapshotKeyId') ?: 'offline-snapshot-rsa-20260520').toString()
 
@@ -65,9 +66,16 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 340
-        versionName "2.0.340-beta-targeted-epg"
+        versionCode 428
+        versionName "2.0.428-beta-continuity-poll"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            if (fireAbiOnly) {
+                abiFilters 'armeabi-v7a'
+            } else {
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
+            }
+        }
         manifestPlaceholders = [
                 appAllowBackup: "false",
                 appFullBackupContent: "false",
@@ -163,9 +171,13 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer-hls:1.10.1'
     implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.10.1'
     implementation 'androidx.media3:media3-ui:1.10.1'
+    implementation 'org.videolan.android:libvlc-all:3.7.5'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
     implementation 'com.caverock:androidsvg:1.4'
     implementation 'androidx.work:work-runtime:2.9.1'
     testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
 }

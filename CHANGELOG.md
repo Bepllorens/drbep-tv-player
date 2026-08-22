@@ -1,4 +1,85 @@
 ## Unreleased - adaptive performance and cross-device UX
+- Portada: muestra Biblioteca VOD desde el recuento del snapshot aunque el catálogo rápido inicial todavía contenga solo TV.
+- Prime Live: recupera una sola vez los manifiestos DASH obsoletos mientras el relay mantiene estable la sesión del canal.
+- HUD moderno: centra la fila de botones dentro del panel cuando caben y conserva desplazamiento horizontal cuando el número de acciones supera el ancho disponible.
+- HUD: migra una sola vez las instalaciones existentes al diseño moderno; cualquier cambio posterior a clásico vuelve a conservarse.
+- DAZN VOD: el selector indica que el catálogo se cargará al elegirlo, en vez de mostrar engañosamente cero títulos antes de la carga diferida.
+- Biblioteca VOD: el origen abre un selector directo con la selección actual y el recuento visible, manteniendo la carga diferida de Movistar y DAZN.
+- Apariencia: Herramientas permite alternar y recordar las paletas Aurora violeta, Grafito cian y Esmeralda carbón en portada, HUD, guía, listas y menús.
+- VOD remoto: Plex y Movistar usan el backend publico del dispositivo offline, y los manifests Movistar conservan el host exterior en todos sus segmentos.
+- Biblioteca VOD: abre inmediatamente el catalogo guardado y actualiza Movistar solo al seleccionar ese origen o buscar expresamente.
+- HUD VOD: muestra la pelicula o episodio reproducido, su metadata y progreso en lugar del filtro o plataforma de television.
+- Inicio U7D/VOD: conserva el panel de preparacion hasta recibir el primer fotograma, muestra la fase de buffer inicial y amplía solo para VOD el margen de una primera renovación DRM lenta.
+- U7D Movistar: libera de forma determinista la fuente Media3 al volver a directo; el backend limita el replay a tiempo real y corta clientes bloqueados para que una sesión abandonada no afecte a otros usuarios.
+- Arranque: alinea la plataforma visible con el ultimo canal restaurado para no volver aparentemente a Tivify cuando se estaba viendo otra plataforma.
+- VOD externo: los catalogos offline usan el host publico del snapshot para VOD, Plex y U7D, evitando rutas privadas fuera de la red local.
+- HUD: añade un acceso VOD inmediatamente después de U7D en los canales en directo, sin duplicarlo durante la reproducción VOD.
+- HUD: U7D y VOD retiran correctamente los controles antes de abrir sus paneles para evitar que el HUD tape o cierre el destino.
+- Grabaciones: abre el primer listado disponible sin esperar innecesariamente al alternativo y envía también la identidad del dispositivo al backend.
+- Actualizacion offline: vuelve a ofrecer cada 24 horas una version opcional pendiente y recupera instalaciones antiguas cuyo aviso habia quedado silenciado sin fecha.
+- Móvil: recupera el acceso a Herramientas dentro de la línea de progreso del banner automático, sin restaurar la botonera completa ni aumentar su altura con otra fila.
+- Móvil: el banner automático de zapeo vuelve a ser informativo y compacto, sin botones; limita los textos a una línea para evitar recortes con títulos largos. Tablet y TV conservan las acciones.
+- Zapeo: restaura el banner automático a una sola fila de acciones en móviles panorámicos para recuperar su altura original.
+- Arranque: vuelve al último canal lineal reproducido, actualiza la caché rápida tras el primer fotograma y evita que VOD, U7D o otra sesión sustituyan la preferencia local válida.
+- Móvil: el banner automático al cambiar de canal conserva tipografía, logo y controles de tamaño cómodo, distribuyendo las acciones en varias filas cuando hace falta.
+- Móvil: el HUD inferior táctil aprovecha todo el ancho útil en teléfonos panorámicos, sin alterar el tamaño acotado de tabletas y TV.
+- Empaquetado universal: incluye `armeabi-v7a` para Fire TV y `arm64-v8a` para móviles, tabletas y Android TV modernos.
+- Guía TV: virtualiza las filas y conserva el foco cerca del canal activo para evitar componer toda la parrilla en el hilo principal.
+- Navegación: presenta Directo, Guía, Grabaciones y Biblioteca como destinos principales antes de las herramientas secundarias.
+- Diseño TV: refuerza foco, contraste y legibilidad de la guía y de la portada mediante los tokens visuales compartidos.
+- Preferencias: sincroniza con la web app favoritos, recientes, último canal, progreso VOD y presets multipantalla por usuario.
+- Audio y subtítulos: recuerda la lengua seleccionada y si los subtítulos deben permanecer activados.
+- Seguridad: cifra el token de acceso con Android Keystore y migra automáticamente instalaciones anteriores.
+- Control parental: sustituye el hash rápido del PIN por PBKDF2 y bloquea temporalmente los intentos repetidos.
+- Compatibilidad: incorpora PiP y búsqueda por voz con detección de capacidad y fallback seguro.
+- Soporte: permite enviar desde el dispositivo un paquete de diagnóstico saneado al dashboard.
+- Calidad: corrige el manifiesto debug, activa reglas de extracción seguras y añade un smoke test instrumentado de navegación con mando.
+- Empaquetado: permite generar una APK Fire TV solo `armeabi-v7a` con `-PfireAbiOnly=true` para reducir tamaño.
+- Plex VOD: autentica mediante cabeceras las imágenes protegidas de DRBEP para recuperar los pósteres en la app offline sin exponer el token en la URL.
+- Control remoto: la Web App puede enviar el canal en directo al Fire TV o dispositivo offline asociado al mismo usuario.
+- Movistar HLS: `OK` abre los controles inferiores en directo en vez de pausar la imagen.
+- Movistar HLS: reintenta en el proxy los fallos transitorios de segmentos antes de provocar un corte.
+- Movistar HLS: muestra en el reproductor la resolución y el bitrate exactos declarados por la variante de máxima calidad.
+- Plex AVI: reproduce los ficheros originales mediante libVLC local cuando Media3 no tolera sus timestamps, manteniendo direct play sin transcodificar ni remultiplexar.
+- Plex AVI: abre la reanudación desde el punto guardado en el propio demuxer para evitar una espera larga antes del primer fotograma.
+- Plex VOD: sitúa buscar y paginación encima de los resultados para acceder a ellos sin recorrer los 100 títulos.
+- Ficha VOD: alinea el póster en formato 2:3 y separa título, metadatos, sinopsis, progreso y acciones en una composición más clara para TV.
+- Navegación VOD: cierra la lista anterior antes de abrir búsqueda, ficha o reproducción para que el catálogo no quede superpuesto al vídeo.
+- Reproduccion VOD: da prioridad al panel de canales sobre los controles de pelicula para que OK cambie al canal seleccionado.
+- Plex VOD: añade navegación jerárquica por Películas o Series, servidor y biblioteca, con páginas cargadas bajo demanda.
+- Plex Series: agrupa cada serie bajo un único título y muestra dentro sus episodios ordenados por temporada.
+- Plex VOD: invalida la cache parseada anterior al actualizar la app y reconstruye el catalogo aunque la huella del snapshot no haya cambiado.
+- Plex VOD: incorpora peliculas y series de los servidores configurados al catalogo offline y a la biblioteca visual.
+- Plex VOD: reproduce siempre mediante la URL publica de DRBEP en direct play, sin transcodificacion ni remux.
+- Plex VOD: conserva autenticacion de usuario, caratulas y filtros separados para peliculas y series.
+- Reproduccion adaptativa: recuerda por canal la ruta compatible solo despues de 30 segundos estables y la descarta automaticamente si vuelve a fallar.
+- VOD: muestra desde el primer instante un panel de preparacion con las fases de manifest, DRM y buffer en lugar de dejar la pantalla negra.
+- Fire TV: la barra de avance consume izquierda y derecha tambien al alcanzar sus extremos, evitando que el foco salte al selector de plataforma.
+- Tivify: restaura VOD Adulto en la carga bajo demanda y conserva tambien Runtime al abrir la biblioteca ligera.
+- Movistar VOD: sustituye la copia reducida anterior al cargar la API dinamica para no mostrar una coleccion Peliculas duplicada y vacia.
+- VOD Movistar: carga una selección reciente por API al abrir la biblioteca y busca bajo demanda en todo el catálogo sin guardar miles de títulos en el dispositivo.
+- VOD Movistar: mantiene un catálogo offline reducido como respaldo si el proveedor o la red no están disponibles.
+- U7D Movistar: habilita Últimos 7 días también en los canales DASH de la plataforma Movistar, reutilizando el catálogo y la reproducción de Movistar ISM.
+- U7D: muestra en el HUD y la ficha el evento seleccionado en lugar del programa lineal actual, incluso despues de avanzar o retroceder.
+- U7D Movistar: amplia dos minutos el final de la ventana para no cortar peliculas o programas que terminan despues del horario EPG.
+- U7D Movistar y Orange: agrupa las pulsaciones consecutivas de avance/retroceso y abre un unico stream en el ultimo punto elegido.
+- Fire TV: conserva el foco en la barra de tiempo mientras se desplaza con el mando y evita saltar al menu inferior durante el reinicio del U7D.
+- Backend U7D: reemplaza la sesion anterior del mismo proveedor y dispositivo para que dos saltos no mantengan procesos ffmpeg compitiendo.
+- Orange TV: corrige el tipo MPEG-TS de los replays U7D, habilita el retroceso virtual de dos horas y usa el logo del canal cuando falla la caratula del programa.
+- Identidad visual: respeta la zona segura del icono adaptativo para mostrar completo el logo y sus textos sin perder el fondo negro a sangre.
+- Identidad visual: el icono Android ocupa toda la mascara del launcher sin placa blanca y el nombre visible pasa a ser DRBEP TV.
+- Identidad visual: incorpora el nuevo logo DRBEP en el icono de Android/Fire TV y en el banner del launcher.
+- Orange TV: fija el MPD a su representacion de video de maxima calidad y recupera automaticamente los saltos de ventana live sin dejar una pantalla de error.
+- Recuperacion offline: permite renovar una activacion caducada directamente desde la pantalla de problemas de actualizacion, sin borrar catalogo ni ajustes.
+- Actualizacion offline: comprueba la APK en un executor prioritario antes de materializar el catalogo.
+- Actualizacion obligatoria: mantiene bloqueada la carga pesada del catalogo si el servidor exige instalar una version nueva.
+- Arranque: libera el catalogo tras cuatro segundos si el servidor de actualizaciones no responde, conservando un inicio tolerante a fallos.
+- Arranque offline: usa primero la cache local firmada y vigente, sin consultar la huella remota en el camino critico.
+- Fire TV: prioriza la reproduccion y difiere 25 segundos la hidratacion completa de VOD tras el primer frame, en un executor separado.
+- Actualizacion offline: descarga y parsea el nuevo catalogo como candidato antes de sustituir atomicamente el ultimo snapshot valido.
+- Fast playback: conserva el ultimo canal verificado ante cambios ajenos de catalogo o identificadores de navegacion.
+- Tablet: espera 8 segundos de buffer antes de reanudar tras un corte para absorber mejor la irregularidad de los streams HLS.
+- Telemetria: separa el buffering inicial de los rebufferings y reporta cada recuperacion sin inflar el tiempo ni los exitos de arranque.
 - Diagnostico: sustituye la expresion regular de secretos por un redactor lineal y acotado para evitar ANR con URLs largas de Pluto TV.
 - Seguridad: las URLs de diagnostico eliminan query y fragmento, y todo texto de entrada queda limitado antes de mostrarse en el HUD.
 - Zapping: evita el ANR de Fire TV separando los cambios de calidad de la reconstruccion completa del listado y agrupando renders repetidos del overlay.
@@ -639,3 +720,18 @@
 - Corrige la deteccion de trafico directo cuando una CDN externa contiene `/live/` en su propia URL.
 - Pluto arranca directamente desde el HLS del catalogo y evita la consulta previa que ralentizaba el zapping.
 - Mantiene la ruta de compatibilidad de Pluto como recuperacion si falla el origen directo.
+## 2.0.379-black-letterbox
+
+- Fuerza a negro puro las bandas de relación de aspecto y el fondo de vídeo
+  tanto en Media3 como en la reproducción directa con VLC.
+
+## 2.0.378-vod-page-focus
+
+- Permite saltar desde el último título de una página VOD a `Página siguiente`
+  pulsando abajo, sin recorrer de nuevo los 100 resultados.
+- Conserva el acceso directo a Buscar pulsando arriba desde el primer título.
+- Añade ordenación del catálogo Plex por fecha real de incorporación o por
+  título, con los añadidos recientemente como vista inicial.
+## 2.0.380-movistar-sample-aes
+
+- Movistar HLS: reproduce los canales MPEG-TS SAMPLE-AES importados desde JSON mediante el manifiesto identity autenticado y libVLC, sin transcodificación.

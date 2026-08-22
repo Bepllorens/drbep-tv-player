@@ -58,7 +58,7 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
             .fillMaxWidth()
             .fillMaxHeight()
             .tvPanelBackHandler(model.onBack)
-            .background(Color(0xCC000000)),
+            .background(OfflineTvTheme.Colors.guideBackdrop),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -66,7 +66,7 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
                 .fillMaxWidth(if (compact) 0.94f else 0.52f)
                 .fillMaxHeight(if (compact) 0.82f else 0.76f)
                 .clip(RoundedCornerShape(if (compact) 22.dp else 28.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xF21A2634), Color(0xF20A1018))))
+                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
                 .padding(if (compact) 16.dp else 22.dp)
         ) {
             BasicText(
@@ -81,14 +81,14 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
                     .weight(1f)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xAA101A26))
+                    .background(OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.8f))
                     .padding(if (compact) 12.dp else 16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 BasicText(
                     text = model.message,
                     style = TextStyle(
-                        color = Color(0xFFD5E3F2),
+                        color = OfflineTvTheme.Colors.textSoft,
                         fontSize = if (compact) 13.sp else 15.sp,
                         fontFamily = FontFamily.SansSerif
                     )
@@ -116,11 +116,11 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
 private fun TvMessageActionButton(action: TvMessageActionUiModel, compact: Boolean, modifier: Modifier, requester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
     val background = when {
-        focused -> Color(0xFFFFD47A)
+        focused -> OfflineTvTheme.Colors.focus
         action.destructive -> Color(0xFF643040)
-        else -> Color(0xFF203044)
+        else -> OfflineTvTheme.Colors.chip
     }
-    val textColor = if (focused) Color(0xFF101722) else Color.White
+    val textColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
     Box(
         modifier = modifier
             .height(if (compact) 46.dp else 50.dp)

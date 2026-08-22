@@ -19,8 +19,11 @@ public class TouchControlsUiFactoryTest {
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host, 2);
 
-        assertEquals(10, model.actions.size());
-        assertLabels(model, "Canales", "Plataforma", "Guia", "U7D", "Anterior", "Info", "Grab", "Rebobinar", "Pausa", "Avanzar");
+        assertEquals(8, model.actions.size());
+        assertLabels(model, "Canales", "Plataforma", "Guia", "U7D", "VOD", "Anterior", "Info", "Grab");
+        assertFalse(hasLabel(model, "Rebobinar"));
+        assertFalse(hasLabel(model, "Pausa"));
+        assertFalse(hasLabel(model, "Avanzar"));
         assertEquals(2, model.focusedActionIndex);
     }
 
@@ -39,6 +42,18 @@ public class TouchControlsUiFactoryTest {
     }
 
     @Test
+    public void u7dReplayDoesNotMasqueradeAsVodLibrary() {
+        FakeHost host = new FakeHost();
+        host.current = u7dReplayChannel();
+
+        TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
+
+        assertLabels(model, "Canales", "Plataforma", "Guia", "VOD", "Anterior", "Info", "Grab", "Rebobinar", "Pausa", "Avanzar");
+        assertFalse(hasLabel(model, "Biblioteca VOD"));
+        assertFalse(hasLabel(model, "Ficha VOD"));
+    }
+
+    @Test
     public void orientationButtonOnlyAppearsWhenSupported() {
         FakeHost host = new FakeHost();
         host.current = channel(false);
@@ -47,12 +62,16 @@ public class TouchControlsUiFactoryTest {
         TouchControlsBarUiModel noRotate = TouchControlsUiFactory.build(host);
         assertFalse(hasLabel(noRotate, "Giro libre"));
         assertFalse(hasLabel(noRotate, "Giro fijo"));
+        assertFalse(hasLabel(noRotate, "Ajustes"));
 
         host.orientationSupported = true;
         host.orientationLocked = true;
 
         TouchControlsBarUiModel locked = TouchControlsUiFactory.build(host);
         assertTrue(hasLabel(locked, "Giro fijo"));
+        assertTrue(hasLabel(locked, "Ajustes"));
+        click(locked, "Ajustes");
+        assertEquals("keep,tools", String.join(",", host.events));
     }
 
     @Test
@@ -66,8 +85,35 @@ public class TouchControlsUiFactoryTest {
         click(model, "Plataforma");
         click(model, "Guia");
         click(model, "U7D");
+        click(model, "VOD");
 
-        assertEquals("keep,showOverlay,keep,showFilterPicker,keep,openTimelineGuide,keep,openU7D", String.join(",", host.events));
+        assertEquals("keep,showOverlay,keep,showFilterPicker,keep,openTimelineGuide,keep,openU7D,keep,showVodLibrary", String.join(",", host.events));
+    }
+
+    @Test
+    public void platformActionCarriesCompactActivePlatformBrand() {
+        FakeHost host = new FakeHost();
+        host.current = channel(false);
+
+        ZapActionItem platform = find(TouchControlsUiFactory.build(host), "Plataforma");
+
+        assertEquals("platform", platform.iconHint);
+        assertEquals("M+", platform.iconText);
+        assertEquals("DAZN", TouchControlsUiFactory.platformMark(channelWithPlatform("DAZN España")));
+        assertEquals("TIV", TouchControlsUiFactory.platformMark(channelWithPlatform("Tivify")));
+        assertEquals("OTT", TouchControlsUiFactory.platformMark(null));
+    }
+
+    @Test
+    public void channelsAlwaysOpensOverlayEvenWhenVisibilityWasStale() {
+        FakeHost host = new FakeHost();
+        host.current = channel(true);
+        host.overlayVisible = true;
+
+        TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
+        click(model, "Canales");
+
+        assertEquals("keep,showOverlay", String.join(",", host.events));
     }
 
     private static void assertLabels(TouchControlsBarUiModel model, String... labels) {
@@ -96,6 +142,13 @@ public class TouchControlsUiFactoryTest {
         throw new AssertionError("Missing action " + label);
     }
 
+    private static ZapActionItem find(TouchControlsBarUiModel model, String label) {
+        for (ZapActionItem item : model.actions) {
+            if (label.equals(item.label)) return item;
+        }
+        throw new AssertionError("Missing action " + label);
+    }
+
     private static ChannelItem channel(boolean vod) {
         return new ChannelItem(
                 vod ? "vod-1" : "live-1",
@@ -119,6 +172,40 @@ public class TouchControlsUiFactoryTest {
         );
     }
 
+    private static ChannelItem channelWithPlatform(String platform) {
+        ChannelItem source = channel(false);
+        return new ChannelItem(
+                source.id, source.name, source.tvgId, source.logoUrl, source.group,
+                source.playUrl, source.fallbackPlayUrl, source.originalOrder, source.dashboardOrder,
+                source.isVod, source.isAdultVod, source.platformId, platform, source.customGroups,
+                source.drmScheme, source.drmLicenseUrl, source.vodFilterKey, source.directPlayback
+        );
+    }
+
+    private static ChannelItem u7dReplayChannel() {
+        return new ChannelItem(
+                "u7d:orange:1",
+                "Programa Orange",
+                "",
+                "",
+                "Orange TV",
+                "https://iptv.example/api/offline/u7d/orange/stream",
+                "",
+                1,
+                1,
+                true,
+                false,
+                20,
+                "Orange TV",
+                Collections.emptyList(),
+                "",
+                "",
+                "",
+                true,
+                "u7d_proxy"
+        );
+    }
+
     private static final class FakeHost implements TouchControlsUiFactory.Host {
         final List<String> events = new ArrayList<>();
         ChannelItem current;
@@ -133,10 +220,12 @@ public class TouchControlsUiFactoryTest {
             if (resId == R.string.touch_button_guide) return "Guia";
             if (resId == R.string.touch_button_vod_library) return "Biblioteca VOD";
             if (resId == R.string.touch_button_u7d) return "U7D";
+            if (resId == R.string.touch_button_vod) return "VOD";
             if (resId == R.string.touch_button_previous) return "Anterior";
             if (resId == R.string.touch_button_vod_detail) return "Ficha VOD";
             if (resId == R.string.touch_button_info) return "Info";
             if (resId == R.string.touch_button_recordings) return "Grab";
+            if (resId == R.string.touch_button_settings) return "Ajustes";
             if (resId == R.string.touch_button_rotate_locked) return "Giro fijo";
             if (resId == R.string.touch_button_rotate_free) return "Giro libre";
             if (resId == R.string.touch_button_rewind) return "Rebobinar";

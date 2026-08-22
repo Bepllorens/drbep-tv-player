@@ -98,7 +98,7 @@ final class TimelineGuideUiFactory {
             long slotStartMs = windowStartMs + (i * headerSlotMinutes * 60L * 1000L);
             scaleSlots.add(new TimelineScaleSlotUiModel(
                     hourFormat.format(new Date(slotStartMs)),
-                    i % 2 == 0 ? 0xFFA7D0FF : 0xFF6F92B8,
+                    i % 2 == 0 ? OfflineTvTheme.accentCyanArgb() : OfflineTvTheme.textSoftArgb(),
                     headerSlotWidth
             ));
         }

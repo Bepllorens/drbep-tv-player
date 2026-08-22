@@ -12,6 +12,13 @@ import org.junit.Test;
 
 public class CatalogRepositoryTest {
     @Test
+    public void standaloneVodApiUsesPublicOfflineBaseUrl() {
+        CatalogRepository repository = new CatalogRepository("https://fire.tvbep.com", null, true);
+
+        assertEquals("https://fire.tvbep.com", repository.vodApiBaseUrl());
+    }
+
+    @Test
     public void enabledDashboardVodKeysKeepSpecificVodFiltersVisible() {
         CatalogRepository repository = new CatalogRepository("https://iptv.example.com");
         StartupFilterConfig startupConfig = new StartupFilterConfig();
@@ -19,13 +26,23 @@ public class CatalogRepositoryTest {
         startupConfig.enabledFilterKeys.add("vod:tivify:general");
         startupConfig.enabledFilterKeys.add("vod:tivify:adult");
         startupConfig.enabledFilterKeys.add("vod:runtime:movies");
+        startupConfig.enabledFilterKeys.add("vod:plex:movies");
+        startupConfig.enabledFilterKeys.add("vod:plex:series");
+        startupConfig.enabledFilterKeys.add("vod:dazn:live");
+        startupConfig.enabledFilterKeys.add("vod:dazn:replay");
+        startupConfig.enabledFilterKeys.add("vod:dazn:ondemand");
 
         List<ChannelFilter> filters = repository.buildFiltersFromCatalog(
                 Arrays.asList(
                         liveChannel(),
                         vodItem("Tivify Movie", false, "Tivify VOD", "vod:tivify:general"),
                         vodItem("Tivify Adult", true, "Tivify VOD", "vod:tivify:adult"),
-                        vodItem("Runtime Movie", false, "Runtime Peliculas", "vod:runtime:movies")
+                        vodItem("Runtime Movie", false, "Runtime Peliculas", "vod:runtime:movies"),
+                        vodItem("Plex Movie", false, "Plex", "vod:plex:movies"),
+                        vodItem("Plex Episode", false, "Plex", "vod:plex:series"),
+                        vodItem("DAZN Event", false, "DAZN", "vod:dazn:live"),
+                        vodItem("DAZN Replay", false, "DAZN", "vod:dazn:replay"),
+                        vodItem("DAZN Documentary", false, "DAZN", "vod:dazn:ondemand")
                 ),
                 1L,
                 startupConfig,
@@ -37,6 +54,11 @@ public class CatalogRepositoryTest {
         assertTrue(hasFilter(filters, "vod:tivify:general", 3));
         assertTrue(hasFilter(filters, "vod:tivify:adult", 4));
         assertTrue(hasFilter(filters, "vod:runtime:movies", 3));
+        assertTrue(hasFilter(filters, "vod:plex:movies", 3));
+        assertTrue(hasFilter(filters, "vod:plex:series", 3));
+        assertTrue(hasFilter(filters, "vod:dazn:live", 3));
+        assertTrue(hasFilter(filters, "vod:dazn:replay", 3));
+        assertTrue(hasFilter(filters, "vod:dazn:ondemand", 3));
         assertFalse(hasFilter(filters, "vod", 3));
         assertFalse(hasFilter(filters, "vod-adult", 4));
     }

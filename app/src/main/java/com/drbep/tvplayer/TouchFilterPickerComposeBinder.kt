@@ -62,7 +62,7 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel) {
                 .fillMaxWidth(if (compact) 1f else 0.78f)
                 .clip(RoundedCornerShape(if (compact) 24.dp else 30.dp))
                 .background(
-                    Brush.verticalGradient(listOf(Color(0xF21B2938), Color(0xF20B121C)))
+                    Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f)))
                 )
                 .clickable(enabled = false) {}
                 .padding(if (compact) 16.dp else 22.dp)
@@ -86,7 +86,7 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel) {
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             style = TextStyle(
-                                color = Color(0xFFBFD1E4),
+                                color = OfflineTvTheme.Colors.textSoft,
                                 fontSize = if (compact) 12.sp else 14.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -119,9 +119,9 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel) {
 
 @Composable
 private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean) {
-    val background = if (row.selected) Color(0xFFFFD47A) else Color(0xFF213246)
-    val titleColor = if (row.selected) Color(0xFF101722) else Color.White
-    val subtitleColor = if (row.selected) Color(0xFF24364A) else Color(0xFFAFC4DA)
+    val background = if (row.selected) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip
+    val titleColor = if (row.selected) OfflineTvTheme.Colors.backdropAccent else Color.White
+    val subtitleColor = if (row.selected) OfflineTvTheme.Colors.backdropAccent else OfflineTvTheme.Colors.textSoft
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -171,10 +171,10 @@ private fun TouchFilterChip(text: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
-            .background(Color(0x332D6EA3), RoundedCornerShape(999.dp))
+            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
             .padding(horizontal = 10.dp, vertical = 5.dp),
         style = TextStyle(
-            color = Color(0xFFDDEEFF),
+            color = OfflineTvTheme.Colors.textSoft,
             fontSize = 11.sp,
             fontWeight = FontWeight.Black
         )

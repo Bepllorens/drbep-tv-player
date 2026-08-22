@@ -76,9 +76,36 @@ final class CatalogRepository {
         CatalogLoadResult cached = snapshotStore.loadStartupParsedCache(snapshotUrl);
         if (cached != null) {
             Log.w(TAG, "using parsed startup catalog cache channels=" + cached.channels.size());
+            if ("startup-cache-v2-migrated".equals(cached.loadSource)) {
+                snapshotStore.saveStartupParsedCache(snapshotUrl, cached);
+            }
             return cached.withLoadSource("startup-cache");
         }
-        return parseCatalogPayload(snapshotStore.loadStartupSnapshotObject(snapshotUrl), false, false, "startup-live");
+        try {
+            JSONObject liveBootstrap = snapshotStore.downloadStartupLiveBootstrapIfPossible(snapshotUrl);
+            if (liveBootstrap != null) {
+                CatalogLoadResult result = parseCatalogPayload(
+                        liveBootstrap,
+                        false,
+                        false,
+                        "startup-live-network-bootstrap"
+                );
+                snapshotStore.saveStartupParsedCache(snapshotUrl, result);
+                return result;
+            }
+        } catch (SecurityException e) {
+            throw e;
+        } catch (Exception e) {
+            Log.w(TAG, "live-only startup bootstrap unavailable; using local snapshot", e);
+        }
+        CatalogLoadResult result = parseCatalogPayload(
+                snapshotStore.loadStartupSnapshotObject(snapshotUrl),
+                false,
+                false,
+                "startup-live"
+        );
+        snapshotStore.saveStartupParsedCache(snapshotUrl, result);
+        return result;
     }
 
     CatalogLoadResult hydrateFullStartupCatalog() throws Exception {
@@ -88,26 +115,44 @@ final class CatalogRepository {
         if (snapshotStore == null) {
             throw new IllegalStateException("catalogo local no configurado");
         }
-        String snapshotUrl = baseUrl + "/api/offline/snapshot";
-        CatalogLoadResult result = parseCatalogPayload(snapshotStore.loadSnapshotObject(), false, true, "startup-hydrate");
-        snapshotStore.saveStartupParsedCache(snapshotUrl, result);
-        return result;
+        CatalogLoadResult cached = snapshotStore.loadFullParsedCache(baseUrl + "/api/offline/snapshot");
+        if (cached == null) {
+            Log.w(TAG, "full parsed cache unavailable; skipping automatic VOD hydration");
+        }
+        return cached;
+    }
+
+    boolean hasFullParsedCatalogCache() {
+        return snapshotStore != null
+                && snapshotStore.hasFullParsedCache(baseUrl + "/api/offline/snapshot");
     }
 
     CatalogLoadResult refreshSnapshotFromConfiguredUrl(String fallbackUrl) throws Exception {
         if (snapshotStore == null) {
             throw new IllegalStateException("catalogo local no configurado");
         }
-        // A background sync is commonly scheduled immediately after startup. Reuse the
-        // parsed cache when the lightweight /meta fingerprint still matches instead of
-        // downloading and materialising the complete 50+ MB JSON a second time.
+        boolean hasFullParsedCache = snapshotStore.hasFullParsedCache(fallbackUrl);
         CatalogLoadResult unchanged = snapshotStore.loadStartupParsedCache(fallbackUrl);
-        if (unchanged != null) {
-            Log.i(TAG, "catalog refresh skipped because remote fingerprint is unchanged");
-            return unchanged.withLoadSource("refresh-unchanged");
+        if (unchanged != null && hasFullParsedCache) {
+            try {
+                if (snapshotStore.remoteCatalogFingerprintMatchesStored(fallbackUrl)) {
+                    Log.i(TAG, "catalog refresh skipped because remote fingerprint is unchanged");
+                    return unchanged.withLoadSource("refresh-unchanged");
+                }
+            } catch (SecurityException e) {
+                throw e;
+            } catch (Exception e) {
+                Log.w(TAG, "catalog meta unavailable; attempting atomic refresh", e);
+            }
         }
-        CatalogLoadResult result = parseCatalogPayload(snapshotStore.refreshFromConfiguredUrl(fallbackUrl), false);
-        snapshotStore.saveStartupParsedCache(fallbackUrl, result);
+        // Download and parse a candidate before replacing the last known-good snapshot.
+        // If either step fails, playback and the visible catalog continue untouched.
+        CatalogSnapshotStore.PendingSnapshot pending = snapshotStore.downloadPendingSnapshotFromConfiguredUrl(fallbackUrl);
+        CatalogLoadResult result = parseCatalogPayload(pending.payload, false);
+        CatalogLoadResult startupCache = buildLiveOnlyCacheResult(result, "refresh-startup-live");
+        snapshotStore.commitPendingSnapshot(pending);
+        snapshotStore.saveFullParsedCache(fallbackUrl, result);
+        snapshotStore.saveStartupParsedCache(fallbackUrl, startupCache);
         return result;
     }
 
@@ -133,6 +178,50 @@ final class CatalogRepository {
                 java.util.Collections.singletonMap("Accept", "application/json"),
                 "cargando catalogo"
         );
+    }
+
+    List<ChannelItem> fetchMovistarVodCatalog(String kind, String query, int offset, int limit) throws Exception {
+        String normalizedKind;
+        if ("series".equalsIgnoreCase(kind)) {
+            normalizedKind = "series";
+        } else if ("all".equalsIgnoreCase(kind)) {
+            normalizedKind = "all";
+        } else {
+            normalizedKind = "movies";
+        }
+        Uri.Builder builder = Uri.parse(vodApiBaseUrl()).buildUpon()
+                .appendPath("api")
+                .appendPath("vod")
+                .appendPath("movistar")
+                .appendPath("catalog")
+                .appendQueryParameter("kind", normalizedKind)
+                .appendQueryParameter("sort", query == null || query.trim().isEmpty() ? "REC" : "REC")
+                .appendQueryParameter("offset", String.valueOf(Math.max(0, offset)))
+                .appendQueryParameter("limit", String.valueOf(Math.max(1, Math.min(100, limit))));
+        if (query != null && !query.trim().isEmpty()) {
+            builder.appendQueryParameter("q", query.trim());
+        }
+        Map<String, String> headers = authenticatedVodHeaders();
+        JSONObject payload = httpClient.getJsonObject(
+                builder.build().toString(),
+                10000,
+                30000,
+                headers,
+                "cargando VOD Movistar"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        if ("all".equals(normalizedKind)) {
+            appendMovistarVodArray(parsed, payload.optJSONArray("movies"), "vod:movistar:movies", "Movistar Peliculas");
+            appendMovistarVodArray(parsed, payload.optJSONArray("series"), "vod:movistar:series", "Movistar Series");
+        } else {
+            appendMovistarVodArray(
+                    parsed,
+                    payload.optJSONArray("items"),
+                    "series".equals(normalizedKind) ? "vod:movistar:series" : "vod:movistar:movies",
+                    "series".equals(normalizedKind) ? "Movistar Series" : "Movistar Peliculas"
+            );
+        }
+        return parsed;
     }
 
     private CatalogLoadResult parseCatalogPayload(JSONObject rawPayload, boolean appendRemoteVod) {
@@ -263,11 +352,14 @@ final class CatalogRepository {
 
         long vodStartMs = System.currentTimeMillis();
         if (includeSnapshotVod) {
-            appendSnapshotVodItems(parsed, payload, offlinePermissions);
+            JSONObject vodPayload = hasSnapshotVodCollections(rawPayload) ? rawPayload : payload;
+            appendSnapshotVodItems(parsed, vodPayload, offlinePermissions);
         }
         if (appendRemoteVod) {
             appendTivifyVodItems(parsed);
             appendRuntimeVodItems(parsed);
+            appendPlexVodItems(parsed);
+            appendDaznVodItems(parsed);
         }
         long vodParseMs = System.currentTimeMillis() - vodStartMs;
 
@@ -321,35 +413,77 @@ final class CatalogRepository {
         );
     }
 
-    private JSONObject normalizeSnapshotPayload(JSONObject rawPayload) {
+    static JSONObject normalizeSnapshotPayload(JSONObject rawPayload) {
         if (rawPayload == null) {
             return new JSONObject();
         }
         JSONObject catalog = rawPayload.optJSONObject("catalog");
         if (catalog != null) {
-            copyIfMissing(rawPayload, catalog, "vod");
-            copyIfMissing(rawPayload, catalog, "adult");
-            copyIfMissing(rawPayload, catalog, "adult_vod");
-            copyIfMissing(rawPayload, catalog, "tivify_vod");
-            copyIfMissing(rawPayload, catalog, "tivify_adult");
-            copyIfMissing(rawPayload, catalog, "runtime_movies");
-            copyIfMissing(rawPayload, catalog, "runtime_vod");
-            copyIfMissing(rawPayload, catalog, "movies");
-            copyIfMissing(rawPayload, catalog, "movistar_movies");
-            copyIfMissing(rawPayload, catalog, "movistar_series");
             return catalog;
         }
         return rawPayload;
     }
 
-    private static void copyIfMissing(JSONObject source, JSONObject target, String key) {
-        if (source == null || target == null || key == null || target.has(key) || !source.has(key)) {
-            return;
+    private static boolean hasSnapshotVodCollections(JSONObject payload) {
+        if (payload == null) {
+            return false;
         }
-        try {
-            target.put(key, source.opt(key));
-        } catch (Exception ignored) {
+        String[] keys = {
+                "vod", "adult", "adult_vod", "tivify_vod", "tivify_adult",
+                "runtime_movies", "runtime_vod", "movies", "movistar_movies", "movistar_series",
+                "plex_vod", "prime_vod"
+        };
+        for (String key : keys) {
+            if (payload.optJSONArray(key) != null) {
+                return true;
+            }
         }
+        return false;
+    }
+
+    private static CatalogLoadResult buildLiveOnlyCacheResult(CatalogLoadResult full, String loadSource) {
+        if (full == null) {
+            return null;
+        }
+        List<ChannelItem> liveChannels = new ArrayList<>();
+        for (ChannelItem item : full.channels) {
+            if (item != null && !item.isVod) {
+                liveChannels.add(item);
+            }
+        }
+        List<ChannelFilter> liveFilters = new ArrayList<>();
+        for (ChannelFilter filter : full.filters) {
+            if (filter != null && filter.type != FILTER_VOD && filter.type != FILTER_VOD_ADULT) {
+                liveFilters.add(filter);
+            }
+        }
+        String defaultFilterKey = full.defaultFilterKey;
+        boolean defaultAvailable = false;
+        for (ChannelFilter filter : liveFilters) {
+            if (filter != null && filter.key.equals(defaultFilterKey)) {
+                defaultAvailable = true;
+                break;
+            }
+        }
+        if (!defaultAvailable) {
+            defaultFilterKey = "all";
+        }
+        return new CatalogLoadResult(
+                liveChannels,
+                liveFilters,
+                defaultFilterKey,
+                full.offlinePermissions,
+                true,
+                loadSource,
+                liveChannels.size(),
+                0,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L
+        );
     }
 
     CatalogLoadResult fetchActiveChannels() throws Exception {
@@ -413,18 +547,24 @@ final class CatalogRepository {
 
     private void appendTivifyVodItems(List<ChannelItem> parsed) {
         try {
-            JSONObject payload = httpClient.getJsonObject(
-                    baseUrl + "/api/vod/tivify",
-                    10000,
-                    20000,
-                    java.util.Collections.singletonMap("Accept", "application/json"),
-                    "cargando vod"
-            );
-            appendVodArray(parsed, payload.optJSONArray("vod"), false);
-            appendVodArray(parsed, payload.optJSONArray("adult"), true);
+            parsed.addAll(fetchTivifyVodCatalog());
         } catch (Exception e) {
             // Live TV should still load even if Tivify VOD is temporarily unavailable.
         }
+    }
+
+    List<ChannelItem> fetchTivifyVodCatalog() throws Exception {
+        JSONObject payload = httpClient.getJsonObject(
+                vodApiBaseUrl() + "/api/vod/tivify",
+                10000,
+                30000,
+                authenticatedVodHeaders(),
+                "cargando VOD Tivify"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        appendVodArray(parsed, payload.optJSONArray("vod"), false);
+        appendVodArray(parsed, payload.optJSONArray("adult"), true);
+        return parsed;
     }
 
     private void appendSnapshotVodItems(List<ChannelItem> parsed, JSONObject payload, OfflinePermissions offlinePermissions) {
@@ -443,6 +583,12 @@ final class CatalogRepository {
         if (offlinePermissions.allowsMovistarVod()) {
             appendMovistarVodArray(parsed, firstArray(payload, "movistar_movies"), "vod:movistar:movies", "Movistar Peliculas");
             appendMovistarVodArray(parsed, firstArray(payload, "movistar_series"), "vod:movistar:series", "Movistar Series");
+        }
+        if (offlinePermissions.allowsPlexVod()) {
+            appendPlexVodArray(parsed, firstArray(payload, "plex_vod"));
+        }
+        if (offlinePermissions.allowsPrimeVod()) {
+            appendPrimeVodArray(parsed, firstArray(payload, "prime_vod"));
         }
     }
 
@@ -510,6 +656,7 @@ final class CatalogRepository {
             if (selectedUrl.isEmpty()) {
                 continue;
             }
+            selectedUrl = absolutizeVodUrl(selectedUrl);
             String drmRef = firstNonEmpty(
                     safeCatalogText(row.optString("drm_ref", "")),
                     safeCatalogText(row.optString("drm_reference", "")),
@@ -517,7 +664,7 @@ final class CatalogRepository {
             );
             String drmLicenseUrl = "";
             if (hasKeys) {
-                drmLicenseUrl = absolutizeUrl(firstNonEmpty(
+                drmLicenseUrl = absolutizeVodUrl(firstNonEmpty(
                         safeCatalogUrl(row.optString("license_url", "")),
                         buildVodLicenseUrlFromRef(drmRef),
                         buildVodLicenseUrl(selectedUrl)
@@ -570,7 +717,7 @@ final class CatalogRepository {
             if (selectedUrl.isEmpty()) {
                 continue;
             }
-            selectedUrl = absolutizeUrl(selectedUrl);
+            selectedUrl = absolutizeVodUrl(selectedUrl);
             String title = firstNonEmpty(
                     safeCatalogText(row.optString("title", "")),
                     safeCatalogText(row.optString("episode_title", "")),
@@ -593,7 +740,7 @@ final class CatalogRepository {
                     safeCatalogUrl(row.optString("license_url", "")),
                     safeCatalogUrl(row.optString("drm_license_url", ""))
             );
-            drmLicenseUrl = absolutizeUrl(drmLicenseUrl);
+            drmLicenseUrl = absolutizeVodUrl(drmLicenseUrl);
 
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, false),
@@ -623,17 +770,439 @@ final class CatalogRepository {
 
     private void appendRuntimeVodItems(List<ChannelItem> parsed) {
         try {
-            JSONObject payload = httpClient.getJsonObject(
-                    baseUrl + "/api/vod/runtime",
-                    10000,
-                    20000,
-                    java.util.Collections.singletonMap("Accept", "application/json"),
-                    "cargando runtime vod"
-            );
-            appendRuntimeVodArray(parsed, payload.optJSONArray("movies"), "vod:runtime:movies", "Runtime Peliculas");
+            parsed.addAll(fetchRuntimeVodCatalog());
         } catch (Exception e) {
             // Live TV and Tivify VOD should still load even if Runtime VOD is temporarily unavailable.
         }
+    }
+
+    List<ChannelItem> fetchRuntimeVodCatalog() throws Exception {
+        JSONObject payload = httpClient.getJsonObject(
+                vodApiBaseUrl() + "/api/vod/runtime",
+                10000,
+                30000,
+                authenticatedVodHeaders(),
+                "cargando Runtime VOD"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        appendRuntimeVodArray(parsed, payload.optJSONArray("movies"), "vod:runtime:movies", "Runtime Peliculas");
+        return parsed;
+    }
+
+    private void appendPlexVodItems(List<ChannelItem> parsed) {
+        try {
+            parsed.addAll(fetchPlexVodCatalog());
+        } catch (Exception e) {
+            // Plex is optional; keep the rest of the catalog available.
+        }
+    }
+
+    private void appendDaznVodItems(List<ChannelItem> parsed) {
+        try {
+            parsed.addAll(fetchDaznVodCatalog());
+        } catch (Exception e) {
+            // DAZN is optional; keep TV and the other VOD providers available.
+            Log.w(TAG, "DAZN VOD catalog unavailable", e);
+        }
+    }
+
+    List<ChannelItem> fetchDaznVodCatalog() throws Exception {
+        JSONObject payload = httpClient.getJsonObject(
+                vodApiBaseUrl() + "/api/vod/dazn/catalog",
+                10000,
+                45000,
+                authenticatedVodHeaders(),
+                "cargando eventos y VOD DAZN"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        appendDaznVodArray(parsed, payload.optJSONArray("items"));
+        return parsed;
+    }
+
+    private void appendDaznVodArray(List<ChannelItem> parsed, JSONArray rows) {
+        if (rows == null) {
+            return;
+        }
+        int baseOrder = parsed.size() + 1;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            String selectedUrl = absolutizeVodUrl(safeCatalogUrl(row.optString("play_url", "")));
+            String title = safeCatalogText(row.optString("title", ""));
+            if (selectedUrl.isEmpty() || title.isEmpty()) {
+                continue;
+            }
+            String kind = safeCatalogText(row.optString("kind", "ondemand")).toLowerCase(Locale.ROOT);
+            String filterKey = safeCatalogText(row.optString("vod_filter_key", ""));
+            if (filterKey.isEmpty()) {
+                if ("live".equals(kind)) {
+                    filterKey = "vod:dazn:live";
+                } else if ("replay".equals(kind)) {
+                    filterKey = "vod:dazn:replay";
+                } else {
+                    filterKey = "vod:dazn:ondemand";
+                }
+            }
+            String group = firstNonEmpty(safeCatalogText(row.optString("group", "")), "DAZN");
+            String licenseUrl = absolutizeVodUrl(safeCatalogUrl(row.optString("license_url", "")));
+            parsed.add(new ChannelItem(
+                    buildVodItemId(selectedUrl, title, false),
+                    title,
+                    "",
+                    absolutizeVodUrl(safeCatalogUrl(row.optString("poster", ""))),
+                    group,
+                    selectedUrl,
+                    "",
+                    baseOrder + i,
+                    baseOrder + i,
+                    true,
+                    false,
+                    0,
+                    "DAZN",
+                    new ArrayList<>(),
+                    firstNonEmpty(safeCatalogText(row.optString("drm_type", "")), "widevine"),
+                    licenseUrl,
+                    filterKey,
+                    true,
+                    safeCatalogText(row.optString("description", "")),
+                    "",
+                    0L
+            ));
+        }
+    }
+
+    List<ChannelItem> fetchPrimeVodCatalog() throws Exception {
+        JSONObject payload = httpClient.getJsonObject(
+                vodApiBaseUrl() + "/api/vod/prime/catalog",
+                10000,
+                45000,
+                authenticatedVodHeaders(),
+                "cargando películas y series Prime Video"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        appendPrimeVodArray(parsed, payload.optJSONArray("items"));
+        return parsed;
+    }
+
+    private void appendPrimeVodArray(List<ChannelItem> parsed, JSONArray rows) {
+        if (rows == null) {
+            return;
+        }
+        int baseOrder = parsed.size() + 1;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            String selectedUrl = absolutizeVodUrl(safeCatalogUrl(row.optString("play_url", "")));
+            String title = safeCatalogText(row.optString("title", ""));
+            String assetId = safeCatalogText(row.optString("id", ""));
+            String kind = safeCatalogText(row.optString("kind", "ondemand")).toLowerCase(Locale.ROOT);
+            boolean seriesGroup = "series".equals(kind) && !assetId.isEmpty();
+            if ("episode".equals(kind)) {
+                int season = Math.max(0, row.optInt("season", 0));
+                int episode = Math.max(0, row.optInt("episode", 0));
+                if (season > 0 && episode > 0) {
+                    title = String.format(Locale.ROOT, "T%02dE%02d · %s", season, episode, title);
+                }
+            }
+            if (seriesGroup) {
+                selectedUrl = "prime-series:" + assetId;
+            }
+            if (selectedUrl.isEmpty() || title.isEmpty()) {
+                continue;
+            }
+            String filterKey = safeCatalogText(row.optString("vod_filter_key", ""));
+            if (filterKey.isEmpty()) {
+                filterKey = "movie".equals(kind) ? "vod:prime:movies" : "vod:prime:series";
+            }
+            String group = firstNonEmpty(safeCatalogText(row.optString("group", "")), "Prime Video");
+            String licenseUrl = absolutizeVodUrl(safeCatalogUrl(row.optString("license_url", "")));
+            parsed.add(new ChannelItem(
+                    buildVodItemId(selectedUrl, title, false),
+                    title,
+                    "",
+                    absolutizeVodUrl(safeCatalogUrl(row.optString("poster", ""))),
+                    group,
+                    selectedUrl,
+                    "",
+                    baseOrder + i,
+                    baseOrder + i,
+                    true,
+                    false,
+                    0,
+                    "Prime Video",
+                    new ArrayList<>(),
+                    firstNonEmpty(safeCatalogText(row.optString("drm_type", "")), "widevine"),
+                    licenseUrl,
+                    filterKey,
+                    true,
+                    safeCatalogText(row.optString("description", "")),
+                    "",
+                    0L
+            ));
+        }
+    }
+
+    List<ChannelItem> fetchPrimeSeriesEpisodes(String seriesAssetId) throws Exception {
+        String safeId = safeCatalogText(seriesAssetId);
+        if (safeId.isEmpty()) {
+            return new ArrayList<>();
+        }
+        JSONObject payload = httpClient.getJsonObject(
+                vodApiBaseUrl() + "/api/vod/prime/series/" + java.net.URLEncoder.encode(safeId, "UTF-8"),
+                10000,
+                45000,
+                authenticatedVodHeaders(),
+                "cargando episodios de Prime Video"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        appendPrimeVodArray(parsed, payload.optJSONArray("items"));
+        return parsed;
+    }
+
+    List<ChannelItem> fetchPlexVodCatalog() throws Exception {
+        return fetchPlexVodPage("all", 0L, "", "", 0, 500, "recent").items;
+    }
+
+    List<PlexVodLibrary> fetchPlexVodLibraries() throws Exception {
+        JSONObject payload = httpClient.getJsonObject(
+                vodApiBaseUrl() + "/api/vod/plex/libraries",
+                10000,
+                30000,
+                authenticatedVodHeaders(),
+                "cargando bibliotecas Plex"
+        );
+        JSONArray rows = payload.optJSONArray("libraries");
+        List<PlexVodLibrary> libraries = new ArrayList<>();
+        if (rows == null) {
+            return libraries;
+        }
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            long id = row.optLong("id", 0L);
+            String title = safeCatalogText(row.optString("title", ""));
+            if (id <= 0L || title.isEmpty()) {
+                continue;
+            }
+            libraries.add(new PlexVodLibrary(
+                    id,
+                    row.optLong("source_id", 0L),
+                    safeCatalogText(row.optString("source_name", "Plex")),
+                    title,
+                    safeCatalogText(row.optString("kind", "")),
+                    Math.max(0, row.optInt("movies", 0)),
+                    Math.max(0, row.optInt("series", 0)),
+                    Math.max(0, row.optInt("episodes", 0))
+            ));
+        }
+        return libraries;
+    }
+
+    PlexVodPage fetchPlexVodPage(
+            String kind,
+            long libraryId,
+            String seriesTitle,
+            String query,
+            int offset,
+            int limit
+    ) throws Exception {
+        return fetchPlexVodPage(kind, libraryId, seriesTitle, query, offset, limit, "title");
+    }
+
+    PlexVodPage fetchPlexVodPage(
+            String kind,
+            long libraryId,
+            String seriesTitle,
+            String query,
+            int offset,
+            int limit,
+            String sort
+    ) throws Exception {
+        Uri.Builder builder = Uri.parse(vodApiBaseUrl()).buildUpon()
+                .appendPath("api")
+                .appendPath("vod")
+                .appendPath("plex")
+                .appendPath("catalog")
+                .appendQueryParameter("kind", "series".equalsIgnoreCase(kind) ? "series" : "movies".equalsIgnoreCase(kind) ? "movies" : "all")
+                .appendQueryParameter("sort", "title".equalsIgnoreCase(sort) ? "title" : "recent")
+                .appendQueryParameter("offset", String.valueOf(Math.max(0, offset)))
+                .appendQueryParameter("limit", String.valueOf(Math.max(1, Math.min(500, limit))));
+        if (libraryId > 0L) {
+            builder.appendQueryParameter("library_id", String.valueOf(libraryId));
+        }
+        if (seriesTitle != null && !seriesTitle.trim().isEmpty()) {
+            builder.appendQueryParameter("series", seriesTitle.trim());
+        }
+        if (query != null && !query.trim().isEmpty()) {
+            builder.appendQueryParameter("q", query.trim());
+        }
+        JSONObject payload = httpClient.getJsonObject(
+                builder.build().toString(),
+                10000,
+                30000,
+                authenticatedVodHeaders(),
+                "cargando Plex VOD"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        appendPlexVodArray(parsed, firstArray(payload, "items", "movies"));
+        return new PlexVodPage(
+                parsed,
+                Math.max(0, payload.optInt("offset", offset)),
+                Math.max(0, payload.optInt("next_offset", offset + parsed.size())),
+                Math.max(0, payload.optInt("total", parsed.size())),
+                payload.optBoolean("has_more", false)
+        );
+    }
+
+    PlexVodSeriesPage fetchPlexVodSeriesPage(long libraryId, String query, int offset, int limit) throws Exception {
+        return fetchPlexVodSeriesPage(libraryId, query, offset, limit, "recent");
+    }
+
+    PlexVodSeriesPage fetchPlexVodSeriesPage(long libraryId, String query, int offset, int limit, String sort) throws Exception {
+        Uri.Builder builder = Uri.parse(vodApiBaseUrl()).buildUpon()
+                .appendPath("api")
+                .appendPath("vod")
+                .appendPath("plex")
+                .appendPath("series")
+                .appendQueryParameter("sort", "title".equalsIgnoreCase(sort) ? "title" : "recent")
+                .appendQueryParameter("offset", String.valueOf(Math.max(0, offset)))
+                .appendQueryParameter("limit", String.valueOf(Math.max(1, Math.min(500, limit))));
+        if (libraryId > 0L) {
+            builder.appendQueryParameter("library_id", String.valueOf(libraryId));
+        }
+        if (query != null && !query.trim().isEmpty()) {
+            builder.appendQueryParameter("q", query.trim());
+        }
+        JSONObject payload = httpClient.getJsonObject(
+                builder.build().toString(),
+                10000,
+                30000,
+                authenticatedVodHeaders(),
+                "cargando series Plex"
+        );
+        JSONArray rows = payload.optJSONArray("items");
+        List<PlexVodSeries> series = new ArrayList<>();
+        if (rows != null) {
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject row = rows.optJSONObject(i);
+                if (row == null) {
+                    continue;
+                }
+                String title = safeCatalogText(row.optString("title", ""));
+                long rowLibraryId = row.optLong("library_id", 0L);
+                if (title.isEmpty() || rowLibraryId <= 0L) {
+                    continue;
+                }
+                series.add(new PlexVodSeries(
+                        title,
+                        row.optLong("source_id", 0L),
+                        safeCatalogText(row.optString("source", "Plex")),
+                        rowLibraryId,
+                        safeCatalogText(row.optString("library", "")),
+                        row.optInt("year", 0),
+                        Math.max(0, row.optInt("seasons", 0)),
+                        Math.max(0, row.optInt("episodes", 0)),
+                        absolutizeVodUrl(safeCatalogUrl(row.optString("poster", "")))
+                ));
+            }
+        }
+        return new PlexVodSeriesPage(
+                series,
+                Math.max(0, payload.optInt("offset", offset)),
+                Math.max(0, payload.optInt("next_offset", offset + series.size())),
+                Math.max(0, payload.optInt("total", series.size())),
+                payload.optBoolean("has_more", false)
+        );
+    }
+
+    private void appendPlexVodArray(List<ChannelItem> parsed, JSONArray rows) {
+        if (rows == null) {
+            return;
+        }
+        int baseOrder = parsed.size() + 1;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            String selectedUrl = absolutizeVodUrl(safeCatalogUrl(row.optString("play_url", "")));
+            if (selectedUrl.isEmpty()) {
+                continue;
+            }
+            String kind = safeCatalogText(row.optString("kind", "movies")).toLowerCase(Locale.ROOT);
+            boolean episode = "series".equals(kind);
+            String title = safeCatalogText(row.optString("title", "Plex VOD"));
+            String seriesTitle = safeCatalogText(row.optString("series_title", ""));
+            int season = row.optInt("season_num", 0);
+            int episodeNumber = row.optInt("episode_num", 0);
+            if (episode && !seriesTitle.isEmpty()) {
+                String episodeCode = season > 0 && episodeNumber > 0
+                        ? String.format(Locale.ROOT, " T%02dE%02d", season, episodeNumber)
+                        : "";
+                title = seriesTitle + episodeCode + (title.isEmpty() ? "" : " · " + title);
+            }
+            if (title.isEmpty()) {
+                title = "Plex VOD";
+            }
+            String source = safeCatalogText(row.optString("source", "Plex"));
+            String library = safeCatalogText(row.optString("library", ""));
+            String platformName = source.isEmpty() ? "Plex" : "Plex · " + source;
+            String group = library.isEmpty() ? platformName : library;
+            String filterKey = episode ? "vod:plex:series" : "vod:plex:movies";
+            String logo = absolutizeVodUrl(safeCatalogUrl(row.optString("poster", "")));
+            long durationSeconds = Math.max(0L, row.optLong("duration_ms", 0L) / 1000L);
+            int yearNumber = row.optInt("year", 0);
+            String container = safeCatalogText(row.optString("container", "")).toLowerCase(Locale.ROOT);
+            String playbackProfile = "avi".equals(container) ? VlcFallbackPolicy.PLEX_AVI_PROFILE : "";
+
+            parsed.add(new ChannelItem(
+                    buildVodItemId(selectedUrl, title, false),
+                    title,
+                    "",
+                    logo,
+                    group,
+                    selectedUrl,
+                    "",
+                    baseOrder + i,
+                    baseOrder + i,
+                    true,
+                    false,
+                    0,
+                    platformName,
+                    new ArrayList<>(),
+                    "",
+                    "",
+                    filterKey,
+                    true,
+                    safeCatalogText(row.optString("description", "")),
+                    yearNumber > 0 ? String.valueOf(yearNumber) : "",
+                    durationSeconds,
+                    playbackProfile
+            ));
+        }
+    }
+
+    private Map<String, String> authenticatedVodHeaders() {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "application/json");
+        if (snapshotStore == null) {
+            return headers;
+        }
+        String token = snapshotStore.getAccessToken();
+        String deviceId = snapshotStore.getDeviceId();
+        if (token != null && !token.trim().isEmpty()) {
+            headers.put("Authorization", "Bearer " + token.trim());
+        }
+        if (deviceId != null && !deviceId.trim().isEmpty()) {
+            headers.put("X-DRBEP-Device-Id", deviceId.trim());
+        }
+        return headers;
     }
 
     private void appendRuntimeVodArray(List<ChannelItem> parsed, JSONArray rows, String vodFilterKey, String platformName) {
@@ -653,7 +1222,7 @@ final class CatalogRepository {
             if (selectedUrl.isEmpty()) {
                 continue;
             }
-            selectedUrl = absolutizeUrl(selectedUrl);
+            selectedUrl = absolutizeVodUrl(selectedUrl);
             String title = safeCatalogText(row.optString("title", "Runtime VOD"));
             if (title.isEmpty()) {
                 title = "Runtime VOD";
@@ -755,11 +1324,11 @@ final class CatalogRepository {
             byKey.put(key, new ChannelFilter(key, entry.getValue(), type, 0, ""));
         }
         boolean hasSpecificVodFilters = !vodFilterLabels.isEmpty();
-        if (hasVod && !hasSpecificVodFilters) {
+        if ((hasVod || (offlinePermissions != null && offlinePermissions.vodEnabled)) && !hasSpecificVodFilters) {
             byKey.put("vod", new ChannelFilter("vod", "VOD", FILTER_VOD, 0, ""));
         }
         boolean hasSpecificAdultVodFilter = vodFilterLabels.containsKey("vod:tivify:adult");
-        if (hasAdultVod && !hasSpecificAdultVodFilter) {
+        if ((hasAdultVod || (offlinePermissions != null && offlinePermissions.tivifyAdultEnabled)) && !hasSpecificAdultVodFilter) {
             byKey.put("vod-adult", new ChannelFilter("vod-adult", "VOD Adulto", FILTER_VOD_ADULT, 0, ""));
         }
 
@@ -822,6 +1391,35 @@ final class CatalogRepository {
         return trimmed;
     }
 
+    private String absolutizeVodUrl(String url) {
+        String trimmed = safeCatalogUrl(url);
+        if (trimmed.startsWith("/")) {
+            return vodApiBaseUrl() + trimmed;
+        }
+        return trimmed;
+    }
+
+    String vodApiBaseUrl() {
+        if (standaloneMode) {
+            return baseUrl;
+        }
+        String playerUrl = BuildConfig.PLAYER_URL == null ? "" : BuildConfig.PLAYER_URL.trim();
+        if (!playerUrl.isEmpty()) {
+            try {
+                Uri parsed = Uri.parse(playerUrl);
+                String scheme = parsed.getScheme();
+                String authority = parsed.getEncodedAuthority();
+                if (scheme != null && !scheme.trim().isEmpty()
+                        && authority != null && !authority.trim().isEmpty()) {
+                    return scheme.trim() + "://" + authority.trim();
+                }
+            } catch (Exception ignored) {
+                // Fall back to the offline base when the configured player URL is malformed.
+            }
+        }
+        return baseUrl;
+    }
+
     private static String buildVodFilterLabel(String key, String platformName, boolean adult) {
         if ("vod:tivify:general".equals(key)) {
             return "Tivify VOD";
@@ -838,6 +1436,21 @@ final class CatalogRepository {
         if ("vod:movistar:series".equals(key)) {
             return "Movistar Series";
         }
+        if ("vod:plex:movies".equals(key)) {
+            return "Plex Peliculas";
+        }
+        if ("vod:plex:series".equals(key)) {
+            return "Plex Series";
+        }
+        if ("vod:dazn:live".equals(key)) {
+            return "DAZN En directo";
+        }
+        if ("vod:dazn:replay".equals(key)) {
+            return "DAZN Repeticiones";
+        }
+        if ("vod:dazn:ondemand".equals(key)) {
+            return "DAZN Bajo demanda";
+        }
         String fallback = safeCatalogText(platformName);
         if (!fallback.isEmpty()) {
             return fallback;
@@ -847,7 +1460,7 @@ final class CatalogRepository {
 
     private String buildVodLicenseUrl(String selectedUrl) {
         String token = Base64.encodeToString(selectedUrl.getBytes(StandardCharsets.UTF_8), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-        return baseUrl + "/api/vod/tivify/clearkey?u=" + token;
+        return vodApiBaseUrl() + "/api/vod/tivify/clearkey?u=" + token;
     }
 
     private String buildVodLicenseUrlFromRef(String drmRef) {
@@ -855,7 +1468,7 @@ final class CatalogRepository {
         if (ref.isEmpty()) {
             return "";
         }
-        return baseUrl + "/api/vod/tivify/clearkey?r=" + Uri.encode(ref);
+        return vodApiBaseUrl() + "/api/vod/tivify/clearkey?r=" + Uri.encode(ref);
     }
 
     private static String resolveSecureDrmLicenseReference(String channelId, JSONObject channel) {
@@ -1014,6 +1627,8 @@ final class CatalogRepository {
         permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", true);
         permissions.runtimeEnabled = payload.optBoolean("runtime", true);
         permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", true);
+        permissions.plexVodEnabled = payload.optBoolean("plex_vod", true);
+        permissions.primeVodEnabled = payload.optBoolean("prime_vod", true);
         permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
         permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
         permissions.canDeleteRecordings = payload.optBoolean("recordings_delete", false);
@@ -1203,6 +1818,84 @@ final class ChannelItem implements Serializable {
     }
 }
 
+final class PlexVodLibrary {
+    final long id;
+    final long sourceId;
+    final String sourceName;
+    final String title;
+    final String kind;
+    final int movies;
+    final int series;
+    final int episodes;
+
+    PlexVodLibrary(long id, long sourceId, String sourceName, String title, String kind, int movies, int series, int episodes) {
+        this.id = id;
+        this.sourceId = sourceId;
+        this.sourceName = sourceName == null ? "" : sourceName;
+        this.title = title == null ? "" : title;
+        this.kind = kind == null ? "" : kind;
+        this.movies = Math.max(0, movies);
+        this.series = Math.max(0, series);
+        this.episodes = Math.max(0, episodes);
+    }
+}
+
+final class PlexVodPage {
+    final List<ChannelItem> items;
+    final int offset;
+    final int nextOffset;
+    final int total;
+    final boolean hasMore;
+
+    PlexVodPage(List<ChannelItem> items, int offset, int nextOffset, int total, boolean hasMore) {
+        this.items = items == null ? new ArrayList<>() : items;
+        this.offset = Math.max(0, offset);
+        this.nextOffset = Math.max(0, nextOffset);
+        this.total = Math.max(0, total);
+        this.hasMore = hasMore;
+    }
+}
+
+final class PlexVodSeries {
+    final String title;
+    final long sourceId;
+    final String sourceName;
+    final long libraryId;
+    final String libraryTitle;
+    final int year;
+    final int seasons;
+    final int episodes;
+    final String posterUrl;
+
+    PlexVodSeries(String title, long sourceId, String sourceName, long libraryId, String libraryTitle, int year, int seasons, int episodes, String posterUrl) {
+        this.title = title == null ? "" : title;
+        this.sourceId = sourceId;
+        this.sourceName = sourceName == null ? "" : sourceName;
+        this.libraryId = libraryId;
+        this.libraryTitle = libraryTitle == null ? "" : libraryTitle;
+        this.year = Math.max(0, year);
+        this.seasons = Math.max(0, seasons);
+        this.episodes = Math.max(0, episodes);
+        this.posterUrl = posterUrl == null ? "" : posterUrl;
+    }
+}
+
+final class PlexVodSeriesPage {
+    final List<PlexVodSeries> items;
+    final int offset;
+    final int nextOffset;
+    final int total;
+    final boolean hasMore;
+
+    PlexVodSeriesPage(List<PlexVodSeries> items, int offset, int nextOffset, int total, boolean hasMore) {
+        this.items = items == null ? new ArrayList<>() : items;
+        this.offset = Math.max(0, offset);
+        this.nextOffset = Math.max(0, nextOffset);
+        this.total = Math.max(0, total);
+        this.hasMore = hasMore;
+    }
+}
+
 final class ChannelFilter implements Serializable {
     private static final long serialVersionUID = 1L;
 
@@ -1234,6 +1927,8 @@ final class OfflinePermissions implements Serializable {
     boolean tivifyAdultEnabled = true;
     boolean runtimeEnabled = true;
     boolean movistarVodEnabled = true;
+    boolean plexVodEnabled = true;
+    boolean primeVodEnabled = true;
     boolean canViewRecordings = true;
     boolean canScheduleRecordings = true;
     boolean canDeleteRecordings = false;
@@ -1267,6 +1962,14 @@ final class OfflinePermissions implements Serializable {
 
     boolean allowsMovistarVod() {
         return vodEnabled && movistarVodEnabled;
+    }
+
+    boolean allowsPlexVod() {
+        return vodEnabled && plexVodEnabled;
+    }
+
+    boolean allowsPrimeVod() {
+        return vodEnabled && primeVodEnabled;
     }
 
     boolean hasParentalRules() {

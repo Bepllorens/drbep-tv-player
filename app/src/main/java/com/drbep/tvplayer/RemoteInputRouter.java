@@ -18,6 +18,8 @@ final class RemoteInputRouter {
 
         boolean isTouchControlsVisible();
 
+        boolean isTouchControlsExpanded();
+
         boolean isTouchControlsTimeshiftFocused();
 
         boolean canResumeTimeshiftLive();
@@ -35,6 +37,8 @@ final class RemoteInputRouter {
         boolean isPlayingRecordingWithReturnTarget();
 
         boolean hasSeekablePlayback();
+
+        boolean isVodPlayback();
 
         boolean isTouchDeviceMode();
 
@@ -69,6 +73,8 @@ final class RemoteInputRouter {
         void hideTvTimeshiftHud();
 
         void hideTouchControls();
+
+        void keepTouchControlsVisible();
 
         void moveTouchControlsFocus(int delta);
 
@@ -340,6 +346,10 @@ final class RemoteInputRouter {
             host.hideRecordingsPanel();
             return true;
         }
+        if (host.isOverlayVisible()) {
+            host.hideOverlay();
+            return true;
+        }
         if (host.isTouchControlsVisible()) {
             host.hideTouchControls();
             return true;
@@ -354,10 +364,6 @@ final class RemoteInputRouter {
         }
         if (host.isZapBannerVisible()) {
             host.hideZapBanner();
-            return true;
-        }
-        if (host.isOverlayVisible()) {
-            host.hideOverlay();
             return true;
         }
         host.finishActivity();
@@ -386,18 +392,28 @@ final class RemoteInputRouter {
             host.moveRecordingsSelection(-1);
             return true;
         }
+        if (host.isOverlayVisible()) {
+            host.moveOverlaySelection(-1);
+            return true;
+        }
         if (host.isTouchControlsVisible()) {
+            if (!host.isTouchControlsExpanded()) {
+                host.hideTouchControls();
+                host.tuneRelative(-1);
+                return true;
+            }
             host.focusTouchControlsTimeshift();
             return true;
         }
         if (host.isTvTimeshiftHudActive()) {
             return true;
         }
-        if (host.isOverlayVisible()) {
-            host.moveOverlaySelection(-1);
-        } else {
-            host.tuneRelative(-1);
+        if (!host.isOverlayVisible() && host.isVodPlayback() && host.hasSeekablePlayback()) {
+            host.showTouchControlsTemporarily();
+            host.focusTouchControlsTimeshift();
+            return true;
         }
+        host.tuneRelative(-1);
         return true;
     }
 
@@ -410,18 +426,28 @@ final class RemoteInputRouter {
             host.moveRecordingsSelection(1);
             return true;
         }
+        if (host.isOverlayVisible()) {
+            host.moveOverlaySelection(1);
+            return true;
+        }
         if (host.isTouchControlsVisible()) {
+            if (!host.isTouchControlsExpanded()) {
+                host.hideTouchControls();
+                host.tuneRelative(1);
+                return true;
+            }
             host.focusTouchControlsActions();
             return true;
         }
         if (host.isTvTimeshiftHudActive()) {
             return true;
         }
-        if (host.isOverlayVisible()) {
-            host.moveOverlaySelection(1);
-        } else {
-            host.tuneRelative(1);
+        if (!host.isOverlayVisible() && host.isVodPlayback() && host.hasSeekablePlayback()) {
+            host.showTouchControlsTemporarily();
+            host.focusTouchControlsActions();
+            return true;
         }
+        host.tuneRelative(1);
         return true;
     }
 
@@ -434,8 +460,18 @@ final class RemoteInputRouter {
             host.moveRecordingsHeaderFocus(-1);
             return true;
         }
+        if (host.isOverlayVisible()) {
+            host.cycleFilter(-1);
+            return true;
+        }
         if (host.isTouchControlsVisible()) {
+            if (!host.isTouchControlsExpanded()) {
+                host.hideTouchControls();
+                host.showOverlay();
+                return true;
+            }
             if (host.isTouchControlsTimeshiftFocused()) {
+                host.keepTouchControlsVisible();
                 if (host.seekTimeshiftBack()) {
                     host.showTimeshiftHudTemporarily();
                 }
@@ -444,20 +480,27 @@ final class RemoteInputRouter {
             host.moveTouchControlsFocus(-1);
             return true;
         }
-        if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftBack()) {
-            host.seekTimeshiftBack();
+        if (host.isTvTimeshiftHudActive()) {
+            if (host.canSeekTimeshiftBack()) {
+                host.seekTimeshiftBack();
+            }
             host.showTimeshiftHudTemporarily();
+            return true;
+        }
+        if (!host.isOverlayVisible() && host.isVodPlayback() && host.hasSeekablePlayback()) {
+            host.showTouchControlsTemporarily();
+            host.focusTouchControlsTimeshift();
+            host.keepTouchControlsVisible();
+            if (host.seekTimeshiftBack()) {
+                host.showTimeshiftHudTemporarily();
+            }
             return true;
         }
         if (host.isZapBannerVisible()) {
             host.moveZapBannerSelection(-1);
             return true;
         }
-        if (host.isOverlayVisible()) {
-            host.cycleFilter(-1);
-        } else {
-            host.showOverlay();
-        }
+        host.showOverlay();
         return true;
     }
 
@@ -470,8 +513,18 @@ final class RemoteInputRouter {
             host.moveRecordingsHeaderFocus(1);
             return true;
         }
+        if (host.isOverlayVisible()) {
+            host.cycleFilter(1);
+            return true;
+        }
         if (host.isTouchControlsVisible()) {
+            if (!host.isTouchControlsExpanded()) {
+                host.hideTouchControls();
+                host.showOverlay();
+                return true;
+            }
             if (host.isTouchControlsTimeshiftFocused()) {
+                host.keepTouchControlsVisible();
                 if (host.seekTimeshiftForward()) {
                     host.showTimeshiftHudTemporarily();
                 }
@@ -480,20 +533,27 @@ final class RemoteInputRouter {
             host.moveTouchControlsFocus(1);
             return true;
         }
-        if (host.isTvTimeshiftHudActive() && host.canSeekTimeshiftForward()) {
-            host.seekTimeshiftForward();
+        if (host.isTvTimeshiftHudActive()) {
+            if (host.canSeekTimeshiftForward()) {
+                host.seekTimeshiftForward();
+            }
             host.showTimeshiftHudTemporarily();
+            return true;
+        }
+        if (!host.isOverlayVisible() && host.isVodPlayback() && host.hasSeekablePlayback()) {
+            host.showTouchControlsTemporarily();
+            host.focusTouchControlsTimeshift();
+            host.keepTouchControlsVisible();
+            if (host.seekTimeshiftForward()) {
+                host.showTimeshiftHudTemporarily();
+            }
             return true;
         }
         if (host.isZapBannerVisible()) {
             host.moveZapBannerSelection(1);
             return true;
         }
-        if (host.isOverlayVisible()) {
-            host.cycleFilter(1);
-        } else {
-            host.showOverlay();
-        }
+        host.showOverlay();
         return true;
     }
 
@@ -509,6 +569,23 @@ final class RemoteInputRouter {
             host.playSelectedRecording();
             return true;
         }
+        if (host.isTouchControlsVisible() && !host.isTouchControlsExpanded()) {
+            host.showTouchControlsTemporarily();
+            host.focusTouchControlsActions();
+            return true;
+        }
+        if (host.isVodPlayback() && host.isTouchControlsVisible()) {
+            if (host.isTouchControlsTimeshiftFocused()) {
+                host.togglePlayback();
+            } else {
+                host.activateTouchControlsFocus();
+            }
+            return true;
+        }
+        if (host.isOverlayVisible()) {
+            host.tuneOverlaySelectionAndHide();
+            return true;
+        }
         if (host.isTouchControlsVisible()) {
             if (host.isTouchControlsTimeshiftFocused()) {
                 host.togglePlayback();
@@ -521,10 +598,9 @@ final class RemoteInputRouter {
             host.showTouchControlsTemporarily();
             return true;
         }
-        if (host.isOverlayVisible()) {
-            host.tuneOverlaySelectionAndHide();
-        } else if (host.hasSeekablePlayback()) {
+        if (host.hasSeekablePlayback() || host.hasCurrentChannel()) {
             host.showTouchControlsTemporarily();
+            host.focusTouchControlsActions();
         } else {
             host.togglePlayback();
         }

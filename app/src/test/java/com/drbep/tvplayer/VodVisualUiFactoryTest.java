@@ -76,6 +76,24 @@ public class VodVisualUiFactoryTest {
         assertTrue(section.items.get(0).title.startsWith("VOD "));
     }
 
+    @Test
+    public void platformActionOpensExplicitPickerWithCurrentOrigin() {
+        FakeHost host = new FakeHost();
+
+        VodVisualPanelUiModel model = VodVisualUiFactory.build(
+                MainActivity.VodVisualTypeFilter.GENERAL,
+                MainActivity.VodVisualPlatformFilter.PLEX,
+                MainActivity.VodVisualStatusFilter.ALL,
+                MainActivity.VodVisualSortFilter.SMART,
+                "",
+                host
+        );
+
+        model.actions.get(1).onClick.run();
+
+        assertEquals(MainActivity.VodVisualPlatformFilter.PLEX, host.chosenPlatform);
+    }
+
     private static List<ChannelItem> vodItems(int count) {
         List<ChannelItem> items = new ArrayList<>();
         for (int i = 0; i < count; i++) {
@@ -107,6 +125,7 @@ public class VodVisualUiFactoryTest {
         List<ChannelItem> filtered = Collections.emptyList();
         List<ChannelItem> filteredWithQuery = Collections.emptyList();
         List<ChannelItem> movistar = Collections.emptyList();
+        MainActivity.VodVisualPlatformFilter chosenPlatform;
 
         @Override
         public String text(int resId) {
@@ -176,7 +195,7 @@ public class VodVisualUiFactoryTest {
         @Override public String progressLabel(ChannelItem item) { return ""; }
         @Override public void editSearch(String query) {}
         @Override public void openType(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query) {}
-        @Override public void openPlatform(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query) {}
+        @Override public void choosePlatform(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query) { chosenPlatform = platformFilter; }
         @Override public void openStatus(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query) {}
         @Override public void openSort(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query) {}
         @Override public void clearSearch() {}

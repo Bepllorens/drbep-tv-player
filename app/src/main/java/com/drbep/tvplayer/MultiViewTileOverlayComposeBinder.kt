@@ -45,7 +45,7 @@ private fun MultiViewTileOverlay(model: MultiViewTileOverlayUiModel) {
                 .padding(8.dp)
                 .alpha(if (model.active) 1f else 0.9f)
                 .background(
-                    if (model.active) Color(0xE50A3540) else Color(0xCC172433),
+                    if (model.active) OfflineTvTheme.Colors.card.copy(alpha = 0.9f) else OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.8f),
                     RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = 10.dp, vertical = 7.dp)
@@ -53,13 +53,13 @@ private fun MultiViewTileOverlay(model: MultiViewTileOverlayUiModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TileText(
                     text = model.slotLabel.ifBlank { "Ventana" },
-                    color = if (model.active) Color(0xFFFFD47A) else Color(0xFFAFC8DF),
+                    color = if (model.active) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.textMuted,
                     fontSize = 12,
                     modifier = Modifier.weight(1f)
                 )
                 if (model.active && model.activeLabel.isNotBlank()) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    TilePill(model.activeLabel, Color(0xE0FFD47A), Color(0xFF101722))
+                    TilePill(model.activeLabel, OfflineTvTheme.Colors.accentGold.copy(alpha = 0.88f), OfflineTvTheme.Colors.focusInk)
                 }
             }
             if (model.label.isNotBlank()) {
@@ -74,7 +74,7 @@ private fun MultiViewTileOverlay(model: MultiViewTileOverlayUiModel) {
             if (model.active && model.hintLabel.isNotBlank()) {
                 TileText(
                     text = model.hintLabel,
-                    color = Color(0xFFD1E4F5),
+                    color = OfflineTvTheme.Colors.textSoft,
                     fontSize = 11,
                     modifier = Modifier.padding(top = 3.dp)
                 )
@@ -83,7 +83,7 @@ private fun MultiViewTileOverlay(model: MultiViewTileOverlayUiModel) {
         if (model.audioVisible && model.audioLabel.isNotBlank()) {
             TileChip(
                 text = model.audioLabel,
-                color = Color(0xCCB77C12),
+                color = OfflineTvTheme.Colors.accentGold.copy(alpha = 0.8f),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(8.dp)

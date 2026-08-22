@@ -42,7 +42,7 @@ private fun TouchHomeHub(model: TouchHomeHubUiModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xC4121820), RoundedCornerShape(18.dp))
+            .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(18.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         BasicText(
@@ -52,12 +52,12 @@ private fun TouchHomeHub(model: TouchHomeHubUiModel) {
         Spacer(modifier = Modifier.height(4.dp))
         BasicText(
             text = model.subtitle,
-            style = TextStyle(color = Color(0xFFA8C5DE), fontSize = if (compact) 11.sp else 12.sp)
+            style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 11.sp else 12.sp)
         )
         Spacer(modifier = Modifier.height(10.dp))
-        TouchHomeSection(model.libraryTitle, Color(0xFF332B5F68), Color(0xFFA8DCE2), Color(0xFF244252), Color(0xFF1F90A2), model.libraryActions, compact)
+        TouchHomeSection(model.libraryTitle, OfflineTvTheme.Colors.card.copy(alpha = 0.8f), OfflineTvTheme.Colors.textSoft, OfflineTvTheme.Colors.card, OfflineTvTheme.Colors.chipSelected, model.libraryActions, compact)
         Spacer(modifier = Modifier.height(8.dp))
-        TouchHomeSection(model.accessTitle, Color(0xFF334A3126), Color(0xFFF1C79A), Color(0xFF4C3427), Color(0xFFB46B29), model.accessActions, compact)
+        TouchHomeSection(model.accessTitle, OfflineTvTheme.Colors.chip.copy(alpha = 0.8f), OfflineTvTheme.Colors.accentGold, OfflineTvTheme.Colors.card, OfflineTvTheme.Colors.focusSurface, model.accessActions, compact)
     }
 }
 
@@ -105,26 +105,14 @@ private fun TouchHomeSection(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TouchHomeAction(item: ZapActionItem, modifier: Modifier, inactiveColor: Color, activeColor: Color, compact: Boolean) {
-    BasicText(
-        text = item.label,
-        modifier = modifier
-            .height(48.dp)
-            .alpha(if (item.enabled) 1f else 0.45f)
-            .background(if (item.selected) activeColor else inactiveColor, RoundedCornerShape(14.dp))
-            .tvButtonSemantics(item.enabled)
-            .combinedClickable(
-                enabled = item.enabled,
-                onClick = { item.onClick?.run() },
-                onLongClick = item.onLongClick?.let { { it.run() } }
-            )
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-        style = TextStyle(
-            color = Color.White,
-            fontSize = if (compact && item.label.length >= 12) 11.sp else 13.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        ),
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis
+    TvActionChip(
+        label = item.label,
+        enabled = item.enabled,
+        selected = item.selected,
+        highlighted = item.highlighted,
+        modifier = modifier,
+        compact = compact,
+        onClick = item.onClick,
+        onLongClick = item.onLongClick
     )
 }

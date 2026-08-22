@@ -40,7 +40,9 @@ final class AppUpdateUiFactory {
             }
         }
         actions.add(new TvMessageActionUiModel(host.text(R.string.app_update_action_install), false, () -> host.install(info)));
-        actions.add(new TvMessageActionUiModel(host.text(info != null && info.required ? R.string.dialog_close : R.string.app_update_action_later), false, null));
+        if (info == null || !info.required) {
+            actions.add(new TvMessageActionUiModel(host.text(R.string.app_update_action_later), false, null));
+        }
         return new PlaybackDiagnosticsPanelUiModel(
                 host.text(R.string.app_update_available_title, safeVersion),
                 host.text(R.string.app_update_channel_current, host.currentChannelLabel()),

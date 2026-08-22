@@ -67,7 +67,7 @@ internal fun VisualEpgHeader(model: VisualEpgHeaderUiModel) {
                     modifier = Modifier.padding(top = 4.dp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color(0xFFDDEBFA), fontSize = if (compact) 11.sp else 13.sp, fontWeight = FontWeight.SemiBold)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 13.sp, fontWeight = FontWeight.SemiBold)
                 )
             }
         }
@@ -87,7 +87,7 @@ private fun VisualEpgHeaderChip(action: VisualEpgHeaderUiModel.VisualEpgHeaderAc
         text = action.label,
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(if (focused) Color(0xFF2E7BD8) else Color(0xFF1C334A))
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.chip)
             .clickable(enabled = action.onClick != null) { action.onClick?.run() }
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->

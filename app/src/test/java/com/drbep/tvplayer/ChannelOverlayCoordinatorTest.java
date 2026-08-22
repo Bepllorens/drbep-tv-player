@@ -157,6 +157,38 @@ public class ChannelOverlayCoordinatorTest {
     }
 
     @Test
+    public void coldStartupAlignsPersistedFilterWithLastChannelPlatform() {
+        List<ChannelItem> visible = new ArrayList<>();
+        List<ChannelItem> all = new ArrayList<>();
+        List<ChannelFilter> filters = new ArrayList<>();
+        List<ChannelFilter> platformFilters = new ArrayList<>();
+        platformFilters.add(new ChannelFilter("all", "Todos", 0, 0, ""));
+        platformFilters.add(new ChannelFilter("platform:2", "Tivify", 1, 2, ""));
+        platformFilters.add(new ChannelFilter("platform:13", "Movistar ISM", 1, 13, ""));
+        List<ChannelItem> channels = new ArrayList<>();
+        channels.add(channel("tivify", "La 1", 1, 1, 2, "Tivify"));
+        channels.add(channel("movistar", "M+ Estrenos", 2, 2, 13, "Movistar ISM"));
+
+        ChannelOverlayCoordinator coordinator = new ChannelOverlayCoordinator(
+                visible,
+                all,
+                filters,
+                new HashSet<>(),
+                null,
+                new ChannelCollectionStore(null, "collections"),
+                new ChannelProfileStore(null, "profiles"),
+                new ParentalControlStore(null, "test-parental")
+        );
+        coordinator.setSelectedFilterKey("platform:2");
+
+        coordinator.applyLoadedChannels(new CatalogLoadResult(channels, platformFilters, "all"), "movistar", true);
+
+        assertEquals("platform:13", coordinator.getSelectedFilterKey());
+        assertEquals(1, visible.size());
+        assertEquals("movistar", visible.get(0).id);
+    }
+
+    @Test
     public void lockedProtectedChannelIsHiddenFromVisibleList() {
         List<ChannelItem> visible = new ArrayList<>();
         List<ChannelItem> all = new ArrayList<>();
@@ -186,6 +218,36 @@ public class ChannelOverlayCoordinatorTest {
         coordinator.refreshVisibleChannels("ch-1", "ch-1");
 
         assertEquals(2, visible.size());
+    }
+
+    @Test
+    public void platformFilterContainsOnlyLiveChannelsNotVodFromSameProvider() {
+        List<ChannelItem> visible = new ArrayList<>();
+        List<ChannelItem> all = new ArrayList<>();
+        List<ChannelFilter> filters = new ArrayList<>();
+        List<ChannelItem> items = new ArrayList<>();
+        items.add(channel("prime-live", "Prime Live", 1, 1, 27, "Prime Video"));
+        items.add(new ChannelItem(
+                "prime-vod", "Prime Movie", "", "", "Prime Peliculas",
+                "https://example.test/api/vod/prime/manifest/id", "", 2, 2,
+                true, false, 27, "Prime Video", new ArrayList<>(), "widevine",
+                "https://example.test/api/vod/prime/license/id", "vod:prime:movies", true
+        ));
+        filters.add(new ChannelFilter("all", "Todos", 0, 0, ""));
+        filters.add(new ChannelFilter("platform:27", "Plataforma: Prime Video", 1, 27, ""));
+
+        ChannelOverlayCoordinator coordinator = new ChannelOverlayCoordinator(
+                visible, all, filters, new HashSet<>(), null,
+                new ChannelCollectionStore(null, "collections"),
+                new ChannelProfileStore(null, "profiles"),
+                new ParentalControlStore(null, "test-parental")
+        );
+        coordinator.applyLoadedChannels(new CatalogLoadResult(items, filters, "all"), "prime-live");
+        coordinator.setSelectedFilterKey("platform:27");
+        coordinator.refreshVisibleChannels("prime-live", "prime-live");
+
+        assertEquals(1, visible.size());
+        assertEquals("prime-live", visible.get(0).id);
     }
 
     private static boolean hasFilter(List<ChannelFilter> filters, String key) {

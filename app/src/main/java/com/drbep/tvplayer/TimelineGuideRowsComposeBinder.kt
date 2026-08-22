@@ -7,6 +7,7 @@ import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,9 +19,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -58,12 +64,27 @@ object TimelineGuideRowsComposeBinder {
 }
 
 @Composable
-internal fun TimelineGuideRows(model: TimelineGuideRowsUiModel, imageBinder: TimelineGuideChannelImageBinder) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
+internal fun TimelineGuideRows(
+    model: TimelineGuideRowsUiModel,
+    imageBinder: TimelineGuideChannelImageBinder,
+    modifier: Modifier = Modifier.fillMaxWidth()
+) {
+    val rows = model.rows ?: emptyList()
+    val preferredIndex = rows.indexOfFirst { row ->
+        (row.blocks ?: emptyList()).any { block -> block.preferred }
+    }.coerceAtLeast(0)
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = (preferredIndex - 2).coerceAtLeast(0)
+    )
+    LazyColumn(
+        modifier = modifier,
+        state = listState,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        (model.rows ?: emptyList()).forEach { row ->
+        itemsIndexed(
+            items = rows,
+            key = { index, row -> "${row.channelName}|${row.logoUrl}|$index" }
+        ) { _, row ->
             TimelineGuideRow(row, imageBinder)
         }
     }
@@ -78,7 +99,7 @@ private fun TimelineGuideRow(row: TimelineGuideRowUiModel, imageBinder: Timeline
             modifier = Modifier
                 .weight(1f)
                 .height(62.dp)
-                .background(Color(0xFF101820)),
+                .background(OfflineTvTheme.Colors.guideTrack),
             verticalAlignment = Alignment.CenterVertically
         ) {
             (row.blocks ?: emptyList()).forEach { block ->
@@ -99,7 +120,7 @@ private fun TimelineChannelCell(row: TimelineGuideRowUiModel, imageBinder: Timel
             .width(width)
             .height(62.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF172333))
+            .background(OfflineTvTheme.Colors.guideChannel)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -113,7 +134,7 @@ private fun TimelineChannelCell(row: TimelineGuideRowUiModel, imageBinder: Timel
                         AppCompatImageView(context).apply {
                             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                             scaleType = ImageView.ScaleType.FIT_CENTER
-                            contentDescription = null
+                            contentDescription = row.channelName
                         }
                     )
                 }
@@ -124,7 +145,7 @@ private fun TimelineChannelCell(row: TimelineGuideRowUiModel, imageBinder: Timel
         BasicText(
             text = row.channelName,
             modifier = Modifier.weight(1f),
-            style = TextStyle(color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = OfflineTvTheme.Colors.textPrimary, fontSize = OfflineTvTheme.Typography.guide, fontWeight = FontWeight.Bold),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -135,22 +156,32 @@ private fun TimelineChannelCell(row: TimelineGuideRowUiModel, imageBinder: Timel
 @OptIn(ExperimentalFoundationApi::class)
 private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: Dp) {
     var focused by remember { mutableStateOf(false) }
+    val focusScale by animateFloatAsState(
+        targetValue = if (focused) OfflineTvTheme.Control.focusScale else 1f,
+        label = "timelineProgramFocusScale"
+    )
     val requester = remember { FocusRequester() }
     TvRequestFocus(requester, block.preferred, block.preferred)
     val background = when {
-        focused && block.scheduled -> Color(0xFF9A6A1F)
+        focused && block.scheduled -> OfflineTvTheme.Colors.accentGold
         focused && block.live -> Color(0xFF49A06E)
-        focused -> Color(0xFF4A6F98)
-        block.empty -> Color(0xFF1E2630)
-        block.scheduled -> Color(0xFF6E4A16)
-        block.live -> Color(0xFF276B49)
-        else -> Color(0xFF2B4056)
+        focused -> OfflineTvTheme.Colors.focusSurface
+        block.empty -> OfflineTvTheme.Colors.guideProgramEmpty
+        block.scheduled -> OfflineTvTheme.Colors.guideProgramScheduled
+        block.live -> OfflineTvTheme.Colors.guideProgramLive
+        else -> OfflineTvTheme.Colors.guideProgram
     }
     Column(
         modifier = Modifier
             .width(width)
             .height(62.dp)
             .padding(end = 2.dp)
+            .scale(focusScale)
+            .border(
+                width = if (focused) OfflineTvTheme.Control.focusBorder else 0.dp,
+                color = if (focused) OfflineTvTheme.Colors.focus else Color.Transparent,
+                shape = RoundedCornerShape(9.dp)
+            )
             .clip(RoundedCornerShape(9.dp))
             .background(background)
             .alpha(if (block.empty && !focused) 0.82f else 1f)
@@ -173,7 +204,7 @@ private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: D
     ) {
         BasicText(
             text = block.title,
-            style = TextStyle(color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = OfflineTvTheme.Colors.textPrimary, fontSize = OfflineTvTheme.Typography.guide, fontWeight = FontWeight.Bold),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -181,7 +212,7 @@ private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: D
             Spacer(modifier = Modifier.height(3.dp))
             BasicText(
                 text = listOf(block.time, block.status).filter { it.isNotBlank() }.joinToString("  ·  "),
-                style = TextStyle(color = Color(0xFFD5E2F0), fontSize = 10.sp, fontWeight = if (block.status.isNotBlank()) FontWeight.Bold else FontWeight.Normal),
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 10.sp, fontWeight = if (block.status.isNotBlank()) FontWeight.Bold else FontWeight.Normal),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

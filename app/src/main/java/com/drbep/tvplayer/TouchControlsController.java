@@ -24,6 +24,8 @@ final class TouchControlsController {
 
         boolean isTimeshiftSeekInProgress();
 
+        boolean isTimeshiftFocused();
+
         void setTouchControlsVisible(boolean visible);
 
         void hideTouchHomeHub();
@@ -73,10 +75,14 @@ final class TouchControlsController {
     }
 
     void showTouchControlsTemporarily() {
+        showTouchControlsTemporarily(touchControlsHideMs);
+    }
+
+    void showTouchControlsTemporarily(long hideDelayMs) {
         host.setTouchControlsVisible(true);
         host.updateTouchHomeHub();
         host.updateTimeshiftBar();
-        scheduleTouchControlsAutoHide();
+        scheduleTouchControlsAutoHide(hideDelayMs);
     }
 
     void showTimeshiftHudTemporarily() {
@@ -98,10 +104,14 @@ final class TouchControlsController {
     }
 
     void scheduleTouchControlsAutoHide() {
+        scheduleTouchControlsAutoHide(touchControlsHideMs);
+    }
+
+    private void scheduleTouchControlsAutoHide(long hideDelayMs) {
         scheduler.removeCallbacks(hideTouchControlsRunnable);
         host.updateTimeshiftBar();
         if (host.isTouchControlsVisible()) {
-            scheduler.postDelayed(hideTouchControlsRunnable, touchControlsHideMs);
+            scheduler.postDelayed(hideTouchControlsRunnable, Math.max(1L, hideDelayMs));
         }
     }
 
@@ -123,7 +133,7 @@ final class TouchControlsController {
     }
 
     private void hideTouchControlsFromTimer() {
-        if (host.isTimeshiftSeekInProgress()) {
+        if (host.isTimeshiftSeekInProgress() || host.isTimeshiftFocused()) {
             scheduler.postDelayed(hideTouchControlsRunnable, touchControlsHideMs);
             return;
         }

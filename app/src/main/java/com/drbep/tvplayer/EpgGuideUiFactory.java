@@ -32,7 +32,7 @@ final class EpgGuideUiFactory {
                 String meta = (channelName + "  ·  " + time).trim();
                 boolean live = program != null && program.progress >= 0;
                 String badge = host.text(live ? R.string.epg_search_badge_live : R.string.epg_search_badge_next);
-                int badgeColor = live ? 0xFF276B49 : 0xFF1E2D3E;
+                int badgeColor = live ? 0xFF276B49 : OfflineTvTheme.cardArgb();
                 String imageUrl = ProgramArtworkResolver.resolve(program, channel);
                 rows.add(new EpgSearchResultRowUiModel(
                         programTitle,

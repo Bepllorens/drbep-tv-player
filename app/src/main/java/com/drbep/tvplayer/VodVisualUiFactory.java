@@ -22,6 +22,17 @@ final class VodVisualUiFactory {
         List<ChannelItem> movistarItems();
         List<ChannelItem> runtimeItems();
         List<ChannelItem> tivifyItems();
+        default List<ChannelItem> plexItems() {
+            return new ArrayList<>();
+        }
+        default List<ChannelItem> daznItems() {
+            return new ArrayList<>();
+        }
+        default boolean plexBrowserAvailable() {
+            return false;
+        }
+        default void openPlexBrowser() {
+        }
         List<ChannelItem> progressItems();
         List<ChannelItem> alphaItems();
         String displayName(ChannelItem item);
@@ -31,7 +42,7 @@ final class VodVisualUiFactory {
         String progressLabel(ChannelItem item);
         void editSearch(String query);
         void openType(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query);
-        void openPlatform(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query);
+        void choosePlatform(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query);
         void openStatus(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query);
         void openSort(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query);
         void clearSearch();
@@ -80,6 +91,9 @@ final class VodVisualUiFactory {
         if (searchMode) {
             actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_edit_search), false, () -> host.editSearch(query)));
         }
+        if (host.plexBrowserAvailable()) {
+            actions.add(new VodVisualActionUiModel(host.text(R.string.vod_plex_explore), false, host::openPlexBrowser));
+        }
         actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_type, typeFilter.label), true, () -> {
             MainActivity.VodVisualTypeFilter nextType = typeFilter.next();
             if (nextType == MainActivity.VodVisualTypeFilter.ADULT && host.protectAdultVod() && host.protectedContentLocked()) {
@@ -88,7 +102,7 @@ final class VodVisualUiFactory {
             }
             host.openType(nextType, platformFilter, statusFilter, sortFilter, query);
         }));
-        actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> host.openPlatform(typeFilter, platformFilter.next(), statusFilter, sortFilter, query)));
+        actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> host.choosePlatform(typeFilter, platformFilter, statusFilter, sortFilter, query)));
         actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_status, statusFilter.label), true, () -> host.openStatus(typeFilter, platformFilter, statusFilter.next(), sortFilter, query)));
         actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_sort, sortFilter.label), true, () -> host.openSort(typeFilter, platformFilter, statusFilter, sortFilter.next(), query)));
         if (searchMode) {
@@ -118,6 +132,8 @@ final class VodVisualUiFactory {
             addSection(sections, host.text(R.string.vod_library_movistar), host.movistarItems(), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, host.text(R.string.vod_library_runtime), host.runtimeItems(), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, host.text(R.string.vod_library_tivify), host.tivifyItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, host.text(R.string.vod_library_plex), host.plexItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, host.text(R.string.vod_library_dazn), host.daznItems(), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, host.text(R.string.vod_library_with_progress), host.progressItems(), host, DEFAULT_SECTION_LIMIT);
         } else {
             addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter), host, RESULT_SECTION_LIMIT);

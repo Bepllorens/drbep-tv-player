@@ -18,6 +18,7 @@ public final class TimeshiftBarUiModel {
     public final PreviewLabelProvider previewLabelProvider;
     public final SeekCommitHandler seekCommitHandler;
     public final boolean focused;
+    public final boolean modernStyle;
 
     public TimeshiftBarUiModel(
             String statusLabel,
@@ -41,7 +42,7 @@ public final class TimeshiftBarUiModel {
             SeekCommitHandler seekCommitHandler,
             boolean focused
     ) {
-        this(statusLabel, progress, liveVisible, onLiveClick, onSeekStart, null, previewLabelProvider, seekCommitHandler, focused);
+        this(statusLabel, progress, liveVisible, onLiveClick, onSeekStart, null, previewLabelProvider, seekCommitHandler, focused, false);
     }
 
     public TimeshiftBarUiModel(
@@ -55,6 +56,21 @@ public final class TimeshiftBarUiModel {
             SeekCommitHandler seekCommitHandler,
             boolean focused
     ) {
+        this(statusLabel, progress, liveVisible, onLiveClick, onSeekStart, onSeekEnd, previewLabelProvider, seekCommitHandler, focused, false);
+    }
+
+    public TimeshiftBarUiModel(
+            String statusLabel,
+            int progress,
+            boolean liveVisible,
+            Runnable onLiveClick,
+            Runnable onSeekStart,
+            Runnable onSeekEnd,
+            PreviewLabelProvider previewLabelProvider,
+            SeekCommitHandler seekCommitHandler,
+            boolean focused,
+            boolean modernStyle
+    ) {
         this.statusLabel = statusLabel == null ? "" : statusLabel;
         this.progress = Math.max(0, Math.min(1000, progress));
         this.liveVisible = liveVisible;
@@ -64,5 +80,11 @@ public final class TimeshiftBarUiModel {
         this.previewLabelProvider = previewLabelProvider;
         this.seekCommitHandler = seekCommitHandler;
         this.focused = focused;
+        this.modernStyle = modernStyle;
+    }
+
+    public TimeshiftBarUiModel withModernStyle(boolean modernStyle) {
+        return new TimeshiftBarUiModel(statusLabel, progress, liveVisible, onLiveClick, onSeekStart, onSeekEnd,
+                previewLabelProvider, seekCommitHandler, focused, modernStyle);
     }
 }

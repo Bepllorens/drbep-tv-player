@@ -25,6 +25,7 @@ final class ZapBannerController {
         String string(int resId);
         String string(int resId, Object... args);
         boolean offlineRecordingsDisabled();
+        boolean mobileTouchMode();
         boolean isProtectedItem(ChannelItem item);
         boolean isFavorite(ChannelItem item);
         ChannelItem currentPlaybackChannel();
@@ -94,7 +95,7 @@ final class ZapBannerController {
         if (banner == null || channelItem == null) {
             return;
         }
-        ZapBannerComposeBinder.bind(banner, buildUiModel(channelItem), host::bindChannelLogo);
+        ZapBannerComposeBinder.bind(banner, buildUiModel(channelItem), host::bindChannelLogo, host.mobileTouchMode());
     }
 
     void hide() {
@@ -137,6 +138,11 @@ final class ZapBannerController {
         int selectedIndex = state.getSelectedActionIndex();
         boolean favorite = channelItem != null && host.isFavorite(channelItem);
         actionItems.clear();
+        if (host.mobileTouchMode()) {
+            addActionItem(R.string.tools_menu_title_short, true, false, selectedIndex, host::showToolsMenu);
+            normalizeActionSelection();
+            return;
+        }
         addActionItem(R.string.zap_action_channels, true, false, selectedIndex, host::showChannels);
         addActionItem(R.string.zap_action_guide, true, false, selectedIndex, host::openGuide);
         if (host.supportsU7d(channelItem)) {
@@ -148,6 +154,10 @@ final class ZapBannerController {
         addActionItem(R.string.zap_action_quality, true, false, selectedIndex, host::showPlaybackDiagnostics);
         addActionItem(R.string.zap_action_favorite, true, favorite, selectedIndex, host::toggleCurrentFavorite);
         addActionItem(R.string.zap_action_more, true, false, selectedIndex, host::showToolsMenu);
+        normalizeActionSelection();
+    }
+
+    private void normalizeActionSelection() {
         state.ensureValidSelection(actionItems);
         int normalizedIndex = state.getSelectedActionIndex();
         for (int i = 0; i < actionItems.size(); i++) {

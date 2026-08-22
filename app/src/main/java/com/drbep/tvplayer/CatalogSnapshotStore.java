@@ -65,6 +65,7 @@ final class CatalogSnapshotStore {
     private static final String PREFS = "drbep_catalog_snapshot";
     private static final String PREF_SOURCE_URL = "source_url";
     private static final String PREF_ACCESS_TOKEN = "access_token";
+    private static final String PREF_ACCESS_TOKEN_ENCRYPTED = "access_token_encrypted_v1";
     private static final String PREF_DEVICE_ID = "device_id";
     private static final String PREF_UPDATED_AT_MS = "updated_at_ms";
     private static final String PREF_EXPIRES_AT_MS = "expires_at_ms";
@@ -96,12 +97,17 @@ final class CatalogSnapshotStore {
     private static final String LAST_GOOD_SNAPSHOT_FILE = "catalog_snapshot.last_good.json";
     private static final String SNAPSHOT_TMP_FILE = "catalog_snapshot.tmp.json";
     private static final String STARTUP_PARSED_CACHE_FILE = "catalog_startup_parsed.cache";
+    private static final String FULL_PARSED_CACHE_FILE = "catalog_full_parsed.cache";
     private static final String STARTUP_PLAYBACK_CACHE_FILE = "catalog_startup_playback.cache";
+    private static final String VOD_RESUME_ITEMS_CACHE_FILE = "vod_resume_items.cache";
     private static final String EPG_CHANNEL_CACHE_FILE = "catalog_epg_channels.cache";
-    private static final int STARTUP_PARSED_CACHE_VERSION = 1;
+    private static final int STARTUP_PARSED_CACHE_VERSION = 2;
     private static final int STARTUP_PLAYBACK_CACHE_VERSION = 1;
     private static final int EPG_CHANNEL_CACHE_VERSION = 1;
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 2;
+    // Bump whenever a release learns a new catalog collection. Otherwise an APK
+    // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
+    // produced by an older parser (for example, before Plex VOD existed).
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 6;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -360,57 +366,14 @@ final class CatalogSnapshotStore {
     JSONObject loadStartupSnapshotObject(String fallbackUrl) throws Exception {
         File file = snapshotFile();
         SnapshotStatus status = getStatus(fallbackUrl);
-        if (prefs.getBoolean(PREF_FORCE_STARTUP_SNAPSHOT_REFRESH, false)) {
-            if (hasRefreshCredentials(fallbackUrl)) {
-                try {
-                    Log.w(TAG, "startup forced snapshot refresh after oversized parsed cache");
-                    return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
-                } catch (Exception e) {
-                    Log.w(TAG, "startup forced snapshot refresh failed; falling back to stored snapshot", e);
-                }
-            } else {
-                Log.w(TAG, "startup forced snapshot refresh skipped; missing credentials");
-            }
+        if (file.exists() && file.length() > 0L && status != null && status.available && !status.expired) {
+            prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
+            Log.w(TAG, "startup cache-first: using locally verified unexpired snapshot bytes=" + file.length());
+            return loadSnapshotObject();
         }
-        if (status != null && status.channelCount > 5000 && !getAccessToken().trim().isEmpty()) {
-            try {
-                Log.w(TAG, "startup snapshot overgrown; forcing configured snapshot URL before refresh channels=" + status.channelCount);
-                setSourceUrl(fallbackUrl);
-                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
-            } catch (Exception e) {
-                Log.w(TAG, "startup overgrown snapshot refresh failed; falling back to stored snapshot", e);
-            }
-        }
-        if (file.exists() && file.length() > STARTUP_LITE_REFRESH_THRESHOLD_BYTES && hasRefreshCredentials(fallbackUrl)) {
-            try {
-                Log.i(TAG, "startup snapshot is large; refreshing lite catalog before local parse bytes=" + file.length());
-                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
-            } catch (Exception e) {
-                Log.w(TAG, "startup lite refresh failed; falling back to stored snapshot", e);
-            }
-        }
-        if (localSnapshotNeedsVodRepair(status) && hasRefreshCredentials(fallbackUrl)) {
-            try {
-                Log.i(TAG, "startup snapshot has VOD permission but no VOD items; refreshing lite catalog");
-                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
-            } catch (Exception e) {
-                Log.w(TAG, "startup VOD repair refresh failed; falling back to stored snapshot", e);
-            }
-        }
-        if (file.exists() && file.length() > 0L && hasRefreshCredentials(fallbackUrl)) {
-            try {
-                if (remoteCatalogFingerprintMatches(fallbackUrl)) {
-                    Log.i(TAG, "startup catalog fingerprint unchanged; using local snapshot");
-                    prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
-                    return loadSnapshotObject();
-                }
-                Log.i(TAG, "startup catalog fingerprint changed; refreshing lite catalog");
-                return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
-            } catch (SecurityException e) {
-                throw e;
-            } catch (Exception e) {
-                Log.w(TAG, "startup catalog meta check failed; falling back to stored snapshot", e);
-            }
+        if ((!file.exists() || file.length() <= 0L) && hasRefreshCredentials(fallbackUrl)) {
+            Log.w(TAG, "startup cache missing; downloading live-only bootstrap snapshot");
+            return refreshStartupLiveFromConfiguredUrl(fallbackUrl);
         }
         return loadSnapshotObject();
     }
@@ -440,20 +403,8 @@ final class CatalogSnapshotStore {
         if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
             return null;
         }
-        if (hasRefreshCredentials(fallbackUrl)) {
-            try {
-                if (!remoteCatalogFingerprintMatches(fallbackUrl)) {
-                    Log.w(TAG, "startup parsed catalog cache invalidated by remote fingerprint change");
-                    //noinspection ResultOfMethodCallIgnored
-                    file.delete();
-                    return null;
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "startup parsed catalog remote fingerprint check failed; using local cache if valid", e);
-            }
-        }
         try {
-            CatalogLoadResult result = readStartupParsedCacheBinary(file, status);
+            CatalogLoadResult result = readStartupParsedCacheBinary(file, status, true);
             if (result == null) {
                 return null;
             }
@@ -463,12 +414,6 @@ final class CatalogSnapshotStore {
             if (result.channels.size() > 50000) {
                 prefs.edit().putBoolean(PREF_FORCE_STARTUP_SNAPSHOT_REFRESH, true).apply();
                 throw new IllegalStateException("cache de arranque sobredimensionada: canales=" + result.channels.size());
-            }
-            int lastRejectedCandidateChannels = prefs.getInt(PREF_LAST_REJECTED_CANDIDATE_CHANNELS, 0);
-            if (lastRejectedCandidateChannels > 0 && result.channels.size() != lastRejectedCandidateChannels) {
-                throw new IllegalStateException("cache de arranque obsoleta: canales="
-                        + result.channels.size()
-                        + " candidato_remoto=" + lastRejectedCandidateChannels);
             }
             prefs.edit().putLong(PREF_LAST_STARTUP_CACHE_HIT_MS, System.currentTimeMillis()).apply();
             Log.w(TAG, "startup parsed catalog cache hit channels=" + result.channels.size() + " filters=" + result.filters.size());
@@ -496,6 +441,162 @@ final class CatalogSnapshotStore {
             Log.w(TAG, "failed to save startup parsed catalog cache", e);
             //noinspection ResultOfMethodCallIgnored
             startupParsedCacheFile().delete();
+        }
+    }
+
+    CatalogLoadResult loadFullParsedCache(String fallbackUrl) {
+        File file = fullParsedCacheFile();
+        if (!file.exists() || file.length() <= 0L) {
+            return null;
+        }
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
+            return null;
+        }
+        try {
+            CatalogLoadResult result = readStartupParsedCacheBinary(file, status, false);
+            if (result == null || result.channels == null || result.channels.isEmpty()) {
+                return null;
+            }
+            Log.w(TAG, "full parsed catalog cache hit channels=" + result.channels.size());
+            return result.withLoadSource("full-cache");
+        } catch (Exception | OutOfMemoryError e) {
+            Log.w(TAG, "full parsed catalog cache ignored", e);
+            deleteFileQuietly(file);
+            return null;
+        }
+    }
+
+    boolean hasFullParsedCache(String fallbackUrl) {
+        File file = fullParsedCacheFile();
+        SnapshotStatus status = getStatus(fallbackUrl);
+        return file.exists()
+                && file.length() > 0L
+                && status != null
+                && status.available
+                && !status.expired
+                && parsedCacheHeaderMatches(file, status);
+    }
+
+    List<ChannelItem> loadFullParsedChannelsByIds(String fallbackUrl, Set<String> channelIds) {
+        List<ChannelItem> matches = new ArrayList<>();
+        if (channelIds == null || channelIds.isEmpty()) {
+            return matches;
+        }
+        Set<String> requestedIds = new java.util.LinkedHashSet<>();
+        for (String rawId : channelIds) {
+            String id = rawId == null ? "" : rawId.trim();
+            if (!id.isEmpty()) {
+                requestedIds.add(id);
+            }
+        }
+        File file = fullParsedCacheFile();
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (requestedIds.isEmpty() || !file.exists() || file.length() <= 0L || status == null || status.expired) {
+            return matches;
+        }
+        try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file), 1 << 16);
+             GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1 << 16);
+             DataInputStream in = new DataInputStream(new BufferedInputStream(gzipInputStream, 1 << 16))) {
+            int formatVersion = in.readInt();
+            if (formatVersion != 2 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
+                return matches;
+            }
+            String payloadFingerprint = readStr(in);
+            String catalogFingerprint = readStr(in);
+            String permissionsFingerprint = readStr(in);
+            if (!parsedCacheFingerprintMatches(status, payloadFingerprint, catalogFingerprint, permissionsFingerprint)) {
+                return matches;
+            }
+            if (formatVersion >= 3) {
+                in.readBoolean();
+                readStr(in);
+                in.readInt();
+                in.readInt();
+            }
+            readStr(in);
+            readOfflinePermissions(in);
+            int filterCount = in.readInt();
+            if (filterCount < 0 || filterCount > MAX_BINARY_CACHE_ITEMS) {
+                return matches;
+            }
+            for (int i = 0; i < filterCount; i++) {
+                readFilter(in);
+            }
+            int channelCount = in.readInt();
+            if (channelCount < 0 || channelCount > MAX_BINARY_CACHE_ITEMS) {
+                return matches;
+            }
+            for (int i = 0; i < channelCount && matches.size() < requestedIds.size(); i++) {
+                if ((i & 127) == 0) {
+                    throwIfInterrupted("lectura de VOD empezados cancelada");
+                }
+                ChannelItem channel = readChannel(in);
+                if (channel != null && channel.isVod && requestedIds.contains(channel.id)) {
+                    matches.add(channel);
+                }
+            }
+            Log.i(TAG, "target VOD cache read requested=" + requestedIds.size() + " matched=" + matches.size());
+        } catch (Exception | OutOfMemoryError e) {
+            Log.w(TAG, "target VOD cache read failed; returning partial result requested="
+                    + requestedIds.size() + " matched=" + matches.size(), e);
+        }
+        return matches;
+    }
+
+    int fetchRemoteVodCount(String fallbackUrl) throws Exception {
+        String metaUrl = snapshotMetaUrl(getSourceUrl(fallbackUrl));
+        if (metaUrl.isEmpty()) {
+            return getStatus(fallbackUrl).vodCount;
+        }
+        HttpClient.Response response = httpClient.get(metaUrl, 5000, 12000, buildSnapshotHeaders());
+        httpClient.requireSuccess(response, "consultando total VOD");
+        JSONObject payload = new JSONObject(response.body == null ? "" : response.body);
+        int vodCount = Math.max(0, payload.optInt("vod_count", 0));
+        int channelCount = Math.max(0, payload.optInt("channel_count", 0));
+        prefs.edit().putInt(PREF_VOD_COUNT, vodCount).putInt(PREF_CHANNEL_COUNT, channelCount).apply();
+        return vodCount;
+    }
+
+    private boolean parsedCacheHeaderMatches(File file, SnapshotStatus status) {
+        if (file == null || status == null) {
+            return false;
+        }
+        try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file), 1 << 16);
+             GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1 << 16);
+             DataInputStream in = new DataInputStream(new BufferedInputStream(gzipInputStream, 1 << 16))) {
+            int formatVersion = in.readInt();
+            if (formatVersion != 2 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
+                return false;
+            }
+            String payloadFingerprint = readStr(in);
+            String catalogFingerprint = readStr(in);
+            String permissionsFingerprint = readStr(in);
+            return parsedCacheFingerprintMatches(
+                    status,
+                    payloadFingerprint,
+                    catalogFingerprint,
+                    permissionsFingerprint
+            );
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    void saveFullParsedCache(String fallbackUrl, CatalogLoadResult result) {
+        if (result == null || result.channels == null || result.channels.isEmpty() || result.liveOnly) {
+            return;
+        }
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (status == null || !status.available || status.expired || status.payloadFingerprint.isEmpty()) {
+            return;
+        }
+        try {
+            writeStartupParsedCacheBinary(fullParsedCacheFile(), status, result);
+            Log.w(TAG, "full parsed catalog cache saved channels=" + result.channels.size());
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save full parsed catalog cache", e);
+            deleteFileQuietly(fullParsedCacheFile());
         }
     }
 
@@ -602,6 +703,38 @@ final class CatalogSnapshotStore {
         return refreshStartupLiteFromConfiguredUrl(fallbackUrl);
     }
 
+    PendingSnapshot downloadPendingSnapshotFromConfiguredUrl(String fallbackUrl) throws Exception {
+        String configuredUrl = getSourceUrl(fallbackUrl);
+        String sourceUrl = appendStartupLiteQuery(configuredUrl);
+        if (sourceUrl.isEmpty()) {
+            throw new IllegalStateException("no hay URL de catalogo configurada");
+        }
+        HttpClient.Response response = httpClient.get(
+                sourceUrl,
+                10000,
+                30000,
+                buildSnapshotHeaders(),
+                MAX_SNAPSHOT_HTTP_BYTES
+        );
+        httpClient.requireSuccess(response, "descargando candidato de catalogo");
+        String rawBody = response.body == null ? "" : response.body;
+        JSONObject payload = new JSONObject(rawBody);
+        validateSnapshotPayload(payload);
+        validateSnapshotDoesNotRegress(payload, snapshotFile(), true);
+        return new PendingSnapshot(payload, rawBody, configuredUrl);
+    }
+
+    void commitPendingSnapshot(PendingSnapshot pending) throws Exception {
+        if (pending == null || pending.payload == null) {
+            throw new IllegalArgumentException("candidato de catalogo vacio");
+        }
+        saveSnapshotObject(pending.payload, pending.sourceUrl, pending.rawJson, true);
+    }
+
+    boolean remoteCatalogFingerprintMatchesStored(String fallbackUrl) throws Exception {
+        return remoteCatalogFingerprintMatches(fallbackUrl);
+    }
+
     JSONObject refreshStartupLiteFromConfiguredUrl(String fallbackUrl) throws Exception {
         snapshotMaterializationLock.lockInterruptibly();
         try {
@@ -617,6 +750,57 @@ final class CatalogSnapshotStore {
                     MAX_SNAPSHOT_HTTP_BYTES
             );
             httpClient.requireSuccess(response, "actualizando catalogo local ligero");
+            String rawBody = response.body == null ? "" : response.body;
+            JSONObject payload = new JSONObject(rawBody);
+            validateSnapshotPayload(payload);
+            saveSnapshotObject(payload, getSourceUrl(fallbackUrl), rawBody, true);
+            return payload;
+        } finally {
+            snapshotMaterializationLock.unlock();
+        }
+    }
+
+    JSONObject downloadStartupLiveBootstrapIfPossible(String fallbackUrl) throws Exception {
+        SnapshotStatus status = getStatus(fallbackUrl);
+        if (status == null || !status.available || status.expired || !hasRefreshCredentials(fallbackUrl)) {
+            return null;
+        }
+        String sourceUrl = appendStartupLiveQuery(getSourceUrl(fallbackUrl));
+        HttpClient.Response response = httpClient.get(
+                sourceUrl,
+                10000,
+                30000,
+                buildSnapshotHeaders(),
+                MAX_SNAPSHOT_HTTP_BYTES
+        );
+        httpClient.requireSuccess(response, "descargando catalogo de arranque en directo");
+        JSONObject payload = new JSONObject(response.body == null ? "" : response.body);
+        validateSnapshotPayload(payload);
+        String localPermissions = status.permissionsFingerprint == null ? "" : status.permissionsFingerprint.trim();
+        String remotePermissions = buildPermissionsFingerprint(payload.optJSONObject("permissions"));
+        if (!localPermissions.isEmpty()
+                && !remotePermissions.isEmpty()
+                && !localPermissions.equals(remotePermissions)) {
+            throw new SecurityException("los permisos del catalogo local han cambiado");
+        }
+        return payload;
+    }
+
+    private JSONObject refreshStartupLiveFromConfiguredUrl(String fallbackUrl) throws Exception {
+        snapshotMaterializationLock.lockInterruptibly();
+        try {
+            String sourceUrl = appendStartupLiveQuery(getSourceUrl(fallbackUrl));
+            if (sourceUrl.isEmpty()) {
+                throw new IllegalStateException("no hay URL de catalogo configurada");
+            }
+            HttpClient.Response response = httpClient.get(
+                    sourceUrl,
+                    10000,
+                    30000,
+                    buildSnapshotHeaders(),
+                    MAX_SNAPSHOT_HTTP_BYTES
+            );
+            httpClient.requireSuccess(response, "preparando catalogo de canales en directo");
             String rawBody = response.body == null ? "" : response.body;
             JSONObject payload = new JSONObject(rawBody);
             validateSnapshotPayload(payload);
@@ -769,7 +953,10 @@ final class CatalogSnapshotStore {
                 .putString(PREF_PERMISSIONS_FINGERPRINT, permissionsFingerprint)
                 .putLong(PREF_PERMISSIONS_CHANGED_AT_MS, permissionsChangedAtMs)
                 .putInt(PREF_CHANNEL_COUNT, countCatalogRows(payload, "channels"))
-                .putInt(PREF_VOD_COUNT, countCatalogRows(payload, "vod") + countCatalogRows(payload, "adult") + countCatalogRows(payload, "runtime_movies"))
+                .putInt(PREF_VOD_COUNT, countCatalogRows(payload, "vod") + countCatalogRows(payload, "adult")
+                        + countCatalogRows(payload, "runtime_movies") + countCatalogRows(payload, "movistar_movies")
+                        + countCatalogRows(payload, "movistar_series") + countCatalogRows(payload, "plex_vod")
+                        + countCatalogRows(payload, "prime_vod"))
                 .putInt(PREF_EPG_CHANNEL_COUNT, countOfflineEpgChannels(payload))
                 .putInt(PREF_EPG_PROGRAM_COUNT, countOfflineEpgPrograms(payload))
                 .putLong(PREF_EPG_UNTIL_MS, parseOfflineEpgUntilMs(payload))
@@ -808,6 +995,7 @@ final class CatalogSnapshotStore {
             if (parsedCache.exists()) {
                 parsedCache.delete();
             }
+            deleteFileQuietly(fullParsedCacheFile());
             File playbackCache = startupPlaybackCacheFile();
             if (playbackCache.exists()) {
                 playbackCache.delete();
@@ -853,19 +1041,20 @@ final class CatalogSnapshotStore {
         prefs.edit()
                 .remove(PREF_SOURCE_URL)
                 .remove(PREF_ACCESS_TOKEN)
+                .remove(PREF_ACCESS_TOKEN_ENCRYPTED)
                 .apply();
     }
 
     String getSourceUrl(String fallbackUrl) {
         String configured = prefs.getString(PREF_SOURCE_URL, "");
         if (configured != null && !configured.trim().isEmpty()) {
-            return configured.trim();
+            return normalizeSnapshotSourceUrl(configured);
         }
-        return fallbackUrl == null ? "" : fallbackUrl.trim();
+        return normalizeSnapshotSourceUrl(fallbackUrl);
     }
 
     void setSourceUrl(String sourceUrl) {
-        prefs.edit().putString(PREF_SOURCE_URL, sourceUrl == null ? "" : sourceUrl.trim()).apply();
+        prefs.edit().putString(PREF_SOURCE_URL, normalizeSnapshotSourceUrl(sourceUrl)).apply();
     }
 
     private void migrateLegacyPublicBaseUrl() {
@@ -914,11 +1103,69 @@ final class CatalogSnapshotStore {
     }
 
     String getAccessToken() {
-        return prefs.getString(PREF_ACCESS_TOKEN, "");
+        String encrypted = prefs.getString(PREF_ACCESS_TOKEN_ENCRYPTED, "");
+        if (encrypted != null && !encrypted.trim().isEmpty()) {
+            try {
+                return decryptPreferenceValue(encrypted.trim());
+            } catch (Exception e) {
+                Log.e(TAG, "failed to decrypt access token", e);
+                return "";
+            }
+        }
+        String legacy = prefs.getString(PREF_ACCESS_TOKEN, "");
+        if (legacy == null || legacy.trim().isEmpty()) {
+            return "";
+        }
+        String clean = legacy.trim();
+        // Transparently migrate installations that predate encrypted credentials.
+        setAccessToken(clean);
+        return clean;
     }
 
     void setAccessToken(String accessToken) {
-        prefs.edit().putString(PREF_ACCESS_TOKEN, accessToken == null ? "" : accessToken.trim()).apply();
+        String clean = accessToken == null ? "" : accessToken.trim();
+        if (clean.isEmpty()) {
+            prefs.edit()
+                    .remove(PREF_ACCESS_TOKEN)
+                    .remove(PREF_ACCESS_TOKEN_ENCRYPTED)
+                    .apply();
+            return;
+        }
+        try {
+            prefs.edit()
+                    .putString(PREF_ACCESS_TOKEN_ENCRYPTED, encryptPreferenceValue(clean))
+                    .remove(PREF_ACCESS_TOKEN)
+                    .apply();
+        } catch (Exception e) {
+            // Never write a newly entered credential back in plaintext.
+            Log.e(TAG, "failed to encrypt access token", e);
+        }
+    }
+
+    private String encryptPreferenceValue(String value) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSnapshotKey());
+        byte[] encrypted = cipher.doFinal((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+        byte[] iv = cipher.getIV();
+        if (iv == null || iv.length != SNAPSHOT_GCM_IV_BYTES) {
+            throw new IllegalStateException("invalid credential iv");
+        }
+        byte[] payload = new byte[iv.length + encrypted.length];
+        System.arraycopy(iv, 0, payload, 0, iv.length);
+        System.arraycopy(encrypted, 0, payload, iv.length, encrypted.length);
+        return android.util.Base64.encodeToString(payload, android.util.Base64.NO_WRAP);
+    }
+
+    private String decryptPreferenceValue(String encoded) throws Exception {
+        byte[] payload = android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP);
+        if (payload.length <= SNAPSHOT_GCM_IV_BYTES) {
+            throw new IllegalStateException("invalid credential payload");
+        }
+        byte[] iv = java.util.Arrays.copyOfRange(payload, 0, SNAPSHOT_GCM_IV_BYTES);
+        byte[] encrypted = java.util.Arrays.copyOfRange(payload, SNAPSHOT_GCM_IV_BYTES, payload.length);
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, getOrCreateSnapshotKey(), new GCMParameterSpec(SNAPSHOT_GCM_TAG_BITS, iv));
+        return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8).trim();
     }
 
     String getDeviceId() {
@@ -1027,8 +1274,16 @@ final class CatalogSnapshotStore {
         return new File(context.getFilesDir(), STARTUP_PARSED_CACHE_FILE);
     }
 
+    private File fullParsedCacheFile() {
+        return new File(context.getFilesDir(), FULL_PARSED_CACHE_FILE);
+    }
+
     private File startupPlaybackCacheFile() {
         return new File(context.getFilesDir(), STARTUP_PLAYBACK_CACHE_FILE);
+    }
+
+    private File vodResumeItemsCacheFile() {
+        return new File(context.getFilesDir(), VOD_RESUME_ITEMS_CACHE_FILE);
     }
 
     private File epgChannelCacheFile() {
@@ -1075,7 +1330,11 @@ final class CatalogSnapshotStore {
         int candidateLive = countCatalogRows(payload, "channels");
         int candidateVod = countCatalogRows(payload, "vod")
                 + countCatalogRows(payload, "adult")
-                + countCatalogRows(payload, "runtime_movies");
+                + countCatalogRows(payload, "runtime_movies")
+                + countCatalogRows(payload, "movistar_movies")
+                + countCatalogRows(payload, "movistar_series")
+                + countCatalogRows(payload, "plex_vod")
+                + countCatalogRows(payload, "prime_vod");
         int candidateTotal = candidateLive + candidateVod;
         String previousPermissionsFingerprint = prefs.getString(PREF_PERMISSIONS_FINGERPRINT, "");
         String candidatePermissionsFingerprint = buildPermissionsFingerprint(payload.optJSONObject("permissions"));
@@ -1380,6 +1639,72 @@ final class CatalogSnapshotStore {
         encryptRawBytesToFile(file, rawOutput.toByteArray());
     }
 
+    synchronized Map<String, ChannelItem> loadVodResumeItems() {
+        File file = vodResumeItemsCacheFile();
+        if (!file.exists() || file.length() <= 0L) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            Object decoded = readEncryptedObject(file);
+            if (!(decoded instanceof Map)) {
+                throw new IllegalStateException("cache de fichas VOD invalida");
+            }
+            Map<String, ChannelItem> items = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) decoded).entrySet()) {
+                if (entry.getKey() instanceof String && entry.getValue() instanceof ChannelItem) {
+                    ChannelItem item = (ChannelItem) entry.getValue();
+                    if (item.isVod && !item.id.isEmpty()) {
+                        items.put((String) entry.getKey(), item);
+                    }
+                }
+                if (items.size() >= 80) {
+                    break;
+                }
+            }
+            return items;
+        } catch (Exception e) {
+            Log.w(TAG, "VOD resume item cache ignored", e);
+            deleteFileQuietly(file);
+            return new LinkedHashMap<>();
+        }
+    }
+
+    synchronized void saveVodResumeItem(ChannelItem item) {
+        if (item == null || !item.isVod || item.id.isEmpty()) {
+            return;
+        }
+        try {
+            Map<String, ChannelItem> items = loadVodResumeItems();
+            items.remove(item.id);
+            items.put(item.id, item);
+            while (items.size() > 80) {
+                items.remove(items.keySet().iterator().next());
+            }
+            writeEncryptedObject(vodResumeItemsCacheFile(), (Serializable) new LinkedHashMap<>(items));
+        } catch (Exception e) {
+            Log.w(TAG, "failed to save VOD resume item", e);
+        }
+    }
+
+    synchronized void removeVodResumeItem(String itemId) {
+        String cleanId = itemId == null ? "" : itemId.trim();
+        if (cleanId.isEmpty()) {
+            return;
+        }
+        try {
+            Map<String, ChannelItem> items = loadVodResumeItems();
+            if (items.remove(cleanId) != null) {
+                writeEncryptedObject(vodResumeItemsCacheFile(), (Serializable) new LinkedHashMap<>(items));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "failed to remove VOD resume item", e);
+        }
+    }
+
+    synchronized void clearVodResumeItems() {
+        deleteFileQuietly(vodResumeItemsCacheFile());
+    }
+
     private synchronized EpgChannelCache readEpgChannelCache(String fingerprint) {
         String cleanFingerprint = fingerprint == null ? "" : fingerprint.trim();
         if (cleanFingerprint.isEmpty()) {
@@ -1520,6 +1845,10 @@ final class CatalogSnapshotStore {
             writeStr(out, status == null ? "" : status.payloadFingerprint);
             writeStr(out, status == null ? "" : status.catalogFingerprint);
             writeStr(out, status == null ? "" : status.permissionsFingerprint);
+            out.writeBoolean(result.liveOnly);
+            writeStr(out, result.loadSource);
+            out.writeInt(Math.max(0, result.liveItems));
+            out.writeInt(Math.max(0, result.vodItems));
             writeStr(out, result.defaultFilterKey);
             writeOfflinePermissions(out, result.offlinePermissions);
             List<ChannelFilter> filters = result.filters;
@@ -1542,12 +1871,12 @@ final class CatalogSnapshotStore {
         }
     }
 
-    private CatalogLoadResult readStartupParsedCacheBinary(File file, SnapshotStatus status) throws Exception {
+    private CatalogLoadResult readStartupParsedCacheBinary(File file, SnapshotStatus status, boolean liveStartup) throws Exception {
         try (InputStream inputStream = new BufferedInputStream(new FileInputStream(file), 1 << 16);
              GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1 << 16);
              DataInputStream in = new DataInputStream(new BufferedInputStream(gzipInputStream, 1 << 16))) {
             int formatVersion = in.readInt();
-            if (formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
+            if (formatVersion != 2 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
                 throw new IllegalStateException("version de cache binaria invalida: " + formatVersion);
             }
             String payloadFingerprint = readStr(in);
@@ -1556,6 +1885,10 @@ final class CatalogSnapshotStore {
             if (!parsedCacheFingerprintMatches(status, payloadFingerprint, catalogFingerprint, permissionsFingerprint)) {
                 return null;
             }
+            boolean liveOnly = formatVersion >= 3 && in.readBoolean();
+            String loadSource = formatVersion >= 3 ? readStr(in) : "startup-cache-v2-migrated";
+            int liveItems = formatVersion >= 3 ? Math.max(0, in.readInt()) : 0;
+            int vodItems = formatVersion >= 3 ? Math.max(0, in.readInt()) : 0;
             String defaultFilterKey = readStr(in);
             OfflinePermissions permissions = readOfflinePermissions(in);
             int filterCount = in.readInt();
@@ -1577,7 +1910,49 @@ final class CatalogSnapshotStore {
                 }
                 channels.add(readChannel(in));
             }
-            return new CatalogLoadResult(channels, filters, defaultFilterKey, permissions);
+            if (formatVersion == 2 && liveStartup) {
+                copyFile(file, fullParsedCacheFile());
+                List<ChannelItem> liveChannels = new ArrayList<>(channels.size());
+                for (ChannelItem channel : channels) {
+                    if (channel != null && !channel.isVod) {
+                        liveChannels.add(channel);
+                    }
+                }
+                List<ChannelFilter> liveFilters = new ArrayList<>(filters.size());
+                for (ChannelFilter filter : filters) {
+                    if (filter != null && filter.type != 3 && filter.type != 4) {
+                        liveFilters.add(filter);
+                    }
+                }
+                if (permissions.vodEnabled) {
+                    liveFilters.add(new ChannelFilter("vod", "VOD", 3, 0, ""));
+                }
+                if (permissions.tivifyAdultEnabled) {
+                    liveFilters.add(new ChannelFilter("vod-adult", "VOD Adulto", 4, 0, ""));
+                }
+                channels = liveChannels;
+                filters = liveFilters;
+                liveOnly = true;
+                liveItems = liveChannels.size();
+                vodItems = 0;
+                Log.w(TAG, "startup parsed cache v2 migrated to live-only channels=" + liveItems);
+            }
+            return new CatalogLoadResult(
+                    channels,
+                    filters,
+                    defaultFilterKey,
+                    permissions,
+                    liveOnly,
+                    loadSource,
+                    liveItems,
+                    vodItems,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L
+            );
         }
     }
 
@@ -2022,12 +2397,50 @@ final class CatalogSnapshotStore {
         return meta.toString();
     }
 
-    private static String appendStartupLiteQuery(String sourceUrl) {
+    static String appendStartupLiteQuery(String sourceUrl) {
+        return appendSnapshotModeQuery(sourceUrl, "startup_lite");
+    }
+
+    static String appendStartupLiveQuery(String sourceUrl) {
+        return appendSnapshotModeQuery(sourceUrl, "startup_live");
+    }
+
+    static String normalizeSnapshotSourceUrl(String sourceUrl) {
+        return appendSnapshotModeQuery(sourceUrl, "");
+    }
+
+    private static String appendSnapshotModeQuery(String sourceUrl, String mode) {
         String clean = sourceUrl == null ? "" : sourceUrl.trim();
-        if (clean.isEmpty() || clean.contains("startup_lite=") || clean.contains("lite=")) {
+        if (clean.isEmpty()) {
             return clean;
         }
-        return clean + (clean.contains("?") ? "&" : "?") + "startup_lite=1";
+        int fragmentIndex = clean.indexOf('#');
+        String fragment = fragmentIndex >= 0 ? clean.substring(fragmentIndex) : "";
+        String withoutFragment = fragmentIndex >= 0 ? clean.substring(0, fragmentIndex) : clean;
+        int queryIndex = withoutFragment.indexOf('?');
+        String base = queryIndex >= 0 ? withoutFragment.substring(0, queryIndex) : withoutFragment;
+        String rawQuery = queryIndex >= 0 ? withoutFragment.substring(queryIndex + 1) : "";
+        ArrayList<String> parameters = new ArrayList<>();
+        if (!rawQuery.isEmpty()) {
+            for (String parameter : rawQuery.split("&")) {
+                String trimmed = parameter == null ? "" : parameter.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                int equals = trimmed.indexOf('=');
+                String name = (equals >= 0 ? trimmed.substring(0, equals) : trimmed).trim();
+                if ("startup_live".equalsIgnoreCase(name)
+                        || "startup_lite".equalsIgnoreCase(name)
+                        || "lite".equalsIgnoreCase(name)) {
+                    continue;
+                }
+                parameters.add(trimmed);
+            }
+        }
+        if (mode != null && !mode.isEmpty()) {
+            parameters.add(mode + "=1");
+        }
+        return base + (parameters.isEmpty() ? "" : "?" + String.join("&", parameters)) + fragment;
     }
 
     private void ensureDeviceId() {
@@ -2161,7 +2574,11 @@ final class CatalogSnapshotStore {
         int live = countCatalogRows(payload, "channels");
         int vod = countCatalogRows(payload, "vod")
                 + countCatalogRows(payload, "adult")
-                + countCatalogRows(payload, "runtime_movies");
+                + countCatalogRows(payload, "runtime_movies")
+                + countCatalogRows(payload, "movistar_movies")
+                + countCatalogRows(payload, "movistar_series")
+                + countCatalogRows(payload, "plex_vod")
+                + countCatalogRows(payload, "prime_vod");
         if (live <= 0 && vod <= 0) {
             throw new IllegalStateException("catalogo descargado sin canales ni VOD; se conserva el ultimo catalogo bueno");
         }
@@ -2392,9 +2809,21 @@ final class CatalogSnapshotStore {
             if (version != STARTUP_PLAYBACK_CACHE_VERSION || status == null) {
                 return false;
             }
-            return StartupParsedCatalogCache.safeEquals(payloadFingerprint, status.payloadFingerprint)
-                    && StartupParsedCatalogCache.safeEquals(catalogFingerprint, status.catalogFingerprint)
-                    && StartupParsedCatalogCache.safeEquals(permissionsFingerprint, status.permissionsFingerprint);
+            // La URL firmada del canal sigue siendo valida mientras lo sean el snapshot
+            // local y sus permisos. Un cambio de VOD no debe invalidar este fast-path.
+            return StartupParsedCatalogCache.safeEquals(permissionsFingerprint, status.permissionsFingerprint);
+        }
+    }
+
+    static final class PendingSnapshot {
+        final JSONObject payload;
+        final String rawJson;
+        final String sourceUrl;
+
+        PendingSnapshot(JSONObject payload, String rawJson, String sourceUrl) {
+            this.payload = payload;
+            this.rawJson = rawJson == null ? "" : rawJson;
+            this.sourceUrl = sourceUrl == null ? "" : sourceUrl;
         }
     }
 

@@ -67,7 +67,7 @@ private fun PlaybackDiagnosticsPanel(model: PlaybackDiagnosticsPanelUiModel) {
                 .fillMaxWidth(if (compact) 0.95f else 0.68f)
                 .fillMaxHeight(if (compact) 0.86f else 0.80f)
                 .clip(RoundedCornerShape(if (compact) 22.dp else 30.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xF21A2634), Color(0xF209111A))))
+                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
                 .padding(if (compact) 16.dp else 24.dp)
         ) {
             BasicText(
@@ -80,7 +80,7 @@ private fun PlaybackDiagnosticsPanel(model: PlaybackDiagnosticsPanelUiModel) {
                 Spacer(modifier = Modifier.height(5.dp))
                 BasicText(
                     text = model.subtitle,
-                    style = TextStyle(color = Color(0xFF8FB5D9), fontSize = if (compact) 12.sp else 14.sp, fontWeight = FontWeight.Bold),
+                    style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 12.sp else 14.sp, fontWeight = FontWeight.Bold),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -91,7 +91,7 @@ private fun PlaybackDiagnosticsPanel(model: PlaybackDiagnosticsPanelUiModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF20344A))
+                        .background(OfflineTvTheme.Colors.card)
                         .padding(horizontal = 14.dp, vertical = 11.dp)
                 ) {
                     BasicText(
@@ -157,13 +157,13 @@ private fun DiagnosticsSection(section: String, rows: List<PlaybackDiagnosticsRo
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xAA101A26))
+            .background(OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.8f))
             .padding(if (compact) 12.dp else 15.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)
     ) {
         BasicText(
             text = section.uppercase(),
-            style = TextStyle(color = Color(0xFF76A9D8), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Black),
+            style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Black),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -177,9 +177,9 @@ private fun DiagnosticsSection(section: String, rows: List<PlaybackDiagnosticsRo
 private fun DiagnosticsRow(row: PlaybackDiagnosticsRowUiModel, compact: Boolean) {
     val toneColor = when (row.tone.lowercase()) {
         "error" -> Color(0xFFFF7A8A)
-        "warn" -> Color(0xFFFFD47A)
+        "warn" -> OfflineTvTheme.Colors.focus
         "ok" -> Color(0xFF80E0A7)
-        else -> Color(0xFFD5E3F2)
+        else -> OfflineTvTheme.Colors.textSoft
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -188,7 +188,7 @@ private fun DiagnosticsRow(row: PlaybackDiagnosticsRowUiModel, compact: Boolean)
         BasicText(
             text = row.label,
             modifier = Modifier.weight(if (compact) 0.42f else 0.34f),
-            style = TextStyle(color = Color(0xFF91A8BF), fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -208,14 +208,14 @@ private fun DiagnosticsNotes(notes: List<String>, compact: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0x77203044))
+            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f))
             .padding(if (compact) 12.dp else 15.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)
     ) {
         notes.forEach { note ->
             BasicText(
                 text = note,
-                style = TextStyle(color = Color(0xFFC7D8EA), fontSize = if (compact) 12.sp else 13.sp),
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 13.sp),
                 maxLines = 5,
                 overflow = TextOverflow.Ellipsis
             )
@@ -227,11 +227,11 @@ private fun DiagnosticsNotes(notes: List<String>, compact: Boolean) {
 private fun DiagnosticsActionButton(action: TvMessageActionUiModel, compact: Boolean, modifier: Modifier, requester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
     val background = when {
-        focused -> Color(0xFFFFD47A)
+        focused -> OfflineTvTheme.Colors.focus
         action.destructive -> Color(0xFF683142)
-        else -> Color(0xFF203044)
+        else -> OfflineTvTheme.Colors.chip
     }
-    val textColor = if (focused) Color(0xFF101722) else Color.White
+    val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
     Box(
         modifier = modifier
             .height(if (compact) 44.dp else 48.dp)

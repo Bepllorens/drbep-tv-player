@@ -88,7 +88,9 @@ final class PlaybackRecoveryCoordinator {
 
     static String sanitizeMode(String value) {
         String mode = value == null ? "" : value.trim();
-        if (PlaybackModeStore.MODE_DIRECT.equals(mode) || PlaybackModeStore.MODE_PROXY.equals(mode)) {
+        if (PlaybackModeStore.MODE_DIRECT.equals(mode)
+                || PlaybackModeStore.MODE_PROXY.equals(mode)
+                || PlaybackModeStore.MODE_COMPAT.equals(mode)) {
             return mode;
         }
         return PlaybackModeStore.MODE_AUTO;

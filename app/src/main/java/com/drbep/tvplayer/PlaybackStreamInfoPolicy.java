@@ -51,6 +51,9 @@ final class PlaybackStreamInfoPolicy {
         if (channel == null || request == null || !request.directPlayback) {
             return false;
         }
+        if (safeLower(request.platformName).contains("movistar hls")) {
+            return true;
+        }
         String drm = safeLower(channel.drmScheme);
         String playUrl = safeLower(request.playUrl);
         if (!"clearkey".equals(drm) && !"widevine".equals(drm)) {

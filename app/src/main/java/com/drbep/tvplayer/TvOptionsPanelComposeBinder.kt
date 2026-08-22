@@ -60,7 +60,7 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
             .fillMaxWidth()
             .fillMaxHeight()
             .tvPanelBackHandler(model.onBack)
-            .background(Color(0xCC000000)),
+            .background(OfflineTvTheme.Colors.guideBackdrop),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -68,7 +68,7 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
                 .clip(RoundedCornerShape(if (compact) 22.dp else 28.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xF21A2634), Color(0xF20B111A))
+                        listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
                     )
                 )
                 .padding(if (compact) 16.dp else 22.dp)
@@ -87,7 +87,7 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 BasicText(
                     text = model.message,
-                    style = TextStyle(color = Color(0xFFC3D2E4), fontSize = if (compact) 12.sp else 14.sp),
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp),
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -112,9 +112,9 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
 @Composable
 private fun TvOptionsRow(row: TvOptionsPanelRowUiModel, index: Int, compact: Boolean, focusRequester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
-    val background = if (focused) Color(0xFFFFD47A) else Color(0xFF203044)
-    val titleColor = if (focused) Color(0xFF101722) else Color.White
-    val indexColor = if (focused) Color(0xFF203044) else Color(0xFF93B5D4)
+    val background = if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip
+    val titleColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
+    val indexColor = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -132,7 +132,7 @@ private fun TvOptionsRow(row: TvOptionsPanelRowUiModel, index: Int, compact: Boo
             modifier = Modifier
                 .size(if (compact) 30.dp else 34.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(if (focused) Color(0xFFFFFFFF) else Color(0xFF162234)),
+                .background(if (focused) Color(0xCCFFFFFF) else OfflineTvTheme.Colors.card),
             contentAlignment = Alignment.Center
         ) {
             BasicText(
@@ -150,7 +150,7 @@ private fun TvOptionsRow(row: TvOptionsPanelRowUiModel, index: Int, compact: Boo
         )
         BasicText(
             text = "OK",
-            style = TextStyle(color = if (focused) Color(0xFF203044) else Color(0xFF6E8BA8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            style = TextStyle(color = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         )
     }
 }
@@ -163,7 +163,7 @@ private fun TvOptionsBackButton(label: String, onBack: Runnable?, compact: Boole
             .fillMaxWidth()
             .height(if (compact) 44.dp else 48.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (focused) Color(0xFF4F6E91) else Color(0xFF152131))
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(onBack != null)
             .clickable(enabled = onBack != null) { onBack?.run() },

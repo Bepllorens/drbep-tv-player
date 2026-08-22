@@ -65,7 +65,7 @@ private fun GlobalSearchPanel(model: GlobalSearchListUiModel, imageBinder: Globa
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF20B111A))
+            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp
@@ -110,14 +110,14 @@ private fun GlobalSearchField(model: GlobalSearchListUiModel, compact: Boolean) 
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF142235))
-            .border(2.dp, Color(0xFF2E5D82), RoundedCornerShape(16.dp))
+            .background(OfflineTvTheme.Colors.panelGlass)
+            .border(2.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
             .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 11.dp else 14.dp)
     ) {
         if (value.isEmpty()) {
             BasicText(
                 text = model.hint,
-                style = TextStyle(color = Color(0xFF71859B), fontSize = if (compact) 16.sp else 19.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 16.sp else 19.sp, fontWeight = FontWeight.Bold)
             )
         }
         BasicTextField(
@@ -128,7 +128,7 @@ private fun GlobalSearchField(model: GlobalSearchListUiModel, compact: Boolean) 
             },
             singleLine = true,
             textStyle = TextStyle(color = Color.White, fontSize = if (compact) 16.sp else 19.sp, fontWeight = FontWeight.Bold),
-            cursorBrush = SolidColor(Color(0xFF74BFFF)),
+            cursorBrush = SolidColor(OfflineTvTheme.Colors.accentCyan),
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -136,8 +136,8 @@ private fun GlobalSearchField(model: GlobalSearchListUiModel, compact: Boolean) 
 
 @Composable
 private fun FilterChip(filter: GlobalSearchFilterUiModel, compact: Boolean) {
-    val fill = if (filter.selected) Color(0xFF2A7C86) else Color(0xFF223249)
-    val stroke = if (filter.selected) Color(0xFFB8F2FF) else Color(0xFF30455E)
+    val fill = if (filter.selected) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.chip
+    val stroke = if (filter.selected) OfflineTvTheme.Colors.accentCyan else OfflineTvTheme.Colors.card
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
@@ -164,7 +164,7 @@ private fun GlobalSearchRow(item: GlobalSearchRowUiModel, imageBinder: GlobalSea
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = if (compact) 8.dp else 10.dp, bottom = if (compact) 4.dp else 6.dp),
-            style = TextStyle(color = Color(0xFF9BD0FF), fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold)
+            style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold)
         )
         return
     }
@@ -173,7 +173,7 @@ private fun GlobalSearchRow(item: GlobalSearchRowUiModel, imageBinder: GlobalSea
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(Color(0xFF182638), RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Colors.surfaceDeep, RoundedCornerShape(14.dp))
             .tvButtonSemantics(item.onClick != null)
             .combinedClickable(
                 enabled = item.onClick != null,
@@ -194,7 +194,7 @@ private fun GlobalSearchRow(item: GlobalSearchRowUiModel, imageBinder: GlobalSea
                 BasicText(
                     text = item.meta,
                     modifier = Modifier.padding(top = if (compact) 4.dp else 6.dp),
-                    style = TextStyle(color = Color(0xFFC4D0DF), fontSize = if (compact) 11.sp else 13.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 13.sp)
                 )
             }
         }
@@ -202,13 +202,13 @@ private fun GlobalSearchRow(item: GlobalSearchRowUiModel, imageBinder: GlobalSea
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
             Box(
                 modifier = Modifier
-                    .background(Color(0xFF1E2D3E), RoundedCornerShape(12.dp))
+                    .background(OfflineTvTheme.Colors.chip, RoundedCornerShape(12.dp))
                     .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 BasicText(
                     text = item.badge,
-                    style = TextStyle(color = Color(0xFFDCE7F5), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
                 )
             }
         }

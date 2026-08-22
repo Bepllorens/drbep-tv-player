@@ -76,7 +76,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
                 .fillMaxWidth(if (compact) 0.94f else 0.96f)
                 .fillMaxHeight(if (compact) 0.94f else 0.91f)
                 .clip(RoundedCornerShape(if (compact) 20.dp else 28.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xF21B2635), Color(0xF20A1018))))
+                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
                 .padding(if (compact) 14.dp else 20.dp)
         ) {
             BasicText(
@@ -88,7 +88,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
             Spacer(modifier = Modifier.height(5.dp))
             BasicText(
                 text = model.subtitle,
-                style = TextStyle(color = Color(0xFFC4D2E3), fontSize = if (compact) 12.sp else 14.sp),
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -110,7 +110,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     BasicText(
                         text = model.emptyLabel,
-                        style = TextStyle(color = Color(0xFFC4D2E3), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     )
                 }
             } else {
@@ -131,8 +131,8 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
 @OptIn(ExperimentalFoundationApi::class)
 private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean, focusRequester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
-    val background = if (focused) Color(0xFFFFD782) else if (action.filter) Color(0xFF235D78) else Color(0xFF263645)
-    val textColor = if (focused) Color(0xFF111820) else Color.White
+    val background = if (focused) OfflineTvTheme.Colors.focus else if (action.filter) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.chip
+    val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
     Box(
         modifier = Modifier
             .height(if (compact) 38.dp else 42.dp)
@@ -168,7 +168,7 @@ private fun VodVisualSection(section: VodVisualSectionUiModel, imageBinder: VodV
             Spacer(modifier = Modifier.height(3.dp))
             BasicText(
                 text = section.subtitle,
-                style = TextStyle(color = Color(0xFF91A9C1), fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium),
+                style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -190,7 +190,7 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
         modifier = Modifier
             .width(if (compact) 124.dp else 150.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(if (focused) Color(0xFF314966) else Color(0xFF172332))
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent {
                 if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU) {
@@ -215,7 +215,7 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                     addView(
                         AppCompatImageView(context).apply {
                             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            scaleType = ImageView.ScaleType.FIT_CENTER
                             contentDescription = null
                         }
                     )
@@ -236,7 +236,7 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
             Spacer(modifier = Modifier.height(4.dp))
             BasicText(
                 text = item.meta,
-                style = TextStyle(color = Color(0xFFB9C7D6), fontSize = if (compact) 10.sp else 11.sp),
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

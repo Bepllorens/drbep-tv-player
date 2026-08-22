@@ -55,7 +55,9 @@ final class PlaybackRouteResolver {
         String playUrlLower = request.playUrl == null ? "" : request.playUrl.toLowerCase(Locale.ROOT);
         boolean looksDash = playUrlLower.contains(".mpd");
         boolean looksSmooth = looksLikeSmooth(playUrlLower);
-        String drmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
+        String requestDrmType = safeLower(request.drmScheme);
+        String streamInfoDrmType = streamInfo == null ? "" : safeLower(streamInfo.drmType);
+        String drmType = streamInfoDrmType.isEmpty() ? requestDrmType : streamInfoDrmType;
         String playbackMode = request.playbackMode == null || request.playbackMode.trim().isEmpty() ? PlaybackModeStore.MODE_AUTO : request.playbackMode;
         String playbackProfile = safeLower(request.playbackProfile);
         boolean standaloneDirectAllowed = shouldPreferDirectInStandalone(request, streamInfo, playbackMode, playbackProfile);
@@ -64,6 +66,17 @@ final class PlaybackRouteResolver {
             return new Decision(
                     ismHlsUrl(request.channelId),
                     MimeTypes.APPLICATION_M3U8,
+                    "",
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
+
+        if (isMovistarSampleAesHlsRequest(request)) {
+            return new Decision(
+                    sampleAesDirectStreamUrl(request.channelId),
+                    MimeTypes.VIDEO_MP2T,
                     "",
                     playbackMode,
                     false,
@@ -84,10 +97,16 @@ final class PlaybackRouteResolver {
         }
 
         if (useFallback) {
+            String fallbackMimeType = resolveMimeTypeForRequest(
+                    request,
+                    directUrl,
+                    streamInfo,
+                    directUrl != null && directUrl.contains("/proxy/manifest/")
+            );
             return new Decision(
                     directUrl,
-                    resolveMimeTypeForRequest(request, directUrl, streamInfo, directUrl != null && directUrl.contains("/proxy/manifest/")),
-                    "",
+                    fallbackMimeType,
+                    MimeTypes.APPLICATION_MPD.equals(fallbackMimeType) ? drmType : "",
                     playbackMode,
                     true,
                     false
@@ -155,7 +174,13 @@ final class PlaybackRouteResolver {
 
         if ("direct".equals(playbackProfile) || PlaybackModeStore.MODE_DIRECT.equals(playbackMode)) {
             boolean backendLive = isBackendLiveUrl(request.playUrl);
-            String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
+            // Some catalog sources are container-only URLs (for example
+            // adult-proxy). When direct access is not safe, keep the public
+            // backend URL instead of leaking an unreachable cleartext host to
+            // the Android device.
+            String targetUrl = standaloneDirectAllowed
+                    ? resolveStandaloneDirectUrl(request, streamInfo)
+                    : request.playUrl;
             return new Decision(
                     targetUrl,
                     resolveMimeType(targetUrl, streamInfo, false),
@@ -453,6 +478,9 @@ final class PlaybackRouteResolver {
         if (isAdultOrHotText(request.platformName) || isAdultOrHotText(request.channelName)) {
             return false;
         }
+        if (request.playUrl != null && request.playUrl.contains("/proxy/manifest/")) {
+            return false;
+        }
         String sourceUrl = streamInfo == null ? "" : safeTrim(streamInfo.sourceUrl);
         if (!sourceUrl.isEmpty()) {
             return !isBackendLiveUrl(sourceUrl) && !sourceUrl.contains("runtime-proxy");
@@ -490,6 +518,13 @@ final class PlaybackRouteResolver {
         return platform.contains("pluto");
     }
 
+    private boolean isMovistarSampleAesHlsRequest(PlayerController.PlaybackRequest request) {
+        if (request == null || request.vod || !"proxy_manifest".equals(safeLower(request.playbackProfile))) {
+            return false;
+        }
+        return safeLower(request.platformName).contains("movistar hls");
+    }
+
     private boolean isMovistarDashCompatOnly(PlayerController.PlaybackRequest request, PlayerController.StreamInfo streamInfo) {
         if (request == null) {
             return false;
@@ -505,6 +540,10 @@ final class PlaybackRouteResolver {
 
     private String proxyManifestUrl(String channelId) {
         return baseUrl + "/proxy/manifest/" + channelId;
+    }
+
+    private String sampleAesDirectStreamUrl(String channelId) {
+        return baseUrl + "/drm/direct/" + channelId;
     }
 
     private String liveStreamUrl(String channelId) {
@@ -536,7 +575,14 @@ final class PlaybackRouteResolver {
         if (lower.contains("/api/vod/movistar/manifest/")) {
             return MimeTypes.APPLICATION_MPD;
         }
-        if (lower.contains("/api/offline/u7d/movistar-ism/stream")) {
+        if (lower.contains("/api/vod/dazn/manifest/")) {
+            return MimeTypes.APPLICATION_MPD;
+        }
+        if (lower.contains("/api/vod/prime/manifest/")) {
+            return MimeTypes.APPLICATION_MPD;
+        }
+        if (lower.contains("/api/offline/u7d/movistar-ism/stream")
+                || lower.contains("/api/offline/u7d/orange/stream")) {
             return MimeTypes.VIDEO_MP2T;
         }
         if (lower.contains(".mp4")) {

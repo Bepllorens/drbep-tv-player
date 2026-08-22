@@ -39,22 +39,31 @@ import androidx.core.content.ContextCompat
 
 object ZapBannerComposeBinder {
     @JvmStatic
-    fun bind(composeView: ComposeView?, model: ZapBannerUiModel, logoBinder: ZapLogoBinder) {
+    fun bind(composeView: ComposeView?, model: ZapBannerUiModel, logoBinder: ZapLogoBinder, mobileTouchMode: Boolean) {
         if (composeView == null) return
         composeView.setStableContent("zap-banner", model) { currentModel ->
-            ZapBanner(model = currentModel, logoBinder = logoBinder)
+            ZapBanner(model = currentModel, logoBinder = logoBinder, mobileTouchMode = mobileTouchMode)
         }
     }
 }
 
 @Composable
-private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder) {
-    val compact = LocalConfiguration.current.screenWidthDp < 600
+private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder, mobileTouchMode: Boolean) {
+    val configuration = LocalConfiguration.current
+    val compact = ZapBannerLayoutPolicy.useCompactMetrics(
+        configuration.screenWidthDp,
+        configuration.smallestScreenWidthDp
+    )
+    val stackActions = ZapBannerLayoutPolicy.stackActions(
+        configuration.screenWidthDp,
+        configuration.smallestScreenWidthDp
+    )
+    val showInlineTools = ZapBannerLayoutPolicy.showInlineTools(mobileTouchMode)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xD5121820), RoundedCornerShape(24.dp))
-            .border(1.dp, Color(0x337BAFD3), RoundedCornerShape(24.dp))
+            .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(24.dp))
+            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Row(
@@ -70,13 +79,15 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder) {
                 ) {
                     ChipText(
                         text = model.channelBadge,
-                        textColor = Color(0xFFDDEEFF),
-                        background = Color(0x264F86A8),
+                        textColor = OfflineTvTheme.Colors.textSoft,
+                        background = OfflineTvTheme.Colors.card.copy(alpha = 0.6f),
                         modifier = Modifier.wrapContentWidth()
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     BasicText(
                         text = model.channelTitle,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         style = TextStyle(color = Color.White, fontSize = if (compact) 13.sp else 14.sp, fontWeight = FontWeight.Bold),
                         modifier = Modifier.weight(1f)
                     )
@@ -84,8 +95,8 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder) {
                         Spacer(modifier = Modifier.width(4.dp))
                         ChipText(
                             text = model.qualityText,
-                            textColor = Color(0xFFA9D6FF),
-                            background = Color(0x264F86A8),
+                            textColor = OfflineTvTheme.Colors.accentCyan,
+                            background = OfflineTvTheme.Colors.card.copy(alpha = 0.6f),
                             modifier = Modifier.wrapContentWidth()
                         )
                     }
@@ -93,18 +104,24 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder) {
                 Spacer(modifier = Modifier.height(if (compact) 3.dp else 4.dp))
                 BasicText(
                     text = model.programTitle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = Color.White, fontSize = if (compact) 15.sp else 17.sp, fontWeight = FontWeight.Bold)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 BasicText(
                     text = model.programMeta,
-                    style = TextStyle(color = Color(0xFFCFE0F4), fontSize = if (compact) 10.sp else 11.sp)
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp)
                 )
                 if (model.nextProgramVisible) {
                     Spacer(modifier = Modifier.height(2.dp))
                     BasicText(
                         text = model.nextProgram,
-                        style = TextStyle(color = Color(0xFF94BCE2), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
                     )
                 }
             }
@@ -117,63 +134,73 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder) {
         ) {
             BasicText(
                 text = model.remainingText,
-                style = TextStyle(color = Color(0xFFA7C3DE), fontSize = if (compact) 10.sp else 11.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 10.sp else 11.sp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(5.dp)
-                    .background(Color(0x4058859F), RoundedCornerShape(999.dp))
+                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.33f), RoundedCornerShape(999.dp))
             ) {
                 if (model.progressVisible) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(model.progress.coerceIn(0, 100) / 100f)
                             .height(5.dp)
-                            .background(Color(0xFF6AA8FF), RoundedCornerShape(999.dp))
+                            .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(999.dp))
                     )
                 }
             }
             Spacer(modifier = Modifier.width(8.dp))
             BasicText(
                 text = model.endTimeText,
-                style = TextStyle(color = Color(0xFFDDEEFF), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
             )
+            if (showInlineTools && model.actions.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(8.dp))
+                ZapActionChip(
+                    item = model.actions.first(),
+                    compact = true,
+                    modifier = Modifier.width(112.dp)
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(if (compact) 5.dp else 6.dp))
-        if (compact) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                model.actions.chunked(4).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        rowItems.forEach { item ->
-                            ZapActionChip(
-                                item = item,
-                                compact = true,
-                                modifier = Modifier.weight(1f)
-                            )
+        if (!showInlineTools && model.actions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(if (compact) 5.dp else 6.dp))
+            if (stackActions) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    model.actions.chunked(4).forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rowItems.forEach { item ->
+                                ZapActionChip(
+                                    item = item,
+                                    compact = compact,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
                     }
                 }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                model.actions.forEach { item ->
-                    ZapActionChip(
-                        item = item,
-                        compact = false,
-                        modifier = Modifier.weight(1f)
-                    )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    model.actions.forEach { item ->
+                        ZapActionChip(
+                            item = item,
+                            compact = false,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
         }
@@ -230,8 +257,8 @@ private fun ChipText(
 
 @Composable
 private fun ZapActionChip(item: ZapActionItem, compact: Boolean, modifier: Modifier = Modifier) {
-    val background = if (item.selected) Color(0xFF5D93E8) else Color(0x264F86A8)
-    val stroke = if (item.selected) Color(0xFFB8D2FF) else Color(0x5B99C2E0)
+    val background = if (item.selected) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.card.copy(alpha = 0.6f)
+    val stroke = if (item.selected) OfflineTvTheme.Colors.accentCyan else OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f)
     val textColor = if (item.highlighted) Color(0xFFFFE08A) else Color.White
     val fontSize = when {
         compact && item.label.length >= 9 -> 8.sp

@@ -7,6 +7,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 final class RecentChannelsStore {
     static final class RecentChannelItem {
@@ -78,6 +79,42 @@ final class RecentChannelsStore {
 
     List<RecentChannelItem> getItems() {
         return new ArrayList<>(items);
+    }
+
+    void mergeIds(List<String> channelIds, Map<String, String> namesById) {
+        if (channelIds == null || channelIds.isEmpty()) {
+            return;
+        }
+        List<RecentChannelItem> merged = new ArrayList<>();
+        long watchedAt = System.currentTimeMillis();
+        for (String rawId : channelIds) {
+            String id = rawId == null ? "" : rawId.trim();
+            if (id.isEmpty() || containsId(merged, id)) {
+                continue;
+            }
+            String name = namesById == null ? "" : namesById.get(id);
+            merged.add(new RecentChannelItem(id, name == null || name.trim().isEmpty() ? id : name.trim(), watchedAt--));
+            if (merged.size() >= MAX_ITEMS) {
+                break;
+            }
+        }
+        for (RecentChannelItem existing : items) {
+            if (!containsId(merged, existing.channelId) && merged.size() < MAX_ITEMS) {
+                merged.add(existing);
+            }
+        }
+        items.clear();
+        items.addAll(merged);
+        save();
+    }
+
+    private static boolean containsId(List<RecentChannelItem> values, String channelId) {
+        for (RecentChannelItem item : values) {
+            if (item != null && channelId.equals(item.channelId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void save() {

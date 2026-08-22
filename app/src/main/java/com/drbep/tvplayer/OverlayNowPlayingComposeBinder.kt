@@ -43,17 +43,17 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                Brush.linearGradient(listOf(Color(0xCC144A5B), Color(0xA02A3547))),
+                Brush.linearGradient(listOf(OfflineTvTheme.Colors.card.copy(alpha = 0.9f), OfflineTvTheme.Colors.panelGlass)),
                 RoundedCornerShape(22.dp)
             )
-            .border(1.dp, Color(0x5B8EB0C5), RoundedCornerShape(22.dp))
+            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(22.dp))
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             BasicText(
                 text = "VIENDO AHORA",
                 style = TextStyle(
-                    color = Color(0xFF8FB5D4),
+                    color = OfflineTvTheme.Colors.accentGold,
                     fontSize = if (compact) 9.sp else 10.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -64,7 +64,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .wrapContentWidth()
-                        .background(Color(0x263E78A0), RoundedCornerShape(999.dp))
+                        .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
                         .padding(start = 3.dp, end = 8.dp, top = 3.dp, bottom = 3.dp)
                 ) {
                     if (model.contextInitials.isNotBlank()) {
@@ -88,7 +88,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
                     BasicText(
                         text = model.contextLabel,
                         style = TextStyle(
-                            color = Color(0xFFE5F4FF),
+                            color = OfflineTvTheme.Colors.textPrimary,
                             fontSize = if (compact) 9.sp else 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -109,7 +109,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
         BasicText(
             text = model.route,
             style = TextStyle(
-                color = Color(0xFFF9FDFF),
+                color = OfflineTvTheme.Colors.textPrimary,
                 fontSize = if (compact) 9.sp else 10.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -119,13 +119,13 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
             BasicText(
                 text = model.quality,
                 style = TextStyle(
-                    color = Color(0xFF9BD0FF),
+                    color = OfflineTvTheme.Colors.accentCyan,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 modifier = Modifier
                     .wrapContentWidth()
-                    .background(Color(0x1A4F86A8), RoundedCornerShape(12.dp))
+                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                     .padding(horizontal = 7.dp, vertical = 3.dp)
             )
         }
@@ -133,7 +133,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
         BasicText(
             text = model.meta,
             style = TextStyle(
-                color = Color(0xFFCFE0F4),
+                color = OfflineTvTheme.Colors.textSoft,
                 fontSize = if (compact) 9.sp else 10.sp
             )
         )
@@ -141,7 +141,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
         BasicText(
             text = model.recent,
             style = TextStyle(
-                color = Color(0xFFB8CBDF),
+                color = OfflineTvTheme.Colors.textMuted,
                 fontSize = if (compact) 9.sp else 10.sp
             )
         )

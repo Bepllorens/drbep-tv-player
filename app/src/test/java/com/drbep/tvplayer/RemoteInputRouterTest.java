@@ -74,7 +74,19 @@ public class RemoteInputRouterTest {
 
         assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0));
 
-        assertEquals("controls:show", host.lastAction);
+        assertEquals("controls:actions", host.lastAction);
+    }
+
+    @Test
+    public void confirmOnNonSeekableLiveChannelShowsBottomControlsWithoutPausing() {
+        FakeHost host = new FakeHost();
+        host.currentChannel = true;
+        host.seekablePlayback = false;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0));
+
+        assertEquals("controls:actions", host.lastAction);
     }
 
     @Test
@@ -154,6 +166,75 @@ public class RemoteInputRouterTest {
     }
 
     @Test
+    public void touchControlsTimeshiftFocusKeepsBarVisibleAtBoundary() {
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        host.touchControlsTimeshiftFocused = true;
+        host.seekTimeshiftBack = false;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 0, 0));
+
+        assertEquals(1, host.keepControlsVisibleCalls);
+        assertEquals(0, host.tuneCalls);
+    }
+
+    @Test
+    public void hiddenVodControlsConsumeLeftAndRestoreTimeshiftFocus() {
+        FakeHost host = new FakeHost();
+        host.vodPlayback = true;
+        host.seekablePlayback = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 0, 0));
+
+        assertEquals(1, host.showControlsCalls);
+        assertEquals(1, host.keepControlsVisibleCalls);
+        assertEquals(0, host.tuneCalls);
+    }
+
+    @Test
+    public void hiddenVodControlsConsumeUpInsteadOfChangingChannel() {
+        FakeHost host = new FakeHost();
+        host.vodPlayback = true;
+        host.seekablePlayback = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0, 0));
+
+        assertEquals("controls:timeshift", host.lastAction);
+        assertEquals(1, host.showControlsCalls);
+        assertEquals(0, host.tuneCalls);
+    }
+
+    @Test
+    public void tvTimeshiftHudConsumesLeftAtStartBoundary() {
+        FakeHost host = new FakeHost();
+        host.tvTimeshiftHudActive = true;
+        host.seekTimeshiftBack = false;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 0, 0));
+
+        assertEquals("timeshift:show", host.lastAction);
+        assertEquals(0, host.tuneCalls);
+    }
+
+    @Test
+    public void tvTimeshiftHudConsumesRightAtEndBoundary() {
+        FakeHost host = new FakeHost();
+        host.tvTimeshiftHudActive = true;
+        host.seekTimeshiftForward = false;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 0, 0));
+
+        assertEquals("timeshift:show", host.lastAction);
+        assertEquals(1, host.seekForwardCalls);
+        assertEquals(0, host.tuneCalls);
+    }
+
+    @Test
     public void touchControlsDownReturnsToActionsFromTimeshift() {
         FakeHost host = new FakeHost();
         host.touchControlsVisible = true;
@@ -177,6 +258,46 @@ public class RemoteInputRouterTest {
         assertEquals("controls:activate", host.lastAction);
     }
 
+    @Test
+    public void confirmExpandsCompactPlaybackHudBeforeActivatingActions() {
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        host.touchControlsExpanded = false;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0));
+
+        assertEquals("controls:actions", host.lastAction);
+        assertEquals(1, host.showControlsCalls);
+    }
+
+    @Test
+    public void channelKeysKeepZappingWhileCompactPlaybackHudIsVisible() {
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        host.touchControlsExpanded = false;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0, 0));
+
+        assertEquals("tune:-1", host.lastAction);
+        assertEquals(1, host.tuneCalls);
+        assertEquals(0, host.showControlsCalls);
+    }
+
+    @Test
+    public void visibleVodControlsWinUntilOpeningOverlayHidesThem() {
+        FakeHost host = new FakeHost();
+        host.overlayVisible = true;
+        host.touchControlsVisible = true;
+        host.vodPlayback = true;
+        host.seekablePlayback = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0));
+        assertEquals("controls:activate", host.lastAction);
+    }
+
     private static final class FakeHost implements RemoteInputRouter.Host {
         boolean recordingsVisible;
         boolean quickSearchVisible;
@@ -188,13 +309,17 @@ public class RemoteInputRouterTest {
         boolean seekTimeshiftForward;
         boolean playingRecordingWithReturnTarget;
         boolean seekablePlayback;
+        boolean vodPlayback;
         boolean touchDeviceMode;
         boolean touchControlsVisible;
+        boolean touchControlsExpanded = true;
         boolean touchControlsTimeshiftFocused;
         boolean selectedOverlayChannel = true;
         boolean currentChannel = true;
         int resumeLiveCalls;
         int seekForwardCalls;
+        int keepControlsVisibleCalls;
+        int showControlsCalls;
         int tuneCalls;
         String lastAction = "";
 
@@ -231,6 +356,11 @@ public class RemoteInputRouterTest {
         @Override
         public boolean isTouchControlsVisible() {
             return touchControlsVisible;
+        }
+
+        @Override
+        public boolean isTouchControlsExpanded() {
+            return touchControlsExpanded;
         }
 
         @Override
@@ -282,6 +412,11 @@ public class RemoteInputRouterTest {
         @Override
         public boolean hasSeekablePlayback() {
             return seekablePlayback;
+        }
+
+        @Override
+        public boolean isVodPlayback() {
+            return vodPlayback;
         }
 
         @Override
@@ -371,6 +506,12 @@ public class RemoteInputRouterTest {
         }
 
         @Override
+        public void keepTouchControlsVisible() {
+            keepControlsVisibleCalls++;
+            lastAction = "controls:keep";
+        }
+
+        @Override
         public void moveTouchControlsFocus(int delta) {
             lastAction = "controls:move:" + delta;
         }
@@ -438,6 +579,7 @@ public class RemoteInputRouterTest {
 
         @Override
         public void showTouchControlsTemporarily() {
+            showControlsCalls++;
             lastAction = "controls:show";
         }
 

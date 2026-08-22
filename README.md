@@ -1,8 +1,10 @@
 # DRBEP TV Player (Android TV)
 
-Native player (Media3/ExoPlayer) para Android TV / Fire Stick.
+Reproductor nativo para Android TV, Fire TV y tablet. Usa Media3/ExoPlayer y una
+ruta libVLC acotada para formatos que Media3 no puede reproducir correctamente.
 
-Carga canales desde `GET /api/channels` y reproduce `play_url` directamente.
+La edición offline consume un catálogo firmado de DRBEP, reproduce en direct play
+y mantiene permisos, telemetría y dispositivos asociados al usuario.
 
 ## Fire Stick controls
 
@@ -15,14 +17,19 @@ Carga canales desde `GET /api/channels` y reproduce `play_url` directamente.
 - `CHANNEL +/-` y `PAGE +/-`: zapping rapido.
 - `PLAY/PAUSE`: pausar/reanudar.
 - `OK` mantenido (long press) sobre un canal en la lista: añadir/quitar favorito.
+- `GUIDE`: abrir la guía temporal.
+- `SEARCH`: abrir búsqueda global.
 
 La app tambien:
 
-- muestra overlay con canal actual,
+- ofrece accesos principales a Directo, Guía, Grabaciones y Biblioteca,
+- agrupa películas, series y episodios de Plex,
+- incluye EPG, U7D, grabaciones, multipantalla, favoritos y listas,
 - mantiene modo inmersivo fullscreen,
-- recupera foco al volver a primer plano.
+- recupera foco al volver a primer plano,
 - recuerda el ultimo canal reproducido,
-- guarda favoritos y los muestra primero en la lista.
+- sincroniza favoritos, recientes, progreso VOD y presets con la web app,
+- permite búsqueda por voz y PiP cuando el dispositivo los soporta.
 
 ## Build
 
@@ -64,7 +71,7 @@ app/build/outputs/apk/release/app-release.apk
 scripts/install_tv.sh IP_DE_TV:5555
 ```
 
-El script instala `com.drbep.tvplayer`, arranca `MainActivity` y desactiva paquetes antiguos conocidos
+El script instala `com.drbep.tvplayer.offline`, arranca `MainActivity` y desactiva paquetes antiguos conocidos
 como `com.drbep.tv.v2.fixed` para evitar abrir una app vieja desde el launcher.
 
 Para auditar que el Fire Stick esta usando el paquete correcto:

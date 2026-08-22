@@ -49,7 +49,7 @@ private fun EpgSearchResultsPanel(model: EpgSearchResultListUiModel, imageBinder
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF20B111A))
+            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp
@@ -78,7 +78,7 @@ private fun PanelHeader(title: String, subtitle: String, compact: Boolean) {
             BasicText(
                 text = subtitle,
                 modifier = Modifier.padding(top = if (compact) 5.dp else 8.dp),
-                style = TextStyle(color = Color(0xFFB7C5D8), fontSize = if (compact) 12.sp else 14.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp)
             )
         }
     }
@@ -91,7 +91,7 @@ private fun EpgSearchRow(item: EpgSearchResultRowUiModel, imageBinder: EpgSearch
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(Color(0xFF1C2733), RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Colors.chip, RoundedCornerShape(14.dp))
             .tvButtonSemantics(item.onClick != null)
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(if (compact) 10.dp else 12.dp),
@@ -108,7 +108,7 @@ private fun EpgSearchRow(item: EpgSearchResultRowUiModel, imageBinder: EpgSearch
                 BasicText(
                     text = item.meta,
                     modifier = Modifier.padding(top = if (compact) 4.dp else 6.dp),
-                    style = TextStyle(color = Color(0xFFC4D0DF), fontSize = if (compact) 11.sp else 13.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 13.sp)
                 )
             }
         }
@@ -121,7 +121,7 @@ private fun EpgSearchRow(item: EpgSearchResultRowUiModel, imageBinder: EpgSearch
         ) {
             BasicText(
                 text = item.badge,
-                style = TextStyle(color = Color(0xFFDCE7F5), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
             )
         }
     }
@@ -133,7 +133,7 @@ private fun EpgSearchPoster(item: EpgSearchResultRowUiModel, imageBinder: EpgSea
         modifier = Modifier.size(width = if (compact) 50.dp else 58.dp, height = if (compact) 64.dp else 72.dp),
         factory = { context ->
             FrameLayout(context).apply {
-                setBackgroundColor(0xFF16202A.toInt())
+                setBackgroundColor(OfflineTvTheme.surfaceDeepArgb())
                 addView(
                     AppCompatImageView(context).apply {
                         layoutParams = FrameLayout.LayoutParams(

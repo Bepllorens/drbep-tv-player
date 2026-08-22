@@ -57,6 +57,18 @@ public class TouchControlsControllerTest {
     }
 
     @Test
+    public void compactPlaybackHudCanUseLongerAutoHide() {
+        FakeScheduler scheduler = new FakeScheduler();
+        FakeHost host = new FakeHost();
+        TouchControlsController controller = new TouchControlsController(scheduler, host, 3000L, 3500L);
+
+        controller.showTouchControlsTemporarily(5500L);
+
+        assertTrue(host.touchControlsVisible);
+        assertEquals(5500L, scheduler.lastDelayMs);
+    }
+
+    @Test
     public void showTimeshiftHudRequiresTvModeAndSeekablePlayback() {
         FakeScheduler scheduler = new FakeScheduler();
         FakeHost host = new FakeHost();
@@ -103,6 +115,22 @@ public class TouchControlsControllerTest {
         assertEquals(3000L, scheduler.lastDelayMs);
     }
 
+    @Test
+    public void autoHideWaitsWhileTvTimeshiftBarHasRemoteFocus() {
+        FakeScheduler scheduler = new FakeScheduler();
+        FakeHost host = new FakeHost();
+        host.touchControlsVisible = true;
+        host.timeshiftFocused = true;
+        TouchControlsController controller = new TouchControlsController(scheduler, host, 3000L, 3500L);
+
+        controller.scheduleTouchControlsAutoHide();
+        scheduler.runLast();
+
+        assertTrue(host.touchControlsVisible);
+        assertFalse(host.timeshiftHidden);
+        assertEquals(3000L, scheduler.lastDelayMs);
+    }
+
     private static final class FakeScheduler implements TouchControlsController.Scheduler {
         Runnable lastRunnable;
         long lastDelayMs;
@@ -137,6 +165,7 @@ public class TouchControlsControllerTest {
         boolean multiViewVisible;
         boolean seekablePlayback;
         boolean timeshiftDragging;
+        boolean timeshiftFocused;
         boolean homeHidden;
         boolean timeshiftHidden;
         int homeUpdates;
@@ -175,6 +204,11 @@ public class TouchControlsControllerTest {
         @Override
         public boolean isTimeshiftSeekInProgress() {
             return timeshiftDragging;
+        }
+
+        @Override
+        public boolean isTimeshiftFocused() {
+            return timeshiftFocused;
         }
 
         @Override

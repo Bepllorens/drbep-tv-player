@@ -69,41 +69,33 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
             .fillMaxSize()
             .background(Color(0xCC000000))
             .tvPanelBackHandler(model.onBack)
-            .padding(horizontal = if (compact) 12.dp else 56.dp, vertical = if (compact) 18.dp else 48.dp),
+            .padding(horizontal = if (compact) 12.dp else 56.dp, vertical = if (compact) 18.dp else 24.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(if (compact) 1f else 0.72f)
+                .fillMaxWidth(if (compact) 1f else 0.82f)
                 .clip(RoundedCornerShape(if (compact) 18.dp else 24.dp))
-                .background(Color(0xF0181E28))
-                .border(1.dp, Color(0xFF31445A), RoundedCornerShape(if (compact) 18.dp else 24.dp))
+                .background(OfflineTvTheme.Colors.panelGlass)
+                .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(if (compact) 18.dp else 24.dp))
                 .padding(if (compact) 14.dp else 20.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            VodHeader(model, posterBinder, compact)
-            if (model.primaryActions.isNotEmpty()) {
-                SectionTitle(model.primaryTitle, compact)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
-                ) {
-                    model.primaryActions.forEachIndexed { index, action ->
-                        VodPanelAction(action, compact, if (index == 0) firstActionRequester else null)
-                    }
-                }
-            }
+            VodHeader(model, posterBinder, compact, firstActionRequester)
             if (model.secondaryActions.isNotEmpty()) {
                 SectionTitle(model.secondaryTitle, compact)
                 if (model.hint.isNotEmpty()) {
                     BasicText(
                         text = model.hint,
                         modifier = Modifier.padding(bottom = if (compact) 8.dp else 10.dp),
-                        style = TextStyle(color = Color(0xFFB7C4D6), fontSize = if (compact) 12.sp else 13.sp)
+                        style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 13.sp)
                     )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)
+                ) {
                     model.secondaryActions.forEachIndexed { index, action ->
                         VodPanelAction(action, compact, if (secondaryFocusEnabled && index == 0) firstActionRequester else null)
                     }
@@ -114,13 +106,43 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
 }
 
 @Composable
-private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinder?, compact: Boolean) {
+@OptIn(ExperimentalLayoutApi::class)
+private fun VodHeader(
+    model: VodDetailPanelUiModel,
+    posterBinder: VodPosterBinder?,
+    compact: Boolean,
+    firstActionRequester: FocusRequester
+) {
+    BasicText(
+        text = model.title,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        style = TextStyle(
+            color = Color.White,
+            fontSize = if (compact) 22.sp else 30.sp,
+            fontWeight = FontWeight.Bold
+        )
+    )
+    if (model.meta.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(if (compact) 5.dp else 7.dp))
+        BasicText(
+            text = model.meta,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = TextStyle(
+                color = OfflineTvTheme.Colors.accentCyan,
+                fontSize = if (compact) 13.sp else 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        )
+    }
+    Spacer(modifier = Modifier.height(if (compact) 12.dp else 18.dp))
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         AndroidView(
             modifier = Modifier
-                .size(width = if (compact) 104.dp else 150.dp, height = if (compact) 146.dp else 204.dp)
+                .size(width = if (compact) 112.dp else 160.dp, height = if (compact) 168.dp else 240.dp)
                 .clip(RoundedCornerShape(if (compact) 12.dp else 16.dp))
-                .background(Color(0xFF0E1820)),
+                .background(OfflineTvTheme.Colors.backdrop),
             factory = { context ->
                 FrameLayout(context).apply {
                     addView(
@@ -141,45 +163,52 @@ private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinde
         )
         Spacer(modifier = Modifier.width(if (compact) 12.dp else 18.dp))
         Column(modifier = Modifier.weight(1f)) {
-            BasicText(
-                text = model.title,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = TextStyle(color = Color.White, fontSize = if (compact) 20.sp else 26.sp, fontWeight = FontWeight.Bold)
-            )
-            if (model.meta.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(if (compact) 6.dp else 8.dp))
-                BasicText(
-                    text = model.meta,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color(0xFF9BD0FF), fontSize = if (compact) 13.sp else 15.sp, fontWeight = FontWeight.Bold)
-                )
-            }
-            if (model.description.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
-                BasicText(
-                    text = model.description,
-                    maxLines = if (compact) 5 else 4,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color(0xFFD5E6F8), fontSize = if (compact) 12.sp else 14.sp)
-                )
-            }
             if (model.progressLabel.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xFF2F3A25))
-                        .border(1.dp, Color(0xFFFFD782), RoundedCornerShape(10.dp))
+                        .border(1.dp, OfflineTvTheme.Colors.focus, RoundedCornerShape(10.dp))
                         .padding(horizontal = 12.dp, vertical = 9.dp)
                 ) {
                     BasicText(
                         text = model.progressLabel,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(color = Color(0xFFFFD782), fontSize = if (compact) 12.sp else 14.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(color = OfflineTvTheme.Colors.focus, fontSize = if (compact) 12.sp else 14.sp, fontWeight = FontWeight.Bold)
                     )
+                }
+            }
+            if (model.description.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF121B26))
+                        .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 10.dp else 14.dp)
+                ) {
+                    BasicText(
+                        text = model.description,
+                        maxLines = if (compact) 5 else 4,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(
+                            color = OfflineTvTheme.Colors.textSoft,
+                            fontSize = if (compact) 12.sp else 14.sp
+                        )
+                    )
+                }
+            }
+            if (model.primaryActions.isNotEmpty()) {
+                SectionTitle(model.primaryTitle, compact)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
+                ) {
+                    model.primaryActions.forEachIndexed { index, action ->
+                        VodPanelAction(action, compact, if (index == 0) firstActionRequester else null)
+                    }
                 }
             }
         }
@@ -200,19 +229,25 @@ private fun SectionTitle(title: String, compact: Boolean) {
 private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focusRequester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
     val fill = when {
-        focused -> Color(0xFFFFD782)
-        action.primary -> Color(0xFF3A6EA5)
-        else -> Color(0xFF172536)
+        focused -> OfflineTvTheme.Colors.focus
+        action.primary -> OfflineTvTheme.Colors.chipSelected
+        else -> OfflineTvTheme.Colors.chip
     }
-    val textColor = if (focused) Color(0xFF111820) else Color.White
+    val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
     val stroke = when {
         focused -> Color.White
-        action.primary -> Color(0xFFFFD782)
-        else -> Color(0xFF2B4057)
+        action.primary -> OfflineTvTheme.Colors.focus
+        else -> OfflineTvTheme.Colors.card
     }
     Box(
         modifier = Modifier
-            .fillMaxWidth(if (action.primary) if (compact) 1f else 0.31f else 1f)
+            .fillMaxWidth(
+                if (action.primary) {
+                    if (compact) 1f else 0.48f
+                } else {
+                    if (compact) 1f else 0.32f
+                }
+            )
             .height(if (action.primary) if (compact) 48.dp else 54.dp else if (compact) 42.dp else 48.dp)
             .clip(RoundedCornerShape(if (action.primary) 12.dp else 10.dp))
             .background(fill)

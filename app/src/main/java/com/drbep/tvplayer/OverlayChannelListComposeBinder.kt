@@ -84,15 +84,15 @@ private fun OverlayChannelList(model: OverlayChannelListUiModel, imageBinder: Ov
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(Color(0x78222A34), RoundedCornerShape(18.dp))
-            .border(1.dp, Color(0x304C657F), RoundedCornerShape(18.dp))
+            .background(OfflineTvTheme.Colors.panelSoft, RoundedCornerShape(18.dp))
+            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         if (model.listTitle.isNotBlank()) {
             BasicText(
                 text = model.listTitle.uppercase(),
                 style = TextStyle(
-                    color = Color(0xFF8FB5D4),
+                    color = OfflineTvTheme.Colors.accentGold,
                     fontSize = if (compact) 9.sp else 10.sp,
                     fontWeight = FontWeight.Bold
                 ),
@@ -147,14 +147,14 @@ private fun OverlayEmptyMessage(message: String, compact: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = if (compact) 14.dp else 20.dp, bottom = 14.dp)
-            .background(Color(0xFF162636), RoundedCornerShape(16.dp))
+            .background(OfflineTvTheme.Colors.surfaceDeep, RoundedCornerShape(16.dp))
             .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 18.dp else 22.dp),
         contentAlignment = Alignment.Center
     ) {
         BasicText(
             text = message,
             style = TextStyle(
-                color = Color(0xFF9FC1DF),
+                color = OfflineTvTheme.Colors.textSoft,
                 fontSize = if (compact) 13.sp else 14.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -168,13 +168,13 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 6.dp)
-            .background(Color(0xFF162636), RoundedCornerShape(16.dp))
+            .background(OfflineTvTheme.Colors.surfaceDeep, RoundedCornerShape(16.dp))
             .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 8.dp else 10.dp)
     ) {
         BasicText(
             text = model.filterTitle,
             style = TextStyle(
-                color = Color(0xFF9BD0FF),
+                color = OfflineTvTheme.Colors.accentCyan,
                 fontSize = if (compact) 10.sp else 11.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -190,7 +190,7 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
                 modifier = Modifier
                     .weight(1f)
                     .height(if (compact) 42.dp else 46.dp)
-                    .background(Color(0xFF24394D), RoundedCornerShape(14.dp))
+                    .background(OfflineTvTheme.Colors.card, RoundedCornerShape(14.dp))
                     .tvButtonSemantics(model.onNextFilterClick != null)
                     .clickable(enabled = model.onNextFilterClick != null) { model.onNextFilterClick?.run() }
                     .padding(horizontal = 10.dp),
@@ -217,7 +217,7 @@ private fun FilterNavButton(label: String, action: Runnable?, compact: Boolean) 
         modifier = Modifier
             .width(if (compact) 48.dp else 54.dp)
             .height(if (compact) 42.dp else 46.dp)
-            .background(Color(0xFF2A7C86), RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Colors.chipSelected, RoundedCornerShape(14.dp))
             .tvButtonSemantics(action != null)
             .clickable(enabled = action != null) { action?.run() },
         contentAlignment = Alignment.Center
@@ -236,9 +236,9 @@ private fun FilterNavButton(label: String, action: Runnable?, compact: Boolean) 
 @Composable
 private fun OverlayChannelRow(item: OverlayChannelRowUiModel, imageBinder: OverlayChannelImageBinder, compact: Boolean) {
     val bg = when {
-        item.selected -> Color(0xFF2A7C86)
-        item.tuned -> Color(0xCC334457)
-        else -> Color(0xFF202833)
+        item.selected -> OfflineTvTheme.Colors.focusSurface
+        item.tuned -> OfflineTvTheme.Colors.card.copy(alpha = 0.8f)
+        else -> OfflineTvTheme.Colors.surfaceDeep
     }
     Box(
         modifier = Modifier
@@ -275,7 +275,7 @@ private fun OverlayChannelRow(item: OverlayChannelRowUiModel, imageBinder: Overl
                         Box(
                             modifier = Modifier
                                 .size(if (compact) 30.dp else 34.dp)
-                                .background(Color(0x264F86A8), RoundedCornerShape(12.dp))
+                                .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
                                 .tvButtonSemantics(item.onFavoriteClick != null)
                                 .clickable(enabled = item.onFavoriteClick != null) { item.onFavoriteClick?.run() },
                             contentAlignment = Alignment.Center
@@ -290,7 +290,7 @@ private fun OverlayChannelRow(item: OverlayChannelRowUiModel, imageBinder: Overl
                 Spacer(modifier = Modifier.height(3.dp))
                 BasicText(
                     text = highlightQuery(item.meta, item.query),
-                    style = TextStyle(color = Color(0xFFD7E3EE), fontSize = if (compact) 10.sp else 11.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp)
                 )
             }
         }
@@ -334,7 +334,7 @@ private fun OverlayChannelLogo(item: OverlayChannelRowUiModel, imageBinder: Over
 private fun Chip(text: String, textColor: Color, compact: Boolean) {
     Box(
         modifier = Modifier
-            .background(Color(0x264F86A8), RoundedCornerShape(12.dp))
+            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
             .padding(horizontal = if (compact) 7.dp else 8.dp, vertical = if (compact) 4.dp else 5.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -358,7 +358,7 @@ private fun highlightQuery(text: String, query: String) = buildAnnotatedString {
         val index = lowerText.indexOf(lowerQuery, start)
         if (index < 0) break
         addStyle(
-            SpanStyle(color = Color(0xFF9BD0FF), fontWeight = FontWeight.Bold),
+            SpanStyle(color = OfflineTvTheme.Colors.accentCyan, fontWeight = FontWeight.Bold),
             index,
             index + lowerQuery.length
         )

@@ -62,7 +62,9 @@ public class PlaybackHealthClassifierTest {
                 1500L,
                 bufferingCount,
                 bufferingMs,
-                firstFrame
+                firstFrame,
+                true,
+                30_000L
         );
     }
 }

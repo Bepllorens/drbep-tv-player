@@ -295,6 +295,10 @@ final class RecordingsRepository {
             headers.put("Authorization", "Bearer " + token.trim());
             headers.put("X-DRBEP-Access-Token", token.trim());
         }
+        String deviceId = snapshotStore == null ? "" : snapshotStore.getDeviceId();
+        if (deviceId != null && !deviceId.trim().isEmpty()) {
+            headers.put("X-DRBEP-Device-Id", deviceId.trim());
+        }
         return headers;
     }
 }

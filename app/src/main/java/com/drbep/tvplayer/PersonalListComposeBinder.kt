@@ -86,14 +86,14 @@ private fun PersonalListPanel(
         modifier = Modifier
             .fillMaxSize()
             .tvPanelBackHandler(onClose)
-            .background(Color(0xCC07101A))
+            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.8f))
             .padding(if (compact) 14.dp else 36.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 1f else 0.72f)
-                .background(Color(0xF0181E28), RoundedCornerShape(if (compact) 18.dp else 24.dp))
+                .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(if (compact) 18.dp else 24.dp))
                 .padding(if (compact) 14.dp else 22.dp)
         ) {
             BasicText(
@@ -104,7 +104,7 @@ private fun PersonalListPanel(
                 Spacer(modifier = Modifier.height(6.dp))
                 BasicText(
                     text = subtitle,
-                    style = TextStyle(color = Color(0xFFC4D0DF), fontSize = if (compact) 12.sp else 14.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp)
                 )
             }
             Spacer(modifier = Modifier.height(if (compact) 12.dp else 16.dp))
@@ -136,9 +136,9 @@ private fun PersonalListPanelButton(label: String, primary: Boolean, modifier: M
             .clip(RoundedCornerShape(14.dp))
             .background(
                 when {
-                    focused -> Color(0xFFFFD47A)
-                    primary -> Color(0xFF5FA8FF)
-                    else -> Color(0xFF1E2D3E)
+                    focused -> OfflineTvTheme.Colors.focus
+                    primary -> OfflineTvTheme.Colors.accentCyan
+                    else -> OfflineTvTheme.Colors.chip
                 }
             )
             .onFocusChanged { focused = it.isFocused }
@@ -149,7 +149,7 @@ private fun PersonalListPanelButton(label: String, primary: Boolean, modifier: M
         BasicText(
             text = label,
             style = TextStyle(
-                color = if (focused || primary) Color(0xFF07101A) else Color(0xFFDCE7F5),
+                color = if (focused || primary) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.textSoft,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             ),
@@ -178,7 +178,7 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (focused) Color(0xFFFFD47A) else Color(0xFF1C2733))
+            .background(if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(item.onClick != null)
@@ -193,13 +193,13 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
         Box(
             modifier = Modifier
                 .size(if (compact) 40.dp else 46.dp)
-                .background(if (focused) Color(0xFFFFFFFF) else Color(0xFF233647), RoundedCornerShape(12.dp)),
+                .background(if (focused) Color(0xFFFFFFFF) else OfflineTvTheme.Colors.card, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
             BasicText(
                 text = item.badge,
                 style = TextStyle(
-                    color = if (focused) Color(0xFF172131) else Color(0xFFDDEAF7),
+                    color = if (focused) OfflineTvTheme.Colors.backdropAccent else OfflineTvTheme.Colors.textSoft,
                     fontSize = if (compact) 11.sp else 12.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -209,7 +209,7 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
         Column(modifier = Modifier.weight(1f)) {
             BasicText(
                 text = item.title,
-                style = TextStyle(color = if (focused) Color(0xFF101722) else Color.White, fontSize = if (compact) 15.sp else 18.sp, fontWeight = FontWeight.Bold),
+                style = TextStyle(color = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White, fontSize = if (compact) 15.sp else 18.sp, fontWeight = FontWeight.Bold),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -217,7 +217,7 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
                 BasicText(
                     text = item.preview,
                     modifier = Modifier.padding(top = if (compact) 4.dp else 6.dp),
-                    style = TextStyle(color = if (focused) Color(0xFF26384B) else Color(0xFFC4D0DF), fontSize = if (compact) 11.sp else 13.sp),
+                    style = TextStyle(color = if (focused) OfflineTvTheme.Colors.backdropAccent else OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 13.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -227,13 +227,13 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
             Box(
                 modifier = Modifier
-                    .background(if (focused) Color(0xFFFFFFFF) else Color(0xFF1E2D3E), RoundedCornerShape(12.dp))
+                    .background(if (focused) Color(0xFFFFFFFF) else OfflineTvTheme.Colors.chip, RoundedCornerShape(12.dp))
                     .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 BasicText(
                     text = item.actionLabel,
-                    style = TextStyle(color = if (focused) Color(0xFF172131) else Color(0xFFDCE7F5), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = if (focused) OfflineTvTheme.Colors.backdropAccent else OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
                 )
             }
         }

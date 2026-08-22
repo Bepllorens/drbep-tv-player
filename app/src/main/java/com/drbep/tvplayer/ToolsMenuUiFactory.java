@@ -10,6 +10,9 @@ final class ToolsMenuUiFactory {
         boolean recordingsAvailable();
         boolean canScheduleRecordings();
         String updateChannelLabel();
+        String uiPaletteLabel();
+        boolean modernPlaybackHudEnabled();
+        void openLive();
         void openTvGuide();
         void openRecordings();
         void openVod();
@@ -27,6 +30,7 @@ final class ToolsMenuUiFactory {
         void openVisualEpg();
         void openEpgSearch();
         void openChannelSearch();
+        void openVoiceSearch();
         void openGlobalSearch();
         void openRecentChannels();
         void openRecentQuick();
@@ -42,6 +46,8 @@ final class ToolsMenuUiFactory {
         void openTemporaryPlaybackMode();
         void openAudioTracks();
         void openPlaybackDiagnostics();
+        void openPictureInPicture();
+        void togglePlaybackHud();
         void openQuickHub();
         void openCurrentChannelPersonalLists();
         void openCurrentChannelProfile();
@@ -49,7 +55,9 @@ final class ToolsMenuUiFactory {
         void openMultiViewPreset();
         void saveMultiViewPreset();
         void openSettingsCenter();
+        void openUiPalette();
         void openSettingsDiagnostics();
+        void sendSupportBundle();
         void openInstallStatus();
         void openUpdateChannel();
     }
@@ -60,12 +68,12 @@ final class ToolsMenuUiFactory {
     static TvOptionsMenuModel buildSimple(Host host) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
-        add(options, actions, host.text(R.string.tools_section_tv_guide), host::openTvGuide);
+        add(options, actions, host.text(R.string.primary_navigation_live), host::openLive);
+        add(options, actions, host.text(R.string.primary_navigation_guide), host::openTvGuide);
         if (host.recordingsAvailable()) {
-            add(options, actions, host.text(R.string.tools_section_recordings), host::openRecordings);
+            add(options, actions, host.text(R.string.primary_navigation_recordings), host::openRecordings);
         }
-        add(options, actions, host.text(R.string.tools_section_vod), host::openVod);
-        add(options, actions, host.text(R.string.offline_catalog_action_refresh), host::refreshCatalog);
+        add(options, actions, host.text(R.string.primary_navigation_library), host::openVod);
         add(options, actions, host.text(R.string.tools_section_search_recents), host::openSearchRecents);
         add(options, actions, host.text(R.string.tools_section_lists), host::openLists);
         add(options, actions, host.text(R.string.tools_section_family), host::openFamily);
@@ -99,6 +107,7 @@ final class ToolsMenuUiFactory {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         add(options, actions, host.text(R.string.quick_hub_global_search), host::openGlobalSearch);
+        add(options, actions, host.text(R.string.tools_menu_voice_search), host::openVoiceSearch);
         add(options, actions, host.text(R.string.tools_menu_search_channels), host::openChannelSearch);
         add(options, actions, host.text(R.string.tools_menu_recent_channels), host::openRecentChannels);
         add(options, actions, host.text(R.string.quick_hub_recent), host::openRecentQuick);
@@ -135,6 +144,10 @@ final class ToolsMenuUiFactory {
         add(options, actions, host.text(R.string.tools_menu_playback_mode_temporary), host::openTemporaryPlaybackMode);
         add(options, actions, host.text(R.string.audio_track_action), host::openAudioTracks);
         add(options, actions, host.text(R.string.tools_menu_playback_diagnostics), host::openPlaybackDiagnostics);
+        add(options, actions, host.text(R.string.tools_menu_picture_in_picture), host::openPictureInPicture);
+        add(options, actions, host.text(host.modernPlaybackHudEnabled()
+                ? R.string.tools_menu_hud_modern
+                : R.string.tools_menu_hud_classic), host::togglePlaybackHud);
         return new TvOptionsMenuModel(options, actions);
     }
 
@@ -174,7 +187,9 @@ final class ToolsMenuUiFactory {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         add(options, actions, host.text(R.string.tools_menu_settings_center), host::openSettingsCenter);
+        add(options, actions, host.text(R.string.tools_menu_ui_palette, host.uiPaletteLabel()), host::openUiPalette);
         add(options, actions, host.text(R.string.settings_section_diagnostics), host::openSettingsDiagnostics);
+        add(options, actions, host.text(R.string.settings_send_support_bundle), host::sendSupportBundle);
         add(options, actions, host.text(R.string.tools_menu_install_status), host::openInstallStatus);
         add(options, actions, host.text(R.string.app_update_channel_action, host.updateChannelLabel()), host::openUpdateChannel);
         return new TvOptionsMenuModel(options, actions);

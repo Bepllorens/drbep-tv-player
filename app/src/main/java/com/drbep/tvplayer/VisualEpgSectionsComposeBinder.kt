@@ -126,9 +126,9 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
     )
     val shape = RoundedCornerShape(if (compact) 14.dp else 18.dp)
     val borderColor = when {
-        focused -> Color(0xFF68B6FF)
+        focused -> OfflineTvTheme.Colors.accentCyan
         effectiveModel.scheduled -> Color(0xFFAF7A21)
-        else -> Color(0xFF284156)
+        else -> OfflineTvTheme.Colors.card
     }
     Column(
         modifier = Modifier
@@ -139,7 +139,7 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
                 scaleY = if (focused) 1.03f else 1f
             }
             .clip(shape)
-            .background(if (focused) Color(0xFF213447) else Color(0xFF17232F))
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
             .border(2.dp, borderColor, shape)
             .focusRequester(requester)
             .onFocusChanged {
@@ -167,7 +167,7 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
                 .fillMaxWidth()
                 .height(if (compact) 88.dp else 104.dp)
                 .clip(RoundedCornerShape(if (compact) 10.dp else 12.dp))
-                .background(Color(0xFF0E1820))
+                .background(OfflineTvTheme.Colors.backdrop)
         ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -217,7 +217,7 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
             text = effectiveModel.timeLabel,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            style = TextStyle(color = Color(0xFFC9D8E8), fontSize = if (compact) 9.sp else 10.sp)
+            style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 9.sp else 10.sp)
         )
     }
 }

@@ -62,7 +62,7 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xCC000000)),
+            .background(OfflineTvTheme.Colors.guideBackdrop),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -70,7 +70,7 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
                 .fillMaxWidth(if (compact) 0.94f else 0.58f)
                 .fillMaxHeight(if (compact) 0.86f else 0.78f)
                 .clip(RoundedCornerShape(if (compact) 22.dp else 30.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xF21D2A38), Color(0xF20A1018))))
+                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
                 .padding(if (compact) 16.dp else 22.dp)
         ) {
             BasicText(
@@ -85,7 +85,7 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
                     .weight(1f)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xAA101A26))
+                    .background(OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.8f))
                     .padding(if (compact) 12.dp else 16.dp),
                 verticalAlignment = Alignment.Top
             ) {
@@ -96,7 +96,7 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
                             .clip(RoundedCornerShape(16.dp)),
                         factory = { context ->
                             FrameLayout(context).apply {
-                                setBackgroundColor(0xFF16202A.toInt())
+                                setBackgroundColor(OfflineTvTheme.surfaceDeepArgb())
                                 addView(
                                     AppCompatImageView(context).apply {
                                         layoutParams = FrameLayout.LayoutParams(
@@ -128,13 +128,13 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
                     if (model.detail.meta.isNotEmpty()) {
                         BasicText(
                             text = model.detail.meta,
-                            style = TextStyle(color = Color(0xFF9EC5FF), fontSize = if (compact) 12.sp else 14.sp, fontWeight = FontWeight.SemiBold)
+                            style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 12.sp else 14.sp, fontWeight = FontWeight.SemiBold)
                         )
                     }
                     if (model.detail.description.isNotEmpty()) {
                         BasicText(
                             text = model.detail.description,
-                            style = TextStyle(color = Color(0xFFD5E3F2), fontSize = if (compact) 13.sp else 15.sp)
+                            style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 13.sp else 15.sp)
                         )
                     }
                 }
@@ -161,11 +161,11 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
 private fun ProgramInfoActionButton(action: TvMessageActionUiModel, compact: Boolean, modifier: Modifier, requester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
     val background = when {
-        focused -> Color(0xFFFFD47A)
+        focused -> OfflineTvTheme.Colors.focus
         action.destructive -> Color(0xFF643040)
-        else -> Color(0xFF203044)
+        else -> OfflineTvTheme.Colors.chip
     }
-    val textColor = if (focused) Color(0xFF101722) else Color.White
+    val textColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
     Box(
         modifier = modifier
             .height(if (compact) 46.dp else 50.dp)

@@ -58,7 +58,7 @@ private fun MultiViewHeader(model: MultiViewHeaderUiModel) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = TextStyle(
-                    color = Color(0xFFA8C5DE),
+                    color = OfflineTvTheme.Colors.textMuted,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -68,7 +68,7 @@ private fun MultiViewHeader(model: MultiViewHeaderUiModel) {
         BasicText(
             text = model.closeLabel,
             modifier = Modifier
-                .background(Color(0xCC203246), RoundedCornerShape(15.dp))
+                .background(OfflineTvTheme.Colors.chip.copy(alpha = 0.9f), RoundedCornerShape(15.dp))
                 .tvButtonSemantics(model.onCloseClick != null)
                 .clickable(enabled = model.onCloseClick != null) { model.onCloseClick?.run() }
                 .padding(horizontal = 12.dp, vertical = 6.dp),

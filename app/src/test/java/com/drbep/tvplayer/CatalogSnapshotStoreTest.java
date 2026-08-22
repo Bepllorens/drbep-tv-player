@@ -3,6 +3,7 @@ package com.drbep.tvplayer;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
 
@@ -33,5 +34,35 @@ public class CatalogSnapshotStoreTest {
             //noinspection ResultOfMethodCallIgnored
             file.delete();
         }
+    }
+
+    @Test
+    public void startupLiveQueryPreservesExistingParameters() {
+        assertEquals(
+                "https://example.test/api/offline/snapshot?device_id=fire&startup_live=1",
+                CatalogSnapshotStore.appendStartupLiveQuery(
+                        "https://example.test/api/offline/snapshot?device_id=fire"
+                )
+        );
+    }
+
+    @Test
+    public void snapshotModeQueryReplacesConflictingMode() {
+        assertEquals(
+                "https://example.test/api/offline/snapshot?device_id=fire&startup_lite=1",
+                CatalogSnapshotStore.appendStartupLiteQuery(
+                        "https://example.test/api/offline/snapshot?device_id=fire&startup_live=1"
+                )
+        );
+    }
+
+    @Test
+    public void snapshotSourceUrlDoesNotPersistTransientMode() {
+        assertEquals(
+                "https://example.test/api/offline/snapshot?device_id=fire#catalog",
+                CatalogSnapshotStore.normalizeSnapshotSourceUrl(
+                        "https://example.test/api/offline/snapshot?device_id=fire&startup_live=1#catalog"
+                )
+        );
     }
 }

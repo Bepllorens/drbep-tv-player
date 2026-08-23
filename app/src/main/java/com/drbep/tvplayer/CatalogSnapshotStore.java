@@ -2,6 +2,7 @@ package com.drbep.tvplayer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
@@ -889,6 +890,19 @@ final class CatalogSnapshotStore {
                 .put("version_code", BuildConfig.VERSION_CODE);
         HttpClient.Response response = httpClient.postJson(endpoint, payload, 5000, 10000, buildSnapshotHeaders());
         httpClient.requireSuccess(response, "enviando heartbeat de reproduccion");
+    }
+
+    void acknowledgeDeviceMessage(String baseUrl, String messageId, String status) throws Exception {
+        String cleanMessageId = messageId == null ? "" : messageId.trim();
+        if (cleanMessageId.isEmpty()) {
+            return;
+        }
+        String endpoint = joinUrl(baseUrl, "/api/offline/messages/" + Uri.encode(cleanMessageId) + "/ack");
+        JSONObject payload = new JSONObject()
+                .put("device_id", getDeviceId())
+                .put("status", "read".equalsIgnoreCase(status) ? "read" : "delivered");
+        HttpClient.Response response = httpClient.postJson(endpoint, payload, 5000, 10000, buildSnapshotHeaders());
+        httpClient.requireSuccess(response, "confirmando aviso remoto");
     }
 
     void applyActivationPayload(JSONObject payload, String baseUrl) throws Exception {

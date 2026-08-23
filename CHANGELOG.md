@@ -735,3 +735,12 @@
 ## 2.0.380-movistar-sample-aes
 
 - Movistar HLS: reproduce los canales MPEG-TS SAMPLE-AES importados desde JSON mediante el manifiesto identity autenticado y libVLC, sin transcodificación.
+## 2.0.433-remote-messages
+
+- Muestra avisos remotos del administrador sobre la reproducción en Fire TV, Android TV y dispositivos táctiles.
+- Confirma entrega y lectura, evita mensajes duplicados y descarta avisos caducados.
+
+## 2.0.434-visible-remote-messages
+
+- Muestra los avisos remotos en una capa propia sobre el reproductor para que sean visibles también en Fire TV.
+- Confirma por separado la entrega y la lectura del aviso desde el botón `Entendido`.

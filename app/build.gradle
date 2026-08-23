@@ -66,8 +66,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 432
-        versionName "2.0.432-startup-epg-refresh"
+        versionCode 434
+        versionName "2.0.434-visible-remote-messages"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

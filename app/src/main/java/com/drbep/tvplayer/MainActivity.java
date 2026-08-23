@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.app.Dialog;
+import android.app.AlertDialog;
 import android.app.PictureInPictureParams;
 import android.content.Intent;
 import android.content.res.Configuration;
@@ -43,6 +44,7 @@ import android.graphics.drawable.Drawable;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.widget.EditText;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -447,6 +449,14 @@ public class MainActivity extends FragmentActivity {
     private ChannelItem playbackHeartbeatChannel;
     private long playbackHeartbeatStartedAtMs;
     private String lastRemotePlaybackCommandId = "";
+    private String lastRemoteMessageId = "";
+    private View remoteMessageOverlay;
+    private LinearLayout remoteMessagePanel;
+    private TextView remoteMessageTitle;
+    private TextView remoteMessageBody;
+    private Button remoteMessageAcknowledge;
+    private String visibleRemoteMessageId = "";
+    private boolean visibleRemoteMessageRequireAck;
 
     private final OverlayNavigationState overlayNavigationState = new OverlayNavigationState();
     private final OfflineOverlayState overlaySurfaceState = new OfflineOverlayState();
@@ -700,6 +710,12 @@ public class MainActivity extends FragmentActivity {
         playerView.setBackgroundColor(Color.BLACK);
         playerView.setShutterBackgroundColor(Color.BLACK);
         vlcVideoLayout.setBackgroundColor(Color.BLACK);
+        remoteMessageOverlay = findViewById(R.id.remoteMessageOverlay);
+        remoteMessagePanel = findViewById(R.id.remoteMessagePanel);
+        remoteMessageTitle = findViewById(R.id.remoteMessageTitle);
+        remoteMessageBody = findViewById(R.id.remoteMessageBody);
+        remoteMessageAcknowledge = findViewById(R.id.remoteMessageAcknowledge);
+        remoteMessageAcknowledge.setOnClickListener(view -> dismissRemoteMessage(visibleRemoteMessageId, true));
         ComposeView errorText = findViewById(R.id.errorText);
         ComposeView statusText = findViewById(R.id.statusText);
         ComposeView startupLoadingOverlay = findViewById(R.id.startupLoadingOverlay);
@@ -8063,6 +8079,9 @@ public class MainActivity extends FragmentActivity {
     @Override
     @SuppressLint("RestrictedApi")
     public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+        if (handleRemoteMessageKeyEvent(event)) {
+            return true;
+        }
         if (remoteInputRouter != null && remoteInputRouter.dispatchKeyEvent(event)) {
             return true;
         }
@@ -12468,6 +12487,23 @@ public class MainActivity extends FragmentActivity {
         String playbackContentId = response.optString("play_content_id", "").trim();
         long playbackPositionMs = Math.max(0L, response.optLong("play_position_ms", 0L));
         String commandId = response.optString("command_id", "").trim();
+        String messageId = response.optString("message_id", "").trim();
+        String remoteMessage = response.optString("message", "").trim();
+        String messagePriority = response.optString("message_priority", "info").trim().toLowerCase(Locale.ROOT);
+        String messageExpiresAt = response.optString("message_expires_at", "").trim();
+        boolean messageRequireAck = response.optBoolean("message_require_ack", true);
+        if (!messageId.isEmpty() && messageId.equals(lastRemoteMessageId)) {
+            messageId = "";
+            remoteMessage = "";
+        } else if (!messageId.isEmpty() && !remoteMessage.isEmpty()) {
+            if (remoteMessage.length() > 280) {
+                remoteMessage = remoteMessage.substring(0, 280);
+            }
+            if (isRemoteMessageExpired(messageExpiresAt)) {
+                messageId = "";
+                remoteMessage = "";
+            }
+        }
         if (!commandId.isEmpty() && commandId.equals(lastRemotePlaybackCommandId)) {
             playbackCommand = "";
             playChannelId = "";
@@ -12477,7 +12513,7 @@ public class MainActivity extends FragmentActivity {
         if (!playbackCommand.isEmpty()) {
             playChannelId = "";
         }
-        if (!forceCatalogRefresh && !appUpdateCheck && !wipeRequested && playChannelId.isEmpty() && playbackCommand.isEmpty()) {
+        if (!forceCatalogRefresh && !appUpdateCheck && !wipeRequested && playChannelId.isEmpty() && playbackCommand.isEmpty() && remoteMessage.isEmpty()) {
             return;
         }
         String finalPlaybackCommand = playbackCommand;
@@ -12485,6 +12521,10 @@ public class MainActivity extends FragmentActivity {
         String finalPlaybackContentId = playbackContentId;
         long finalPlaybackPositionMs = playbackPositionMs;
         String finalPlayChannelId = playChannelId;
+        String finalMessageId = messageId;
+        String finalRemoteMessage = remoteMessage;
+        String finalMessagePriority = messagePriority;
+        boolean finalMessageRequireAck = messageRequireAck;
         postUiIfAlive(() -> {
             if (wipeRequested) {
                 performOfflineRemoteWipe();
@@ -12497,12 +12537,129 @@ public class MainActivity extends FragmentActivity {
             if (appUpdateCheck) {
                 checkAppUpdate(false);
             }
+            if (!finalRemoteMessage.isEmpty()) {
+                showRemoteMessage(finalMessageId, finalRemoteMessage, finalMessagePriority, finalMessageRequireAck);
+            }
             if (!finalPlaybackCommand.isEmpty()) {
                 applyRemotePlaybackCommand(finalPlaybackCommand, finalPlaybackContentType, finalPlaybackContentId, finalPlaybackPositionMs);
             } else if (!finalPlayChannelId.isEmpty()) {
                 tuneChannelById(finalPlayChannelId);
             }
         });
+    }
+
+    private boolean isRemoteMessageExpired(String rawExpiresAt) {
+        if (rawExpiresAt == null || rawExpiresAt.trim().isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return false;
+        }
+        try {
+            return java.time.Instant.parse(rawExpiresAt.trim()).toEpochMilli() <= System.currentTimeMillis();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void acknowledgeRemoteMessage(String messageId, String status) {
+        if (catalogSnapshotStore == null || messageId == null || messageId.trim().isEmpty()) {
+            return;
+        }
+        submitControlTask("remote-message-ack", () -> {
+            try {
+                catalogSnapshotStore.acknowledgeDeviceMessage(BuildConfig.OFFLINE_BASE_URL, messageId, status);
+            } catch (Exception error) {
+                Log.d(TAG, "remote message acknowledgement failed", error);
+            }
+        });
+    }
+
+    private void showRemoteMessage(String messageId, String message, String priority, boolean requireAck) {
+        if (remoteMessageOverlay == null || remoteMessagePanel == null || remoteMessageTitle == null
+                || remoteMessageBody == null || remoteMessageAcknowledge == null) {
+            Log.w(TAG, "remote message overlay is not available");
+            return;
+        }
+        if (!visibleRemoteMessageId.isEmpty() && !visibleRemoteMessageId.equals(messageId)) {
+            dismissRemoteMessage(visibleRemoteMessageId, true);
+        }
+        visibleRemoteMessageId = messageId;
+        visibleRemoteMessageRequireAck = requireAck;
+        boolean urgent = "urgent".equals(priority);
+        boolean warning = "warning".equals(priority);
+        remoteMessageTitle.setText(urgent ? "Aviso urgente de DRBEP" : "Aviso de DRBEP");
+        remoteMessageTitle.setTextColor(Color.parseColor(urgent ? "#FFFF819C" : warning ? "#FFFFC66D" : "#FF86F5E2"));
+        remoteMessageBody.setText(message);
+
+        ViewGroup.LayoutParams panelLayout = remoteMessagePanel.getLayoutParams();
+        panelLayout.width = Math.min(dpToPx(640), Math.max(dpToPx(280), getResources().getDisplayMetrics().widthPixels - dpToPx(48)));
+        remoteMessagePanel.setLayoutParams(panelLayout);
+
+        GradientDrawable panelBackground = new GradientDrawable();
+        panelBackground.setShape(GradientDrawable.RECTANGLE);
+        panelBackground.setColor(Color.parseColor("#FF101A2B"));
+        panelBackground.setCornerRadius(dpToPx(22));
+        panelBackground.setStroke(dpToPx(2), Color.parseColor(urgent ? "#FFFF426D" : warning ? "#FFFFA52F" : "#FF3BD9C3"));
+        remoteMessagePanel.setBackground(panelBackground);
+
+        remoteMessageOverlay.setVisibility(View.VISIBLE);
+        remoteMessageOverlay.bringToFront();
+        remoteMessageOverlay.setElevation(dpToPx(64));
+        lastRemoteMessageId = messageId;
+        remoteMessageAcknowledge.setEnabled(true);
+        remoteMessageAcknowledge.setFocusable(true);
+        remoteMessageAcknowledge.setFocusableInTouchMode(true);
+        remoteMessageAcknowledge.post(remoteMessageAcknowledge::requestFocus);
+        acknowledgeRemoteMessage(messageId, "delivered");
+        Log.i(TAG, "remote message displayed: " + messageId);
+        if (!requireAck) {
+            postUiDelayedIfAlive(() -> {
+                dismissRemoteMessage(messageId, true);
+            }, "urgent".equals(priority) ? 15000L : 9000L);
+        }
+    }
+
+    private void dismissRemoteMessage(String messageId, boolean acknowledgeRead) {
+        String cleanMessageId = messageId == null ? "" : messageId.trim();
+        if (cleanMessageId.isEmpty() || !cleanMessageId.equals(visibleRemoteMessageId)) {
+            return;
+        }
+        visibleRemoteMessageId = "";
+        visibleRemoteMessageRequireAck = false;
+        if (remoteMessageOverlay != null) {
+            remoteMessageOverlay.setVisibility(View.GONE);
+        }
+        if (acknowledgeRead) {
+            acknowledgeRemoteMessage(cleanMessageId, "read");
+        }
+        if (playerView != null) {
+            playerView.requestFocus();
+        }
+    }
+
+    private boolean handleRemoteMessageKeyEvent(KeyEvent event) {
+        if (visibleRemoteMessageId.isEmpty() || remoteMessageOverlay == null
+                || remoteMessageOverlay.getVisibility() != View.VISIBLE || event == null) {
+            return false;
+        }
+        int keyCode = event.getKeyCode();
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE || keyCode == KeyEvent.KEYCODE_MUTE) {
+            return false;
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
+                    || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+                dismissRemoteMessage(visibleRemoteMessageId, true);
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_BACK && !visibleRemoteMessageRequireAck) {
+                dismissRemoteMessage(visibleRemoteMessageId, true);
+                return true;
+            }
+            if (remoteMessageAcknowledge != null) {
+                remoteMessageAcknowledge.requestFocus();
+            }
+        }
+        return true;
     }
 
     private void applyRemotePlaybackCommand(String command, String contentType, String contentId, long positionMs) {

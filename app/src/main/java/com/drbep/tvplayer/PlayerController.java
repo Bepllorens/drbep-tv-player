@@ -3163,7 +3163,9 @@ final class PlayerController {
             return false;
         }
         String lowerHost = host.trim().toLowerCase(Locale.ROOT);
-        if (!"fire.tvbep.com".equals(lowerHost) && !"iptv.bepllorens.com".equals(lowerHost)) {
+        if (!"fire.tvbep.com".equals(lowerHost)
+                && !"direct.tvbep.com".equals(lowerHost)
+                && !"iptv.bepllorens.com".equals(lowerHost)) {
             return false;
         }
         return path.startsWith("/proxy/")
@@ -3342,6 +3344,7 @@ final class PlayerController {
         boolean backendHosted = !targetHost.isEmpty()
                 && (targetHost.equals(backendHost)
                 || targetHost.contains("fire.tvbep.com")
+                || targetHost.contains("direct.tvbep.com")
                 || targetHost.contains("iptv.bepllorens.com"));
         if (!backendHosted) {
             return true;

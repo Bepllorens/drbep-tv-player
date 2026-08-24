@@ -20,6 +20,7 @@ final class EpgRepository {
     private static final String TAG = "EpgRepository";
     private static final String PUBLIC_EPG_BASE_URL = "https://iptv.bepllorens.com";
     private static final String OFFLINE_PUBLIC_BASE_URL = "https://fire.tvbep.com";
+    private static final String EMERGENCY_PUBLIC_BASE_URL = "https://direct.tvbep.com";
 
     static final class EpgProgram implements Serializable {
         private static final long serialVersionUID = 1L;
@@ -1527,11 +1528,13 @@ final class EpgRepository {
     private List<String> remoteEpgBaseUrlCandidates(boolean offlinePublicOnly) {
         List<String> candidates = new ArrayList<>();
         if (offlinePublicOnly) {
+            addCandidate(candidates, baseUrl);
             addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
+            addCandidate(candidates, EMERGENCY_PUBLIC_BASE_URL);
             return candidates;
         }
         if (standaloneMode) {
-            addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
+            addCandidate(candidates, baseUrl);
         }
         addCandidate(candidates, cachedRemoteEpgBaseUrl);
         addCandidate(candidates, baseUrl);
@@ -1542,6 +1545,7 @@ final class EpgRepository {
         }
         addCandidate(candidates, PUBLIC_EPG_BASE_URL);
         addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
+        addCandidate(candidates, EMERGENCY_PUBLIC_BASE_URL);
         return candidates;
     }
 

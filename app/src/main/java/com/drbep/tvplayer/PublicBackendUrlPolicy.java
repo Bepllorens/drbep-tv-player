@@ -5,6 +5,8 @@ import java.util.Locale;
 final class PublicBackendUrlPolicy {
     private static final String LEGACY_HTTP = "http://iptv.bepllorens.com";
     private static final String LEGACY_HTTPS = "https://iptv.bepllorens.com";
+    private static final String PUBLIC_PRIMARY_HTTPS = "https://fire.tvbep.com";
+    private static final String PUBLIC_EMERGENCY_HTTPS = "https://direct.tvbep.com";
 
     private PublicBackendUrlPolicy() {
     }
@@ -24,6 +26,12 @@ final class PublicBackendUrlPolicy {
         }
         if (lower.equals(LEGACY_HTTP) || lower.startsWith(LEGACY_HTTP + "/")) {
             return base + url.substring(LEGACY_HTTP.length());
+        }
+        if (lower.equals(PUBLIC_PRIMARY_HTTPS) || lower.startsWith(PUBLIC_PRIMARY_HTTPS + "/")) {
+            return base + url.substring(PUBLIC_PRIMARY_HTTPS.length());
+        }
+        if (lower.equals(PUBLIC_EMERGENCY_HTTPS) || lower.startsWith(PUBLIC_EMERGENCY_HTTPS + "/")) {
+            return base + url.substring(PUBLIC_EMERGENCY_HTTPS.length());
         }
         return url;
     }

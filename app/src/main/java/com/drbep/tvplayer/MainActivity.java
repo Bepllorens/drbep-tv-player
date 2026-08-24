@@ -123,6 +123,7 @@ public class MainActivity extends FragmentActivity {
     private static final long OFFLINE_STARTUP_MAINTENANCE_GRACE_MS = 5L * 60L * 1000L;
     private static final long OFFLINE_APP_UPDATE_STARTUP_GATE_MS = 4_000L;
     private static final long OFFLINE_APP_UPDATE_RESUME_CHECK_MS = 15L * 60L * 1000L;
+    private static final long PRIMARY_BACKEND_RECOVERY_CHECK_MS = 15L * 60L * 1000L;
     private static final long OFFLINE_EPG_INITIAL_DELAY_MS = 20L * 1000L;
     private static final long OFFLINE_EPG_PROGRESSIVE_DELAY_MS = 8L * 1000L;
     private static final long OFFLINE_EPG_PRIORITY_DELAY_MS = 2L * 1000L;
@@ -165,6 +166,8 @@ public class MainActivity extends FragmentActivity {
     private static final String PREF_PLAYBACK_LEARNED_MODES = "playback_learned_modes";
     private static final String PREF_OFFLINE_SYNC_HISTORY = "offline_sync_history";
     private static final String PREF_APP_UPDATE_DIAGNOSTIC = "app_update_diagnostic";
+    private static final String PREF_EMERGENCY_BACKEND = "emergency_backend";
+    private static final String PREF_EMERGENCY_BACKEND_NOTICE = "emergency_backend_notice";
     private static final String PREF_MULTIVIEW_PRESET_PREFIX = "multiview_preset_";
     private static final String PREF_LAST_UPDATE_PROMPT_VERSION_CODE = "last_update_prompt_version_code";
     private static final String PREF_LAST_UPDATE_PROMPT_AT_MS = "last_update_prompt_at_ms";
@@ -303,6 +306,9 @@ public class MainActivity extends FragmentActivity {
     private final ExecutorService catalogHydrationExecutor = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private volatile boolean activityDestroyed;
+    private volatile boolean backendFailoverProbeInFlight;
+    private boolean backendStartupReleased;
+    private long lastPrimaryBackendRecoveryCheckMs;
     private volatile boolean remoteCommandPollInFlight;
     private final Runnable channelOverlayRenderRunnable = new Runnable() {
         @Override
@@ -785,6 +791,7 @@ public class MainActivity extends FragmentActivity {
         }
         baseUrl = resolveBaseUrl();
         catalogSnapshotStore = new CatalogSnapshotStore(this);
+        rebaseOfflineCatalogSource(baseUrl);
         userPreferenceSyncRepository = new UserPreferenceSyncRepository(catalogSnapshotStore);
         remoteCommandEventClient = new RemoteCommandEventClient(catalogSnapshotStore);
         catalogRepository = new CatalogRepository(baseUrl, catalogSnapshotStore, BuildConfig.STANDALONE_MODE);
@@ -944,10 +951,7 @@ public class MainActivity extends FragmentActivity {
         setupRecordingsPanel();
         setupTouchControls();
         enableImmersiveMode();
-        tryFastStartupPlaybackFromCache();
-        detectUnfinishedAppUpdateIfNeeded();
-        showPostUpdateNotesIfNeeded();
-        startUpdaterFirstStartup();
+        startBackendSelectionGate();
         scheduleOfflineCatalogAutoRefresh();
         postUiDelayedIfAlive(reminderTickRunnable, 30000L);
         postUiDelayedIfAlive(vodProgressSaveRunnable, 15_000L);
@@ -1005,11 +1009,13 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        maybeCheckAppUpdateOnResume();
-        maybeRefreshOfflineCatalogOnResume();
+        if (backendStartupReleased) {
+            maybeCheckAppUpdateOnResume();
+            maybeRefreshOfflineCatalogOnResume();
+        }
         uiHandler.removeCallbacks(remoteCommandPollRunnable);
         if (remoteCommandEventClient != null) {
-            remoteCommandEventClient.start(BuildConfig.OFFLINE_BASE_URL, this::handleOfflineRemoteCommands);
+            remoteCommandEventClient.start(baseUrl, this::handleOfflineRemoteCommands);
         }
         pollOfflineRemoteCommands();
         postUiDelayedIfAlive(remoteCommandPollRunnable, REMOTE_COMMAND_POLL_INTERVAL_MS);
@@ -1020,6 +1026,7 @@ public class MainActivity extends FragmentActivity {
         if (System.currentTimeMillis() - lastUserPreferencePullMs >= USER_PREFERENCE_PULL_INTERVAL_MS) {
             pullUserPreferences();
         }
+        schedulePrimaryBackendRecoveryCheck();
     }
 
     @Override
@@ -1098,6 +1105,10 @@ public class MainActivity extends FragmentActivity {
 
     private String resolveBaseUrl() {
         if (BuildConfig.STANDALONE_MODE && BuildConfig.OFFLINE_BASE_URL != null && !BuildConfig.OFFLINE_BASE_URL.trim().isEmpty()) {
+            boolean useEmergency = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_EMERGENCY_BACKEND, false);
+            if (useEmergency && BuildConfig.EMERGENCY_BASE_URL != null && !BuildConfig.EMERGENCY_BASE_URL.trim().isEmpty()) {
+                return normalizeBaseUrl(BuildConfig.EMERGENCY_BASE_URL);
+            }
             return normalizeBaseUrl(BuildConfig.OFFLINE_BASE_URL);
         }
         String raw = BuildConfig.PLAYER_URL;
@@ -1118,6 +1129,148 @@ public class MainActivity extends FragmentActivity {
             return scheme + "://" + host + ":" + port;
         }
         return scheme + "://" + host;
+    }
+
+    private void startBackendSelectionGate() {
+        if (!BuildConfig.STANDALONE_MODE || isEmergencyBackendEnabled()) {
+            continueStartupAfterBackendSelection();
+            showEmergencyBackendNoticeIfNeeded();
+            return;
+        }
+        updateStartupLoading(
+                getString(R.string.backend_failover_checking_title),
+                getString(R.string.backend_failover_checking_detail)
+        );
+        backendFailoverProbeInFlight = true;
+        boolean submitted = submitExecutorTask(ioExecutor, "backend-startup-failover", () -> {
+            BackendFailoverManager.Decision decision = BackendFailoverManager.evaluate(
+                    BuildConfig.OFFLINE_BASE_URL,
+                    BuildConfig.EMERGENCY_BASE_URL
+            );
+            postUiIfAlive(() -> {
+                backendFailoverProbeInFlight = false;
+                if (decision.useEmergency) {
+                    activateEmergencyBackend(true);
+                    return;
+                }
+                continueStartupAfterBackendSelection();
+            });
+        });
+        if (!submitted) {
+            backendFailoverProbeInFlight = false;
+            continueStartupAfterBackendSelection();
+        }
+    }
+
+    private void continueStartupAfterBackendSelection() {
+        if (backendStartupReleased || activityDestroyed) {
+            return;
+        }
+        backendStartupReleased = true;
+        tryFastStartupPlaybackFromCache();
+        detectUnfinishedAppUpdateIfNeeded();
+        showPostUpdateNotesIfNeeded();
+        startUpdaterFirstStartup();
+    }
+
+    private void activateEmergencyBackend(boolean automatic) {
+        if (!BuildConfig.STANDALONE_MODE || isEmergencyBackendEnabled() || activityDestroyed) {
+            return;
+        }
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_EMERGENCY_BACKEND, true)
+                .putBoolean(PREF_EMERGENCY_BACKEND_NOTICE, true)
+                .apply();
+        rebaseOfflineCatalogSource(BuildConfig.EMERGENCY_BASE_URL);
+        showStatus(getString(automatic
+                ? R.string.backend_failover_automatic_enabled
+                : R.string.settings_backend_emergency_enabled));
+        uiHandler.postDelayed(this::recreate, 350L);
+    }
+
+    private void switchToPrimaryBackend() {
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_EMERGENCY_BACKEND, false)
+                .remove(PREF_EMERGENCY_BACKEND_NOTICE)
+                .apply();
+        rebaseOfflineCatalogSource(BuildConfig.OFFLINE_BASE_URL);
+        showStatus(getString(R.string.settings_backend_primary_enabled));
+        uiHandler.postDelayed(this::recreate, 350L);
+    }
+
+    private void rebaseOfflineCatalogSource(String targetBaseUrl) {
+        if (catalogSnapshotStore == null) {
+            return;
+        }
+        String currentSource = catalogSnapshotStore.getSourceUrl(BuildConfig.CATALOG_SNAPSHOT_URL);
+        String rebasedSource = PublicBackendUrlPolicy.rebaseLegacyUrl(currentSource, targetBaseUrl);
+        if (!rebasedSource.equals(currentSource)) {
+            catalogSnapshotStore.setSourceUrl(rebasedSource);
+        }
+    }
+
+    private void showEmergencyBackendNoticeIfNeeded() {
+        if (!isEmergencyBackendEnabled()) {
+            return;
+        }
+        SharedPreferences backendPrefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (!backendPrefs.getBoolean(PREF_EMERGENCY_BACKEND_NOTICE, false)) {
+            showStatus(getString(R.string.backend_failover_vps_status));
+            return;
+        }
+        backendPrefs.edit().remove(PREF_EMERGENCY_BACKEND_NOTICE).apply();
+        postUiDelayedIfAlive(() -> {
+            List<TvMessageActionUiModel> actions = new ArrayList<>();
+            actions.add(new TvMessageActionUiModel(getString(R.string.backend_failover_understood), false, null));
+            actions.add(new TvMessageActionUiModel(getString(R.string.settings_backend_use_primary), false, this::switchToPrimaryBackend));
+            showTvMessagePanel(
+                    getString(R.string.backend_failover_notice_title),
+                    getString(R.string.backend_failover_notice_message),
+                    actions,
+                    null
+            );
+            showStatus(getString(R.string.backend_failover_vps_status));
+            reportOfflineDeviceStatus("backend-failover", true, 0L, "emergency-vps");
+        }, 900L);
+    }
+
+    private void maybeFailoverBackendAfterPlaybackError() {
+        if (!BuildConfig.STANDALONE_MODE || isEmergencyBackendEnabled() || backendFailoverProbeInFlight || activityDestroyed) {
+            return;
+        }
+        backendFailoverProbeInFlight = true;
+        submitExecutorTask(controlExecutor, "backend-playback-failover", () -> {
+            BackendFailoverManager.Decision decision = BackendFailoverManager.evaluate(
+                    BuildConfig.OFFLINE_BASE_URL,
+                    BuildConfig.EMERGENCY_BASE_URL
+            );
+            postUiIfAlive(() -> {
+                backendFailoverProbeInFlight = false;
+                if (decision.useEmergency) {
+                    activateEmergencyBackend(true);
+                }
+            });
+        });
+    }
+
+    private void schedulePrimaryBackendRecoveryCheck() {
+        if (!BuildConfig.STANDALONE_MODE || !isEmergencyBackendEnabled() || activityDestroyed) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (lastPrimaryBackendRecoveryCheckMs > 0L
+                && now - lastPrimaryBackendRecoveryCheckMs < PRIMARY_BACKEND_RECOVERY_CHECK_MS) {
+            return;
+        }
+        lastPrimaryBackendRecoveryCheckMs = now;
+        postUiDelayedIfAlive(() -> submitExecutorTask(controlExecutor, "backend-primary-recovery", () -> {
+            boolean healthy = BackendFailoverManager.probeHealth(BuildConfig.OFFLINE_BASE_URL);
+            if (healthy) {
+                postUiIfAlive(() -> showStatus(getString(R.string.backend_failover_primary_available)));
+            }
+        }), 30_000L);
     }
 
     private static String normalizeBaseUrl(String raw) {
@@ -6708,7 +6861,7 @@ public class MainActivity extends FragmentActivity {
         userPreferencesLoading = true;
         submitControlTask("user-preferences-pull", () -> {
             try {
-                JSONObject payload = userPreferenceSyncRepository.load(BuildConfig.OFFLINE_BASE_URL);
+                JSONObject payload = userPreferenceSyncRepository.load(baseUrl);
                 postUiIfAlive(() -> {
                     userPreferencesLoading = false;
                     lastUserPreferencePullMs = System.currentTimeMillis();
@@ -6856,7 +7009,7 @@ public class MainActivity extends FragmentActivity {
         JSONObject payload = buildUserPreferencePayload();
         submitControlTask("user-preferences-push", () -> {
             try {
-                JSONObject stored = userPreferenceSyncRepository.save(BuildConfig.OFFLINE_BASE_URL, payload);
+                JSONObject stored = userPreferenceSyncRepository.save(baseUrl, payload);
                 postUiIfAlive(() -> remoteUserPreferences = stored == null ? new JSONObject() : stored);
             } catch (Exception e) {
                 Log.w(TAG, "user preference push failed", e);
@@ -11879,6 +12032,10 @@ public class MainActivity extends FragmentActivity {
         List<Runnable> actions = new ArrayList<>();
         options.add(getString(R.string.settings_offline_system_status));
         actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary(), () -> showOfflineSystemDialog(onBack)));
+        options.add(getString(isEmergencyBackendEnabled()
+                ? R.string.settings_backend_use_primary
+                : R.string.settings_backend_use_emergency));
+        actions.add(this::toggleEmergencyBackend);
         options.add(getString(R.string.settings_offline_full_sync));
         actions.add(this::runManualOfflineFullSync);
         options.add(getString(R.string.offline_catalog_action_repair));
@@ -11902,13 +12059,27 @@ public class MainActivity extends FragmentActivity {
         showTvOptionsDialog(R.string.settings_section_offline_system, buildOfflineSystemSummary(), options, actions, onBack);
     }
 
+    private boolean isEmergencyBackendEnabled() {
+        return BuildConfig.STANDALONE_MODE
+                && getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_EMERGENCY_BACKEND, false);
+    }
+
+    private void toggleEmergencyBackend() {
+        boolean enabled = !isEmergencyBackendEnabled();
+        if (enabled) {
+            activateEmergencyBackend(false);
+        } else {
+            switchToPrimaryBackend();
+        }
+    }
+
     private String buildOfflineSystemSummary() {
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
                 ? new CatalogSnapshotStore.SnapshotStatus(false, 0L, 0L, 0L, false, 0, 0, "", "", "", "", false)
                 : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         CatalogSnapshotStore.VerificationReport verification = catalogSnapshotStore == null
                 ? new CatalogSnapshotStore.VerificationReport(false, "error", getString(R.string.settings_offline_verify_missing), status)
-                : catalogSnapshotStore.verifyStoredSnapshot(BuildConfig.CATALOG_SNAPSHOT_URL);
+                : buildCachedOfflineVerificationReport(status);
         String catalogHealth = buildOfflineCatalogHealth(status, verification);
         String updateState = buildAppUpdateStateSummary();
         String lastCatalogAttempt = lastOfflineCatalogRefreshAttemptMs <= 0L
@@ -11927,7 +12098,7 @@ public class MainActivity extends FragmentActivity {
                 ? getString(R.string.diagnostics_value_no)
                 : classifyOperationalError(lastOfflineMaintenanceError) + ": " + lastOfflineMaintenanceError;
         String updateSummary = getString(R.string.app_update_channel_current, currentUpdateChannelLabel()) + "\n" + updateState;
-        return getString(
+        String summary = getString(
                 R.string.settings_offline_system_summary,
                 BuildConfig.VERSION_NAME,
                 BuildConfig.VERSION_CODE,
@@ -11947,6 +12118,12 @@ public class MainActivity extends FragmentActivity {
                 maintenanceError,
                 buildNextOfflineSyncSummary(status),
                 buildOfflineCatalogGuardSummary(status)
+        );
+        return summary + "\n" + getString(
+                R.string.settings_backend_current_route,
+                getString(isEmergencyBackendEnabled()
+                        ? R.string.settings_backend_route_emergency
+                        : R.string.settings_backend_route_primary)
         );
     }
 
@@ -12079,7 +12256,7 @@ public class MainActivity extends FragmentActivity {
         options.add(getString(R.string.offline_catalog_action_refresh));
         actions.add(this::refreshOfflineCatalogFromSettings);
         options.add(getString(R.string.offline_catalog_action_verify));
-        actions.add(() -> showSettingsInfoDialog(R.string.settings_section_offline_catalog, buildOfflineCatalogVerificationSummary(), () -> showOfflineCatalogSettingsDialog(onBack)));
+        actions.add(() -> verifyOfflineCatalogFromSettings(onBack));
         options.add(getString(R.string.offline_catalog_action_set_url));
         actions.add(this::showOfflineCatalogUrlDialog);
         options.add(getString(R.string.offline_catalog_action_set_token));
@@ -12099,7 +12276,7 @@ public class MainActivity extends FragmentActivity {
         ioExecutor.execute(() -> {
             try {
                 JSONObject payload = catalogSnapshotStore.startActivation(
-                        BuildConfig.OFFLINE_BASE_URL,
+                        baseUrl,
                         buildOfflineActivationDeviceLabel()
                 );
                 String code = payload.optString("code", "").trim();
@@ -12159,11 +12336,11 @@ public class MainActivity extends FragmentActivity {
         attempts[0]++;
         ioExecutor.execute(() -> {
             try {
-                JSONObject payload = catalogSnapshotStore == null ? null : catalogSnapshotStore.pollActivation(BuildConfig.OFFLINE_BASE_URL, code);
+                JSONObject payload = catalogSnapshotStore == null ? null : catalogSnapshotStore.pollActivation(baseUrl, code);
                 String status = payload == null ? "" : payload.optString("status", "");
                 if ("approved".equalsIgnoreCase(status)) {
                     if (catalogSnapshotStore != null) {
-                        catalogSnapshotStore.applyActivationPayload(payload, BuildConfig.OFFLINE_BASE_URL);
+                        catalogSnapshotStore.applyActivationPayload(payload, baseUrl);
                     }
                     postUiIfAlive(() -> {
                         active[0] = false;
@@ -12205,7 +12382,7 @@ public class MainActivity extends FragmentActivity {
                 : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         CatalogSnapshotStore.VerificationReport verification = catalogSnapshotStore == null
                 ? new CatalogSnapshotStore.VerificationReport(false, "error", getString(R.string.settings_offline_verify_missing), status)
-                : catalogSnapshotStore.verifyStoredSnapshot(BuildConfig.CATALOG_SNAPSHOT_URL);
+                : buildCachedOfflineVerificationReport(status);
         String updatedAt = status.updatedAtMs <= 0L
                 ? getString(R.string.diagnostics_value_unknown)
                 : formatDateTime(status.updatedAtMs);
@@ -12250,10 +12427,56 @@ public class MainActivity extends FragmentActivity {
         );
     }
 
-    private String buildOfflineCatalogVerificationSummary() {
-        CatalogSnapshotStore.VerificationReport report = catalogSnapshotStore == null
-                ? new CatalogSnapshotStore.VerificationReport(false, "error", getString(R.string.settings_offline_verify_missing), null)
-                : catalogSnapshotStore.verifyStoredSnapshot(BuildConfig.CATALOG_SNAPSHOT_URL);
+    private CatalogSnapshotStore.VerificationReport buildCachedOfflineVerificationReport(
+            CatalogSnapshotStore.SnapshotStatus status
+    ) {
+        if (status == null || !status.available) {
+            return new CatalogSnapshotStore.VerificationReport(
+                    false,
+                    "error",
+                    getString(R.string.settings_offline_verify_missing),
+                    status
+            );
+        }
+        String state = status.verificationState == null ? "" : status.verificationState.trim();
+        String message = status.verificationMessage == null ? "" : status.verificationMessage.trim();
+        if (state.isEmpty()) {
+            state = "warning";
+        }
+        if (message.isEmpty()) {
+            message = "ok".equalsIgnoreCase(state)
+                    ? "snapshot verificado correctamente"
+                    : getString(R.string.diagnostics_value_unknown);
+        }
+        return new CatalogSnapshotStore.VerificationReport(
+                !"error".equalsIgnoreCase(state),
+                state,
+                message,
+                status
+        );
+    }
+
+    private void verifyOfflineCatalogFromSettings(Runnable onBack) {
+        if (catalogSnapshotStore == null) {
+            showError(getString(R.string.settings_offline_verify_missing));
+            return;
+        }
+        showStatus(getString(R.string.offline_catalog_action_verify));
+        boolean submitted = submitExecutorTask(catalogLoadExecutor, "offline-catalog-verify", () -> {
+            CatalogSnapshotStore.VerificationReport report =
+                    catalogSnapshotStore.verifyStoredSnapshot(BuildConfig.CATALOG_SNAPSHOT_URL);
+            postUiIfAlive(() -> showSettingsInfoDialog(
+                    R.string.settings_section_offline_catalog,
+                    buildOfflineCatalogVerificationSummary(report),
+                    () -> showOfflineCatalogSettingsDialog(onBack)
+            ));
+        });
+        if (!submitted) {
+            showError(getString(R.string.error_unknown_reason));
+        }
+    }
+
+    private String buildOfflineCatalogVerificationSummary(CatalogSnapshotStore.VerificationReport report) {
         CatalogSnapshotStore.SnapshotStatus status = report == null ? null : report.status;
         String schema = status == null || status.schema == null || status.schema.trim().isEmpty()
                 ? getString(R.string.diagnostics_value_unknown)
@@ -12433,7 +12656,7 @@ public class MainActivity extends FragmentActivity {
         JSONObject extra = buildOfflineDeviceStatusExtra();
         submitControlTask("offline-device-status", () -> {
             try {
-                JSONObject response = catalogSnapshotStore.reportDeviceStatus(BuildConfig.OFFLINE_BASE_URL, status, event, success, durationMs, detail, extra);
+                JSONObject response = catalogSnapshotStore.reportDeviceStatus(baseUrl, status, event, success, durationMs, detail, extra);
                 if (response != null && response.optBoolean("diagnostic_requested", false)) {
                     sendRemoteDiagnosticReport(status);
                 }
@@ -12454,7 +12677,7 @@ public class MainActivity extends FragmentActivity {
         boolean submitted = submitControlTask("remote-command-poll", () -> {
             try {
                 JSONObject response = catalogSnapshotStore.reportDeviceStatus(
-                        BuildConfig.OFFLINE_BASE_URL,
+                        baseUrl,
                         status,
                         "heartbeat",
                         true,
@@ -12565,7 +12788,7 @@ public class MainActivity extends FragmentActivity {
         }
         submitControlTask("remote-message-ack", () -> {
             try {
-                catalogSnapshotStore.acknowledgeDeviceMessage(BuildConfig.OFFLINE_BASE_URL, messageId, status);
+                catalogSnapshotStore.acknowledgeDeviceMessage(baseUrl, messageId, status);
             } catch (Exception error) {
                 Log.d(TAG, "remote message acknowledgement failed", error);
             }
@@ -12718,7 +12941,7 @@ public class MainActivity extends FragmentActivity {
             JSONObject extra = buildOfflineDeviceStatusExtra();
             extra.put("remote_diagnostic", buildRemoteDiagnosticPayload(status));
             catalogSnapshotStore.reportDeviceStatus(
-                    BuildConfig.OFFLINE_BASE_URL,
+                    baseUrl,
                     status,
                     "Diagnostico remoto",
                     true,
@@ -12743,7 +12966,7 @@ public class MainActivity extends FragmentActivity {
                 JSONObject extra = buildOfflineDeviceStatusExtra();
                 extra.put("remote_diagnostic", buildRemoteDiagnosticPayload(status));
                 catalogSnapshotStore.reportDeviceStatus(
-                        BuildConfig.OFFLINE_BASE_URL,
+                        baseUrl,
                         status,
                         "Diagnostico manual",
                         true,
@@ -12984,7 +13207,7 @@ public class MainActivity extends FragmentActivity {
         }
         submitControlTask("playback-heartbeat", () -> {
             try {
-                catalogSnapshotStore.reportPlaybackHeartbeat(BuildConfig.OFFLINE_BASE_URL, payload);
+                catalogSnapshotStore.reportPlaybackHeartbeat(baseUrl, payload);
             } catch (Exception e) {
                 Log.d(TAG, "playback heartbeat failed", e);
             }
@@ -13169,6 +13392,7 @@ public class MainActivity extends FragmentActivity {
                 return false;
             }
         return host.contains("fire.tvbep.com")
+                    || host.contains("direct.tvbep.com")
                     || host.contains("iptv.bepllorens.com");
         } catch (Exception ignored) {
             return false;
@@ -13909,7 +14133,7 @@ public class MainActivity extends FragmentActivity {
         appUpdateExecutor.execute(() -> {
             try {
                 AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(
-                        BuildConfig.OFFLINE_BASE_URL,
+                        baseUrl,
                         currentUpdateChannel()
                 );
                 long durationMs = System.currentTimeMillis() - startMs;
@@ -14138,7 +14362,7 @@ public class MainActivity extends FragmentActivity {
         long startMs = System.currentTimeMillis();
         ioExecutor.execute(() -> {
             try {
-                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, updateChannel);
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(baseUrl, updateChannel);
                 long durationMs = System.currentTimeMillis() - startMs;
                 postUiIfAlive(() -> {
                     appUpdateCheckRunning = false;
@@ -14202,7 +14426,7 @@ public class MainActivity extends FragmentActivity {
         long startMs = System.currentTimeMillis();
         ioExecutor.execute(() -> {
             try {
-                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, "rescue");
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(baseUrl, "rescue");
                 long durationMs = System.currentTimeMillis() - startMs;
                 postUiIfAlive(() -> {
                     appUpdateCheckRunning = false;
@@ -14470,7 +14694,7 @@ public class MainActivity extends FragmentActivity {
         prefs.edit().putInt(PREF_LAST_SEEN_APP_VERSION_CODE, BuildConfig.VERSION_CODE).apply();
         ioExecutor.execute(() -> {
             try {
-                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(BuildConfig.OFFLINE_BASE_URL, currentUpdateChannel());
+                AppUpdateManager.UpdateInfo info = appUpdateManager.fetchLatest(baseUrl, currentUpdateChannel());
                 if (info.versionCode == BuildConfig.VERSION_CODE && !info.changelog.isEmpty()) {
                     postUiIfAlive(() -> showAppUpdatedPanel(info));
                 }
@@ -19266,6 +19490,7 @@ public class MainActivity extends FragmentActivity {
                 diagnostics.playbackMode
         );
         sendPlaybackHeartbeat("error");
+        maybeFailoverBackendAfterPlaybackError();
         if (BuildConfig.STANDALONE_MODE && !request.directPlayback) {
             String detail = diagnostics.lastError == null || diagnostics.lastError.trim().isEmpty()
                     ? getString(R.string.error_unknown_reason)

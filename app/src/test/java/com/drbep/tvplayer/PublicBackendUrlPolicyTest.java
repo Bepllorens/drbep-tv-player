@@ -26,4 +26,26 @@ public class PublicBackendUrlPolicyTest {
                 )
         );
     }
+
+    @Test
+    public void rebasesPrimaryPublicUrlToEmergencyHost() {
+        assertEquals(
+                "https://direct.tvbep.com/hls/ism/1105475/index.m3u8?access_token=token",
+                PublicBackendUrlPolicy.rebaseLegacyUrl(
+                        "https://fire.tvbep.com/hls/ism/1105475/index.m3u8?access_token=token",
+                        "https://direct.tvbep.com/"
+                )
+        );
+    }
+
+    @Test
+    public void rebasesEmergencyUrlBackToPrimaryHost() {
+        assertEquals(
+                "https://fire.tvbep.com/api/offline/snapshot",
+                PublicBackendUrlPolicy.rebaseLegacyUrl(
+                        "https://direct.tvbep.com/api/offline/snapshot",
+                        "https://fire.tvbep.com"
+                )
+        );
+    }
 }

@@ -915,7 +915,7 @@ final class CatalogSnapshotStore {
             throw new IllegalStateException("activacion sin token o URL");
         }
         setAccessToken(token);
-        setSourceUrl(resolveUrl(baseUrl, snapshotUrl));
+        setSourceUrl(PublicBackendUrlPolicy.rebaseLegacyUrl(resolveUrl(baseUrl, snapshotUrl), baseUrl));
     }
 
     void saveSnapshotObject(JSONObject payload, String sourceUrl) throws Exception {

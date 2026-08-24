@@ -25,6 +25,7 @@ def releaseFirestickLockedUrl = (project.findProperty('releaseFirestickLockedUrl
 def standaloneMode = (project.findProperty('standaloneMode') ?: 'true').toString().toBoolean()
 def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toString()
 def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://fire.tvbep.com').toString()
+def emergencyBaseUrl = (project.findProperty('emergencyBaseUrl') ?: 'https://direct.tvbep.com').toString()
 def updateChannel = (project.findProperty('updateChannel') ?: 'stable').toString()
 def fireAbiOnly = (project.findProperty('fireAbiOnly') ?: 'false').toString().toBoolean()
 def offlineSnapshotPublicKey = (project.findProperty('offlineSnapshotPublicKey') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArIoIQfhLQG1NRNGVHHHRYJpJ1+epFzzIhXbP2J80kOLEcW57ruhXydBV1sBNpZrUoC2EAy2ISiN7suLTp8NJSD7EqnExg8vJnyhKcUzUYkBksJpuccWUqSuQhIe43TABw8OM2+OmTT9QgZBgbk9CbgP+zehssXzH1w0OL6RQ/vWMFsmxO9dieqKafdxn4IQLJEVZc7IDIPsk67HwlTfPT+1gmoCEsy7nn3gD8bs++Sz2e4mVwGgjqaqSHU4SJILleQJ17MC/I+DLI/EHLwIJ/5577c+foZS4rDPIRHf9puCcuhiXCTRMX92KsSj6FVhwgklVhFgyxjoKh8y7pUft/QIDAQAB').toString()
@@ -48,6 +49,9 @@ def escapedCatalogSnapshotUrl = catalogSnapshotUrl
 def escapedOfflineBaseUrl = offlineBaseUrl
         .replace('\\', '\\\\')
         .replace('"', '\\"')
+def escapedEmergencyBaseUrl = emergencyBaseUrl
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
 def escapedUpdateChannel = updateChannel
         .replace('\\', '\\\\')
         .replace('"', '\\"')
@@ -66,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 434
-        versionName "2.0.434-visible-remote-messages"
+        versionCode 438
+        versionName "2.0.438-emergency-vps-failover"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {
@@ -112,6 +116,7 @@ android {
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
+            buildConfigField "String", "EMERGENCY_BASE_URL", "\"${escapedEmergencyBaseUrl}\""
             buildConfigField "String", "UPDATE_CHANNEL", "\"${escapedUpdateChannel}\""
             buildConfigField "boolean", "LOG_VERBOSE", "true"
             buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
@@ -135,6 +140,7 @@ android {
             buildConfigField "boolean", "STANDALONE_MODE", standaloneMode.toString()
             buildConfigField "String", "CATALOG_SNAPSHOT_URL", "\"${escapedCatalogSnapshotUrl}\""
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
+            buildConfigField "String", "EMERGENCY_BASE_URL", "\"${escapedEmergencyBaseUrl}\""
             buildConfigField "String", "UPDATE_CHANNEL", "\"${escapedUpdateChannel}\""
             buildConfigField "boolean", "LOG_VERBOSE", "false"
             buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""

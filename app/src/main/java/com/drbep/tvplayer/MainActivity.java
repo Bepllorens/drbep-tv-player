@@ -266,6 +266,7 @@ public class MainActivity extends FragmentActivity {
     private String currentPlaybackReturnChannelId;
     private String currentPlaybackVodId;
     private ChannelItem currentPlaybackTransientItem;
+    private String currentPlaybackRequestedChannelId = "";
     private ChannelItem currentPlaybackU7dItem;
     private String currentPlaybackU7dBaseUrl;
     private long currentPlaybackU7dDurationMs;
@@ -1319,6 +1320,9 @@ public class MainActivity extends FragmentActivity {
                         && channelId.equals(currentPlaybackTransientItem.id)) {
                     return true;
                 }
+                if (channelId != null && channelId.equals(currentPlaybackRequestedChannelId)) {
+                    return true;
+                }
                 ChannelItem current = (overlayNavigationState.currentIndex >= 0 && overlayNavigationState.currentIndex < channels.size()) ? channels.get(overlayNavigationState.currentIndex) : null;
                 return current != null && channelId != null && channelId.equals(current.id);
             }
@@ -1365,6 +1369,7 @@ public class MainActivity extends FragmentActivity {
                     MainActivity.this.hideStartupLoading();
                 }
                 MainActivity.this.markPostUpdatePlaybackHealthy(request == null ? "" : request.channelId);
+                MainActivity.this.schedulePlaybackQualityUiRefresh();
                 MainActivity.this.sendPlaybackHeartbeat(recoveredFromRebuffer ? "recovered" : "ready");
             }
 
@@ -1377,6 +1382,7 @@ public class MainActivity extends FragmentActivity {
                 MainActivity.this.schedulePendingStartupCatalogHydration();
                 MainActivity.this.scheduleFullEpgLoadAfterFirstFrame(channelId);
                 MainActivity.this.markPostUpdatePlaybackHealthy(channelId);
+                MainActivity.this.schedulePlaybackQualityUiRefresh();
             }
 
             @Override
@@ -2003,6 +2009,10 @@ public class MainActivity extends FragmentActivity {
         );
         clone.nowProgram = source.nowProgram;
         clone.nextProgram = source.nextProgram;
+        clone.platformLogoUrl = source.platformLogoUrl == null ? "" : source.platformLogoUrl;
+        if (source.customGroupLogos != null) {
+            clone.customGroupLogos.putAll(source.customGroupLogos);
+        }
         return clone;
     }
 
@@ -3087,6 +3097,7 @@ public class MainActivity extends FragmentActivity {
             showError(getString(R.string.error_playback_message, "Player no inicializado"));
             return;
         }
+        currentPlaybackRequestedChannelId = ch == null || ch.id == null ? "" : ch.id.trim();
         stopPlaybackHeartbeat("stop");
         if (StartupChannelPolicy.shouldRememberAsLastLive(ch.isVod, isU7dReplayItem(ch))) {
             saveLastChannelId(ch.id);
@@ -8428,6 +8439,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private ChannelItem getCurrentPlaybackChannelItem() {
+        if (!currentPlaybackRequestedChannelId.isEmpty()) {
+            ChannelItem requested = findChannelItemById(currentPlaybackRequestedChannelId);
+            if (requested != null) {
+                return requested;
+            }
+        }
         if (currentPlaybackTransientItem != null) {
             return currentPlaybackTransientItem;
         }
@@ -9857,6 +9874,7 @@ public class MainActivity extends FragmentActivity {
                 currentChannel == null ? "" : displayName(currentChannel),
                 profileTag(currentChannel),
                 overlayContextLabel(currentChannel),
+                overlayContextLogoUrl(currentChannel),
                 diagnostics,
                 formatPlaybackQualityCompact(diagnostics),
                 epgPair,
@@ -9870,7 +9888,8 @@ public class MainActivity extends FragmentActivity {
         }
         composeSurfaceRenderer.bindOverlayNowPlaying(
                 overlayNowPlayingComposeView,
-                buildOverlayNowPlayingModel()
+                buildOverlayNowPlayingModel(),
+                (imageView, logoUrl, label, widthDp, heightDp) -> bindChannelLogo(imageView, logoUrl, label, widthDp, heightDp)
         );
     }
 
@@ -9905,7 +9924,8 @@ public class MainActivity extends FragmentActivity {
                     } else {
                         bindChannelLogo(imageView, item.logoUrl, item.name, 38, 38);
                     }
-                }
+                },
+                (imageView, logoUrl, label, widthDp, heightDp) -> bindChannelLogo(imageView, logoUrl, label, widthDp, heightDp)
         );
     }
 
@@ -9928,6 +9948,43 @@ public class MainActivity extends FragmentActivity {
             return channel.group.trim();
         }
         return buildCurrentFilterLabel();
+    }
+
+    private String overlayContextLogoUrl(ChannelItem channel) {
+        ChannelFilter filter = selectedOverlayFilter();
+        if ((overlayNavigationState != null && overlayNavigationState.favoritesOnly)
+                || (filter != null && "favorites".equals(filter.key))) {
+            return "";
+        }
+        if (filter != null && filter.type == FILTER_CUSTOM_GROUP) {
+            String groupName = filter.groupName == null ? "" : filter.groupName.trim();
+            if (channel != null) {
+                String logo = channel.customGroupLogo(groupName);
+                if (!logo.isEmpty()) {
+                    return logo;
+                }
+            }
+            for (ChannelItem item : channels) {
+                if (item != null) {
+                    String logo = item.customGroupLogo(groupName);
+                    if (!logo.isEmpty()) {
+                        return logo;
+                    }
+                }
+            }
+            return "";
+        }
+        if (filter != null && filter.type == FILTER_PLATFORM) {
+            if (channel != null && channel.platformId == filter.platformId && channel.platformLogoUrl != null) {
+                return channel.platformLogoUrl.trim();
+            }
+            for (ChannelItem item : channels) {
+                if (item != null && item.platformId == filter.platformId && item.platformLogoUrl != null && !item.platformLogoUrl.trim().isEmpty()) {
+                    return item.platformLogoUrl.trim();
+                }
+            }
+        }
+        return channel == null || channel.platformLogoUrl == null ? "" : channel.platformLogoUrl.trim();
     }
 
     private ChannelFilter selectedOverlayFilter() {

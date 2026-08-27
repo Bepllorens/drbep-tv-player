@@ -12,6 +12,31 @@ import org.junit.Test;
 
 public class CatalogRepositoryTest {
     @Test
+    public void channelArtworkKeepsPlatformAndGroupLogosSeparate() {
+        ChannelItem item = liveChannel();
+        item.platformLogoUrl = "https://example.test/platform.png";
+        item.customGroupLogos.put("deportes", "https://example.test/sports.png");
+
+        assertEquals("https://example.test/platform.png", item.platformLogoUrl);
+        assertEquals("https://example.test/sports.png", item.customGroupLogo("Deportes"));
+        assertEquals("", item.customGroupLogo("Noticias"));
+    }
+
+    @Test
+    public void nowPlayingModelUsesLogoAndKeepsInitialsAsFallback() {
+        ChannelOverlayUi.NowPlayingModel withLogo = new ChannelOverlayUi.NowPlayingModel(
+                "Canal", "Programa", "Ruta", "1080p", true, "Recientes", "Movistar ISM", "https://example.test/movistar.png"
+        );
+        ChannelOverlayUi.NowPlayingModel withoutLogo = new ChannelOverlayUi.NowPlayingModel(
+                "Canal", "Programa", "Ruta", "1080p", true, "Recientes", "Grupo Deportes"
+        );
+
+        assertEquals("https://example.test/movistar.png", withLogo.contextLogoUrl);
+        assertEquals("", withoutLogo.contextLogoUrl);
+        assertFalse(withoutLogo.contextInitials.isEmpty());
+    }
+
+    @Test
     public void standaloneVodApiUsesPublicOfflineBaseUrl() {
         CatalogRepository repository = new CatalogRepository("https://fire.tvbep.com", null, true);
 

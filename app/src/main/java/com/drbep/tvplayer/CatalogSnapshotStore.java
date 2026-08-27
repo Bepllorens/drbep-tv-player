@@ -108,7 +108,7 @@ final class CatalogSnapshotStore {
     // Bump whenever a release learns a new catalog collection. Otherwise an APK
     // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
     // produced by an older parser (for example, before Plex VOD existed).
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 6;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 7;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -532,7 +532,7 @@ final class CatalogSnapshotStore {
                 if ((i & 127) == 0) {
                     throwIfInterrupted("lectura de VOD empezados cancelada");
                 }
-                ChannelItem channel = readChannel(in);
+                ChannelItem channel = readChannel(in, formatVersion);
                 if (channel != null && channel.isVod && requestedIds.contains(channel.id)) {
                     matches.add(channel);
                 }
@@ -1922,7 +1922,7 @@ final class CatalogSnapshotStore {
                 if ((i & 127) == 0) {
                     throwIfInterrupted("lectura de cache de catalogo cancelada");
                 }
-                channels.add(readChannel(in));
+                channels.add(readChannel(in, formatVersion));
             }
             if (formatVersion == 2 && liveStartup) {
                 copyFile(file, fullParsedCacheFile());
@@ -2089,9 +2089,19 @@ final class CatalogSnapshotStore {
         out.writeBoolean(channel.favorite);
         writeStr(out, channel.nowProgram);
         writeStr(out, channel.nextProgram);
+        writeStr(out, channel.platformLogoUrl);
+        Map<String, String> customGroupLogos = channel.customGroupLogos;
+        int customGroupLogoSize = customGroupLogos == null ? 0 : customGroupLogos.size();
+        out.writeInt(customGroupLogoSize);
+        if (customGroupLogos != null) {
+            for (Map.Entry<String, String> entry : customGroupLogos.entrySet()) {
+                writeStr(out, entry.getKey());
+                writeStr(out, entry.getValue());
+            }
+        }
     }
 
-    private ChannelItem readChannel(DataInputStream in) throws IOException {
+    private ChannelItem readChannel(DataInputStream in, int formatVersion) throws IOException {
         String id = readStr(in);
         String name = readStr(in);
         String tvgId = readStr(in);
@@ -2139,6 +2149,18 @@ final class CatalogSnapshotStore {
         boolean favorite = in.readBoolean();
         String nowProgram = readStr(in);
         String nextProgram = readStr(in);
+        String platformLogoUrl = "";
+        Map<String, String> customGroupLogos = new LinkedHashMap<>();
+        if (formatVersion >= 7) {
+            platformLogoUrl = readStr(in);
+            int customGroupLogoSize = in.readInt();
+            if (customGroupLogoSize < 0 || customGroupLogoSize > MAX_BINARY_CACHE_ITEMS) {
+                throw new IOException("customGroupLogos invalido=" + customGroupLogoSize);
+            }
+            for (int i = 0; i < customGroupLogoSize; i++) {
+                customGroupLogos.put(readStr(in), readStr(in));
+            }
+        }
         ChannelItem channel = new ChannelItem(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl,
                 originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups,
                 drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, vodDescription, vodYear,
@@ -2149,6 +2171,8 @@ final class CatalogSnapshotStore {
         channel.favorite = favorite;
         channel.nowProgram = nowProgram;
         channel.nextProgram = nextProgram;
+        channel.platformLogoUrl = platformLogoUrl;
+        channel.customGroupLogos.putAll(customGroupLogos);
         return channel;
     }
 

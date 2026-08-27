@@ -15,10 +15,15 @@ public final class ChannelOverlayUi {
         public final boolean qualityVisible;
         public final String recent;
         public final String contextLabel;
+        public final String contextLogoUrl;
         public final String contextInitials;
         public final int contextAccentColor;
 
         public NowPlayingModel(String title, String meta, String route, String quality, boolean qualityVisible, String recent, String contextLabel) {
+            this(title, meta, route, quality, qualityVisible, recent, contextLabel, "");
+        }
+
+        public NowPlayingModel(String title, String meta, String route, String quality, boolean qualityVisible, String recent, String contextLabel, String contextLogoUrl) {
             this.title = title;
             this.meta = meta;
             this.route = route;
@@ -26,6 +31,7 @@ public final class ChannelOverlayUi {
             this.qualityVisible = qualityVisible;
             this.recent = recent;
             this.contextLabel = contextLabel == null ? "" : contextLabel.trim();
+            this.contextLogoUrl = contextLogoUrl == null ? "" : contextLogoUrl.trim();
             this.contextInitials = buildContextInitials(this.contextLabel);
             this.contextAccentColor = buildContextAccentColor(this.contextLabel);
         }
@@ -40,6 +46,21 @@ public final class ChannelOverlayUi {
             String channelTitle,
             String profileTag,
             String contextLabel,
+            PlayerController.PlaybackDiagnostics diagnostics,
+            String compactQualityLabel,
+            EpgRepository.EpgProgramPair epgPair,
+            List<RecentChannelsStore.RecentChannelItem> recentItems
+    ) {
+        return buildNowPlayingModel(context, currentChannel, channelTitle, profileTag, contextLabel, "", diagnostics, compactQualityLabel, epgPair, recentItems);
+    }
+
+    static NowPlayingModel buildNowPlayingModel(
+            Context context,
+            ChannelItem currentChannel,
+            String channelTitle,
+            String profileTag,
+            String contextLabel,
+            String contextLogoUrl,
             PlayerController.PlaybackDiagnostics diagnostics,
             String compactQualityLabel,
             EpgRepository.EpgProgramPair epgPair,
@@ -72,7 +93,7 @@ public final class ChannelOverlayUi {
         }
 
         String recent = buildRecentSummary(context, recentItems);
-        return new NowPlayingModel(title, meta, route, quality, qualityVisible, recent, contextLabel);
+        return new NowPlayingModel(title, meta, route, quality, qualityVisible, recent, contextLabel, contextLogoUrl);
     }
 
     static String buildQuickCountLabel(Context context, int labelRes, int count) {

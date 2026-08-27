@@ -332,6 +332,19 @@ final class CatalogRepository {
                     directPlayback,
                     playbackProfile
             );
+            item.platformLogoUrl = safeCatalogUrl(channel.optString("platform_logo", ""));
+            JSONObject customGroupLogos = channel.optJSONObject("custom_group_logos");
+            if (customGroupLogos != null) {
+                java.util.Iterator<String> logoKeys = customGroupLogos.keys();
+                while (logoKeys.hasNext()) {
+                    String rawGroupName = logoKeys.next();
+                    String groupName = safeCatalogText(rawGroupName);
+                    String groupLogo = safeCatalogUrl(customGroupLogos.optString(rawGroupName, ""));
+                    if (!groupName.isEmpty() && !groupLogo.isEmpty()) {
+                        item.customGroupLogos.put(groupName.toLowerCase(Locale.ROOT), groupLogo);
+                    }
+                }
+            }
             item.nowProgram = safeCatalogText(channel.optString("now_program", ""));
             item.nextProgram = safeCatalogText(channel.optString("next_program", ""));
             JSONObject groupOrder = channel.optJSONObject("group_order");
@@ -1758,6 +1771,8 @@ final class ChannelItem implements Serializable {
     final String vodDescription;
     final String vodYear;
     final long vodDurationSeconds;
+    String platformLogoUrl;
+    Map<String, String> customGroupLogos;
     boolean favorite;
     String nowProgram;
     String nextProgram;
@@ -1798,6 +1813,8 @@ final class ChannelItem implements Serializable {
         this.vodDescription = safeText(vodDescription);
         this.vodYear = safeText(vodYear);
         this.vodDurationSeconds = Math.max(0L, vodDurationSeconds);
+        this.platformLogoUrl = "";
+        this.customGroupLogos = new LinkedHashMap<>();
         this.nowProgram = "";
         this.nextProgram = "";
     }
@@ -1808,6 +1825,14 @@ final class ChannelItem implements Serializable {
 
     private static String safeUrl(String value) {
         return safeTrimBounded(value, 8192);
+    }
+
+    String customGroupLogo(String groupName) {
+        if (customGroupLogos == null || groupName == null) {
+            return "";
+        }
+        String logo = customGroupLogos.get(groupName.trim().toLowerCase(Locale.ROOT));
+        return logo == null ? "" : logo.trim();
     }
 
     private static String safeTrimBounded(String value, int maxChars) {

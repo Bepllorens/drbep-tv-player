@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 438
-        versionName "2.0.438-emergency-vps-failover"
+        versionCode 439
+        versionName "2.0.439-offline-overlay-logos"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

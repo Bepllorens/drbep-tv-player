@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,19 +26,22 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.ImageView
+import androidx.appcompat.widget.AppCompatImageView
+import androidx.core.content.ContextCompat
 
 object OverlayNowPlayingComposeBinder {
     @JvmStatic
-    fun bind(composeView: ComposeView?, model: ChannelOverlayUi.NowPlayingModel) {
+    fun bind(composeView: ComposeView?, model: ChannelOverlayUi.NowPlayingModel, logoBinder: ZapLogoBinder) {
         if (composeView == null) return
         composeView.setStableContent("overlay-now-playing", model) { currentModel ->
-            OverlayNowPlayingCard(model = currentModel)
+            OverlayNowPlayingCard(model = currentModel, logoBinder = logoBinder)
         }
     }
 }
 
 @Composable
-private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
+private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoBinder: ZapLogoBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     Column(
         modifier = Modifier
@@ -67,7 +71,25 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
                         .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
                         .padding(start = 3.dp, end = 8.dp, top = 3.dp, bottom = 3.dp)
                 ) {
-                    if (model.contextInitials.isNotBlank()) {
+                    if (model.contextLogoUrl.isNotBlank()) {
+                        AndroidView(
+                            modifier = Modifier.size(if (compact) 19.dp else 22.dp),
+                            factory = { context ->
+                                AppCompatImageView(context).apply {
+                                    scaleType = ImageView.ScaleType.FIT_CENTER
+                                    background = ContextCompat.getDrawable(context, R.drawable.channel_logo_plate_bg)
+                                    contentDescription = model.contextLabel
+                                    setPadding(1, 1, 1, 1)
+                                }
+                            },
+                            update = { imageView ->
+                                val size = if (compact) 19 else 22
+                                imageView.contentDescription = model.contextLabel
+                                logoBinder.bind(imageView, model.contextLogoUrl, model.contextLabel, size, size)
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                    } else if (model.contextInitials.isNotBlank()) {
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier

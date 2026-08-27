@@ -19,8 +19,8 @@ final class OfflineComposeSurfaceRenderer {
         OverlayControlsComposeBinder.bind(view, model);
     }
 
-    void bindOverlayNowPlaying(ComposeView view, ChannelOverlayUi.NowPlayingModel model) {
-        OverlayNowPlayingComposeBinder.bind(view, model);
+    void bindOverlayNowPlaying(ComposeView view, ChannelOverlayUi.NowPlayingModel model, ZapLogoBinder logoBinder) {
+        OverlayNowPlayingComposeBinder.bind(view, model, logoBinder);
     }
 
     void bindChannelOverlaySurface(
@@ -28,12 +28,13 @@ final class OfflineComposeSurfaceRenderer {
             ComposeView controlsView,
             ComposeView listView,
             ChannelOverlaySurfaceUiModel model,
-            OverlayChannelImageBinder imageBinder
+            OverlayChannelImageBinder imageBinder,
+            ZapLogoBinder contextLogoBinder
     ) {
         if (model == null) {
             return;
         }
-        bindOverlayNowPlaying(nowPlayingView, model.nowPlaying);
+        bindOverlayNowPlaying(nowPlayingView, model.nowPlaying, contextLogoBinder);
         bindOverlayControls(controlsView, model.controls);
         bindOverlayChannelList(listView, model.channelList, imageBinder);
     }

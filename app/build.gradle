@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 452
-        versionName "2.0.452-beta-playback-architecture"
+        versionCode 453
+        versionName "2.0.453-beta-media-session-pip"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {
@@ -177,6 +177,7 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer-hls:1.10.1'
     implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.10.1'
     implementation 'androidx.media3:media3-ui:1.10.1'
+    implementation 'androidx.media3:media3-session:1.10.1'
     implementation 'org.videolan.android:libvlc-all:3.7.5'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'

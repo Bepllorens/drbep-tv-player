@@ -18,9 +18,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
 import androidx.media3.common.C;
+import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.Format;
 import androidx.media3.common.ColorInfo;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MediaMetadata;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
@@ -49,6 +51,7 @@ import androidx.media3.exoplayer.drm.MediaDrmCallbackException;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.session.MediaSession;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -349,6 +352,7 @@ final class PlayerController {
     private DefaultTrackSelector trackSelector;
     private DefaultHttpDataSource.Factory httpDataSourceFactory;
     private ExoPlayer player;
+    private MediaSession mediaSession;
     private VlcDirectPlayController vlcDirectPlayController;
     private PlaybackRequest currentRequest;
     private StreamInfo currentStreamInfo;
@@ -397,6 +401,8 @@ final class PlayerController {
     private boolean pendingStallRecovery;
     private boolean attemptedVlcAudioDecoderFallback;
     private final PlaybackNetworkRecoveryCoordinator networkRecovery = new PlaybackNetworkRecoveryCoordinator();
+    private final PlaybackAudioFocusState audioFocusState = new PlaybackAudioFocusState();
+    private final PlaybackBackgroundResumeState backgroundResumeState = new PlaybackBackgroundResumeState();
     private final Runnable networkRecoveryRunnable;
     private final Runnable forceLiveEdgeRunnable = () -> {
         if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
@@ -486,6 +492,14 @@ final class PlayerController {
                         .setDrmSessionManagerProvider(createDrmSessionManagerProvider()))
                 .setSeekBackIncrementMs(TIMESHIFT_SEEK_STEP_MS)
                 .setSeekForwardIncrementMs(TIMESHIFT_SEEK_STEP_MS)
+                .build();
+        player.setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build(), true);
+        player.setHandleAudioBecomingNoisy(true);
+        mediaSession = new MediaSession.Builder(context, player)
+                .setId("drbep-offline-playback")
                 .build();
         playerView.setPlayer(player);
         playerView.setVisibility(View.VISIBLE);
@@ -601,6 +615,26 @@ final class PlayerController {
                         pendingAutoRecoveryReason = "";
                     }
                 }
+            }
+
+            @Override
+            public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+                audioFocusState.onPlayWhenReadyChanged(
+                        playWhenReady,
+                        reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+                );
+                backgroundResumeState.onPlayWhenReadyChanged(
+                        playWhenReady,
+                        !playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST,
+                        !playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
+                );
+                if (player == null || player.getPlaybackState() != Player.STATE_READY) {
+                    return;
+                }
+                transitionPlaybackPhase(playWhenReady && firstFrameRenderedForCurrentItem ? "playing" : "paused");
+                Log.w(TAG, "playWhenReady changed=" + playWhenReady
+                        + " reason=" + reason
+                        + " channel=" + describeRequest(currentRequest));
             }
 
             @Override
@@ -1698,6 +1732,9 @@ final class PlayerController {
     }
 
     void setPlayWhenReady(boolean playWhenReady) {
+        if (!playWhenReady) {
+            backgroundResumeState.onExplicitPauseRequested();
+        }
         if (isVlcDirectPlayActive()) {
             vlcDirectPlayController.setPlayWhenReady(playWhenReady);
             return;
@@ -1705,6 +1742,32 @@ final class PlayerController {
         if (player != null) {
             player.setPlayWhenReady(playWhenReady);
         }
+    }
+
+    void resumeAfterTransientAudioFocusLoss() {
+        if (player != null && audioFocusState.consumeResumeRequest(player.getMediaItemCount() > 0)) {
+            player.play();
+            Log.w(TAG, "resuming playback after transient audio focus loss channel=" + describeRequest(currentRequest));
+        }
+    }
+
+    void onHostPaused() {
+        backgroundResumeState.onHostPaused(isPlaying());
+    }
+
+    void resumeAfterHostResume() {
+        boolean hasPlayableItem = isVlcDirectPlayActive()
+                || player != null && player.getMediaItemCount() > 0;
+        if (backgroundResumeState.consumeResumeRequest(hasPlayableItem)) {
+            if (isVlcDirectPlayActive()) {
+                vlcDirectPlayController.setPlayWhenReady(true);
+            } else if (player != null) {
+                player.play();
+            }
+            Log.w(TAG, "resuming playback after returning from background channel=" + describeRequest(currentRequest));
+            return;
+        }
+        resumeAfterTransientAudioFocusLoss();
     }
 
     void togglePlayback() {
@@ -1718,6 +1781,9 @@ final class PlayerController {
             return;
         }
         boolean playing = player.isPlaying();
+        if (playing) {
+            backgroundResumeState.onExplicitPauseRequested();
+        }
         player.setPlayWhenReady(!playing);
         if (isTimeshiftAvailable()) {
             host.showStatus(getTimeshiftStatusLabel());
@@ -1894,7 +1960,10 @@ final class PlayerController {
                 + " resumeMs=" + resumePositionMs);
 
         String mimeType = PlaybackRouteResolver.inferMimeType(recordingUrl);
-        MediaItem.Builder builder = new MediaItem.Builder().setUri(recordingUrl);
+        MediaItem.Builder builder = new MediaItem.Builder()
+                .setUri(recordingUrl)
+                .setMediaId("recording:" + safeString(recordingName))
+                .setMediaMetadata(mediaMetadata(safeString(recordingName), context.getString(R.string.title_recordings)));
         if (mimeType != null && !mimeType.trim().isEmpty()) {
             builder.setMimeType(mimeType);
         }
@@ -1960,6 +2029,10 @@ final class PlayerController {
             activePlaybackController.clear();
         }
         if (player != null) {
+            if (mediaSession != null) {
+                mediaSession.release();
+                mediaSession = null;
+            }
             player.release();
             player = null;
         }
@@ -2191,7 +2264,10 @@ final class PlayerController {
         applyVideoTrackPolicy(request, decision);
 
         String mediaTargetUrl = appendOfflineAccessToken(decision.targetUrl);
-        MediaItem.Builder builder = new MediaItem.Builder().setUri(mediaTargetUrl);
+        MediaItem.Builder builder = new MediaItem.Builder()
+                .setUri(mediaTargetUrl)
+                .setMediaId(safeString(request.channelId))
+                .setMediaMetadata(mediaMetadata(safeString(request.channelName), safeString(request.platformName)));
         if (isMovistarIsmHlsDecision(decision)) {
             builder.setLiveConfiguration(new MediaItem.LiveConfiguration.Builder()
                     .setTargetOffsetMs(MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS)
@@ -2279,6 +2355,9 @@ final class PlayerController {
             player.seekTo(resumePositionMs);
         }
         player.prepare();
+        if (!autoPlay) {
+            backgroundResumeState.onExplicitPauseRequested();
+        }
         player.setPlayWhenReady(autoPlay);
 
     }
@@ -2290,6 +2369,14 @@ final class PlayerController {
 
     static int playbackReadTimeoutMs(PlaybackRequest request) {
         return request != null && request.vod ? VOD_PLAYBACK_READ_TIMEOUT_MS : PLAYBACK_READ_TIMEOUT_MS;
+    }
+
+    private static MediaMetadata mediaMetadata(String title, String subtitle) {
+        return new MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(subtitle)
+                .setIsPlayable(true)
+                .build();
     }
 
     private int beginPlaybackAttempt(PlaybackRequest request, String origin) {

@@ -292,6 +292,7 @@ public class MainActivity extends FragmentActivity {
 
     private PlayerController playerController;
     private NetworkConnectivityMonitor networkConnectivityMonitor;
+    private boolean enteringPictureInPicture;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService interactiveExecutor = Executors.newCachedThreadPool();
@@ -1018,6 +1019,9 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (playerController != null) {
+            playerController.resumeAfterHostResume();
+        }
         if (backendStartupReleased) {
             maybeCheckAppUpdateOnResume();
             maybeRefreshOfflineCatalogOnResume();
@@ -1040,13 +1044,16 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onPause() {
+        if (playerController != null) {
+            playerController.onHostPaused();
+        }
         uiHandler.removeCallbacks(remoteCommandPollRunnable);
         if (remoteCommandEventClient != null) {
             remoteCommandEventClient.stop();
         }
         // Playback continues while Android places the video in PiP, so keep the
         // monitoring session alive instead of reporting a false stop event.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode()) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || (!isInPictureInPictureMode() && !enteringPictureInPicture)) {
             stopPlaybackHeartbeat("stop");
         }
         super.onPause();
@@ -1096,17 +1103,39 @@ public class MainActivity extends FragmentActivity {
         if (touchControlsBar != null) {
             touchControlsBar.setVisibility(View.GONE);
         }
-        PictureInPictureParams params = new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(16, 9))
-                .build();
-        if (!enterPictureInPictureMode(params)) {
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null ? null : playerController.getPlaybackDiagnostics();
+        PictureInPictureAspectRatioPolicy.Ratio ratio = PictureInPictureAspectRatioPolicy.resolve(
+                diagnostics == null ? 0 : diagnostics.videoWidth,
+                diagnostics == null ? 0 : diagnostics.videoHeight
+        );
+        PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(ratio.width, ratio.height));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setSeamlessResizeEnabled(true);
+        }
+        enteringPictureInPicture = true;
+        if (!enterPictureInPictureMode(builder.build())) {
+            enteringPictureInPicture = false;
             showStatus(getString(R.string.status_pip_unavailable));
         }
     }
 
     @Override
+    public void onUserLeaveHint() {
+        if (touchDeviceMode
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                && !isInPictureInPictureMode()
+                && playerController != null
+                && playerController.isPlaying()) {
+            enterVideoPictureInPicture();
+        }
+        super.onUserLeaveHint();
+    }
+
+    @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        enteringPictureInPicture = false;
         if (!isInPictureInPictureMode && touchDeviceMode) {
             showTouchControlsTemporarily();
         }

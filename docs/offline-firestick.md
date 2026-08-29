@@ -87,6 +87,17 @@ REPORT_OUTPUT=/tmp/drbep-offline-smoke.json \
 scripts/offline_smoke_test.sh 192.168.93.189:5555
 ```
 
+La multipantalla usa varios reproductores simultaneos y tiene una puerta ADB
+especifica. El script navega desde el hub al Centro del dispositivo, abre dos
+ventanas, exige primer frame y `READY` en ambas y valida la recuperacion del
+canal principal:
+
+```bash
+SCREENSHOT_OUTPUT=/tmp/drbep-multiview.png \
+  LOG_OUTPUT=/tmp/drbep-multiview.log \
+  scripts/offline_multiview_smoke_test.sh 192.168.93.189:5555
+```
+
 El informe JSON no incluye URLs ni tokens. Registra version, dispositivo, deteccion del proceso, memoria PSS, conservacion del proceso en segundo plano, tamano de catalogo, primer frame de arranque y zapping, buffering, errores y estado de red. El log detallado se guarda aparte para diagnostico local y debe tratarse como dato sensible.
 
 ## Pendiente

@@ -442,7 +442,10 @@ final class PlayerController {
 
     void initialize() {
         installPlaybackCrashGuard();
-        activePlaybackController = new WeakReference<>(this);
+        boolean multiViewPlayback = host.isMultiViewPlayback();
+        if (shouldRegisterSystemMediaControls(multiViewPlayback)) {
+            activePlaybackController = new WeakReference<>(this);
+        }
         trackSelector = new DefaultTrackSelector(context);
         DefaultTrackSelector.Parameters.Builder initialTrackParameters = trackSelector.buildUponParameters()
                 .setForceHighestSupportedBitrate(PlaybackQualityPolicy.forceHighestBitrate(host.playbackQualityMode()))
@@ -496,11 +499,13 @@ final class PlayerController {
         player.setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                .build(), true);
-        player.setHandleAudioBecomingNoisy(true);
-        mediaSession = new MediaSession.Builder(context, player)
-                .setId("drbep-offline-playback")
-                .build();
+                .build(), shouldHandleSystemAudioFocus(multiViewPlayback));
+        player.setHandleAudioBecomingNoisy(!multiViewPlayback);
+        if (shouldRegisterSystemMediaControls(multiViewPlayback)) {
+            mediaSession = new MediaSession.Builder(context, player)
+                    .setId("drbep-offline-playback")
+                    .build();
+        }
         playerView.setPlayer(player);
         playerView.setVisibility(View.VISIBLE);
         playerView.setUseController(false);
@@ -673,6 +678,14 @@ final class PlayerController {
                 updateSelectedPlaybackFormats();
             }
         });
+    }
+
+    static boolean shouldRegisterSystemMediaControls(boolean multiViewPlayback) {
+        return !multiViewPlayback;
+    }
+
+    static boolean shouldHandleSystemAudioFocus(boolean multiViewPlayback) {
+        return !multiViewPlayback;
     }
 
     private VlcDirectPlayController ensureVlcDirectPlayController() {

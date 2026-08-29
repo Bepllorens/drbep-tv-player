@@ -9821,10 +9821,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshMultiViewHeader() {
+        int capacity = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
         MultiViewHeaderComposeBinder.bind(
                 multiViewHeaderComposeView,
                 new MultiViewHeaderUiModel(
-                        getString(R.string.multiview_title),
+                        getString(R.string.multiview_title_capacity, multiViewChannels.size(), capacity),
                         touchDeviceMode ? getString(R.string.multiview_hint_touch) : getString(R.string.multiview_hint_tv),
                         getString(R.string.multiview_close),
                         this::closeMultiView
@@ -13806,6 +13807,11 @@ public class MainActivity extends FragmentActivity {
                     .put("device_manufacturer", safeDeviceBuildValue(Build.MANUFACTURER))
                     .put("device_model", safeDeviceBuildValue(Build.MODEL))
                     .put("device_product", safeDeviceBuildValue(Build.PRODUCT))
+                    .put("handoff_receive_ready", catalogSnapshotStore != null
+                            && catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL).hasAccessToken)
+                    .put("handoff_realtime_commands", remoteCommandEventClient != null && remoteCommandEventClient.isRunning())
+                    .put("handoff_content_types", "live,vod")
+                    .put("multiview_capacity", devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams)
                     .put("update_channel", currentUpdateChannel())
                     .put("last_app_update_check_ms", lastAppUpdateCheckMs)
                     .put("last_app_update_error", lastAppUpdateError == null ? "" : lastAppUpdateError)
@@ -13886,7 +13892,10 @@ public class MainActivity extends FragmentActivity {
                     .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
                     .put("playback_health_level", playbackHealth.level)
                     .put("playback_health_summary", playbackHealth.summary)
-                    .put("playback_rebuffer_ratio", playbackHealth.rebufferRatio);
+                    .put("playback_rebuffer_ratio", playbackHealth.rebufferRatio)
+                    .put("playback_position_ms", diagnostics == null ? 0L : diagnostics.positionMs)
+                    .put("playback_playing", diagnostics != null && diagnostics.playing)
+                    .put("playback_session_state", diagnostics == null ? "" : diagnostics.sessionState);
             if (diagnostics != null) {
                 extra.put("playback_state", diagnostics.playbackState == null ? "" : diagnostics.playbackState)
                         .put("playback_phase", diagnostics.playbackPhase == null ? "" : diagnostics.playbackPhase)
@@ -16401,7 +16410,15 @@ public class MainActivity extends FragmentActivity {
             shortcuts.add(new StartupHomeHubUiModel.Shortcut("●", getString(R.string.quick_hub_recordings), getString(R.string.startup_home_recordings_subtitle, completedCount, scheduledCount), open.apply(this::openRecordingsBrowser)));
         }
         shortcuts.add(new StartupHomeHubUiModel.Shortcut("★", getString(R.string.quick_hub_favorites), getResources().getQuantityString(R.plurals.startup_home_favorites, buildFavoriteQuickChannels().size(), buildFavoriteQuickChannels().size()), open.apply(this::showFavoriteChannelsQuickDialog)));
-        shortcuts.add(new StartupHomeHubUiModel.Shortcut("▦", getString(R.string.startup_home_multiview), getString(R.string.startup_home_multiview_subtitle), open.apply(this::openMultiView)));
+        int multiviewCapacity = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
+        shortcuts.add(new StartupHomeHubUiModel.Shortcut("▦", getString(R.string.startup_home_multiview), getString(R.string.startup_home_multiview_subtitle, multiviewCapacity), open.apply(this::openMultiView)));
+        DeviceExperiencePolicy.Result deviceExperience = currentDeviceExperience();
+        shortcuts.add(new StartupHomeHubUiModel.Shortcut(
+                "◎",
+                getString(R.string.startup_home_device),
+                getString(R.string.startup_home_device_subtitle, "ok".equals(deviceExperience.level) ? "Listo" : "Revisar", multiviewCapacity),
+                open.apply(this::showDeviceExperienceDialog)
+        ));
 
         String clock = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
         String summary = getString(R.string.startup_home_catalog_summary, tvCount, vodCount);
@@ -16418,6 +16435,83 @@ public class MainActivity extends FragmentActivity {
                 open.apply(this::showGlobalSearchDialog),
                 open.apply(() -> showStartupHubSettingsDialog(state)),
                 close
+        );
+    }
+
+    private DeviceExperiencePolicy.Result currentDeviceExperience() {
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
+                ? null
+                : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        int capacity = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
+        boolean lowRam = devicePerformanceProfile != null && devicePerformanceProfile.lowRam;
+        return DeviceExperiencePolicy.evaluate(
+                BuildConfig.STANDALONE_MODE,
+                status != null && status.hasAccessToken,
+                status != null && status.available,
+                status != null && status.expired,
+                remoteCommandEventClient != null && remoteCommandEventClient.isRunning(),
+                status == null ? channels.size() : status.channelCount,
+                status == null ? countItemsForQuickTarget("vod") : status.vodCount,
+                capacity,
+                lowRam
+        );
+    }
+
+    private void showDeviceExperienceDialog() {
+        DeviceExperiencePolicy.Result experience = currentDeviceExperience();
+        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore == null
+                ? null
+                : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
+        PlayerController.PlaybackDiagnostics diagnostics = playerController == null
+                ? null
+                : playerController.getPlaybackDiagnostics();
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        int capacity = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
+        int memoryClassMb = devicePerformanceProfile == null ? 0 : devicePerformanceProfile.memoryClassMb;
+
+        List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+        rows.add(new PlaybackDiagnosticsRowUiModel("Estado", "Resultado", experience.headline, experience.level));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Dispositivo", "Equipo", buildReadableDeviceName(), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Dispositivo", "Aplicacion", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")", ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Recepcion remota", "Estado", experience.remoteSummary, experience.handoffReady ? "ok" : "warn"));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Recepcion remota", "Contenido", "Canales en directo y VOD con posicion", experience.handoffReady ? "ok" : ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel(
+                "Recepcion remota",
+                "Reproduccion actual",
+                current == null ? "Ninguna" : displayName(current) + (diagnostics == null ? "" : " · " + formatPlaybackPosition(diagnostics.positionMs)),
+                current == null ? "" : "ok"
+        ));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Catalogo", "Contenido", experience.catalogSummary, status != null && !status.expired ? "ok" : "warn"));
+        rows.add(new PlaybackDiagnosticsRowUiModel(
+                "Catalogo",
+                "Actualizado",
+                status == null || status.updatedAtMs <= 0L ? getString(R.string.diagnostics_value_unknown) : formatDateTime(status.updatedAtMs),
+                status != null && status.expired ? "warn" : ""
+        ));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Capacidad", "Multipantalla", experience.capacitySummary, "ok"));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Capacidad", "Memoria asignada", memoryClassMb <= 0 ? getString(R.string.diagnostics_value_unknown) : memoryClassMb + " MB", ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Personalizacion", "Continuar VOD", String.valueOf(buildVodContinueItems().size()), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Personalizacion", "Favoritos", String.valueOf(buildFavoriteQuickChannels().size()), ""));
+
+        List<String> notes = new ArrayList<>();
+        notes.add("Desde el panel o la Web App puedes enviar a este equipo un canal o un VOD y conservar su posicion.");
+        notes.add("El limite de multipantalla se calcula con la memoria real del dispositivo para evitar cortes.");
+
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.device_center_action_playback), false, this::showPlaybackDiagnosticsDialog));
+        actions.add(new TvMessageActionUiModel(getString(R.string.device_center_action_system), false, this::showOfflineSystemDialog));
+        if (capacity >= 2) {
+            actions.add(new TvMessageActionUiModel(getString(R.string.device_center_action_multiview), false, this::openMultiView));
+        }
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+
+        showStructuredStatusPanel(
+                getString(R.string.device_center_title),
+                buildReadableDeviceName(),
+                experience.headline + "\n" + experience.remoteSummary,
+                rows,
+                notes,
+                actions
         );
     }
 
@@ -16473,6 +16567,8 @@ public class MainActivity extends FragmentActivity {
         actions.add(this::disableStartupHub);
         options.add(getString(R.string.tools_menu_install_status));
         actions.add(this::showInstallStatusDialog);
+        options.add(getString(R.string.device_center_title));
+        actions.add(this::showDeviceExperienceDialog);
         options.add(getString(R.string.offline_catalog_action_refresh));
         actions.add(this::refreshOfflineCatalogFromSettings);
 

@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 456
-        versionName "2.0.456-beta-guided-playback-diagnostics"
+        versionCode 457
+        versionName "2.0.457-beta-device-experience-center"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

@@ -84,7 +84,13 @@
     <string name="startup_home_guide_subtitle">Qué están emitiendo</string>
     <string name="startup_home_recordings_subtitle">%1$d terminadas · %2$d programadas</string>
     <string name="startup_home_multiview">Multipantalla</string>
-    <string name="startup_home_multiview_subtitle">Hasta cuatro canales</string>
+    <string name="startup_home_multiview_subtitle">Hasta %1$d canales en este equipo</string>
+    <string name="startup_home_device">Este dispositivo</string>
+    <string name="startup_home_device_subtitle">%1$s · %2$d ventanas</string>
+    <string name="device_center_title">Centro del dispositivo</string>
+    <string name="device_center_action_system">Sistema</string>
+    <string name="device_center_action_playback">Diagnóstico</string>
+    <string name="device_center_action_multiview">Multipantalla</string>
     <string name="startup_home_catalog_summary">%1$d canales · %2$d títulos</string>
     <string name="startup_home_settings">Ajustes de inicio</string>
     <string name="playback_hud_expand_hint">OK · mostrar controles</string>
@@ -758,7 +764,8 @@
     <string name="touch_home_button_multi">Multi 4</string>
     <string name="touch_home_section_library">Biblioteca</string>
     <string name="touch_home_section_access">Accesos rapidos</string>
-    <string name="multiview_title">Multiview 2x2</string>
+    <string name="multiview_title">Multiview</string>
+    <string name="multiview_title_capacity">Multiview · %1$d de %2$d ventanas</string>
     <string name="multiview_hint_touch">Toca una ventana para audio. Manten pulsado para cambiar canal</string>
     <string name="multiview_hint_tv">Flechas = mover · OK = audio/full · MENU = cambiar canal</string>
     <string name="multiview_select_channel_title">Elegir canal para ventana</string>

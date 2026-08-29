@@ -6418,23 +6418,25 @@ public class MainActivity extends FragmentActivity {
         if (item == null) {
             return;
         }
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        if (item.playable) {
+            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_play), false, this::playSelectedRecording));
+            if (getRecordingResumePosition(item.id) > 30_000L) {
+                actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_clear_progress), false, () -> clearSelectedRecordingProgress(item)));
+            }
+            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_delete), true, () -> confirmDeleteCompletedRecording(item)));
+        } else {
+            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_edit_time), false, this::showScheduledRecordingEditDialog));
+            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_cancel), true, this::cancelSelectedScheduledRecording));
+        }
+        actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_more), false, () -> showRecordingManagementActionsDialog(item)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
+        showTvMessagePanel(buildRecordingTitle(item), buildRecordingMeta(item), actions, null);
+    }
+
+    private void showRecordingManagementActionsDialog(RecordingsRepository.RecordingItem item) {
         List<String> options = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
-        if (item.playable) {
-            options.add(getString(R.string.recording_action_play));
-            actions.add(this::playSelectedRecording);
-            if (getRecordingResumePosition(item.id) > 30_000L) {
-                options.add(getString(R.string.recording_action_clear_progress));
-                actions.add(() -> clearSelectedRecordingProgress(item));
-            }
-            options.add(getString(R.string.recording_action_delete));
-            actions.add(() -> confirmDeleteCompletedRecording(item));
-        } else {
-            options.add(getString(R.string.recording_action_edit_time));
-            actions.add(this::showScheduledRecordingEditDialog);
-            options.add(getString(R.string.recording_action_cancel));
-            actions.add(this::cancelSelectedScheduledRecording);
-        }
         options.add(getString(R.string.recording_action_refresh));
         actions.add(this::refreshRecordingsPanel);
         options.add(getString(recordingsPanelController.isAutoRefreshEnabled() ? R.string.recording_action_auto_refresh_on : R.string.recording_action_auto_refresh_off));
@@ -6479,7 +6481,7 @@ public class MainActivity extends FragmentActivity {
         showStatus(getString(R.string.status_deleting_recording));
         ioExecutor.execute(() -> {
             try {
-                recordingsRepository.deleteCompletedRecording(item.recordingId);
+                recordingsRepository.deleteCompletedRecordings(item.relatedRecordingIds);
                 postUiIfAlive(() -> {
                     clearRecordingResumePosition(item.id);
                     showStatus(getString(R.string.status_recording_deleted));

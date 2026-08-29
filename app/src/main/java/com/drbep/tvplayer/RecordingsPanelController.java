@@ -284,13 +284,11 @@ final class RecordingsPanelController {
             }
 
             @Override
-            public void selectAndPlay(int position, RecordingsRepository.RecordingItem item, String basePath) {
+            public void selectAndOpenActions(int position) {
                 recordingsController.selectIndex(position);
                 pendingScrollIndex = position;
                 refreshSurface();
-                if (item != null) {
-                    host.playRecording(item, basePath);
-                }
+                host.showRecordingActionsDialog();
             }
         });
     }

@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 459
-        versionName "2.0.459-beta-recording-delete-menu"
+        versionCode 460
+        versionName "2.0.460-beta-recordings-library"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

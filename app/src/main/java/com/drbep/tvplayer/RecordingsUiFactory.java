@@ -23,7 +23,7 @@ final class RecordingsUiFactory {
         int pendingScrollIndex();
         void switchMode(boolean scheduledMode);
         void refresh();
-        void selectAndPlay(int position, RecordingsRepository.RecordingItem item, String basePath);
+        void selectAndOpenActions(int position);
     }
 
     interface PresentationHost {
@@ -99,7 +99,6 @@ final class RecordingsUiFactory {
             for (int i = 0; i < result.items.size(); i++) {
                 final int position = i;
                 final RecordingsRepository.RecordingItem item = result.items.get(i);
-                final String basePath = result.basePath;
                 items.add(new RecordingListRowUiModel(
                         host.title(item),
                         host.meta(item),
@@ -108,7 +107,7 @@ final class RecordingsUiFactory {
                         host.statusBadgeColor(item),
                         item == null ? "" : item.poster,
                         position == host.selectedIndex(),
-                        () -> host.selectAndPlay(position, item, basePath)
+                        () -> host.selectAndOpenActions(position)
                 ));
             }
         }

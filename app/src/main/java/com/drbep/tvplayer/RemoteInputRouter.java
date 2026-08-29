@@ -566,7 +566,7 @@ final class RemoteInputRouter {
             if (host.activateRecordingsHeaderFocus()) {
                 return true;
             }
-            host.playSelectedRecording();
+            host.showRecordingActionsDialog();
             return true;
         }
         if (host.isTouchControlsVisible() && !host.isTouchControlsExpanded()) {

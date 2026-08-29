@@ -199,9 +199,9 @@
     <string name="title_recordings_visual">Grabaciones recientes</string>
     <string name="title_recordings_completed">Grabaciones completadas</string>
     <string name="title_recordings_scheduled">Grabaciones programadas</string>
-    <string name="recordings_panel_hint">BACK cierra  ·  IZQ/DER cambia vista  ·  MENU acciones/refrescar</string>
+    <string name="recordings_panel_hint">OK abre la ficha  ·  BACK cierra  ·  IZQ/DER cambia vista</string>
     <string name="recordings_panel_hint_touch">Toca vista, refresca o una grabacion para abrir acciones</string>
-    <string name="recordings_panel_action_hint">OK reproduce  ·  MENU acciones  ·  ARRIBA/ABAJO navega</string>
+    <string name="recordings_panel_action_hint">OK abre la ficha  ·  ARRIBA/ABAJO navega</string>
     <string name="recordings_panel_action_hint_scheduled">OK detalle  ·  MENU acciones  ·  ARRIBA/ABAJO navega</string>
     <string name="recordings_panel_auto_refresh_on">Auto refresco ON</string>
     <string name="recordings_panel_auto_refresh_off">Auto refresco OFF</string>
@@ -234,6 +234,7 @@
     <string name="recording_action_switch_scheduled">Ver programadas</string>
     <string name="recording_action_clear_progress">Limpiar progreso guardado</string>
     <string name="recording_action_delete">Eliminar grabacion</string>
+    <string name="recording_action_more">Mas opciones</string>
     <string name="recording_action_delete_confirm">Eliminar definitivamente</string>
     <string name="recording_action_filter_channel">Filtrar canal: %1$s</string>
     <string name="recording_action_filter_current_channel">Filtrar canal actual: %1$s</string>

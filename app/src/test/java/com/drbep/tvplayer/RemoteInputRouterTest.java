@@ -42,6 +42,17 @@ public class RemoteInputRouterTest {
     }
 
     @Test
+    public void menuOpensActionsForSelectedRecording() {
+        FakeHost host = new FakeHost();
+        host.recordingsVisible = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU, 0, 0));
+
+        assertEquals("recordings:actions", host.lastAction);
+    }
+
+    @Test
     public void dpadLeftRightMoveRecordingsHeaderFocus() {
         FakeHost host = new FakeHost();
         host.recordingsVisible = true;

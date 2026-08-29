@@ -27,8 +27,13 @@ final class RecordingsRepository {
         final String startTime;
         final String endTime;
         final boolean playable;
+        final long recordingId;
 
         RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable) {
+            this(id, name, path, size, modified, channelName, programTitle, poster, status, startTime, endTime, playable, 0L);
+        }
+
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable, long recordingId) {
             this.id = id;
             this.name = name;
             this.path = path;
@@ -41,6 +46,7 @@ final class RecordingsRepository {
             this.startTime = startTime;
             this.endTime = endTime;
             this.playable = playable;
+            this.recordingId = recordingId;
         }
     }
 
@@ -79,7 +85,10 @@ final class RecordingsRepository {
                 "cargando grabaciones"
         );
         String basePath = body.optString("path", "");
-        JSONArray files = body.optJSONArray("files");
+        return new RecordingsResult(basePath, parseCompletedItems(body.optJSONArray("files")), false);
+    }
+
+    static List<RecordingItem> parseCompletedItems(JSONArray files) {
         List<RecordingItem> items = new ArrayList<>();
         if (files != null) {
             for (int i = 0; i < files.length(); i++) {
@@ -101,11 +110,12 @@ final class RecordingsRepository {
                         "completed",
                         "",
                         "",
-                        true
+                        true,
+                        file.optLong("recording_id", 0L)
                 ));
             }
         }
-        return new RecordingsResult(basePath, items, false);
+        return items;
     }
 
     RecordingsResult fetchScheduledRecordings() throws Exception {
@@ -210,6 +220,19 @@ final class RecordingsRepository {
                 jsonHeaders(false)
         );
         httpClient.requireSuccess(response, "cancelando grabacion programada");
+    }
+
+    void deleteCompletedRecording(long recordingId) throws Exception {
+        if (recordingId <= 0L) {
+            throw new IllegalArgumentException("recording id invalido");
+        }
+        HttpClient.Response response = httpClient.delete(
+                baseUrl + "/api/recordings/completed?id=" + recordingId,
+                10000,
+                20000,
+                jsonHeaders(false)
+        );
+        httpClient.requireSuccess(response, "eliminando grabacion completada");
     }
 
     void updateScheduledRecording(String recordingId, String startTime, String endTime) throws Exception {

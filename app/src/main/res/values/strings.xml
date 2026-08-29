@@ -132,7 +132,11 @@
     <string name="status_scheduling_recording">Programando grabacion…</string>
     <string name="status_failed_schedule_recording">No se pudo programar grabacion</string>
     <string name="status_recording_schedule_permission_denied">Tu usuario no tiene permiso para programar grabaciones</string>
-    <string name="status_recording_delete_permission_denied">Tu usuario no tiene permiso para cancelar grabaciones</string>
+    <string name="status_recording_delete_permission_denied">Tu usuario no tiene permiso para eliminar o cancelar grabaciones</string>
+    <string name="status_deleting_recording">Eliminando grabacion…</string>
+    <string name="status_recording_deleted">Grabacion eliminada</string>
+    <string name="status_failed_delete_recording">No se pudo eliminar la grabacion</string>
+    <string name="status_recording_delete_unavailable">Esta grabacion antigua no tiene un identificador valido para eliminarla</string>
     <string name="status_failed_create_reminder">No se pudo crear recordatorio</string>
     <string name="status_reminder_created">Recordatorio creado</string>
     <string name="status_no_recordings">No hay grabaciones</string>
@@ -229,6 +233,8 @@
     <string name="recording_action_switch_completed">Ver completadas</string>
     <string name="recording_action_switch_scheduled">Ver programadas</string>
     <string name="recording_action_clear_progress">Limpiar progreso guardado</string>
+    <string name="recording_action_delete">Eliminar grabacion</string>
+    <string name="recording_action_delete_confirm">Eliminar definitivamente</string>
     <string name="recording_action_filter_channel">Filtrar canal: %1$s</string>
     <string name="recording_action_filter_current_channel">Filtrar canal actual: %1$s</string>
     <string name="recording_action_clear_filters">Quitar filtros</string>
@@ -240,6 +246,8 @@
     <string name="recording_resume_continue">Continuar</string>
     <string name="recording_resume_restart">Empezar de nuevo</string>
     <string name="recording_cancel_confirm_message">%1$s\n%2$s\n\nEsta accion elimina la programacion.</string>
+    <string name="title_recording_delete_confirm">Eliminar grabacion</string>
+    <string name="recording_delete_confirm_message">%1$s\n%2$s\n\nSe eliminaran la grabacion y sus archivos. Esta accion no se puede deshacer.</string>
     <string name="recording_progress_label">Progreso: %1$s</string>
     <string name="recording_status_conflict_short">SOLAPE</string>
     <string name="recordings_day_all">todos</string>

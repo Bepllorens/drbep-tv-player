@@ -6257,6 +6257,9 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch (Exception e) {
                 Log.w(TAG, scheduledMode ? "open scheduled recordings failed" : "open recordings failed", e);
+                if (BackendTransportFailurePolicy.isTransportFailure(e)) {
+                    postUiIfAlive(this::maybeFailoverBackendAfterTransportFailure);
+                }
                 postUiIfAlive(() -> showStatus(getString(scheduledMode ? R.string.status_failed_load_scheduled_recordings : R.string.status_failed_load_recordings)));
             }
         });
@@ -6424,6 +6427,8 @@ public class MainActivity extends FragmentActivity {
                 options.add(getString(R.string.recording_action_clear_progress));
                 actions.add(() -> clearSelectedRecordingProgress(item));
             }
+            options.add(getString(R.string.recording_action_delete));
+            actions.add(() -> confirmDeleteCompletedRecording(item));
         } else {
             options.add(getString(R.string.recording_action_edit_time));
             actions.add(this::showScheduledRecordingEditDialog);
@@ -6438,6 +6443,53 @@ public class MainActivity extends FragmentActivity {
         actions.add(() -> switchRecordingsMode(!recordingsController.isScheduledMode()));
         addRecordingFilterActions(options, actions, item);
         showTvOptionsDialog(R.string.title_recording_actions, null, options, actions);
+    }
+
+    private void confirmDeleteCompletedRecording(RecordingsRepository.RecordingItem item) {
+        if (item == null || !item.playable) {
+            return;
+        }
+        if (!canDeleteRecordings()) {
+            showStatus(getString(R.string.status_recording_delete_permission_denied));
+            return;
+        }
+        if (item.recordingId <= 0L) {
+            showStatus(getString(R.string.status_recording_delete_unavailable));
+            return;
+        }
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(
+                getString(R.string.recording_action_delete_confirm),
+                true,
+                () -> deleteCompletedRecording(item)
+        ));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, null));
+        showTvMessagePanel(
+                getString(R.string.title_recording_delete_confirm),
+                getString(R.string.recording_delete_confirm_message, buildRecordingTitle(item), buildRecordingMeta(item)),
+                actions,
+                null
+        );
+    }
+
+    private void deleteCompletedRecording(RecordingsRepository.RecordingItem item) {
+        if (item == null || !item.playable || item.recordingId <= 0L) {
+            return;
+        }
+        showStatus(getString(R.string.status_deleting_recording));
+        ioExecutor.execute(() -> {
+            try {
+                recordingsRepository.deleteCompletedRecording(item.recordingId);
+                postUiIfAlive(() -> {
+                    clearRecordingResumePosition(item.id);
+                    showStatus(getString(R.string.status_recording_deleted));
+                    refreshRecordingsPanel();
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "delete completed recording failed", e);
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_delete_recording)));
+            }
+        });
     }
 
     private void clearSelectedRecordingProgress(RecordingsRepository.RecordingItem item) {

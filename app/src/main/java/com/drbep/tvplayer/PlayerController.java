@@ -396,11 +396,7 @@ final class PlayerController {
     private boolean stallReportedForCurrentFreeze;
     private boolean pendingStallRecovery;
     private boolean attemptedVlcAudioDecoderFallback;
-    private boolean networkAvailable = true;
-    private boolean networkValidated;
-    private String networkTransport = "desconocida";
-    private boolean networkRecoveryPending;
-    private int networkRecoveryAttempts;
+    private final PlaybackNetworkRecoveryCoordinator networkRecovery = new PlaybackNetworkRecoveryCoordinator();
     private final Runnable networkRecoveryRunnable;
     private final Runnable forceLiveEdgeRunnable = () -> {
         if (player != null && forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
@@ -612,7 +608,7 @@ final class PlayerController {
                 PlaybackRequest request = currentRequest;
                 firstFrameRenderedForCurrentItem = true;
                 transitionPlaybackPhase("playing");
-                networkRecoveryPending = false;
+                networkRecovery.onFirstFrame();
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 resetPlaybackProgressBaseline();
                 schedulePlaybackProgressWatchdog();
@@ -712,7 +708,7 @@ final class PlayerController {
                     }
                     firstFrameRenderedForCurrentItem = true;
                     transitionPlaybackPhase("playing");
-                    networkRecoveryPending = false;
+                    networkRecovery.onFirstFrame();
                     long elapsedMs = currentPrepareStartedMs <= 0L
                             ? -1L
                             : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
@@ -734,8 +730,7 @@ final class PlayerController {
                     if (!isVlcDirectPlayActive()) {
                         return;
                     }
-                    if (!networkAvailable) {
-                        networkRecoveryPending = true;
+                    if (networkRecovery.deferUntilRestored(currentRequest != null)) {
                         lastErrorSummary = context.getString(R.string.status_playback_waiting_network);
                         transitionPlaybackPhase("waiting_network");
                         host.showStatus(lastErrorSummary);
@@ -1017,51 +1012,45 @@ final class PlayerController {
     }
 
     void updateNetworkState(boolean available, boolean validated, String transport) {
-        boolean restored = !networkAvailable && available;
-        networkAvailable = available;
-        networkValidated = validated;
-        networkTransport = safeString(transport).isEmpty() ? "desconocida" : safeString(transport);
-
-        if (!available) {
+        PlaybackNetworkRecoveryCoordinator.Outcome outcome = networkRecovery.updateNetworkState(
+                available,
+                validated,
+                transport,
+                currentRequest != null,
+                "ENDED".equals(lastPlaybackState),
+                isPlaying(),
+                lastPlaybackPhase
+        );
+        PlaybackNetworkRecoveryCoordinator.Snapshot network = networkRecovery.snapshot();
+        if (outcome.action == PlaybackNetworkRecoveryCoordinator.Action.WAIT_FOR_NETWORK) {
             uiHandler.removeCallbacks(networkRecoveryRunnable);
-            if (currentRequest != null && !"ENDED".equals(lastPlaybackState)) {
-                networkRecoveryPending = true;
-                transitionPlaybackPhase("waiting_network");
-                host.showStatus(context.getString(R.string.status_playback_waiting_network));
-                Log.w(TAG, "playback waiting for network channel=" + describeRequest(currentRequest)
-                        + " transport=" + safeLogValue(networkTransport));
-            }
+            transitionPlaybackPhase("waiting_network");
+            host.showStatus(context.getString(R.string.status_playback_waiting_network));
+            Log.w(TAG, "playback waiting for network channel=" + describeRequest(currentRequest)
+                    + " transport=" + safeLogValue(network.transport));
             return;
         }
-
-        if (!restored || !networkRecoveryPending) {
+        if (outcome.action == PlaybackNetworkRecoveryCoordinator.Action.MARK_PLAYING) {
+            transitionPlaybackPhase("playing");
             return;
         }
-        boolean active = isPlaying();
-        if (!NetworkRecoveryPolicy.shouldRetryAfterRestore(networkRecoveryPending, active, lastPlaybackPhase)) {
-            if (active) {
-                networkRecoveryPending = false;
-                networkRecoveryAttempts = 0;
-                transitionPlaybackPhase("playing");
-            }
+        if (outcome.action != PlaybackNetworkRecoveryCoordinator.Action.SCHEDULE_RECOVERY) {
             return;
         }
         transitionPlaybackPhase("recovering_network");
         host.showStatus(context.getString(R.string.status_playback_network_restored));
-        long delayMs = NetworkRecoveryPolicy.retryDelayMs(networkRecoveryAttempts);
         uiHandler.removeCallbacks(networkRecoveryRunnable);
-        uiHandler.postDelayed(networkRecoveryRunnable, delayMs);
+        uiHandler.postDelayed(networkRecoveryRunnable, outcome.delayMs);
         Log.w(TAG, "network restored; scheduling playback recovery channel=" + describeRequest(currentRequest)
-                + " attempt=" + networkRecoveryAttempts
-                + " delayMs=" + delayMs
-                + " transport=" + safeLogValue(networkTransport));
+                + " attempt=" + outcome.attempt
+                + " delayMs=" + outcome.delayMs
+                + " transport=" + safeLogValue(network.transport));
     }
 
     private boolean deferRecoveryUntilNetworkReturns(PlaybackRequest request, PlaybackException error) {
-        if (networkAvailable || request == null) {
+        if (!networkRecovery.deferUntilRestored(request != null)) {
             return false;
         }
-        networkRecoveryPending = true;
         lastErrorSummary = context.getString(R.string.status_playback_waiting_network);
         transitionPlaybackPhase("waiting_network");
         host.showStatus(lastErrorSummary);
@@ -1072,11 +1061,9 @@ final class PlayerController {
 
     private void recoverPlaybackAfterNetworkRestore() {
         PlaybackRequest request = currentRequest;
-        if (!networkAvailable || !networkRecoveryPending || request == null || !host.isChannelCurrent(request.channelId)) {
+        if (!networkRecovery.beginScheduledRecovery(request != null && host.isChannelCurrent(request.channelId))) {
             return;
         }
-        networkRecoveryPending = false;
-        networkRecoveryAttempts++;
         long resumePositionMs = request.vod ? getCurrentPlaybackPosition() : 0L;
         int generation = beginPlaybackAttempt(request, "networkRestore");
         transitionPlaybackPhase("recovering_network");
@@ -1451,8 +1438,7 @@ final class PlayerController {
             resetPlaybackProgressWatchdog(false);
             return;
         }
-        if (!networkAvailable) {
-            networkRecoveryPending = true;
+        if (networkRecovery.deferUntilRestored(currentRequest != null)) {
             transitionPlaybackPhase("waiting_network");
             schedulePlaybackProgressWatchdog();
             return;
@@ -1647,6 +1633,7 @@ final class PlayerController {
         long elapsedSincePrepareMs = currentPrepareStartedMs <= 0L ? 0L : Math.max(0L, SystemClock.elapsedRealtime() - currentPrepareStartedMs);
         long prepareElapsedMs = currentReadyElapsedMs > 0L ? currentReadyElapsedMs : elapsedSincePrepareMs;
         PlaybackSessionStateMachine.Snapshot session = playbackSessionState.snapshot();
+        PlaybackNetworkRecoveryCoordinator.Snapshot network = networkRecovery.snapshot();
         return new PlaybackDiagnostics(
                 channelName,
                 lastPlaybackState,
@@ -1677,10 +1664,10 @@ final class PlayerController {
                 safeLogValue(adaptiveQualityReason),
                 session.state.name(),
                 session.transitionCount,
-                networkAvailable,
-                networkValidated,
-                safeLogValue(networkTransport),
-                networkRecoveryAttempts
+                network.available,
+                network.validated,
+                safeLogValue(network.transport),
+                network.recoveryAttempts
         );
     }
 
@@ -2310,7 +2297,7 @@ final class PlayerController {
         String initialPhase = "playChannelAfterResolvingStreamInfo".equals(origin) ? "resolving_stream_info" : "starting";
         String nextChannelId = request == null || request.channelId == null ? "" : request.channelId.trim();
         if (!nextChannelId.equals(playbackSessionState.snapshot().channelId)) {
-            networkRecoveryAttempts = 0;
+            networkRecovery.resetAttemptsForChannelChange(true);
         }
         lastPlaybackPhase = initialPhase;
         playbackSessionState.begin(

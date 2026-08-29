@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 447
-        versionName "2.0.447-dazn-live-event-actions"
+        versionCode 450
+        versionName "2.0.450-context-logos"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

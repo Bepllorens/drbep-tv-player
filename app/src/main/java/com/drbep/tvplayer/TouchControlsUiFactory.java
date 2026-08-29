@@ -8,6 +8,12 @@ final class TouchControlsUiFactory {
         String text(int resId);
         String currentFilterLabel();
         ChannelItem currentChannel();
+        default String currentFilterMark() {
+            return platformMark(currentChannel());
+        }
+        default String currentFilterLogoUrl() {
+            return platformLogo(currentChannel());
+        }
         boolean isOverlayVisible();
         boolean isTabletOrientationLocked();
         boolean supportsOrientationLock();
@@ -67,7 +73,8 @@ final class TouchControlsUiFactory {
                 false,
                 false,
                 "platform",
-                platformMark(current),
+                host.currentFilterMark(),
+                host.currentFilterLogoUrl(),
                 () -> {
                     host.keepVisible();
                     host.showFilterPicker();
@@ -231,14 +238,25 @@ final class TouchControlsUiFactory {
         String platform = channel == null || channel.platformName == null
                 ? ""
                 : channel.platformName.trim();
-        String lower = platform.toLowerCase(java.util.Locale.ROOT);
+        return compactMark(platform);
+    }
+
+    static String compactMark(String label) {
+        String value = label == null ? "" : label.trim();
+        String lower = value.toLowerCase(java.util.Locale.ROOT);
         if (lower.contains("movistar")) return "M+";
         if (lower.contains("dazn")) return "DAZN";
         if (lower.contains("tivify")) return "TIV";
         if (lower.contains("plex")) return "PLEX";
         if (lower.contains("orange")) return "ORA";
-        String compact = platform.replaceAll("[^\\p{L}\\p{N}+]", "").toUpperCase(java.util.Locale.ROOT);
+        String compact = value.replaceAll("[^\\p{L}\\p{N}+]", "").toUpperCase(java.util.Locale.ROOT);
         if (compact.isEmpty()) return "OTT";
         return compact.substring(0, Math.min(4, compact.length()));
+    }
+
+    static String platformLogo(ChannelItem channel) {
+        return channel == null || channel.platformLogoUrl == null
+                ? ""
+                : channel.platformLogoUrl.trim();
     }
 }

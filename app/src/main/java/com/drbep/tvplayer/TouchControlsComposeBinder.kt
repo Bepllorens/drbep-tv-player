@@ -201,7 +201,7 @@ private fun ModernTouchControlsBar(model: TouchControlsBarUiModel, artworkBinder
                 style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
             )
         } else {
-            ModernActionStrip(model)
+            ModernActionStrip(model, artworkBinder)
         }
     }
 }
@@ -374,7 +374,7 @@ private fun ModernContextHeader(model: TouchControlsBarUiModel) {
 }
 
 @Composable
-private fun ModernActionStrip(model: TouchControlsBarUiModel) {
+private fun ModernActionStrip(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val scrollState = rememberScrollState()
     val focusedIndex = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
@@ -403,7 +403,7 @@ private fun ModernActionStrip(model: TouchControlsBarUiModel) {
             }
         ) {
             model.actions.forEachIndexed { index, item ->
-                ModernActionChip(item, index == focusedIndex, if (index == focusedIndex) focusRequester else null, compact)
+                ModernActionChip(item, index == focusedIndex, if (index == focusedIndex) focusRequester else null, compact, artworkBinder)
             }
         }
     }
@@ -411,7 +411,7 @@ private fun ModernActionStrip(model: TouchControlsBarUiModel) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequester: FocusRequester?, compact: Boolean) {
+private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequester: FocusRequester?, compact: Boolean, artworkBinder: TouchControlsArtworkBinder?) {
     val surface = when {
         focused -> OfflineTvTheme.Colors.focus
         item.selected -> OfflineTvTheme.Colors.card
@@ -429,7 +429,7 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
             .padding(horizontal = 7.dp, vertical = if (compact) 7.dp else 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        ModernActionIcon(item = item, focused = focused)
+        ModernActionIcon(item = item, focused = focused, artworkBinder = artworkBinder)
         Spacer(Modifier.height(2.dp))
         BasicText(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
             style = TextStyle(color = if (focused) OfflineTvTheme.Colors.focusInk else Color.White, fontSize = if (compact) 9.sp else 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center))
@@ -458,13 +458,28 @@ private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
 }
 
 @Composable
-private fun ModernActionIcon(item: ZapActionItem, focused: Boolean) {
+private fun ModernActionIcon(item: ZapActionItem, focused: Boolean, artworkBinder: TouchControlsArtworkBinder?) {
     val kind = modernActionIconKind(item)
     val normalColor = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan
     val recordingColor = Color(0xFFFF4D67)
     val iconColor = if (kind == ModernActionIconKind.RECORD) recordingColor else normalColor
     Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-        if (kind == ModernActionIconKind.PLATFORM && item.iconText.isNotBlank()) {
+        if (kind == ModernActionIconKind.PLATFORM && item.iconUrl.isNotBlank() && artworkBinder != null) {
+            AndroidView(
+                modifier = Modifier.size(30.dp),
+                factory = { context ->
+                    AppCompatImageView(context).apply {
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        adjustViewBounds = true
+                        contentDescription = item.label
+                    }
+                },
+                update = { imageView ->
+                    imageView.contentDescription = item.label
+                    artworkBinder.bindLogo(imageView, item.iconUrl, item.iconText, 30, 30)
+                }
+            )
+        } else if (kind == ModernActionIconKind.PLATFORM && item.iconText.isNotBlank()) {
             BasicText(
                 text = item.iconText,
                 maxLines = 1,

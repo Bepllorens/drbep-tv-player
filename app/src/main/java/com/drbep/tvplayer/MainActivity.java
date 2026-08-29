@@ -2059,6 +2059,16 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public String currentFilterMark() {
+                return TouchControlsUiFactory.compactMark(overlayContextLabel(getCurrentPlaybackChannelItem()));
+            }
+
+            @Override
+            public String currentFilterLogoUrl() {
+                return overlayContextLogoUrl(getCurrentPlaybackChannelItem());
+            }
+
+            @Override
             public boolean isOverlayVisible() {
                 return MainActivity.this.isOverlayVisible();
             }
@@ -6681,9 +6691,12 @@ public class MainActivity extends FragmentActivity {
         for (int i = 0; i < selectableFilters.size(); i++) {
             final ChannelFilter filter = selectableFilters.get(i);
             boolean selected = i == checkedIndex;
+            String filterTitle = cleanFilterLabel(filter);
             rows.add(new TouchFilterPickerRowUiModel(
-                    cleanFilterLabel(filter),
+                    filterTitle,
                     getString(R.string.touch_filter_picker_count, countChannelsForFilter(filter)),
+                    filterContextLogoUrl(filter, getCurrentPlaybackChannelItem()),
+                    TouchControlsUiFactory.compactMark(filterTitle),
                     selected,
                     isProtectedFilter(filter),
                     () -> {
@@ -6709,7 +6722,17 @@ public class MainActivity extends FragmentActivity {
                 checkedIndex,
                 rows,
                 close
-        ));
+        ), new TouchControlsArtworkBinder() {
+            @Override
+            public void bindLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
+                bindChannelLogo(imageView, logoUrl, channelName, widthDp, heightDp);
+            }
+
+            @Override
+            public void bindPoster(ImageView imageView, String posterUrl) {
+                bindProgramPoster(imageView, posterUrl);
+            }
+        });
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, this::handleModalDismissed);
         dialogHolder[0] = dialog;
         handleModalShown();
@@ -10000,15 +10023,29 @@ public class MainActivity extends FragmentActivity {
                 || (filter != null && "favorites".equals(filter.key))) {
             return "";
         }
+        if (filter != null && (filter.type == FILTER_CUSTOM_GROUP || filter.type == FILTER_PLATFORM)) {
+            return filterContextLogoUrl(filter, channel);
+        }
+        String filterLogo = filterContextLogoUrl(filter, channel);
+        if (!filterLogo.isEmpty()) {
+            return filterLogo;
+        }
+        return channel == null || channel.platformLogoUrl == null ? "" : channel.platformLogoUrl.trim();
+    }
+
+    private String filterContextLogoUrl(ChannelFilter filter, ChannelItem preferredChannel) {
+        if (filter == null || "favorites".equals(filter.key) || filter.type == FILTER_FAVORITES) {
+            return "";
+        }
         if (filter != null && filter.type == FILTER_CUSTOM_GROUP) {
             String groupName = filter.groupName == null ? "" : filter.groupName.trim();
-            if (channel != null) {
-                String logo = channel.customGroupLogo(groupName);
+            if (preferredChannel != null) {
+                String logo = preferredChannel.customGroupLogo(groupName);
                 if (!logo.isEmpty()) {
                     return logo;
                 }
             }
-            for (ChannelItem item : channels) {
+            for (ChannelItem item : allChannels) {
                 if (item != null) {
                     String logo = item.customGroupLogo(groupName);
                     if (!logo.isEmpty()) {
@@ -10019,16 +10056,16 @@ public class MainActivity extends FragmentActivity {
             return "";
         }
         if (filter != null && filter.type == FILTER_PLATFORM) {
-            if (channel != null && channel.platformId == filter.platformId && channel.platformLogoUrl != null) {
-                return channel.platformLogoUrl.trim();
+            if (preferredChannel != null && preferredChannel.platformId == filter.platformId && preferredChannel.platformLogoUrl != null) {
+                return preferredChannel.platformLogoUrl.trim();
             }
-            for (ChannelItem item : channels) {
+            for (ChannelItem item : allChannels) {
                 if (item != null && item.platformId == filter.platformId && item.platformLogoUrl != null && !item.platformLogoUrl.trim().isEmpty()) {
                     return item.platformLogoUrl.trim();
                 }
             }
         }
-        return channel == null || channel.platformLogoUrl == null ? "" : channel.platformLogoUrl.trim();
+        return "";
     }
 
     private ChannelFilter selectedOverlayFilter() {
@@ -13368,6 +13405,8 @@ public class MainActivity extends FragmentActivity {
                         .put("playback_ready_elapsed_ms", playbackDiagnostics.readyElapsedMs)
                         .put("playback_buffering_count", playbackDiagnostics.bufferingCount)
                         .put("playback_buffering_total_ms", playbackDiagnostics.bufferingTotalMs)
+                        .put("playback_adaptive_quality_level", playbackDiagnostics.adaptiveQualityLevel)
+                        .put("playback_adaptive_quality_reason", playbackDiagnostics.adaptiveQualityReason)
                         .put("playback_first_frame_rendered", playbackDiagnostics.firstFrameRendered)
                         .put("playback_route", playbackDiagnostics.routeLabel)
                         .put("playback_mode", playbackDiagnostics.playbackMode)
@@ -13495,6 +13534,8 @@ public class MainActivity extends FragmentActivity {
                         .put("playback_ready_elapsed_ms", diagnostics.readyElapsedMs)
                         .put("playback_buffering_count", diagnostics.bufferingCount)
                         .put("playback_buffering_total_ms", diagnostics.bufferingTotalMs)
+                        .put("playback_adaptive_quality_level", diagnostics.adaptiveQualityLevel)
+                        .put("playback_adaptive_quality_reason", diagnostics.adaptiveQualityReason)
                         .put("playback_first_frame_rendered", diagnostics.firstFrameRendered)
                         .put("route_label", diagnostics.routeLabel == null ? "" : diagnostics.routeLabel)
                         .put("target_url", DiagnosticRedactor.sanitizeUrl(diagnostics.targetUrl))
@@ -13849,6 +13890,8 @@ public class MainActivity extends FragmentActivity {
                         .put("playback_ready_elapsed_ms", diagnostics.readyElapsedMs)
                         .put("playback_buffering_count", diagnostics.bufferingCount)
                         .put("playback_buffering_total_ms", diagnostics.bufferingTotalMs)
+                        .put("playback_adaptive_quality_level", diagnostics.adaptiveQualityLevel)
+                        .put("playback_adaptive_quality_reason", diagnostics.adaptiveQualityReason)
                         .put("playback_first_frame_rendered", diagnostics.firstFrameRendered);
             }
         } catch (Exception e) {

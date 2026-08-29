@@ -64,7 +64,9 @@ public class PlaybackHealthClassifierTest {
                 bufferingMs,
                 firstFrame,
                 true,
-                30_000L
+                30_000L,
+                AdaptivePlaybackQualityPolicy.LEVEL_NONE,
+                ""
         );
     }
 }

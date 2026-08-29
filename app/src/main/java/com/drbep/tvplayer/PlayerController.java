@@ -78,6 +78,8 @@ final class PlayerController {
     private static final String PREF_PREFERRED_AUDIO_LANGUAGE = "preferred_audio_language";
     private static final String PREF_PREFERRED_TEXT_LANGUAGE = "preferred_text_language";
     private static final String PREF_TEXT_TRACKS_ENABLED = "text_tracks_enabled";
+    private static final String PREF_ADAPTIVE_QUALITY_LEVEL_PREFIX = "adaptive_quality_level_";
+    private static final String PREF_ADAPTIVE_QUALITY_UNTIL_PREFIX = "adaptive_quality_until_";
     private static final String CLEARKEY_DATA_URI_PREFIX = "data:application/json;base64,";
     private static final String SECURE_STREAM_LICENSE_PREFIX = "drbep-secure-stream:";
     private static final int PLAYBACK_CONNECT_TIMEOUT_MS = 20_000;
@@ -250,8 +252,10 @@ final class PlayerController {
         final boolean firstFrameRendered;
         final boolean playing;
         final long positionMs;
+        final int adaptiveQualityLevel;
+        final String adaptiveQualityReason;
 
-        PlaybackDiagnostics(String channelName, String playbackState, String playbackPhase, String routeLabel, String targetUrl, String mimeType, String drmType, String playbackMode, boolean encrypted, boolean usingFallback, String lastError, int videoWidth, int videoHeight, String videoCodec, int videoBitrate, float videoFrameRate, String audioCodec, int attemptGeneration, long prepareElapsedMs, long readyElapsedMs, int bufferingCount, long bufferingTotalMs, boolean firstFrameRendered, boolean playing, long positionMs) {
+        PlaybackDiagnostics(String channelName, String playbackState, String playbackPhase, String routeLabel, String targetUrl, String mimeType, String drmType, String playbackMode, boolean encrypted, boolean usingFallback, String lastError, int videoWidth, int videoHeight, String videoCodec, int videoBitrate, float videoFrameRate, String audioCodec, int attemptGeneration, long prepareElapsedMs, long readyElapsedMs, int bufferingCount, long bufferingTotalMs, boolean firstFrameRendered, boolean playing, long positionMs, int adaptiveQualityLevel, String adaptiveQualityReason) {
             this.channelName = channelName;
             this.playbackState = playbackState;
             this.playbackPhase = playbackPhase;
@@ -277,6 +281,8 @@ final class PlayerController {
             this.firstFrameRendered = firstFrameRendered;
             this.playing = playing;
             this.positionMs = Math.max(0L, positionMs);
+            this.adaptiveQualityLevel = AdaptivePlaybackQualityPolicy.clampLevel(adaptiveQualityLevel);
+            this.adaptiveQualityReason = adaptiveQualityReason == null ? "" : adaptiveQualityReason.trim();
         }
 
         boolean hasVideoQuality() {
@@ -365,6 +371,10 @@ final class PlayerController {
     private long currentBufferingTotalMs;
     private final Runnable firstFrameRecoveryRunnable;
     private final Runnable playbackProgressWatchdogRunnable;
+    private final Runnable adaptiveQualityStabilityRunnable;
+    private final AdaptivePlaybackQualityPolicy.State adaptiveQualityState = new AdaptivePlaybackQualityPolicy.State();
+    private String adaptiveQualityChannelId = "";
+    private String adaptiveQualityReason = "";
     private long lastObservedPlaybackPositionMs = -1L;
     private long lastPlaybackProgressAtMs;
     private long stablePlaybackStartedAtMs;
@@ -401,6 +411,7 @@ final class PlayerController {
         this.localDashManifestServer = new LocalDashManifestServer();
         this.firstFrameRecoveryRunnable = this::recoverPlaybackWhenReadyHasNoFirstFrame;
         this.playbackProgressWatchdogRunnable = this::checkLivePlaybackProgress;
+        this.adaptiveQualityStabilityRunnable = this::checkAdaptiveQualityStability;
     }
 
     static int bufferForPlaybackAfterRebufferMs(boolean compactTouchDevice) {
@@ -511,6 +522,7 @@ final class PlayerController {
                     lastPlaybackPhase = currentBufferingIsRebuffer ? "rebuffering" : "buffering";
                     if (currentBufferingIsRebuffer) {
                         currentBufferingCount++;
+                        recordAdaptiveQualityInstability("rebuffer");
                     }
                     currentBufferingStartedMs = SystemClock.elapsedRealtime();
                     Log.w(TAG, "playbackBufferingStart channel=" + describeRequest(currentRequest)
@@ -561,6 +573,7 @@ final class PlayerController {
                     host.hideError();
                     maybeShowHdrBadge();
                     host.onPlaybackReady(currentRequest, getPlaybackDiagnostics(), recoveredFromRebuffer || recoveredFromStall);
+                    scheduleAdaptiveQualityStabilityCheck();
                     schedulePlaybackProgressWatchdog();
                     if (shouldRecoverWhenReadyHasNoFirstFrame(currentRequest, currentPlaybackDecision)) {
                         uiHandler.postDelayed(firstFrameRecoveryRunnable, 4_000L);
@@ -589,6 +602,7 @@ final class PlayerController {
                         + " bufferCount=" + currentBufferingCount
                         + " bufferTotalMs=" + currentBufferingTotalMs);
                 host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
+                scheduleAdaptiveQualityStabilityCheck();
             }
 
             @Override
@@ -1373,6 +1387,7 @@ final class PlayerController {
             currentBufferingTotalMs += stalledForMs;
             lastPlaybackState = "BUFFERING";
             lastPlaybackPhase = "stalled";
+            recordAdaptiveQualityInstability("stall");
             Log.w(TAG, "playbackProgressStalled channel=" + describeRequest(request)
                     + " stalledForMs=" + stalledForMs
                     + " positionMs=" + positionMs
@@ -1547,7 +1562,9 @@ final class PlayerController {
                 currentBufferingTotalMs,
                 firstFrameRenderedForCurrentItem,
                 vlcActive ? vlcDirectPlayController.isPlaying() : player != null && player.isPlaying(),
-                vlcActive ? vlcDirectPlayController.getTime() : player == null ? 0L : player.getCurrentPosition()
+                vlcActive ? vlcDirectPlayController.getTime() : player == null ? 0L : player.getCurrentPosition(),
+                adaptiveQualityState.level(),
+                safeLogValue(adaptiveQualityReason)
         );
     }
 
@@ -1823,6 +1840,7 @@ final class PlayerController {
 
     void stopForSourceSwitch() {
         resetPlaybackProgressWatchdog(true);
+        uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
         stopVlcDirectPlayback();
         if (player != null) {
             player.stop();
@@ -1832,6 +1850,7 @@ final class PlayerController {
 
     void release() {
         resetPlaybackProgressWatchdog(true);
+        uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
         PlayerController activeController = activePlaybackController.get();
         if (activeController == this) {
             activePlaybackController.clear();
@@ -1991,6 +2010,7 @@ final class PlayerController {
             pendingAutoRecoveryReason = "";
             attemptedVlcAudioDecoderFallback = false;
             resetPlaybackProgressWatchdog(true);
+            prepareAdaptiveQualityForChannel(request);
         }
         currentRequest = request;
         streamInfo = ensurePatchedClearKeyManifestsForRoute(request, streamInfo, useFallback);
@@ -2210,15 +2230,25 @@ final class PlayerController {
         boolean capForCompatibility = usingVideoCompatibilityCap;
         String qualityMode = host.playbackQualityMode();
         boolean multiView = host.isMultiViewPlayback();
+        int maxBitrate = PlaybackQualityPolicy.maxBitrate(qualityMode, multiView);
+        int maxWidth = PlaybackQualityPolicy.maxWidth(qualityMode, capForCompatibility, multiView);
+        int maxHeight = PlaybackQualityPolicy.maxHeight(qualityMode, capForCompatibility, multiView);
+        boolean adaptiveCap = isAdaptiveQualityEligible(request, decision)
+                && adaptiveQualityState.level() > AdaptivePlaybackQualityPolicy.LEVEL_NONE;
+        if (adaptiveCap) {
+            maxBitrate = minConstraint(maxBitrate, AdaptivePlaybackQualityPolicy.maxBitrate(adaptiveQualityState.level()));
+            maxWidth = minConstraint(maxWidth, AdaptivePlaybackQualityPolicy.maxWidth(adaptiveQualityState.level()));
+            maxHeight = minConstraint(maxHeight, AdaptivePlaybackQualityPolicy.maxHeight(adaptiveQualityState.level()));
+        }
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .setForceHighestSupportedBitrate(PlaybackQualityPolicy.forceHighestBitrate(qualityMode))
-                .setMaxVideoBitrate(PlaybackQualityPolicy.maxBitrate(qualityMode, multiView));
-        int maxWidth = PlaybackQualityPolicy.maxWidth(qualityMode, capForCompatibility, multiView);
-        int maxHeight = PlaybackQualityPolicy.maxHeight(qualityMode, capForCompatibility, multiView);
+                .setMaxVideoBitrate(maxBitrate);
         if (maxWidth != Integer.MAX_VALUE || maxHeight != Integer.MAX_VALUE) {
             builder.setMaxVideoSize(maxWidth, maxHeight);
             Log.i(TAG, "using video cap " + maxWidth + "x" + maxHeight
+                    + " maxBitrate=" + maxBitrate
+                    + " adaptiveLevel=" + adaptiveQualityState.level()
                     + " qualityMode=" + qualityMode
                     + " multiView=" + multiView
                     + " channel=" + describeRequest(request)
@@ -2230,7 +2260,158 @@ final class PlayerController {
     }
 
     void refreshVideoTrackPolicy() {
+        if (!AdaptivePlaybackQualityPolicy.isAutomaticMode(host.playbackQualityMode())) {
+            uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
+        } else {
+            scheduleAdaptiveQualityStabilityCheck();
+        }
         applyVideoTrackPolicy(currentRequest, currentPlaybackDecision);
+    }
+
+    private void prepareAdaptiveQualityForChannel(PlaybackRequest request) {
+        uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
+        adaptiveQualityState.reset();
+        adaptiveQualityReason = "";
+        adaptiveQualityChannelId = request == null || request.channelId == null
+                ? ""
+                : request.channelId.trim();
+        if (adaptiveQualityChannelId.isEmpty()) {
+            return;
+        }
+        String suffix = adaptiveQualityPreferenceSuffix(adaptiveQualityChannelId);
+        int retainedLevel = prefs.getInt(PREF_ADAPTIVE_QUALITY_LEVEL_PREFIX + suffix, AdaptivePlaybackQualityPolicy.LEVEL_NONE);
+        long retainedUntilMs = prefs.getLong(PREF_ADAPTIVE_QUALITY_UNTIL_PREFIX + suffix, 0L);
+        long nowMs = System.currentTimeMillis();
+        if (AdaptivePlaybackQualityPolicy.isRetainedLevelValid(retainedLevel, retainedUntilMs, nowMs)) {
+            adaptiveQualityState.restoreLevel(retainedLevel);
+            adaptiveQualityReason = "retained";
+            Log.i(TAG, "restored adaptive quality cap channel=" + describeRequest(request)
+                    + " level=" + adaptiveQualityState.level()
+                    + " remainingMs=" + Math.max(0L, retainedUntilMs - nowMs));
+            return;
+        }
+        prefs.edit()
+                .remove(PREF_ADAPTIVE_QUALITY_LEVEL_PREFIX + suffix)
+                .remove(PREF_ADAPTIVE_QUALITY_UNTIL_PREFIX + suffix)
+                .apply();
+    }
+
+    private void recordAdaptiveQualityInstability(String reason) {
+        if (!isAdaptiveQualityEligible(currentRequest, currentPlaybackDecision)) {
+            return;
+        }
+        uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
+        AdaptivePlaybackQualityPolicy.Change change = adaptiveQualityState.recordInstability(SystemClock.elapsedRealtime());
+        adaptiveQualityReason = safeString(reason);
+        if (adaptiveQualityState.level() > AdaptivePlaybackQualityPolicy.LEVEL_NONE) {
+            persistAdaptiveQualityCap();
+        }
+        if (change.changed()) {
+            applyVideoTrackPolicy(currentRequest, currentPlaybackDecision);
+            String capLabel = adaptiveQualityCapLabel(adaptiveQualityState.level());
+            host.showStatus(context.getString(R.string.status_playback_quality_temporarily_reduced, capLabel));
+            Log.w(TAG, "adaptive quality downgraded channel=" + describeRequest(currentRequest)
+                    + " reason=" + adaptiveQualityReason
+                    + " previousLevel=" + change.previousLevel
+                    + " level=" + change.level
+                    + " cap=" + capLabel);
+        }
+    }
+
+    private void scheduleAdaptiveQualityStabilityCheck() {
+        uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
+        if (!isAdaptiveQualityEligible(currentRequest, currentPlaybackDecision)
+                || adaptiveQualityState.level() <= AdaptivePlaybackQualityPolicy.LEVEL_NONE) {
+            return;
+        }
+        long nowMs = SystemClock.elapsedRealtime();
+        if (adaptiveQualityState.stableSinceMs() <= 0L) {
+            adaptiveQualityState.recordStable(nowMs);
+        }
+        long remainingMs = Math.max(
+                1_000L,
+                AdaptivePlaybackQualityPolicy.STABLE_UPGRADE_MS
+                        - Math.max(0L, nowMs - adaptiveQualityState.stableSinceMs())
+        );
+        uiHandler.postDelayed(adaptiveQualityStabilityRunnable, remainingMs);
+    }
+
+    private void checkAdaptiveQualityStability() {
+        if (!isAdaptiveQualityEligible(currentRequest, currentPlaybackDecision)
+                || adaptiveQualityState.level() <= AdaptivePlaybackQualityPolicy.LEVEL_NONE) {
+            return;
+        }
+        if (player == null
+                || player.getPlaybackState() != Player.STATE_READY
+                || !player.isPlaying()
+                || !firstFrameRenderedForCurrentItem) {
+            adaptiveQualityState.resetStabilityWindow();
+            uiHandler.postDelayed(adaptiveQualityStabilityRunnable, 30_000L);
+            return;
+        }
+        AdaptivePlaybackQualityPolicy.Change change = adaptiveQualityState.recordStable(SystemClock.elapsedRealtime());
+        if (!change.changed()) {
+            scheduleAdaptiveQualityStabilityCheck();
+            return;
+        }
+        adaptiveQualityReason = "stable";
+        persistAdaptiveQualityCap();
+        applyVideoTrackPolicy(currentRequest, currentPlaybackDecision);
+        if (adaptiveQualityState.level() <= AdaptivePlaybackQualityPolicy.LEVEL_NONE) {
+            host.showStatus(context.getString(R.string.status_playback_quality_stable_full));
+        } else {
+            host.showStatus(context.getString(
+                    R.string.status_playback_quality_stable_upgrade,
+                    adaptiveQualityCapLabel(adaptiveQualityState.level())
+            ));
+        }
+        Log.i(TAG, "adaptive quality upgraded channel=" + describeRequest(currentRequest)
+                + " previousLevel=" + change.previousLevel
+                + " level=" + change.level);
+        scheduleAdaptiveQualityStabilityCheck();
+    }
+
+    private boolean isAdaptiveQualityEligible(PlaybackRequest request, PlaybackRouteResolver.Decision decision) {
+        return request != null
+                && !request.vod
+                && host.isCompactTouchDeviceMode()
+                && !host.isMultiViewPlayback()
+                && AdaptivePlaybackQualityPolicy.isAutomaticMode(host.playbackQualityMode())
+                && isHlsDecision(decision)
+                && !isVlcDirectPlayActive();
+    }
+
+    private void persistAdaptiveQualityCap() {
+        if (adaptiveQualityChannelId.isEmpty()) {
+            return;
+        }
+        String suffix = adaptiveQualityPreferenceSuffix(adaptiveQualityChannelId);
+        SharedPreferences.Editor editor = prefs.edit();
+        if (adaptiveQualityState.level() <= AdaptivePlaybackQualityPolicy.LEVEL_NONE) {
+            editor.remove(PREF_ADAPTIVE_QUALITY_LEVEL_PREFIX + suffix)
+                    .remove(PREF_ADAPTIVE_QUALITY_UNTIL_PREFIX + suffix)
+                    .apply();
+            return;
+        }
+        editor.putInt(PREF_ADAPTIVE_QUALITY_LEVEL_PREFIX + suffix, adaptiveQualityState.level())
+                .putLong(
+                        PREF_ADAPTIVE_QUALITY_UNTIL_PREFIX + suffix,
+                        System.currentTimeMillis() + AdaptivePlaybackQualityPolicy.RETENTION_MS
+                )
+                .apply();
+    }
+
+    private static String adaptiveQualityPreferenceSuffix(String channelId) {
+        String safeChannelId = safeString(channelId).replaceAll("[^A-Za-z0-9._-]", "_");
+        return safeChannelId.isEmpty() ? "unknown" : safeChannelId;
+    }
+
+    private static int minConstraint(int current, int candidate) {
+        return Math.min(current, candidate);
+    }
+
+    private static String adaptiveQualityCapLabel(int level) {
+        return level >= AdaptivePlaybackQualityPolicy.LEVEL_540P ? "540p" : "720p";
     }
 
     private boolean isHlsDecision(PlaybackRouteResolver.Decision decision) {

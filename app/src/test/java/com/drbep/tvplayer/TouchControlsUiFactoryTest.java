@@ -99,9 +99,36 @@ public class TouchControlsUiFactoryTest {
 
         assertEquals("platform", platform.iconHint);
         assertEquals("M+", platform.iconText);
+        assertEquals("", platform.iconUrl);
         assertEquals("DAZN", TouchControlsUiFactory.platformMark(channelWithPlatform("DAZN España")));
         assertEquals("TIV", TouchControlsUiFactory.platformMark(channelWithPlatform("Tivify")));
         assertEquals("OTT", TouchControlsUiFactory.platformMark(null));
+    }
+
+    @Test
+    public void platformActionCarriesLogoAndKeepsTextFallback() {
+        FakeHost host = new FakeHost();
+        host.current = channelWithPlatform("Orange TV");
+        host.current.platformLogoUrl = " https://images.example/orange.svg ";
+
+        ZapActionItem platform = find(TouchControlsUiFactory.build(host), "Plataforma");
+
+        assertEquals("ORA", platform.iconText);
+        assertEquals("https://images.example/orange.svg", platform.iconUrl);
+    }
+
+    @Test
+    public void platformActionUsesActiveGroupBrandInsteadOfTunedPlatform() {
+        FakeHost host = new FakeHost();
+        host.current = channelWithPlatform("Orange TV");
+        host.current.platformLogoUrl = "https://images.example/orange.svg";
+        host.filterMark = "DEPO";
+        host.filterLogoUrl = "https://images.example/deportes.png";
+
+        ZapActionItem platform = find(TouchControlsUiFactory.build(host), "Plataforma");
+
+        assertEquals("DEPO", platform.iconText);
+        assertEquals("https://images.example/deportes.png", platform.iconUrl);
     }
 
     @Test
@@ -213,6 +240,8 @@ public class TouchControlsUiFactoryTest {
         boolean orientationSupported;
         boolean orientationLocked;
         boolean u7dSupported;
+        String filterMark;
+        String filterLogoUrl;
 
         @Override public String text(int resId) {
             if (resId == R.string.touch_button_list) return "Canales";
@@ -237,6 +266,8 @@ public class TouchControlsUiFactoryTest {
 
         @Override public String currentFilterLabel() { return "TDT"; }
         @Override public ChannelItem currentChannel() { return current; }
+        @Override public String currentFilterMark() { return filterMark == null ? TouchControlsUiFactory.Host.super.currentFilterMark() : filterMark; }
+        @Override public String currentFilterLogoUrl() { return filterLogoUrl == null ? TouchControlsUiFactory.Host.super.currentFilterLogoUrl() : filterLogoUrl; }
         @Override public boolean isOverlayVisible() { return overlayVisible; }
         @Override public boolean isTabletOrientationLocked() { return orientationLocked; }
         @Override public boolean supportsOrientationLock() { return orientationSupported; }

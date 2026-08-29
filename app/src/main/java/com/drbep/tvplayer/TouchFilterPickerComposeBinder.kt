@@ -1,5 +1,8 @@
 package com.drbep.tvplayer
 
+import android.view.ViewGroup
+import android.widget.ImageView
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,20 +35,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 
 object TouchFilterPickerComposeBinder {
     @JvmStatic
-    fun bind(composeView: ComposeView?, model: TouchFilterPickerUiModel) {
+    fun bind(
+        composeView: ComposeView?,
+        model: TouchFilterPickerUiModel,
+        artworkBinder: TouchControlsArtworkBinder? = null
+    ) {
         if (composeView == null) return
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         composeView.setContent {
-            TouchFilterPicker(model)
+            TouchFilterPicker(model, artworkBinder)
         }
     }
 }
 
 @Composable
-private fun TouchFilterPicker(model: TouchFilterPickerUiModel) {
+private fun TouchFilterPicker(model: TouchFilterPickerUiModel, artworkBinder: TouchControlsArtworkBinder?) {
     val widthDp = LocalConfiguration.current.screenWidthDp
     val compact = widthDp < 600
     Box(
@@ -110,7 +119,7 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel) {
                 verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
             ) {
                 items(model.rows) { row ->
-                    TouchFilterRow(row, compact)
+                    TouchFilterRow(row, compact, artworkBinder)
                 }
             }
         }
@@ -118,7 +127,7 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel) {
 }
 
 @Composable
-private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean) {
+private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean, artworkBinder: TouchControlsArtworkBinder?) {
     val background = if (row.selected) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip
     val titleColor = if (row.selected) OfflineTvTheme.Colors.backdropAccent else Color.White
     val subtitleColor = if (row.selected) OfflineTvTheme.Colors.backdropAccent else OfflineTvTheme.Colors.textSoft
@@ -132,6 +141,8 @@ private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean) {
             .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 12.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        TouchFilterLogo(row, compact, artworkBinder, titleColor)
+        Spacer(modifier = Modifier.width(if (compact) 12.dp else 16.dp))
         Column(modifier = Modifier.weight(1f)) {
             BasicText(
                 text = row.title,
@@ -160,6 +171,50 @@ private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean) {
         if (row.locked || row.selected) {
             Spacer(modifier = Modifier.width(10.dp))
             TouchFilterChip(if (row.locked) "PIN" else "Activo")
+        }
+    }
+}
+
+@Composable
+private fun TouchFilterLogo(
+    row: TouchFilterPickerRowUiModel,
+    compact: Boolean,
+    artworkBinder: TouchControlsArtworkBinder?,
+    textColor: Color
+) {
+    val size = if (compact) 42.dp else 48.dp
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(12.dp))
+            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.55f)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (row.logoUrl.isNotBlank() && artworkBinder != null) {
+            AndroidView(
+                modifier = Modifier.size(size),
+                factory = { context ->
+                    AppCompatImageView(context).apply {
+                        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        setPadding(5, 5, 5, 5)
+                    }
+                },
+                update = { imageView ->
+                    artworkBinder.bindLogo(imageView, row.logoUrl, row.title, if (compact) 42 else 48, if (compact) 42 else 48)
+                }
+            )
+        } else {
+            BasicText(
+                text = row.logoText.ifBlank { TouchControlsUiFactory.compactMark(row.title) },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(
+                    color = textColor,
+                    fontSize = if (compact) 12.sp else 13.sp,
+                    fontWeight = FontWeight.Black
+                )
+            )
         }
     }
 }

@@ -946,6 +946,9 @@
     <string name="settings_playback_quality_data_saver">Ahorro de datos (hasta 720p)</string>
     <string name="settings_playback_quality_high">Alta</string>
     <string name="settings_playback_quality_changed">Calidad seleccionada: %1$s</string>
+    <string name="status_playback_quality_temporarily_reduced">Calidad reducida temporalmente a %1$s para estabilizar la reproduccion</string>
+    <string name="status_playback_quality_stable_upgrade">Conexion estable: probando una calidad superior (hasta %1$s)</string>
+    <string name="status_playback_quality_stable_full">Conexion estable: calidad automatica restaurada</string>
     <string name="status_multiview_device_limit">Este dispositivo admite %1$d canales simultaneos de forma estable</string>
     <string name="status_multiview_closed_low_memory">Multiview cerrado para liberar memoria</string>
     <string name="settings_search_summary">Busquedas recientes guardadas: %1$d\nLa busqueda global ignora mayusculas y acentos.</string>

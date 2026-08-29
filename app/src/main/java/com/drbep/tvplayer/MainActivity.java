@@ -4681,11 +4681,8 @@ public class MainActivity extends FragmentActivity {
             if (entry == null || entry.program == null || entry.program.startTime == null) {
                 return Long.MAX_VALUE;
             }
-            try {
-                return java.time.Instant.parse(entry.program.startTime).toEpochMilli();
-            } catch (Exception ignored) {
-                return Long.MAX_VALUE;
-            }
+            long parsed = parseIsoMillis(entry.program.startTime);
+            return parsed > 0L ? parsed : Long.MAX_VALUE;
         });
         live.sort(byStartTime);
         movies.sort(byStartTime);
@@ -6481,46 +6478,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private static long parseIsoMillis(String iso) {
-        if (iso == null || iso.trim().isEmpty()) {
-            return 0L;
-        }
-        String clean = iso.trim();
-        try {
-            return java.time.Instant.parse(clean).toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.OffsetDateTime.parse(clean).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.ZonedDateTime.parse(clean).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.LocalDateTime.parse(clean)
-                    .atZone(java.time.ZoneId.systemDefault())
-                    .toInstant()
-                    .toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        String[] patterns = new String[]{
-                "yyyy-MM-dd'T'HH:mm:ssXXX",
-                "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
-                "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        };
-        for (String p : patterns) {
-            try {
-                SimpleDateFormat f = new SimpleDateFormat(p, Locale.US);
-                Date d = f.parse(clean);
-                if (d != null) {
-                    return d.getTime();
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        return 0L;
+        return EpgTimeCodec.parseEpochMillis(iso);
     }
 
     private static String shortTime(String iso) {
@@ -6533,11 +6491,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private static String formatIsoMillis(long value) {
-        SimpleDateFormat out = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US);
-        String formatted = out.format(new Date(value));
-        return formatted.length() > 2
-                ? formatted.substring(0, formatted.length() - 2) + ":" + formatted.substring(formatted.length() - 2)
-                : formatted;
+        return EpgTimeCodec.formatUtc(value);
     }
 
     private void tuneRelative(int delta) {

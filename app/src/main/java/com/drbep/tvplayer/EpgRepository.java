@@ -47,8 +47,8 @@ final class EpgRepository {
             this.title = title;
             this.icon = icon;
             this.description = description;
-            this.startTime = startTime;
-            this.endTime = endTime;
+            this.startTime = EpgTimeCodec.normalizeUtc(startTime);
+            this.endTime = EpgTimeCodec.normalizeUtc(endTime);
             this.category = category == null ? "" : category;
             this.progress = progress;
         }
@@ -1706,26 +1706,7 @@ final class EpgRepository {
     }
 
     private static long parseIsoMillis(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return 0L;
-        }
-        try {
-            return java.time.Instant.parse(value.trim()).toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.OffsetDateTime.parse(value.trim()).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.ZonedDateTime.parse(value.trim()).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.LocalDateTime.parse(value.trim()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-            return 0L;
-        }
+        return EpgTimeCodec.parseEpochMillis(value);
     }
 
     private static String normalizeLookupKey(String value) {

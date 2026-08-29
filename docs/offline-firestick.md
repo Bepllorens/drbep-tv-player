@@ -76,6 +76,19 @@ El formato actual incluye:
 - Verificacion local del snapshot antes de aplicarlo
 - Firma del snapshot en backend con validacion en la app
 
+## Smoke ADB reproducible
+
+Antes de publicar una beta se puede validar el binario instalado con una ventana de log limpia, navegacion por mando, zapping y salida/retorno al launcher:
+
+```bash
+STRICT_WARNINGS=1 \
+LOG_OUTPUT=/tmp/drbep-offline-smoke.log \
+REPORT_OUTPUT=/tmp/drbep-offline-smoke.json \
+scripts/offline_smoke_test.sh 192.168.93.189:5555
+```
+
+El informe JSON no incluye URLs ni tokens. Registra version, dispositivo, deteccion del proceso, memoria PSS, conservacion del proceso en segundo plano, tamano de catalogo, primer frame de arranque y zapping, buffering, errores y estado de red. El log detallado se guarda aparte para diagnostico local y debe tratarse como dato sensible.
+
 ## Pendiente
 
 - Publicacion automatica diaria del snapshot

@@ -6,11 +6,15 @@ APP_PACKAGE="${APP_PACKAGE:-com.drbep.tvplayer.offline}"
 APP_ACTIVITY="${APP_ACTIVITY:-com.drbep.tvplayer.MainActivity}"
 WAIT_BOOT_SECONDS="${WAIT_BOOT_SECONDS:-12}"
 WAIT_AFTER_KEY_SECONDS="${WAIT_AFTER_KEY_SECONDS:-1}"
+WAIT_BACKGROUND_SECONDS="${WAIT_BACKGROUND_SECONDS:-4}"
 LOG_LINES="${LOG_LINES:-8000}"
 LOG_OUTPUT="${LOG_OUTPUT:-}"
+REPORT_OUTPUT="${REPORT_OUTPUT:-}"
 STRICT_WARNINGS="${STRICT_WARNINGS:-0}"
 CHECK_GUIDE_KEY="${CHECK_GUIDE_KEY:-1}"
+CHECK_BACKGROUND="${CHECK_BACKGROUND:-1}"
 TMP_LOG=""
+BACKGROUND_PROCESS_KEPT="unknown"
 
 cleanup() {
   if [ -n "$TMP_LOG" ] && [ -f "$TMP_LOG" ]; then
@@ -28,10 +32,13 @@ Variables opcionales:
   APP_ACTIVITY             Activity principal. Default: $APP_ACTIVITY
   WAIT_BOOT_SECONDS        Espera tras arrancar la app. Default: $WAIT_BOOT_SECONDS
   WAIT_AFTER_KEY_SECONDS   Espera entre teclas. Default: $WAIT_AFTER_KEY_SECONDS
+  WAIT_BACKGROUND_SECONDS Espera al salir al launcher. Default: $WAIT_BACKGROUND_SECONDS
   LOG_LINES                Lineas de logcat a revisar. Default: $LOG_LINES
   LOG_OUTPUT               Ruta opcional donde guardar el logcat revisado.
+  REPORT_OUTPUT            Ruta opcional del informe JSON estructurado.
   STRICT_WARNINGS          Si vale 1, cualquier aviso diagnostico falla el smoke. Default: $STRICT_WARNINGS
   CHECK_GUIDE_KEY          Si vale 1, pulsa KEYCODE_GUIDE durante el smoke. Default: $CHECK_GUIDE_KEY
+  CHECK_BACKGROUND         Si vale 1, valida salida y retorno sin reiniciar proceso. Default: $CHECK_BACKGROUND
 
 Ejemplos:
   $0 192.168.93.16:5555
@@ -66,6 +73,7 @@ echo "Paquete:     $APP_PACKAGE"
 echo "Activity:    $APP_ACTIVITY"
 echo "Modo estricto avisos: $STRICT_WARNINGS"
 echo "Comprueba GUIDE: $CHECK_GUIDE_KEY"
+echo "Comprueba segundo plano: $CHECK_BACKGROUND"
 
 echo
 echo "== Version instalada =="
@@ -74,22 +82,29 @@ echo "== Version instalada =="
   | head -n 4 \
   | sed 's/^[[:space:]]*/  /' || echo "  no se pudo leer version"
 
-"${ADB[@]}" logcat -c || true
 "${ADB[@]}" shell am force-stop "$APP_PACKAGE" >/dev/null 2>&1 || true
+sleep 1
+"${ADB[@]}" logcat -c || true
 BOOT_STARTED_AT="$(date +%s)"
 "${ADB[@]}" shell am start -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
 
 echo "Esperando arranque (${WAIT_BOOT_SECONDS}s)..."
-sleep "$WAIT_BOOT_SECONDS"
-
-PID="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
+PID=""
+while [ -z "$PID" ] && [ "$(( $(date +%s) - BOOT_STARTED_AT ))" -lt "$WAIT_BOOT_SECONDS" ]; do
+  sleep 1
+  PID="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
+done
 if [ -z "$PID" ]; then
   echo "La app no sigue en ejecucion tras el arranque" >&2
   "${ADB[@]}" logcat -d -t "$LOG_LINES" | grep -iE "FATAL EXCEPTION|AndroidRuntime|$APP_PACKAGE|crash" || true
   exit 1
 fi
 BOOT_ELAPSED="$(( $(date +%s) - BOOT_STARTED_AT ))"
-echo "PID activo tras arranque: $PID (${BOOT_ELAPSED}s)"
+REMAINING_BOOT_WAIT="$((WAIT_BOOT_SECONDS - BOOT_ELAPSED))"
+if [ "$REMAINING_BOOT_WAIT" -gt 0 ]; then
+  sleep "$REMAINING_BOOT_WAIT"
+fi
+echo "PID detectado tras arranque: $PID (${BOOT_ELAPSED}s; estabilizacion ${WAIT_BOOT_SECONDS}s)"
 
 send_key() {
   local label="$1"
@@ -122,18 +137,27 @@ print_log_summary() {
   echo "Catalogo/arranque:"
   grep -iE "startup (catalog|parsed|playback)|startup-load|startup-refresh|startup-hydrate|catalog .*duration|parse.*duration" "$log_file" \
     | tail -n 12 \
+    | redact_log_lines \
     | sed 's/^/  /' || echo "  sin metricas recientes"
   echo
   echo "EPG:"
   grep -iE "EPG|timeline|guide" "$log_file" \
     | grep -ivE "ResourcesCompat|ViewRootImpl" \
     | tail -n 12 \
+    | redact_log_lines \
     | sed 's/^/  /' || echo "  sin eventos EPG recientes"
   echo
   echo "Playback:"
   grep -iE "playChannel|prepareMediaSource|Playback route|decision=|first frame|STATE_READY|Source error|ExoPlaybackException|playback_health|rebuffer|buffering" "$log_file" \
     | tail -n 16 \
+    | redact_log_lines \
     | sed 's/^/  /' || echo "  sin eventos de reproduccion recientes"
+}
+
+redact_log_lines() {
+  sed -E \
+    -e 's#https?://[^,}[:space:]]+#<url>#g' \
+    -e 's#([,?&[:space:]])([Tt]oken|[Aa]pi[_-]?[Kk]ey|[Kk]ey|[Aa]uthorization)=?[^,}[:space:]]+#\1\2=<redactado>#g'
 }
 
 count_matches() {
@@ -154,6 +178,7 @@ print_warning_sample() {
     echo "  WARN $title: $count coincidencia(s)"
     grep -iE "$pattern" "$log_file" \
       | tail -n 4 \
+      | redact_log_lines \
       | sed 's/^/    /'
     return 1
   fi
@@ -226,6 +251,25 @@ ensure_main_activity
 send_key "Canal abajo" KEYCODE_DPAD_DOWN
 send_key "Canal arriba" KEYCODE_DPAD_UP
 
+if [ "$CHECK_BACKGROUND" = "1" ]; then
+  PID_BEFORE_BACKGROUND="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
+  send_key "Launcher / segundo plano" KEYCODE_HOME
+  sleep "$WAIT_BACKGROUND_SECONDS"
+  PID_DURING_BACKGROUND="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
+  "${ADB[@]}" shell am start -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
+  sleep "$WAIT_AFTER_KEY_SECONDS"
+  PID_AFTER_BACKGROUND="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
+  if [ -n "$PID_BEFORE_BACKGROUND" ] \
+      && [ "$PID_BEFORE_BACKGROUND" = "$PID_DURING_BACKGROUND" ] \
+      && [ "$PID_BEFORE_BACKGROUND" = "$PID_AFTER_BACKGROUND" ]; then
+    BACKGROUND_PROCESS_KEPT="true"
+    echo "Proceso conservado al volver del launcher: $PID_AFTER_BACKGROUND"
+  else
+    BACKGROUND_PROCESS_KEPT="false"
+    echo "La app reinicio o perdio el proceso al pasar por segundo plano" >&2
+  fi
+fi
+
 PID="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
 if [ -z "$PID" ]; then
   echo "La app se ha cerrado durante el smoke test" >&2
@@ -250,5 +294,37 @@ if [ -n "$CRASH_LOG" ]; then
 fi
 
 print_log_summary "$TMP_LOG"
-print_health_gates "$TMP_LOG"
+SMOKE_OK=1
+if ! print_health_gates "$TMP_LOG"; then
+  SMOKE_OK=0
+fi
+
+if [ "$BACKGROUND_PROCESS_KEPT" = "false" ]; then
+  SMOKE_OK=0
+fi
+
+if [ -n "$REPORT_OUTPUT" ]; then
+  DEVICE_MODEL="$("${ADB[@]}" shell getprop ro.product.model 2>/dev/null | tr -d '\r' || true)"
+  VERSION_CODE="$("${ADB[@]}" shell dumpsys package "$APP_PACKAGE" 2>/dev/null | sed -n 's/.*versionCode=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+  VERSION_NAME="$("${ADB[@]}" shell dumpsys package "$APP_PACKAGE" 2>/dev/null | sed -n 's/.*versionName=\([^[:space:]]*\).*/\1/p' | head -n 1)"
+  TOTAL_PSS_KB="$("${ADB[@]}" shell dumpsys meminfo "$APP_PACKAGE" 2>/dev/null | sed -n 's/.*TOTAL PSS:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+  python3 "$(dirname "$0")/offline_smoke_report.py" \
+    --log "$TMP_LOG" \
+    --output "$REPORT_OUTPUT" \
+    --device "$DEVICE" \
+    --model "$DEVICE_MODEL" \
+    --version-code "${VERSION_CODE:-0}" \
+    --version-name "$VERSION_NAME" \
+    --pid "$PID" \
+    --process-detected-seconds "$BOOT_ELAPSED" \
+    --total-pss-kb "${TOTAL_PSS_KB:-0}" \
+    --background-process-kept "$BACKGROUND_PROCESS_KEPT" \
+    --smoke-ok "$SMOKE_OK"
+  echo "Informe JSON guardado en: $REPORT_OUTPUT"
+fi
+
+if [ "$SMOKE_OK" != "1" ]; then
+  echo "Smoke test con fallos de salud o ciclo de vida." >&2
+  exit 1
+fi
 echo "Smoke test OK: app viva y sin FATAL/AndroidRuntime recientes."

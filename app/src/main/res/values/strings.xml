@@ -845,11 +845,14 @@
     <string name="settings_backend_route_primary">Principal mediante Cloudflare</string>
     <string name="backend_failover_checking_title">Comprobando servidor</string>
     <string name="backend_failover_checking_detail">Verificando la ruta principal antes de iniciar…</string>
+    <string name="backend_failover_recovering_title">Recuperando conexión</string>
+    <string name="backend_failover_recovering_detail">La ruta principal no responde. Probando la conexión alternativa…</string>
+    <string name="backend_failover_emergency_unavailable">La conexión alternativa tampoco está disponible</string>
     <string name="backend_failover_automatic_enabled">Ruta de emergencia activada automáticamente</string>
     <string name="backend_failover_vps_status">Conectado mediante VPS</string>
     <string name="backend_failover_understood">Entendido</string>
     <string name="backend_failover_notice_title">Conexión alternativa activada</string>
-    <string name="backend_failover_notice_message">Cloudflare no responde tras varios intentos. DRBEP se ha conectado mediante el VPS como contramedida temporal al bloqueo de Cloudflare asociado a LaLiga. La reproducción y el catálogo usarán esta ruta hasta que vuelvas manualmente al servidor principal.</string>
+    <string name="backend_failover_notice_message">La ruta principal no responde desde este dispositivo. DRBEP se ha conectado automáticamente mediante la ruta alternativa para recuperar la reproducción y el catálogo. Seguirá usándola hasta que vuelvas manualmente al servidor principal.</string>
     <string name="backend_failover_primary_available">El servidor principal vuelve a estar disponible. Puedes regresar desde Sistema offline cuando termines de reproducir.</string>
     <string name="settings_offline_system_summary">App: %1$s (%2$d)\nModo independiente: %3$s\nCatalogo: %4$s\nVerificacion: %5$s\nEPG: %6$s\nToken: %7$s\nDispositivo: %8$s\nGrabaciones: %9$s\nUltimo intento catalogo: %10$s\nUltimo catalogo OK: %11$s\nUltimo error catalogo: %12$s\nActualizaciones: %13$s\nRecientes/diagnostico: %14$s\nUltimo mantenimiento: %15$s\nError mantenimiento: %16$s\nSiguiente sincronizacion: %17$s\nProteccion catalogo: %18$s</string>
     <string name="settings_offline_catalog_guard_rejected">%1$s\ncanales %2$d/%3$d · total %4$d/%5$d\n%6$s</string>

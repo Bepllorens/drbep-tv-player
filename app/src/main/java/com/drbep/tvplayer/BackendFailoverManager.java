@@ -13,6 +13,10 @@ final class BackendFailoverManager {
         boolean isHealthy(String baseUrl);
     }
 
+    interface DetailedProbe {
+        ProbeResult probe(String baseUrl);
+    }
+
     interface Sleeper {
         void sleep(long delayMs) throws InterruptedException;
     }
@@ -31,11 +35,33 @@ final class BackendFailoverManager {
         }
     }
 
+    static final class ProbeResult {
+        final boolean healthy;
+        final boolean transportFailure;
+
+        private ProbeResult(boolean healthy, boolean transportFailure) {
+            this.healthy = healthy;
+            this.transportFailure = transportFailure;
+        }
+
+        static ProbeResult healthy() {
+            return new ProbeResult(true, false);
+        }
+
+        static ProbeResult unavailable() {
+            return new ProbeResult(false, false);
+        }
+
+        static ProbeResult transportFailure() {
+            return new ProbeResult(false, true);
+        }
+    }
+
     private BackendFailoverManager() {
     }
 
     static Decision evaluate(String primaryBaseUrl, String emergencyBaseUrl) {
-        return evaluate(primaryBaseUrl, emergencyBaseUrl, BackendFailoverManager::probeHealth, Thread::sleep);
+        return evaluateDetailed(primaryBaseUrl, emergencyBaseUrl, BackendFailoverManager::probeHealthResult, Thread::sleep);
     }
 
     static Decision evaluate(String primaryBaseUrl, String emergencyBaseUrl, Probe probe, Sleeper sleeper) {
@@ -68,10 +94,88 @@ final class BackendFailoverManager {
         return new Decision(emergencyHealthy ? emergency : primary, emergencyHealthy, failures, emergencyHealthy);
     }
 
+    static Decision evaluateDetailed(String primaryBaseUrl, String emergencyBaseUrl,
+                                     DetailedProbe probe, Sleeper sleeper) {
+        String primary = normalize(primaryBaseUrl);
+        String emergency = normalize(emergencyBaseUrl);
+        if (primary.isEmpty() || probe == null) {
+            return new Decision(primary, false, 0, false);
+        }
+
+        int failures = 0;
+        for (int attempt = 0; attempt < PRIMARY_ATTEMPTS; attempt++) {
+            ProbeResult result = safeProbe(probe, primary);
+            if (result.healthy) {
+                return new Decision(primary, false, failures, false);
+            }
+            failures++;
+            if (result.transportFailure) {
+                break;
+            }
+            if (attempt + 1 < PRIMARY_ATTEMPTS && sleeper != null) {
+                try {
+                    sleeper.sleep(RETRY_DELAY_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return new Decision(primary, false, failures, false);
+                }
+            }
+        }
+
+        return evaluateEmergency(primary, emergency, failures, probe);
+    }
+
+    static Decision evaluateAfterTransportFailure(String primaryBaseUrl, String emergencyBaseUrl) {
+        return evaluateAfterTransportFailure(
+                primaryBaseUrl,
+                emergencyBaseUrl,
+                BackendFailoverManager::probeHealthResult
+        );
+    }
+
+    static Decision evaluateAfterTransportFailure(String primaryBaseUrl, String emergencyBaseUrl,
+                                                  DetailedProbe probe) {
+        String primary = normalize(primaryBaseUrl);
+        String emergency = normalize(emergencyBaseUrl);
+        if (primary.isEmpty() || probe == null) {
+            return new Decision(primary, false, 1, false);
+        }
+        return evaluateEmergency(primary, emergency, 1, probe);
+    }
+
+    private static Decision evaluateEmergency(String primary, String emergency, int primaryFailures,
+                                              DetailedProbe probe) {
+        if (emergency.isEmpty() || emergency.equalsIgnoreCase(primary)) {
+            return new Decision(primary, false, primaryFailures, false);
+        }
+        ProbeResult emergencyResult = safeProbe(probe, emergency);
+        return new Decision(
+                emergencyResult.healthy ? emergency : primary,
+                emergencyResult.healthy,
+                primaryFailures,
+                emergencyResult.healthy
+        );
+    }
+
+    private static ProbeResult safeProbe(DetailedProbe probe, String baseUrl) {
+        try {
+            ProbeResult result = probe.probe(baseUrl);
+            return result == null ? ProbeResult.unavailable() : result;
+        } catch (Exception error) {
+            return BackendTransportFailurePolicy.isTransportFailure(error)
+                    ? ProbeResult.transportFailure()
+                    : ProbeResult.unavailable();
+        }
+    }
+
     static boolean probeHealth(String baseUrl) {
+        return probeHealthResult(baseUrl).healthy;
+    }
+
+    static ProbeResult probeHealthResult(String baseUrl) {
         String normalized = normalize(baseUrl);
         if (normalized.isEmpty()) {
-            return false;
+            return ProbeResult.unavailable();
         }
         HttpURLConnection connection = null;
         try {
@@ -83,9 +187,13 @@ final class BackendFailoverManager {
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Cache-Control", "no-cache");
             int code = connection.getResponseCode();
-            return code >= 200 && code < 300;
-        } catch (Exception ignored) {
-            return false;
+            return code >= 200 && code < 300
+                    ? ProbeResult.healthy()
+                    : ProbeResult.unavailable();
+        } catch (Exception error) {
+            return BackendTransportFailurePolicy.isTransportFailure(error)
+                    ? ProbeResult.transportFailure()
+                    : ProbeResult.unavailable();
         } finally {
             if (connection != null) {
                 connection.disconnect();

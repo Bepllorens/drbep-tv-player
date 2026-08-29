@@ -64,4 +64,50 @@ public class BackendFailoverManagerTest {
         assertFalse(decision.emergencyHealthy);
         assertEquals("https://fire.tvbep.com", decision.selectedBaseUrl);
     }
+
+    @Test
+    public void switchesAfterFirstPrimaryTransportFailure() {
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger emergencyCalls = new AtomicInteger();
+        BackendFailoverManager.Decision decision = BackendFailoverManager.evaluateDetailed(
+                "https://fire.tvbep.com",
+                "https://direct.tvbep.com",
+                baseUrl -> {
+                    if (baseUrl.contains("fire")) {
+                        primaryCalls.incrementAndGet();
+                        return BackendFailoverManager.ProbeResult.transportFailure();
+                    }
+                    emergencyCalls.incrementAndGet();
+                    return BackendFailoverManager.ProbeResult.healthy();
+                },
+                delayMs -> { }
+        );
+
+        assertTrue(decision.useEmergency);
+        assertEquals(1, decision.primaryFailures);
+        assertEquals(1, primaryCalls.get());
+        assertEquals(1, emergencyCalls.get());
+    }
+
+    @Test
+    public void directTransportRecoverySkipsAnotherPrimaryProbe() {
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger emergencyCalls = new AtomicInteger();
+        BackendFailoverManager.Decision decision = BackendFailoverManager.evaluateAfterTransportFailure(
+                "https://fire.tvbep.com",
+                "https://direct.tvbep.com",
+                baseUrl -> {
+                    if (baseUrl.contains("fire")) {
+                        primaryCalls.incrementAndGet();
+                        return BackendFailoverManager.ProbeResult.healthy();
+                    }
+                    emergencyCalls.incrementAndGet();
+                    return BackendFailoverManager.ProbeResult.healthy();
+                }
+        );
+
+        assertTrue(decision.useEmergency);
+        assertEquals(0, primaryCalls.get());
+        assertEquals(1, emergencyCalls.get());
+    }
 }

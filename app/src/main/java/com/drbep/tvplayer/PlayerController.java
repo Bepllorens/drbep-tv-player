@@ -135,6 +135,9 @@ final class PlayerController {
 
         default void onPlaybackStalled(PlaybackRequest request, PlaybackDiagnostics diagnostics) {
         }
+
+        default void onBackendTransportFailure(String operation, Throwable error) {
+        }
     }
 
     static final class PlaybackRequest {
@@ -3108,6 +3111,9 @@ final class PlayerController {
             return info;
         } catch (Exception e) {
             Log.w(TAG, "stream info fetch failed for channel " + channelId, e);
+            if (BackendTransportFailurePolicy.isTransportFailure(e)) {
+                host.onBackendTransportFailure("stream-info", e);
+            }
             return null;
         }
     }

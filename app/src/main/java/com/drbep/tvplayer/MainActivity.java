@@ -1293,6 +1293,36 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private void maybeFailoverBackendAfterTransportFailure() {
+        if (!BuildConfig.STANDALONE_MODE || isEmergencyBackendEnabled() || backendFailoverProbeInFlight || activityDestroyed) {
+            return;
+        }
+        backendFailoverProbeInFlight = true;
+        showStartupLoading(
+                getString(R.string.backend_failover_recovering_title),
+                getString(R.string.backend_failover_recovering_detail)
+        );
+        boolean submitted = submitExecutorTask(controlExecutor, "backend-transport-failover", () -> {
+            BackendFailoverManager.Decision decision = BackendFailoverManager.evaluateAfterTransportFailure(
+                    BuildConfig.OFFLINE_BASE_URL,
+                    BuildConfig.EMERGENCY_BASE_URL
+            );
+            postUiIfAlive(() -> {
+                backendFailoverProbeInFlight = false;
+                if (decision.useEmergency) {
+                    activateEmergencyBackend(true);
+                    return;
+                }
+                hideStartupLoading();
+                showStatus(getString(R.string.backend_failover_emergency_unavailable));
+            });
+        });
+        if (!submitted) {
+            backendFailoverProbeInFlight = false;
+            hideStartupLoading();
+        }
+    }
+
     private void schedulePrimaryBackendRecoveryCheck() {
         if (!BuildConfig.STANDALONE_MODE || !isEmergencyBackendEnabled() || activityDestroyed) {
             return;
@@ -1389,6 +1419,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void recordPlaybackError(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
                 MainActivity.this.recordPlaybackError(request, diagnostics);
+            }
+
+            @Override
+            public void onBackendTransportFailure(String operation, Throwable error) {
+                MainActivity.this.postUiIfAlive(MainActivity.this::maybeFailoverBackendAfterTransportFailure);
             }
 
             @Override

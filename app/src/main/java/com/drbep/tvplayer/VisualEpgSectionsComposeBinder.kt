@@ -127,7 +127,7 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
     val shape = RoundedCornerShape(if (compact) 14.dp else 18.dp)
     val borderColor = when {
         focused -> OfflineTvTheme.Colors.accentCyan
-        effectiveModel.scheduled -> Color(0xFFAF7A21)
+        effectiveModel.scheduled -> OfflineTvTheme.Colors.statusScheduled
         else -> OfflineTvTheme.Colors.card
     }
     Column(
@@ -158,7 +158,11 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
                     false
                 }
             }
-            .tvButtonSemantics(entry.onClick != null)
+            .tvButtonSemantics(
+                entry.onClick != null,
+                listOf(effectiveModel.title, effectiveModel.timeLabel, effectiveModel.badgeLabel).filter { it.isNotBlank() }.joinToString(". "),
+                entry.preferred
+            )
             .combinedClickable(enabled = entry.onClick != null, onClick = { entry.onClick?.run() })
             .padding(if (compact) 6.dp else 8.dp)
     ) {

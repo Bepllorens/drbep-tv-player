@@ -198,7 +198,11 @@ private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: D
                     false
                 }
             }
-            .tvButtonSemantics(block.onClick != null)
+            .tvButtonSemantics(
+                block.onClick != null,
+                listOf(block.title, block.time, block.status).filter { it.isNotBlank() }.joinToString(". "),
+                block.preferred
+            )
             .combinedClickable(enabled = block.onClick != null, onClick = { block.onClick?.run() })
             .padding(horizontal = 9.dp, vertical = 7.dp)
     ) {

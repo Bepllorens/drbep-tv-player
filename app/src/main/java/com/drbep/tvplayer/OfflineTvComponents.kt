@@ -8,7 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -87,7 +87,7 @@ fun TvActionChip(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .scale(focusScale)
-            .height(controlHeight)
+            .heightIn(min = controlHeight)
             .alpha(if (enabled) 1f else 0.45f)
             .border(
                 width = if (focused) OfflineTvTheme.Control.focusBorder else 0.dp,
@@ -95,7 +95,7 @@ fun TvActionChip(
                 shape = RoundedCornerShape(OfflineTvTheme.Radius.chip)
             )
             .background(background, RoundedCornerShape(OfflineTvTheme.Radius.chip))
-            .tvButtonSemantics(enabled)
+            .tvButtonSemantics(enabled, label, selected)
             .combinedClickable(
                 enabled = enabled,
                 onClick = { onClick?.run() },
@@ -108,7 +108,7 @@ fun TvActionChip(
             fontWeight = FontWeight.Bold,
             textAlign = if (centered) TextAlign.Center else TextAlign.Start
         ),
-        maxLines = 1,
+        maxLines = 2,
         overflow = TextOverflow.Ellipsis
     )
 }

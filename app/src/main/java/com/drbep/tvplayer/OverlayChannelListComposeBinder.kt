@@ -185,13 +185,13 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            FilterNavButton("◀", model.onPreviousFilterClick, compact)
+            FilterNavButton("◀", "Filtro anterior", model.onPreviousFilterClick, compact)
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(if (compact) 42.dp else 46.dp)
                     .background(OfflineTvTheme.Colors.card, RoundedCornerShape(14.dp))
-                    .tvButtonSemantics(model.onNextFilterClick != null)
+                    .tvButtonSemantics(model.onNextFilterClick != null, "Filtro ${model.filterLabel}")
                     .clickable(enabled = model.onNextFilterClick != null) { model.onNextFilterClick?.run() }
                     .padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center
@@ -206,19 +206,19 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
                     maxLines = 1
                 )
             }
-            FilterNavButton("▶", model.onNextFilterClick, compact)
+            FilterNavButton("▶", "Filtro siguiente", model.onNextFilterClick, compact)
         }
     }
 }
 
 @Composable
-private fun FilterNavButton(label: String, action: Runnable?, compact: Boolean) {
+private fun FilterNavButton(label: String, accessibilityLabel: String, action: Runnable?, compact: Boolean) {
     Box(
         modifier = Modifier
             .width(if (compact) 48.dp else 54.dp)
             .height(if (compact) 42.dp else 46.dp)
             .background(OfflineTvTheme.Colors.chipSelected, RoundedCornerShape(14.dp))
-            .tvButtonSemantics(action != null)
+            .tvButtonSemantics(action != null, accessibilityLabel)
             .clickable(enabled = action != null) { action?.run() },
         contentAlignment = Alignment.Center
     ) {
@@ -245,7 +245,11 @@ private fun OverlayChannelRow(item: OverlayChannelRowUiModel, imageBinder: Overl
             .fillMaxWidth()
             .padding(vertical = 2.dp)
             .background(Color.Transparent)
-            .tvButtonSemantics(item.onClick != null)
+            .tvButtonSemantics(
+                item.onClick != null,
+                listOf(item.name, item.meta, if (item.tuned) "Canal sintonizado" else "").filter { it.isNotBlank() }.joinToString(". "),
+                item.tuned
+            )
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
     ) {
         Row(
@@ -276,7 +280,11 @@ private fun OverlayChannelRow(item: OverlayChannelRowUiModel, imageBinder: Overl
                             modifier = Modifier
                                 .size(if (compact) 30.dp else 34.dp)
                                 .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                                .tvButtonSemantics(item.onFavoriteClick != null)
+                                .tvButtonSemantics(
+                                    item.onFavoriteClick != null,
+                                    if (item.favorite) "Quitar ${item.name} de favoritos" else "Añadir ${item.name} a favoritos",
+                                    item.favorite
+                                )
                                 .clickable(enabled = item.onFavoriteClick != null) { item.onFavoriteClick?.run() },
                             contentAlignment = Alignment.Center
                         ) {

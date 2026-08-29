@@ -379,9 +379,11 @@
     <string name="ui_palette_aurora">Aurora violeta</string>
     <string name="ui_palette_graphite">Grafito cian</string>
     <string name="ui_palette_emerald">Esmeralda carbón</string>
+    <string name="ui_palette_high_contrast">Alto contraste</string>
     <string name="ui_palette_aurora_description">Cinematográfica</string>
     <string name="ui_palette_graphite_description">Limpia y tecnológica</string>
     <string name="ui_palette_emerald_description">Sobria y elegante</string>
+    <string name="ui_palette_high_contrast_description">Foco amarillo y textos de máxima legibilidad</string>
     <string name="ui_palette_option">%1$s · %2$s</string>
     <string name="ui_palette_option_selected">✓ %1$s · %2$s</string>
     <string name="status_ui_palette_changed">Apariencia aplicada: %1$s</string>

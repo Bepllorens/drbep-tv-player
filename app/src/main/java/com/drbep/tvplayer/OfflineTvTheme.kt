@@ -11,6 +11,7 @@ object OfflineTvTheme {
     const val PALETTE_AURORA = "aurora"
     const val PALETTE_GRAPHITE = "graphite"
     const val PALETTE_EMERALD = "emerald"
+    const val PALETTE_HIGH_CONTRAST = "high-contrast"
 
     private data class Palette(
         val id: String,
@@ -88,12 +89,32 @@ object OfflineTvTheme {
         textMuted = Color(0xFF9BAEA8),
     )
 
+    private val highContrast = Palette(
+        id = PALETTE_HIGH_CONTRAST,
+        backdrop = Color(0xFF000000),
+        backdropAccent = Color(0xFF07131D),
+        surfaceDeep = Color(0xFF0D141A),
+        panelGlass = Color(0xF0000000),
+        panelSoft = Color(0xE6111A22),
+        card = Color(0xFF1C2832),
+        chip = Color(0xFF101820),
+        chipSelected = Color(0xFF005FCC),
+        focus = Color(0xFFFFD600),
+        focusInk = Color(0xFF000000),
+        accentCyan = Color(0xFF00E5FF),
+        accentSecondary = Color(0xFF78AFFF),
+        accentGold = Color(0xFFFFD600),
+        textSoft = Color(0xFFF1F5F8),
+        textMuted = Color(0xFFD5DEE5),
+    )
+
     private var activePalette by mutableStateOf(aurora)
 
     @JvmStatic
     fun normalizePaletteId(id: String?): String = when (id?.trim()?.lowercase()) {
         PALETTE_GRAPHITE -> PALETTE_GRAPHITE
         PALETTE_EMERALD -> PALETTE_EMERALD
+        PALETTE_HIGH_CONTRAST -> PALETTE_HIGH_CONTRAST
         else -> PALETTE_AURORA
     }
 
@@ -102,6 +123,7 @@ object OfflineTvTheme {
         activePalette = when (normalizePaletteId(id)) {
             PALETTE_GRAPHITE -> graphite
             PALETTE_EMERALD -> emerald
+            PALETTE_HIGH_CONTRAST -> highContrast
             else -> aurora
         }
     }
@@ -152,6 +174,12 @@ object OfflineTvTheme {
         val textSoft get() = activePalette.textSoft
         val textMuted get() = activePalette.textMuted
         val textWarning get() = activePalette.accentGold
+        val overlayScrim = Color(0xCC000000)
+        val statusLive = Color(0xFFD5202A)
+        val statusSuccess = Color(0xFF80E0A7)
+        val statusError = Color(0xFFFF7A8A)
+        val statusScheduled = Color(0xFFAF7A21)
+        val destructive = Color(0xFF643040)
         val guideBackdrop get() = activePalette.backdrop.copy(alpha = 0.85f)
         val guidePanel get() = activePalette.backdropAccent.copy(alpha = 0.95f)
         val guideChannel get() = activePalette.chip

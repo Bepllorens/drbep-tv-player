@@ -88,7 +88,7 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
                     text = stringResource(R.string.timeshift_live_button),
                     modifier = Modifier
                         .background(liveColor, RoundedCornerShape(OfflineTvTheme.Radius.chip))
-                        .tvButtonSemantics(model.onLiveClick != null)
+                        .tvButtonSemantics(model.onLiveClick != null, stringResource(R.string.timeshift_live_button))
                         .clickable(enabled = model.onLiveClick != null) { model.onLiveClick?.run() }
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                     style = TextStyle(color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)

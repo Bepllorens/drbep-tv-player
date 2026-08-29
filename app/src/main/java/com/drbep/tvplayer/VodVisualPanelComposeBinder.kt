@@ -68,7 +68,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(Color(0xCC000000)),
+            .background(OfflineTvTheme.Colors.overlayScrim),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -141,7 +141,7 @@ private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean
             .background(background)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action.onClick != null)
+            .tvButtonSemantics(action.onClick != null, action.label)
             .combinedClickable(enabled = action.onClick != null, onClick = { action.onClick?.run() })
             .padding(horizontal = if (compact) 10.dp else 12.dp),
         contentAlignment = Alignment.Center
@@ -208,7 +208,10 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                     false
                 }
             }
-            .tvButtonSemantics(item.onClick != null)
+            .tvButtonSemantics(
+                item.onClick != null,
+                listOf(item.title, item.meta, item.progressLabel).filter { it.isNotBlank() }.joinToString(". ")
+            )
             .combinedClickable(enabled = item.onClick != null, onClick = { item.onClick?.run() }, onLongClick = item.onMenu?.let { { it.run() } })
             .padding(if (compact) 8.dp else 10.dp)
     ) {
@@ -278,7 +281,7 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
         ) {
             if (item.progressLabel.isNotBlank()) {
                 val badgeFill = when (item.badgeTone) {
-                    "available" -> Color(0xFFD5202A)
+                    "available" -> OfflineTvTheme.Colors.statusLive
                     "finished" -> Color(0xFF46515D)
                     else -> Color(0xFF2C6B58)
                 }

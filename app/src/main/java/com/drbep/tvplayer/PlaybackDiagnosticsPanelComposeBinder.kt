@@ -59,7 +59,7 @@ private fun PlaybackDiagnosticsPanel(model: PlaybackDiagnosticsPanelUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(Color(0xCC000000)),
+            .background(OfflineTvTheme.Colors.overlayScrim),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -176,9 +176,9 @@ private fun DiagnosticsSection(section: String, rows: List<PlaybackDiagnosticsRo
 @Composable
 private fun DiagnosticsRow(row: PlaybackDiagnosticsRowUiModel, compact: Boolean) {
     val toneColor = when (row.tone.lowercase()) {
-        "error" -> Color(0xFFFF7A8A)
+        "error" -> OfflineTvTheme.Colors.statusError
         "warn" -> OfflineTvTheme.Colors.focus
-        "ok" -> Color(0xFF80E0A7)
+        "ok" -> OfflineTvTheme.Colors.statusSuccess
         else -> OfflineTvTheme.Colors.textSoft
     }
     Row(
@@ -228,7 +228,7 @@ private fun DiagnosticsActionButton(action: TvMessageActionUiModel, compact: Boo
     var focused by remember { mutableStateOf(false) }
     val background = when {
         focused -> OfflineTvTheme.Colors.focus
-        action.destructive -> Color(0xFF683142)
+        action.destructive -> OfflineTvTheme.Colors.destructive
         else -> OfflineTvTheme.Colors.chip
     }
     val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
@@ -239,7 +239,7 @@ private fun DiagnosticsActionButton(action: TvMessageActionUiModel, compact: Boo
             .background(background)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action.onClick != null)
+            .tvButtonSemantics(action.onClick != null, action.label)
             .clickable(enabled = action.onClick != null) { action.onClick?.run() }
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center

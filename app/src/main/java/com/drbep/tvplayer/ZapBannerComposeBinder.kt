@@ -274,7 +274,7 @@ private fun ZapActionChip(item: ZapActionItem, compact: Boolean, modifier: Modif
             .alpha(if (item.enabled) 1f else 0.45f)
             .background(background, RoundedCornerShape(16.dp))
             .border(1.dp, stroke, RoundedCornerShape(16.dp))
-            .tvButtonSemantics(item.enabled)
+            .tvButtonSemantics(item.enabled, item.label, item.selected)
             .clickable(enabled = item.enabled) { item.onClick?.run() },
         contentAlignment = Alignment.Center
     ) {

@@ -69,7 +69,7 @@ private fun MultiViewHeader(model: MultiViewHeaderUiModel) {
             text = model.closeLabel,
             modifier = Modifier
                 .background(OfflineTvTheme.Colors.chip.copy(alpha = 0.9f), RoundedCornerShape(15.dp))
-                .tvButtonSemantics(model.onCloseClick != null)
+                .tvButtonSemantics(model.onCloseClick != null, model.closeLabel)
                 .clickable(enabled = model.onCloseClick != null) { model.onCloseClick?.run() }
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             maxLines = 1,

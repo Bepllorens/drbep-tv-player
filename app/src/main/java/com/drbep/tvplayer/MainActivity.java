@@ -11583,7 +11583,8 @@ public class MainActivity extends FragmentActivity {
         List<String> paletteIds = Arrays.asList(
                 OfflineTvTheme.PALETTE_AURORA,
                 OfflineTvTheme.PALETTE_GRAPHITE,
-                OfflineTvTheme.PALETTE_EMERALD
+                OfflineTvTheme.PALETTE_EMERALD,
+                OfflineTvTheme.PALETTE_HIGH_CONTRAST
         );
         String currentPalette = OfflineTvTheme.activePaletteId();
         List<String> options = new ArrayList<>();
@@ -11632,6 +11633,9 @@ public class MainActivity extends FragmentActivity {
         if (OfflineTvTheme.PALETTE_EMERALD.equals(normalized)) {
             return getString(R.string.ui_palette_emerald);
         }
+        if (OfflineTvTheme.PALETTE_HIGH_CONTRAST.equals(normalized)) {
+            return getString(R.string.ui_palette_high_contrast);
+        }
         return getString(R.string.ui_palette_aurora);
     }
 
@@ -11642,6 +11646,9 @@ public class MainActivity extends FragmentActivity {
         }
         if (OfflineTvTheme.PALETTE_EMERALD.equals(normalized)) {
             return getString(R.string.ui_palette_emerald_description);
+        }
+        if (OfflineTvTheme.PALETTE_HIGH_CONTRAST.equals(normalized)) {
+            return getString(R.string.ui_palette_high_contrast_description);
         }
         return getString(R.string.ui_palette_aurora_description);
     }

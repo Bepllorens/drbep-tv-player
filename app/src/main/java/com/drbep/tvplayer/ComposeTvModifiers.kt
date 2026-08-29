@@ -13,17 +13,29 @@ import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.android.awaitFrame
 
-fun Modifier.tvButtonSemantics(enabled: Boolean = true): Modifier {
+fun Modifier.tvButtonSemantics(
+    enabled: Boolean = true,
+    label: String? = null,
+    selectedState: Boolean? = null
+): Modifier {
     val focusModifier = if (enabled) Modifier.focusable() else Modifier
     return this
         .then(focusModifier)
         .semantics(mergeDescendants = true) {
             role = Role.Button
+            if (!label.isNullOrBlank()) {
+                contentDescription = label
+            }
+            if (selectedState != null) {
+                selected = selectedState
+            }
             if (!enabled) {
                 disabled()
             }

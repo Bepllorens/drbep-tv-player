@@ -117,7 +117,7 @@ private fun TvMessageActionButton(action: TvMessageActionUiModel, compact: Boole
     var focused by remember { mutableStateOf(false) }
     val background = when {
         focused -> OfflineTvTheme.Colors.focus
-        action.destructive -> Color(0xFF643040)
+        action.destructive -> OfflineTvTheme.Colors.destructive
         else -> OfflineTvTheme.Colors.chip
     }
     val textColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
@@ -128,7 +128,7 @@ private fun TvMessageActionButton(action: TvMessageActionUiModel, compact: Boole
             .background(background)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action.onClick != null)
+            .tvButtonSemantics(action.onClick != null, action.label)
             .clickable(enabled = action.onClick != null) { action.onClick?.run() },
         contentAlignment = Alignment.Center
     ) {

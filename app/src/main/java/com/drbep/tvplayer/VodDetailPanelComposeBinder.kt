@@ -69,7 +69,7 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xCC000000))
+            .background(OfflineTvTheme.Colors.overlayScrim)
             .tvPanelBackHandler(model.onBack)
             .padding(horizontal = if (compact) 12.dp else 56.dp, vertical = if (compact) 18.dp else 24.dp),
         contentAlignment = Alignment.Center
@@ -245,7 +245,7 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focu
     val startOverAction = action.tone == "start_over"
     val fill = when {
         focused -> OfflineTvTheme.Colors.focus
-        liveAction -> Color(0xFFD5202A)
+        liveAction -> OfflineTvTheme.Colors.statusLive
         startOverAction -> Color(0xFFF4F5F7)
         action.primary -> OfflineTvTheme.Colors.chipSelected
         else -> OfflineTvTheme.Colors.chip
@@ -273,7 +273,7 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focu
             .border(1.dp, stroke, RoundedCornerShape(if (action.primary) 12.dp else 10.dp))
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(enabled)
+            .tvButtonSemantics(enabled, action.label)
             .clickable(enabled = enabled) { action.onClick?.run() }
             .padding(horizontal = if (compact) 12.dp else 16.dp),
         contentAlignment = if (action.primary) Alignment.Center else Alignment.CenterStart

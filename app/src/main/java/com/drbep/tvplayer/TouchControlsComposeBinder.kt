@@ -360,7 +360,10 @@ private fun ModernBadge(text: String) {
 private fun ModernContextHeader(model: TouchControlsBarUiModel) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(enabled = model.onContextClick != null) { model.onContextClick?.run() }
-            .tvButtonSemantics(model.onContextClick != null).padding(vertical = 4.dp),
+            .tvButtonSemantics(
+                model.onContextClick != null,
+                listOf(model.contextTitle, model.contextSubtitle, stringResource(R.string.touch_context_change)).filter { it.isNotBlank() }.joinToString(". ")
+            ).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
@@ -424,7 +427,7 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
             .background(surface, RoundedCornerShape(18.dp))
             .border(1.dp, if (focused) Color.White else OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.33f), RoundedCornerShape(18.dp))
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .tvButtonSemantics(item.enabled)
+            .tvButtonSemantics(item.enabled, item.label, item.selected)
             .combinedClickable(enabled = item.enabled, onClick = { item.onClick?.run() }, onLongClick = item.onLongClick?.let { { it.run() } })
             .padding(horizontal = 7.dp, vertical = if (compact) 7.dp else 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -799,7 +802,10 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .background(OfflineTvTheme.Colors.panelSoft, RoundedCornerShape(16.dp))
             .clickable(enabled = model.onContextClick != null) { model.onContextClick?.run() }
-            .tvButtonSemantics(model.onContextClick != null)
+            .tvButtonSemantics(
+                model.onContextClick != null,
+                listOf(model.contextTitle, model.contextSubtitle, stringResource(R.string.touch_context_change)).filter { it.isNotBlank() }.joinToString(". ")
+            )
             .padding(horizontal = 11.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -866,7 +872,7 @@ private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier,
                 shape = RoundedCornerShape(18.dp)
             )
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .tvButtonSemantics(item.enabled)
+            .tvButtonSemantics(item.enabled, item.label, item.selected)
             .combinedClickable(
                 enabled = item.enabled,
                 onClick = { item.onClick?.run() },

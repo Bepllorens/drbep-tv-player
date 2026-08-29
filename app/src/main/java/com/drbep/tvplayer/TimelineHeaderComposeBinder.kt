@@ -99,7 +99,7 @@ private fun TimelineHeaderAction(action: TimelineHeaderUiModel.TimelineHeaderAct
             .alpha(if (focused) 1f else 0.9f)
             .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action.onClick != null)
+            .tvButtonSemantics(action.onClick != null, action.label)
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
                     action.onDown?.run()

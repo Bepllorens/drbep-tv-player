@@ -201,7 +201,7 @@ private fun StartupIconButton(icon: String, label: String, action: Runnable?, co
             .border(if (focused) 2.dp else 1.dp, if (focused) OfflineTvTheme.Colors.focus else Color(0x22FFFFFF), RoundedCornerShape(12.dp))
             .background(if (focused) OfflineTvTheme.Colors.card else Color(0x22FFFFFF))
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action != null)
+            .tvButtonSemantics(action != null, label)
             .clickable(enabled = action != null) { action?.run() },
         contentAlignment = Alignment.Center
     ) { BasicText(icon, style = TextStyle(Color.White, if (compact) 18.sp else 20.sp, FontWeight.Bold)) }
@@ -225,7 +225,10 @@ private fun StartupPrimaryCard(item: StartupHomeHubUiModel.PrimaryCard, modifier
             .border(if (focused) 3.dp else 1.dp, if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.47f), shape)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(item.onClick != null)
+            .tvButtonSemantics(
+                item.onClick != null,
+                listOf(item.title, item.subtitle, item.metric).filter { it.isNotBlank() }.joinToString(". ")
+            )
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(horizontal = if (compact) 18.dp else 24.dp, vertical = if (compact) 15.dp else 20.dp)
     ) {
@@ -261,7 +264,10 @@ private fun StartupContinueCard(item: StartupHomeHubUiModel.ContinueCard, artwor
             .border(if (focused) 3.dp else 1.dp, if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
             .background(OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.85f))
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(item.onClick != null)
+            .tvButtonSemantics(
+                item.onClick != null,
+                listOf(if (item.livePreview) "En directo" else "", item.title, item.subtitle).filter { it.isNotBlank() }.joinToString(". ")
+            )
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(if (compact) 100.dp else 112.dp).background(OfflineTvTheme.Colors.surfaceDeep)) {
@@ -334,7 +340,10 @@ private fun StartupShortcut(item: StartupHomeHubUiModel.Shortcut, modifier: Modi
             .border(if (focused) 2.dp else 1.dp, if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.2f), RoundedCornerShape(15.dp))
             .background(if (focused) OfflineTvTheme.Colors.card else OfflineTvTheme.Colors.panelGlass.copy(alpha = 0.6f))
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(item.onClick != null)
+            .tvButtonSemantics(
+                item.onClick != null,
+                listOf(item.title, item.subtitle).filter { it.isNotBlank() }.joinToString(". ")
+            )
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically

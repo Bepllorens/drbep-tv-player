@@ -15,5 +15,6 @@ public class OfflineTvThemeTest {
     public void supportedPaletteIdsAreNormalized() {
         assertEquals(OfflineTvTheme.PALETTE_GRAPHITE, OfflineTvTheme.normalizePaletteId(" Graphite "));
         assertEquals(OfflineTvTheme.PALETTE_EMERALD, OfflineTvTheme.normalizePaletteId("EMERALD"));
+        assertEquals(OfflineTvTheme.PALETTE_HIGH_CONTRAST, OfflineTvTheme.normalizePaletteId("high-contrast"));
     }
 }

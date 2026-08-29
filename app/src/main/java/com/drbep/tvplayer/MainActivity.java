@@ -3051,6 +3051,14 @@ public class MainActivity extends FragmentActivity {
         if (ch == null) {
             return;
         }
+        if (DaznEventPolicy.isCompetitionLauncher(ch)) {
+            openDaznCompetitionBouquet(null);
+            return;
+        }
+        if (DaznEventPolicy.isScheduled(ch) && !DaznEventPolicy.isPlayableNow(ch, System.currentTimeMillis())) {
+            showDaznScheduledEventUnavailable(ch);
+            return;
+        }
         if (isProtectedItem(ch) && isProtectedContentLocked()) {
             ensureParentalAccessForItem(ch, () -> playChannelItem(ch, autoPlay));
             return;
@@ -5513,14 +5521,53 @@ public class MainActivity extends FragmentActivity {
             dismissModalForNextAction(dialogHolder[0], onBack);
         };
         List<VodPanelActionUiModel> primaryActions = new ArrayList<>();
-        if (resumeMs <= 30_000L) {
+        long nowMs = System.currentTimeMillis();
+        boolean daznScheduled = DaznEventPolicy.isScheduled(channel);
+        boolean daznPlayable = !daznScheduled || DaznEventPolicy.isPlayableNow(channel, nowMs);
+        boolean daznLiveEvent = DaznEventPolicy.isLiveEventInProgress(channel, nowMs);
+        Runnable playFromStart = () -> dismissModalForNextAction(dialogHolder[0], () -> {
+            clearVodResumePosition(channel.id);
+            playChannelItemInternal(channel, true, 0L);
+        });
+        Runnable playDaznFromBeginning = () -> dismissModalForNextAction(dialogHolder[0], () -> {
+            clearVodResumePosition(channel.id);
+            // A positive explicit seek selects the beginning of DAZN's dynamic
+            // event window; zero leaves Media3 at the live default position.
+            playChannelItemInternal(channel, true, 1L);
+        });
+        if (daznScheduled && DaznEventPolicy.isUpcoming(channel, nowMs)) {
             primaryActions.add(new VodPanelActionUiModel(
-                    getString(R.string.vod_action_play),
+                    getString(R.string.dazn_event_watch_action),
                     true,
-                    () -> dismissModalForNextAction(dialogHolder[0], () -> {
-                        clearVodResumePosition(channel.id);
-                        playChannelItemInternal(channel, true, 0L);
-                    })
+                    playFromStart,
+                    DaznEventPolicy.playableAtMs(channel),
+                    getString(R.string.dazn_event_countdown_prefix),
+                    getString(R.string.dazn_event_watch_action)
+            ));
+        } else if (!daznPlayable) {
+            primaryActions.add(new VodPanelActionUiModel(
+                    DaznEventPolicy.eventState(channel, nowMs),
+                    false,
+                    null
+            ));
+        } else if (daznLiveEvent) {
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.dazn_event_join_live_action),
+                    true,
+                    playFromStart,
+                    "live"
+            ));
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.dazn_event_start_over_action),
+                    true,
+                    playDaznFromBeginning,
+                    "start_over"
+            ));
+        } else if (resumeMs <= 30_000L) {
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(daznScheduled ? R.string.dazn_event_watch_action : R.string.vod_action_play),
+                    true,
+                    playFromStart
             ));
         } else {
             primaryActions.add(new VodPanelActionUiModel(
@@ -5534,10 +5581,7 @@ public class MainActivity extends FragmentActivity {
             primaryActions.add(new VodPanelActionUiModel(
                     getString(R.string.vod_action_start_over),
                     true,
-                    () -> dismissModalForNextAction(dialogHolder[0], () -> {
-                        clearVodResumePosition(channel.id);
-                        playChannelItemInternal(channel, true, 0L);
-                    })
+                    playFromStart
             ));
         }
         List<VodPanelActionUiModel> secondaryActions = new ArrayList<>();
@@ -10532,6 +10576,208 @@ public class MainActivity extends FragmentActivity {
         handleModalShown();
     }
 
+    private void openDaznCompetitionBouquet(Runnable onBack) {
+        if (dynamicDaznVodLoaded || dynamicDaznVodLoading || catalogRepository == null) {
+            showDaznCompetitionBouquetDialog(onBack);
+            return;
+        }
+        loadDynamicDaznVodCatalog(() -> showDaznCompetitionBouquetDialog(onBack));
+    }
+
+    private List<ChannelItem> buildDaznEventItems() {
+        List<ChannelItem> result = new ArrayList<>();
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.isVod && DaznEventPolicy.isDazn(item)) {
+                result.add(item);
+            }
+        }
+        return result;
+    }
+
+    private void showDaznCompetitionBouquetDialog(Runnable onBack) {
+        rememberCurrentVodPosition();
+        List<DaznEventPolicy.Competition> competitions = DaznEventPolicy.competitions(buildDaznEventItems());
+        long nowMs = System.currentTimeMillis();
+        List<VodVisualItemUiModel> cards = new ArrayList<>();
+        prepareModalSurface();
+        final Dialog[] dialogHolder = new Dialog[1];
+        for (DaznEventPolicy.Competition competition : competitions) {
+            Runnable openCompetition = () -> dismissModalForNextAction(
+                    dialogHolder[0],
+                    () -> showDaznCompetitionEventsDialog(
+                            competition,
+                            () -> showDaznCompetitionBouquetDialog(onBack)
+                    )
+            );
+            cards.add(new VodVisualItemUiModel(
+                    competition.name,
+                    DaznEventPolicy.competitionSummary(competition, nowMs),
+                    "",
+                    resolveDaznCompetitionArtwork(competition),
+                    openCompetition,
+                    openCompetition,
+                    true
+            ));
+        }
+        List<VodVisualActionUiModel> actions = new ArrayList<>();
+        actions.add(new VodVisualActionUiModel(getString(R.string.dazn_bouquet_all_events), false, () -> {
+            dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(
+                    VodVisualTypeFilter.ALL,
+                    VodVisualPlatformFilter.DAZN,
+                    VodVisualStatusFilter.ALL,
+                    VodVisualSortFilter.SMART,
+                    "",
+                    () -> showDaznCompetitionBouquetDialog(onBack)
+            ));
+        }));
+        actions.add(new VodVisualActionUiModel(getString(R.string.dazn_bouquet_refresh), false, () -> {
+            dismissModalForNextAction(dialogHolder[0], () -> {
+                dynamicDaznVodLoaded = false;
+                loadDynamicDaznVodCatalog(() -> showDaznCompetitionBouquetDialog(onBack));
+            });
+        }));
+        List<VodVisualSectionUiModel> sections = new ArrayList<>();
+        if (!cards.isEmpty()) {
+            sections.add(new VodVisualSectionUiModel(
+                    getString(R.string.dazn_bouquet_competitions_count, cards.size()),
+                    getString(R.string.dazn_bouquet_competitions_hint),
+                    cards
+            ));
+        }
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        VodVisualPanelComposeBinder.bind(
+                composeView,
+                new VodVisualPanelUiModel(
+                        getString(R.string.dazn_bouquet_title),
+                        getString(R.string.dazn_bouquet_summary, competitions.size(), buildDaznEventItems().size()),
+                        getString(R.string.dazn_bouquet_help),
+                        getString(R.string.dazn_bouquet_empty),
+                        actions,
+                        sections
+                ),
+                (imageView, item) -> bindVodPosterThumbnail(imageView, item == null ? "" : item.posterUrl)
+        );
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
+            if (onBack != null) {
+                modalReturnAction = onBack;
+            }
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
+        handleModalShown();
+    }
+
+    private void showDaznCompetitionEventsDialog(DaznEventPolicy.Competition competition, Runnable onBack) {
+        if (competition == null) {
+            if (onBack != null) {
+                onBack.run();
+            }
+            return;
+        }
+        long nowMs = System.currentTimeMillis();
+        prepareModalSurface();
+        final Dialog[] dialogHolder = new Dialog[1];
+        List<VodVisualItemUiModel> cards = new ArrayList<>();
+        for (ChannelItem event : competition.events) {
+            boolean eventAvailable = DaznEventPolicy.isPlayableNow(event, nowMs);
+            boolean eventUpcoming = DaznEventPolicy.isUpcoming(event, nowMs);
+            Runnable openInfo = () -> dismissModalForNextAction(
+                    dialogHolder[0],
+                    () -> showVodInfoDialog(event, () -> showDaznCompetitionEventsDialog(competition, onBack))
+            );
+            cards.add(new VodVisualItemUiModel(
+                    displayName(event),
+                    DaznEventPolicy.eventCardMeta(event, nowMs),
+                    eventAvailable
+                            ? getString(R.string.dazn_event_available_badge)
+                            : getString(eventUpcoming
+                                    ? R.string.dazn_event_scheduled_badge
+                                    : R.string.dazn_event_finished_badge),
+                    firstNonEmpty(event.logoUrl, competition.logoUrl, resolveDaznPlatformArtwork()),
+                    openInfo,
+                    openInfo,
+                    true,
+                    eventAvailable ? "available" : eventUpcoming ? "scheduled" : "finished"
+            ));
+        }
+        List<VodVisualActionUiModel> actions = new ArrayList<>();
+        actions.add(new VodVisualActionUiModel(getString(R.string.dazn_bouquet_back_competitions), false, () -> {
+            dismissModalForNextAction(dialogHolder[0], onBack);
+        }));
+        List<VodVisualSectionUiModel> sections = new ArrayList<>();
+        if (!cards.isEmpty()) {
+            sections.add(new VodVisualSectionUiModel(
+                    getString(R.string.dazn_bouquet_events_count, cards.size()),
+                    getString(R.string.dazn_bouquet_events_hint),
+                    cards
+            ));
+        }
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        VodVisualPanelComposeBinder.bind(
+                composeView,
+                new VodVisualPanelUiModel(
+                        competition.name,
+                        DaznEventPolicy.competitionSummary(competition, nowMs),
+                        getString(R.string.dazn_bouquet_events_help),
+                        getString(R.string.dazn_bouquet_events_empty),
+                        actions,
+                        sections
+                ),
+                (imageView, item) -> bindVodPosterThumbnail(imageView, item == null ? "" : item.posterUrl)
+        );
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
+            modalReturnAction = onBack;
+        }, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
+        handleModalShown();
+    }
+
+    private String resolveDaznCompetitionArtwork(DaznEventPolicy.Competition competition) {
+        if (competition != null) {
+            String artwork = firstNonEmpty(competition.logoUrl);
+            if (!artwork.isEmpty()) {
+                return artwork;
+            }
+            for (ChannelItem event : competition.events) {
+                artwork = firstNonEmpty(
+                        event == null ? "" : event.daznCompetitionLogo,
+                        event == null ? "" : event.logoUrl
+                );
+                if (!artwork.isEmpty()) {
+                    return artwork;
+                }
+            }
+        }
+        return resolveDaznPlatformArtwork();
+    }
+
+    private String resolveDaznPlatformArtwork() {
+        for (ChannelItem item : allChannels) {
+            if (item == null) {
+                continue;
+            }
+            String platform = firstNonEmpty(item.platformName).toLowerCase(Locale.ROOT);
+            if (platform.contains("dazn") || DaznEventPolicy.isCompetitionLauncher(item)) {
+                String artwork = firstNonEmpty(item.platformLogoUrl, item.logoUrl);
+                if (!artwork.isEmpty()) {
+                    return artwork;
+                }
+            }
+        }
+        return "";
+    }
+
+    private void showDaznScheduledEventUnavailable(ChannelItem event) {
+        String state = DaznEventPolicy.eventState(event, System.currentTimeMillis());
+        showTvMessagePanel(
+                event == null ? getString(R.string.dazn_bouquet_title) : displayName(event),
+                getString(R.string.dazn_event_not_yet_message, state),
+                java.util.Collections.singletonList(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null)),
+                null
+        );
+    }
+
     private void showVodPlatformFilterDialog(
             VodVisualTypeFilter typeFilter,
             VodVisualPlatformFilter currentPlatformFilter,
@@ -10607,7 +10853,13 @@ public class MainActivity extends FragmentActivity {
             String query,
             Runnable onBack
     ) {
-        Runnable openSelectedPlatform = () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack);
+        Runnable openSelectedPlatform = () -> {
+            if (platformFilter == VodVisualPlatformFilter.DAZN && (query == null || query.trim().isEmpty())) {
+                showDaznCompetitionBouquetDialog(onBack);
+            } else {
+                showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack);
+            }
+        };
         if (platformFilter == VodVisualPlatformFilter.MOVISTAR
                 && !dynamicMovistarVodLoaded
                 && !dynamicMovistarVodLoading) {
@@ -10710,6 +10962,7 @@ public class MainActivity extends FragmentActivity {
                 List<ChannelItem> items = new ArrayList<>();
                 items.addAll(buildVodItemsByFilter("vod:dazn:live", false));
                 items.addAll(buildVodItemsByFilter("vod:dazn:replay", false));
+                items.addAll(buildVodItemsByFilter("vod:dazn:scheduled", false));
                 items.addAll(buildVodItemsByFilter("vod:dazn:ondemand", false));
                 return items;
             }
@@ -10829,6 +11082,9 @@ public class MainActivity extends FragmentActivity {
     private String buildVodPosterMeta(ChannelItem item) {
         if (item == null) {
             return "";
+        }
+        if (DaznEventPolicy.isDazn(item)) {
+            return DaznEventPolicy.eventMeta(item, System.currentTimeMillis());
         }
         List<String> parts = new ArrayList<>();
         if (item.vodYear != null && !item.vodYear.trim().isEmpty()) {

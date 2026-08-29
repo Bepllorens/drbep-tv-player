@@ -186,9 +186,17 @@ private fun VodVisualSection(section: VodVisualSectionUiModel, imageBinder: VodV
 @OptIn(ExperimentalFoundationApi::class)
 private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPosterImageBinder, compact: Boolean) {
     var focused by remember { mutableStateOf(false) }
+    val dense = item.compactCard
     Column(
         modifier = Modifier
             .width(if (compact) 124.dp else 150.dp)
+            .height(
+                if (dense) {
+                    if (compact) 244.dp else 282.dp
+                } else {
+                    if (compact) 272.dp else 326.dp
+                }
+            )
             .clip(RoundedCornerShape(16.dp))
             .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
             .onFocusChanged { focused = it.isFocused }
@@ -207,7 +215,13 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 150.dp else 184.dp)
+                .height(
+                    if (dense) {
+                        if (compact) 108.dp else 136.dp
+                    } else {
+                        if (compact) 150.dp else 184.dp
+                    }
+                )
                 .clip(RoundedCornerShape(12.dp)),
             factory = { context ->
                 FrameLayout(context).apply {
@@ -225,34 +239,60 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                 imageBinder.bind(frame.getChildAt(0) as ImageView, item)
             }
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(if (dense) 6.dp else 8.dp))
         BasicText(
             text = item.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (dense) { if (compact) 36.dp else 38.dp } else { if (compact) 32.dp else 36.dp }),
             style = TextStyle(color = Color.White, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
-        if (item.meta.isNotBlank()) {
-            Spacer(modifier = Modifier.height(4.dp))
-            BasicText(
-                text = item.meta,
-                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (item.progressLabel.isNotBlank()) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF2C6B58))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
+        Spacer(modifier = Modifier.height(if (dense) 3.dp else 4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (dense) { if (compact) 36.dp else 38.dp } else { if (compact) 28.dp else 32.dp })
+        ) {
+            if (item.meta.isNotBlank()) {
                 BasicText(
-                    text = item.progressLabel,
-                    style = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    text = item.meta,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = TextStyle(
+                        color = OfflineTvTheme.Colors.textSoft,
+                        fontSize = if (compact) 10.sp else 11.sp,
+                        lineHeight = if (compact) 13.sp else 14.sp
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
+            }
+        }
+        Spacer(modifier = Modifier.height(if (dense) 4.dp else 6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (dense) 24.dp else 28.dp),
+            contentAlignment = Alignment.TopStart
+        ) {
+            if (item.progressLabel.isNotBlank()) {
+                val badgeFill = when (item.badgeTone) {
+                    "available" -> Color(0xFFD5202A)
+                    "finished" -> Color(0xFF46515D)
+                    else -> Color(0xFF2C6B58)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(badgeFill)
+                        .padding(horizontal = 8.dp, vertical = if (dense) 3.dp else 4.dp)
+                ) {
+                    BasicText(
+                        text = item.progressLabel,
+                        style = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    )
+                }
             }
         }
     }

@@ -374,6 +374,7 @@ final class CatalogRepository {
             appendPlexVodItems(parsed);
             appendDaznVodItems(parsed);
         }
+        appendDaznCompetitionLauncher(parsed, offlinePermissions);
         long vodParseMs = System.currentTimeMillis() - vodStartMs;
 
         long filtersStartMs = System.currentTimeMillis();
@@ -444,7 +445,7 @@ final class CatalogRepository {
         String[] keys = {
                 "vod", "adult", "adult_vod", "tivify_vod", "tivify_adult",
                 "runtime_movies", "runtime_vod", "movies", "movistar_movies", "movistar_series",
-                "plex_vod", "prime_vod"
+                "plex_vod", "prime_vod", "dazn_vod"
         };
         for (String key : keys) {
             if (payload.optJSONArray(key) != null) {
@@ -602,6 +603,9 @@ final class CatalogRepository {
         }
         if (offlinePermissions.allowsPrimeVod()) {
             appendPrimeVodArray(parsed, firstArray(payload, "prime_vod"));
+        }
+        if (offlinePermissions.allowsDaznVod()) {
+            appendDaznVodArray(parsed, firstArray(payload, "dazn_vod"));
         }
     }
 
@@ -819,6 +823,51 @@ final class CatalogRepository {
         }
     }
 
+    void appendDaznCompetitionLauncher(List<ChannelItem> parsed, OfflinePermissions offlinePermissions) {
+        if (parsed == null || parsed.isEmpty()) {
+            return;
+        }
+        ChannelItem daznLinear = null;
+        for (ChannelItem item : parsed) {
+            if (item == null) {
+                continue;
+            }
+            if (DaznEventPolicy.isCompetitionLauncher(item)) {
+                return;
+            }
+            String platform = safeCatalogText(item.platformName).toLowerCase(Locale.ROOT);
+            if (!item.isVod && item.platformId > 0 && platform.contains("dazn") && daznLinear == null) {
+                daznLinear = item;
+            }
+        }
+        if (daznLinear == null || offlinePermissions == null || !offlinePermissions.allowsDaznVod()) {
+            return;
+        }
+        String logo = firstNonEmpty(daznLinear.platformLogoUrl, daznLinear.logoUrl);
+        ChannelItem launcher = new ChannelItem(
+                DaznEventPolicy.COMPETITIONS_CHANNEL_ID,
+                "Competiciones de fútbol",
+                "",
+                logo,
+                "Fútbol",
+                DaznEventPolicy.COMPETITIONS_PLAY_URL,
+                "",
+                -1,
+                0,
+                false,
+                false,
+                daznLinear.platformId,
+                daznLinear.platformName,
+                new ArrayList<>(),
+                "",
+                "",
+                "",
+                false
+        );
+        launcher.platformLogoUrl = logo;
+        parsed.add(launcher);
+    }
+
     List<ChannelItem> fetchDaznVodCatalog() throws Exception {
         JSONObject payload = httpClient.getJsonObject(
                 vodApiBaseUrl() + "/api/vod/dazn/catalog",
@@ -832,7 +881,7 @@ final class CatalogRepository {
         return parsed;
     }
 
-    private void appendDaznVodArray(List<ChannelItem> parsed, JSONArray rows) {
+    void appendDaznVodArray(List<ChannelItem> parsed, JSONArray rows) {
         if (rows == null) {
             return;
         }
@@ -854,13 +903,15 @@ final class CatalogRepository {
                     filterKey = "vod:dazn:live";
                 } else if ("replay".equals(kind)) {
                     filterKey = "vod:dazn:replay";
+                } else if ("scheduled".equals(kind)) {
+                    filterKey = "vod:dazn:scheduled";
                 } else {
                     filterKey = "vod:dazn:ondemand";
                 }
             }
             String group = firstNonEmpty(safeCatalogText(row.optString("group", "")), "DAZN");
             String licenseUrl = absolutizeVodUrl(safeCatalogUrl(row.optString("license_url", "")));
-            parsed.add(new ChannelItem(
+            ChannelItem item = new ChannelItem(
                     buildVodItemId(selectedUrl, title, false),
                     title,
                     "",
@@ -882,7 +933,17 @@ final class CatalogRepository {
                     safeCatalogText(row.optString("description", "")),
                     "",
                     0L
-            ));
+            );
+            item.daznStart = safeCatalogText(row.optString("start", ""));
+            item.daznEnd = safeCatalogText(row.optString("end", ""));
+            item.daznPlayable = row.optBoolean("playable", !"scheduled".equals(kind));
+            item.daznScheduled = row.optBoolean("scheduled", "scheduled".equals(kind));
+            item.daznAccountCount = Math.max(0, row.optInt("account_count", 0));
+            item.daznCompetitionId = safeCatalogText(row.optString("competition_id", ""));
+            item.daznCompetition = safeCatalogText(row.optString("competition", ""));
+            item.daznCompetitionLogo = absolutizeVodUrl(safeCatalogUrl(row.optString("competition_logo", "")));
+            item.daznEventId = safeCatalogText(row.optString("event_id", ""));
+            parsed.add(item);
         }
     }
 
@@ -1461,6 +1522,9 @@ final class CatalogRepository {
         if ("vod:dazn:replay".equals(key)) {
             return "DAZN Repeticiones";
         }
+        if ("vod:dazn:scheduled".equals(key)) {
+            return "DAZN Próximos eventos";
+        }
         if ("vod:dazn:ondemand".equals(key)) {
             return "DAZN Bajo demanda";
         }
@@ -1642,6 +1706,7 @@ final class CatalogRepository {
         permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", true);
         permissions.plexVodEnabled = payload.optBoolean("plex_vod", true);
         permissions.primeVodEnabled = payload.optBoolean("prime_vod", true);
+        permissions.daznVodEnabled = payload.optBoolean("dazn_vod", true);
         permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
         permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
         permissions.canDeleteRecordings = payload.optBoolean("recordings_delete", false);
@@ -1771,6 +1836,15 @@ final class ChannelItem implements Serializable {
     final String vodDescription;
     final String vodYear;
     final long vodDurationSeconds;
+    String daznStart;
+    String daznEnd;
+    String daznCompetitionId;
+    String daznCompetition;
+    String daznCompetitionLogo;
+    String daznEventId;
+    boolean daznPlayable;
+    boolean daznScheduled;
+    int daznAccountCount;
     String platformLogoUrl;
     Map<String, String> customGroupLogos;
     boolean favorite;
@@ -1813,6 +1887,15 @@ final class ChannelItem implements Serializable {
         this.vodDescription = safeText(vodDescription);
         this.vodYear = safeText(vodYear);
         this.vodDurationSeconds = Math.max(0L, vodDurationSeconds);
+        this.daznStart = "";
+        this.daznEnd = "";
+        this.daznCompetitionId = "";
+        this.daznCompetition = "";
+        this.daznCompetitionLogo = "";
+        this.daznEventId = "";
+        this.daznPlayable = true;
+        this.daznScheduled = false;
+        this.daznAccountCount = 0;
         this.platformLogoUrl = "";
         this.customGroupLogos = new LinkedHashMap<>();
         this.nowProgram = "";
@@ -1954,6 +2037,7 @@ final class OfflinePermissions implements Serializable {
     boolean movistarVodEnabled = true;
     boolean plexVodEnabled = true;
     boolean primeVodEnabled = true;
+    boolean daznVodEnabled = true;
     boolean canViewRecordings = true;
     boolean canScheduleRecordings = true;
     boolean canDeleteRecordings = false;
@@ -1995,6 +2079,10 @@ final class OfflinePermissions implements Serializable {
 
     boolean allowsPrimeVod() {
         return vodEnabled && primeVodEnabled;
+    }
+
+    boolean allowsDaznVod() {
+        return vodEnabled && daznVodEnabled;
     }
 
     boolean hasParentalRules() {

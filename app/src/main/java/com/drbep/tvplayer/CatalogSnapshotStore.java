@@ -108,7 +108,7 @@ final class CatalogSnapshotStore {
     // Bump whenever a release learns a new catalog collection. Otherwise an APK
     // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
     // produced by an older parser (for example, before Plex VOD existed).
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 7;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 9;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -516,7 +516,7 @@ final class CatalogSnapshotStore {
                 in.readInt();
             }
             readStr(in);
-            readOfflinePermissions(in);
+            readOfflinePermissions(in, formatVersion);
             int filterCount = in.readInt();
             if (filterCount < 0 || filterCount > MAX_BINARY_CACHE_ITEMS) {
                 return matches;
@@ -1904,7 +1904,7 @@ final class CatalogSnapshotStore {
             int liveItems = formatVersion >= 3 ? Math.max(0, in.readInt()) : 0;
             int vodItems = formatVersion >= 3 ? Math.max(0, in.readInt()) : 0;
             String defaultFilterKey = readStr(in);
-            OfflinePermissions permissions = readOfflinePermissions(in);
+            OfflinePermissions permissions = readOfflinePermissions(in, formatVersion);
             int filterCount = in.readInt();
             if (filterCount < 0 || filterCount > MAX_BINARY_CACHE_ITEMS) {
                 throw new IOException("numero de filtros invalido=" + filterCount);
@@ -1992,6 +1992,9 @@ final class CatalogSnapshotStore {
         out.writeBoolean(p.tivifyAdultEnabled);
         out.writeBoolean(p.runtimeEnabled);
         out.writeBoolean(p.movistarVodEnabled);
+        out.writeBoolean(p.plexVodEnabled);
+        out.writeBoolean(p.primeVodEnabled);
+        out.writeBoolean(p.daznVodEnabled);
         out.writeBoolean(p.canViewRecordings);
         out.writeBoolean(p.canScheduleRecordings);
         out.writeBoolean(p.canDeleteRecordings);
@@ -2005,13 +2008,18 @@ final class CatalogSnapshotStore {
         writeStringSet(out, p.protectedGroupNames);
     }
 
-    private OfflinePermissions readOfflinePermissions(DataInputStream in) throws IOException {
+    private OfflinePermissions readOfflinePermissions(DataInputStream in, int formatVersion) throws IOException {
         OfflinePermissions p = new OfflinePermissions();
         p.liveEnabled = in.readBoolean();
         p.vodEnabled = in.readBoolean();
         p.tivifyAdultEnabled = in.readBoolean();
         p.runtimeEnabled = in.readBoolean();
         p.movistarVodEnabled = in.readBoolean();
+        if (formatVersion >= 9) {
+            p.plexVodEnabled = in.readBoolean();
+            p.primeVodEnabled = in.readBoolean();
+            p.daznVodEnabled = in.readBoolean();
+        }
         p.canViewRecordings = in.readBoolean();
         p.canScheduleRecordings = in.readBoolean();
         p.canDeleteRecordings = in.readBoolean();
@@ -2099,6 +2107,15 @@ final class CatalogSnapshotStore {
                 writeStr(out, entry.getValue());
             }
         }
+        writeStr(out, channel.daznStart);
+        writeStr(out, channel.daznEnd);
+        writeStr(out, channel.daznCompetitionId);
+        writeStr(out, channel.daznCompetition);
+        writeStr(out, channel.daznCompetitionLogo);
+        writeStr(out, channel.daznEventId);
+        out.writeBoolean(channel.daznPlayable);
+        out.writeBoolean(channel.daznScheduled);
+        out.writeInt(Math.max(0, channel.daznAccountCount));
     }
 
     private ChannelItem readChannel(DataInputStream in, int formatVersion) throws IOException {
@@ -2161,6 +2178,26 @@ final class CatalogSnapshotStore {
                 customGroupLogos.put(readStr(in), readStr(in));
             }
         }
+        String daznStart = "";
+        String daznEnd = "";
+        String daznCompetitionId = "";
+        String daznCompetition = "";
+        String daznCompetitionLogo = "";
+        String daznEventId = "";
+        boolean daznPlayable = true;
+        boolean daznScheduled = false;
+        int daznAccountCount = 0;
+        if (formatVersion >= 8) {
+            daznStart = readStr(in);
+            daznEnd = readStr(in);
+            daznCompetitionId = readStr(in);
+            daznCompetition = readStr(in);
+            daznCompetitionLogo = readStr(in);
+            daznEventId = readStr(in);
+            daznPlayable = in.readBoolean();
+            daznScheduled = in.readBoolean();
+            daznAccountCount = Math.max(0, in.readInt());
+        }
         ChannelItem channel = new ChannelItem(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl,
                 originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups,
                 drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, vodDescription, vodYear,
@@ -2173,6 +2210,15 @@ final class CatalogSnapshotStore {
         channel.nextProgram = nextProgram;
         channel.platformLogoUrl = platformLogoUrl;
         channel.customGroupLogos.putAll(customGroupLogos);
+        channel.daznStart = daznStart;
+        channel.daznEnd = daznEnd;
+        channel.daznCompetitionId = daznCompetitionId;
+        channel.daznCompetition = daznCompetition;
+        channel.daznCompetitionLogo = daznCompetitionLogo;
+        channel.daznEventId = daznEventId;
+        channel.daznPlayable = daznPlayable;
+        channel.daznScheduled = daznScheduled;
+        channel.daznAccountCount = daznAccountCount;
         return channel;
     }
 

@@ -55,6 +55,7 @@ public class CatalogRepositoryTest {
         startupConfig.enabledFilterKeys.add("vod:plex:series");
         startupConfig.enabledFilterKeys.add("vod:dazn:live");
         startupConfig.enabledFilterKeys.add("vod:dazn:replay");
+        startupConfig.enabledFilterKeys.add("vod:dazn:scheduled");
         startupConfig.enabledFilterKeys.add("vod:dazn:ondemand");
 
         List<ChannelFilter> filters = repository.buildFiltersFromCatalog(
@@ -67,6 +68,7 @@ public class CatalogRepositoryTest {
                         vodItem("Plex Episode", false, "Plex", "vod:plex:series"),
                         vodItem("DAZN Event", false, "DAZN", "vod:dazn:live"),
                         vodItem("DAZN Replay", false, "DAZN", "vod:dazn:replay"),
+                        vodItem("DAZN Scheduled", false, "DAZN", "vod:dazn:scheduled"),
                         vodItem("DAZN Documentary", false, "DAZN", "vod:dazn:ondemand")
                 ),
                 1L,
@@ -83,6 +85,7 @@ public class CatalogRepositoryTest {
         assertTrue(hasFilter(filters, "vod:plex:series", 3));
         assertTrue(hasFilter(filters, "vod:dazn:live", 3));
         assertTrue(hasFilter(filters, "vod:dazn:replay", 3));
+        assertTrue(hasFilter(filters, "vod:dazn:scheduled", 3));
         assertTrue(hasFilter(filters, "vod:dazn:ondemand", 3));
         assertFalse(hasFilter(filters, "vod", 3));
         assertFalse(hasFilter(filters, "vod-adult", 4));

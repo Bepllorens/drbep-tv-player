@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 
 object VodDetailPanelComposeBinder {
     @JvmStatic
@@ -228,14 +230,31 @@ private fun SectionTitle(title: String, compact: Boolean) {
 @Composable
 private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focusRequester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
+    var nowMs by remember(action) { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(action) {
+        if (action.availableAtMs > 0L && nowMs < action.availableAtMs) {
+            while (nowMs < action.availableAtMs) {
+                delay(minOf(1_000L, maxOf(100L, action.availableAtMs - nowMs)))
+                nowMs = System.currentTimeMillis()
+            }
+        }
+    }
+    val enabled = action.isEnabledAt(nowMs)
+    val actionLabel = action.labelAt(nowMs)
+    val liveAction = action.tone == "live"
+    val startOverAction = action.tone == "start_over"
     val fill = when {
         focused -> OfflineTvTheme.Colors.focus
+        liveAction -> Color(0xFFD5202A)
+        startOverAction -> Color(0xFFF4F5F7)
         action.primary -> OfflineTvTheme.Colors.chipSelected
         else -> OfflineTvTheme.Colors.chip
     }
-    val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
+    val textColor = if (focused || startOverAction) OfflineTvTheme.Colors.backdropAccent else Color.White
     val stroke = when {
         focused -> Color.White
+        liveAction -> Color(0xFFFF6670)
+        startOverAction -> Color.White
         action.primary -> OfflineTvTheme.Colors.focus
         else -> OfflineTvTheme.Colors.card
     }
@@ -254,13 +273,13 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focu
             .border(1.dp, stroke, RoundedCornerShape(if (action.primary) 12.dp else 10.dp))
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action.onClick != null)
-            .clickable(enabled = action.onClick != null) { action.onClick?.run() }
+            .tvButtonSemantics(enabled)
+            .clickable(enabled = enabled) { action.onClick?.run() }
             .padding(horizontal = if (compact) 12.dp else 16.dp),
         contentAlignment = if (action.primary) Alignment.Center else Alignment.CenterStart
     ) {
         BasicText(
-            text = action.label,
+            text = actionLabel,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             style = TextStyle(color = textColor, fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Bold)

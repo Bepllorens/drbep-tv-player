@@ -67,7 +67,23 @@ final class PlaybackDiagnosticsUiFactory {
         appendLine(message, host.text(R.string.diagnostics_state, host.safeText(diagnostics.playbackState)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Estado", host.safeText(diagnostics.playbackState), ""));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Fase", host.fallbackUnknown(diagnostics.playbackPhase), phaseTone(diagnostics.playbackPhase)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Sesion", host.fallbackUnknown(diagnostics.sessionState), phaseTone(diagnostics.playbackPhase)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Transiciones", String.valueOf(diagnostics.sessionTransitionCount), ""));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Intento", String.valueOf(diagnostics.attemptGeneration), ""));
+        String networkAvailability = host.text(diagnostics.networkAvailable
+                ? R.string.diagnostics_network_available
+                : R.string.diagnostics_network_unavailable);
+        String networkValidation = host.text(diagnostics.networkValidated
+                ? R.string.diagnostics_network_validated
+                : R.string.diagnostics_network_unvalidated);
+        rows.add(new PlaybackDiagnosticsRowUiModel(
+                "Red",
+                "Conexion",
+                networkAvailability + " · " + networkValidation,
+                diagnostics.networkAvailable ? "ok" : "error"
+        ));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Red", "Transporte", host.fallbackUnknown(diagnostics.networkTransport), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Red", "Recuperaciones", String.valueOf(diagnostics.networkRecoveryAttempts), diagnostics.networkRecoveryAttempts > 0 ? "warn" : ""));
         rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Prepare", diagnostics.prepareElapsedMs + " ms", timingTone(diagnostics.prepareElapsedMs, 8_000L)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Ready", diagnostics.readyElapsedMs + " ms", timingTone(diagnostics.readyElapsedMs, 5_000L)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Buffering", diagnostics.bufferingCount + " / " + diagnostics.bufferingTotalMs + " ms", diagnostics.bufferingCount > 1 ? "warn" : ""));

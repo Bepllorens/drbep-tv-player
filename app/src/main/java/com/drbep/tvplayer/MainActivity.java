@@ -291,6 +291,7 @@ public class MainActivity extends FragmentActivity {
     private ComposeView channelListComposeView;
 
     private PlayerController playerController;
+    private NetworkConnectivityMonitor networkConnectivityMonitor;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService interactiveExecutor = Executors.newCachedThreadPool();
@@ -948,6 +949,13 @@ public class MainActivity extends FragmentActivity {
         applyTabletOrientationMode();
 
         setupPlayer();
+        networkConnectivityMonitor = new NetworkConnectivityMonitor(this, uiHandler, snapshot -> {
+            if (playerController != null) {
+                playerController.updateNetworkState(snapshot.available, snapshot.validated, snapshot.transport);
+            }
+            schedulePlaybackQualityUiRefresh();
+        });
+        networkConnectivityMonitor.start();
         setupChannelList();
         setupRecordingsPanel();
         setupTouchControls();
@@ -1401,6 +1409,10 @@ public class MainActivity extends FragmentActivity {
             }
         });
         playerController.initialize();
+        if (networkConnectivityMonitor != null) {
+            NetworkConnectivityMonitor.Snapshot network = networkConnectivityMonitor.current();
+            playerController.updateNetworkState(network.available, network.validated, network.transport);
+        }
     }
 
     private void setupChannelList() {
@@ -8415,6 +8427,10 @@ public class MainActivity extends FragmentActivity {
         stopPlaybackHeartbeat("stop");
         if (remoteCommandEventClient != null) {
             remoteCommandEventClient.stop();
+        }
+        if (networkConnectivityMonitor != null) {
+            networkConnectivityMonitor.stop();
+            networkConnectivityMonitor = null;
         }
         if (touchControlsController != null) {
             touchControlsController.cancelTimers();

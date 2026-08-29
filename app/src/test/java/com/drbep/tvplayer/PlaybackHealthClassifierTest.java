@@ -66,7 +66,13 @@ public class PlaybackHealthClassifierTest {
                 true,
                 30_000L,
                 AdaptivePlaybackQualityPolicy.LEVEL_NONE,
-                ""
+                "",
+                "PLAYING",
+                4,
+                true,
+                true,
+                "wifi",
+                0
         );
     }
 }

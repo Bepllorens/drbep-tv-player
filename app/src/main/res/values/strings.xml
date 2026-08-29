@@ -527,6 +527,12 @@
     <string name="diagnostics_error_type_manifest">manifiesto/catalogo</string>
     <string name="diagnostics_error_type_decoder">codec/decodificador</string>
     <string name="diagnostics_error_type_network">red/conexion</string>
+    <string name="status_playback_waiting_network">Sin conexion. La reproduccion se reanudara al volver la red.</string>
+    <string name="status_playback_network_restored">Conexion recuperada. Reanudando reproduccion…</string>
+    <string name="diagnostics_network_available">disponible</string>
+    <string name="diagnostics_network_unavailable">sin conexion</string>
+    <string name="diagnostics_network_validated">validada</string>
+    <string name="diagnostics_network_unvalidated">sin validar</string>
     <string name="diagnostics_error_type_server">servidor</string>
     <string name="diagnostics_error_type_unknown">desconocido</string>
     <string name="diagnostics_temporary_mode">Modo temporal activo: %1$s</string>

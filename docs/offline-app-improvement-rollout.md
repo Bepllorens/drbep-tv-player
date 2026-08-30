@@ -17,6 +17,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | 7. Diagnostico guiado | 456 | Estado actual separado del historial y acciones por causa. |
 | 8. Experiencia de dispositivo | 457 | Centro de dispositivo, handoff, capacidad y multiview seguro. |
 | Hotfix de red | 458 | Failover inmediato ante fallos de transporte/IPv6 y recuperación visible sin pantalla negra. |
+| Refactor incremental de grabaciones | 463 | Deteccion de conflictos extraida de la Activity y cubierta por pruebas puras. |
 
 ## Validacion minima antes de promover
 

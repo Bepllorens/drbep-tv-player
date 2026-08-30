@@ -20730,7 +20730,7 @@ public class MainActivity extends FragmentActivity {
             String end = shortTime(item.endTime);
             String status = humanizeRecordingStatus(item.status);
             String baseMeta = getString(R.string.recording_meta_scheduled, start, end, status);
-            if (hasRecordingConflict(item, recordingsController.getCurrentResult())) {
+            if (RecordingsController.hasConflict(item, recordingsController.getCurrentResult())) {
                 baseMeta = baseMeta + "  ·  " + getString(R.string.recording_status_conflict);
             }
             if (!dayLabel.isEmpty()) {
@@ -20791,31 +20791,6 @@ public class MainActivity extends FragmentActivity {
             return String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds);
         }
         return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
-    }
-
-    private boolean hasRecordingConflict(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result) {
-        if (item == null || result == null || result.items == null || !result.scheduledMode) {
-            return false;
-        }
-        long start = parseIsoMillis(item.startTime);
-        long end = parseIsoMillis(item.endTime);
-        if (start <= 0L || end <= start) {
-            return false;
-        }
-        for (RecordingsRepository.RecordingItem other : result.items) {
-            if (other == null || item == other || (item.id != null && item.id.equals(other.id))) {
-                continue;
-            }
-            long otherStart = parseIsoMillis(other.startTime);
-            long otherEnd = parseIsoMillis(other.endTime);
-            if (otherStart <= 0L || otherEnd <= otherStart) {
-                continue;
-            }
-            if (start < otherEnd && otherStart < end) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String getCurrentChannelId() {
@@ -21235,7 +21210,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hasConflict(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result) {
-                return MainActivity.this.hasRecordingConflict(item, result);
+                return RecordingsController.hasConflict(item, result);
             }
         };
     }

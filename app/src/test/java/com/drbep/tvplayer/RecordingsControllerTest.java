@@ -1,7 +1,9 @@
 package com.drbep.tvplayer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -69,6 +71,19 @@ public class RecordingsControllerTest {
         ));
 
         assertEquals(1, stats.conflict);
+    }
+
+    @Test
+    public void conflictDetectionBelongsToRecordingController() {
+        RecordingsRepository.RecordingItem first = item(
+                "a", false, "scheduled", "2026-05-02T10:00:00+02:00", "2026-05-02T11:00:00+02:00");
+        RecordingsRepository.RecordingItem second = item(
+                "b", false, "scheduled", "2026-05-02T10:30:00+02:00", "2026-05-02T12:00:00+02:00");
+        RecordingsRepository.RecordingsResult scheduled = result(true, first, second);
+
+        assertTrue(RecordingsController.hasConflict(first, scheduled));
+        assertTrue(RecordingsController.hasConflict(second, scheduled));
+        assertFalse(RecordingsController.hasConflict(first, result(false, first, second)));
     }
 
     private static RecordingsRepository.RecordingsResult result(boolean scheduledMode, RecordingsRepository.RecordingItem... items) {

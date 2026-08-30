@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 470
-        versionName "2.0.470-beta-diagnostics-classifier"
+        versionCode 471
+        versionName "2.0.471-beta-overlay-focus-history"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

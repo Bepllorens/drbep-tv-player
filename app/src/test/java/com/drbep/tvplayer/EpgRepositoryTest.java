@@ -79,6 +79,68 @@ public class EpgRepositoryTest {
         assertEquals("Programa futuro", normalized.next.title);
     }
 
+    @Test
+    public void channelListUsesNormalizedCurrentInsteadOfStaleInlineProgram() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.nowProgram = "Programa siguiente guardado por error";
+        EpgRepository.EpgProgram current = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa correcto",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now - 600_000L),
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                50
+        );
+        EpgRepository.EpgProgram next = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa siguiente",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "Programa correcto",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(current, next),
+                        now
+                )
+        );
+    }
+
+    @Test
+    public void channelListNeverShowsFutureProgramAsCurrent() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.nowProgram = "Programa futuro guardado";
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa futuro",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(future, future),
+                        now
+                )
+        );
+    }
+
     private static ChannelItem channel(String id) {
         return new ChannelItem(
                 id,

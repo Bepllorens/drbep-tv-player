@@ -9394,6 +9394,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public EpgRepository.EpgProgramPair epgPair(ChannelItem item) {
+                return item == null ? null : normalizedEpgPair(item.id);
+            }
+
+            @Override
             public void selectAndTune(int position) {
                 overlayNavigationState.selectedOverlayIndex = position;
                 tuneToIndex(position, true);

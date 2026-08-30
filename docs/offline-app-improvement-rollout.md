@@ -26,6 +26,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | 13. Recuperacion de catalogo desacoplada | 474 | La decision de refrescar tras errores 401/403/404 o token queda aislada, con cooldown y requisitos de acceso cubiertos por pruebas puras. |
 | 14. Invalidacion de rutas aprendidas | 475 | Fallo, recuperacion por otra ruta, override temporal y modo manual se resuelven en una politica pura con pruebas de precedencia. |
 | 15. Decision de autorreparacion | 476 | Reintento automatico, siguiente ruta y casos sin accion quedan aislados de la Activity y cubiertos contra bucles. |
+| 16. Puerta de navegacion y foco | 476 | Un smoke ADB recorre Herramientas, TV/EPG y timeline, exige movimiento real del foco y retorno seguro al directo. |
 
 ## Validacion minima antes de promover
 
@@ -56,7 +57,13 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
      scripts/offline_multiview_smoke_test.sh 192.168.93.189:5555
    ```
 
-5. Verificar que publicacion y APK probado tienen el mismo SHA-256 y certificado,
+5. Ejecutar el recorrido de foco con mando en el Fire TV:
+
+   ```bash
+   scripts/offline_navigation_focus_smoke_test.sh 192.168.93.189:5555
+   ```
+
+6. Verificar que publicacion y APK probado tienen el mismo SHA-256 y certificado,
    y que el preflight y el canary del canal beta son correctos.
 
 ## Criterios de aceptacion

@@ -23,6 +23,7 @@ final class RecordingsRepository {
         final String channelName;
         final String programTitle;
         final String poster;
+        final String description;
         final String status;
         final String startTime;
         final String endTime;
@@ -31,14 +32,18 @@ final class RecordingsRepository {
         final List<Long> relatedRecordingIds;
 
         RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable) {
-            this(id, name, path, size, modified, channelName, programTitle, poster, status, startTime, endTime, playable, 0L);
+            this(id, name, path, size, modified, channelName, programTitle, poster, "", status, startTime, endTime, playable, 0L, null);
         }
 
         RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable, long recordingId) {
-            this(id, name, path, size, modified, channelName, programTitle, poster, status, startTime, endTime, playable, recordingId, null);
+            this(id, name, path, size, modified, channelName, programTitle, poster, "", status, startTime, endTime, playable, recordingId, null);
         }
 
         RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable, long recordingId, List<Long> relatedRecordingIds) {
+            this(id, name, path, size, modified, channelName, programTitle, poster, "", status, startTime, endTime, playable, recordingId, relatedRecordingIds);
+        }
+
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String description, String status, String startTime, String endTime, boolean playable, long recordingId, List<Long> relatedRecordingIds) {
             this.id = id;
             this.name = name;
             this.path = path;
@@ -47,6 +52,7 @@ final class RecordingsRepository {
             this.channelName = channelName;
             this.programTitle = programTitle;
             this.poster = poster;
+            this.description = description;
             this.status = status;
             this.startTime = startTime;
             this.endTime = endTime;
@@ -207,6 +213,10 @@ final class RecordingsRepository {
     private static RecordingItem buildCompletedItem(JSONObject record, JSONObject file, long recordingId, List<Long> relatedRecordingIds) {
         String path = file.optString("path", "");
         String name = file.optString("name", "");
+        String poster = preferRecordValue(record, "poster", file.optString("poster", ""));
+        if (poster == null || poster.trim().isEmpty()) {
+            poster = preferRecordValue(record, "epg_poster", file.optString("epg_poster", ""));
+        }
         return new RecordingItem(
                 path.isEmpty() ? name : path,
                 name,
@@ -215,7 +225,8 @@ final class RecordingsRepository {
                 file.optString("modified", record == null ? "" : record.optString("updated_at", "")),
                 preferRecordValue(record, "channel_name", file.optString("channel_name", "")),
                 preferRecordValue(record, "program_title", file.optString("program_title", "")),
-                preferRecordValue(record, "poster", file.optString("poster", "")),
+                poster,
+                preferRecordValue(record, "description", file.optString("description", "")),
                 "completed",
                 record == null ? "" : record.optString("start_time", ""),
                 record == null ? "" : record.optString("end_time", ""),
@@ -343,10 +354,13 @@ final class RecordingsRepository {
                         channelName,
                         programTitle,
                         record.optString("poster", ""),
+                        record.optString("description", ""),
                         status,
                         record.optString("start_time", ""),
                         endTime,
-                        false
+                        false,
+                        record.optLong("id", 0L),
+                        null
                 ));
             }
         }

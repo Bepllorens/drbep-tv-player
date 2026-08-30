@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
+import java.util.Collections;
 
 public class RecordingsRepositoryTest {
     @Test
@@ -44,5 +45,18 @@ public class RecordingsRepositoryTest {
         int transportStream = RecordingsRepository.artifactPreference("partido.ts", "");
 
         assertTrue(web > transportStream);
+    }
+
+    @Test
+    public void completedItemKeepsSynopsisAndArtwork() {
+        RecordingsRepository.RecordingItem item = new RecordingsRepository.RecordingItem(
+                "/grabaciones/pelicula.mp4", "pelicula.mp4", "/grabaciones/pelicula.mp4",
+                0L, "", "LA 1", "Pelicula", "https://example.invalid/poster.jpg",
+                "Sinopsis recuperada del EPG", "completed", "", "", true, 42L,
+                Collections.singletonList(42L)
+        );
+
+        assertEquals("Sinopsis recuperada del EPG", item.description);
+        assertEquals("https://example.invalid/poster.jpg", item.poster);
     }
 }

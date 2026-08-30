@@ -6280,6 +6280,10 @@ public class MainActivity extends FragmentActivity {
 
     private void cancelSelectedScheduledRecording() {
         RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        confirmCancelScheduledRecording(item);
+    }
+
+    private void confirmCancelScheduledRecording(RecordingsRepository.RecordingItem item) {
         if (item == null || item.playable) {
             return;
         }
@@ -6321,6 +6325,13 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        showScheduledRecordingEditDialog(item);
+    }
+
+    private void showScheduledRecordingEditDialog(RecordingsRepository.RecordingItem item) {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         if (item == null || item.playable) {
             return;
         }
@@ -6332,10 +6343,10 @@ public class MainActivity extends FragmentActivity {
         };
         List<String> labels = Arrays.asList(options);
         List<Runnable> actions = new ArrayList<>();
-        actions.add(() -> adjustSelectedScheduledRecording(-15L * 60L * 1000L, -15L * 60L * 1000L));
-        actions.add(() -> adjustSelectedScheduledRecording(15L * 60L * 1000L, 15L * 60L * 1000L));
-        actions.add(() -> adjustSelectedScheduledRecording(0L, 15L * 60L * 1000L));
-        actions.add(() -> adjustSelectedScheduledRecording(0L, -15L * 60L * 1000L));
+        actions.add(() -> adjustScheduledRecording(item, -15L * 60L * 1000L, -15L * 60L * 1000L));
+        actions.add(() -> adjustScheduledRecording(item, 15L * 60L * 1000L, 15L * 60L * 1000L));
+        actions.add(() -> adjustScheduledRecording(item, 0L, 15L * 60L * 1000L));
+        actions.add(() -> adjustScheduledRecording(item, 0L, -15L * 60L * 1000L));
         showTvOptionsDialog(R.string.title_recording_edit_time, null, labels, actions);
     }
 
@@ -6344,6 +6355,13 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         RecordingsRepository.RecordingItem item = getSelectedRecordingItem();
+        adjustScheduledRecording(item, startDeltaMs, endDeltaMs);
+    }
+
+    private void adjustScheduledRecording(RecordingsRepository.RecordingItem item, long startDeltaMs, long endDeltaMs) {
+        if (showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
         if (item == null || item.playable) {
             return;
         }
@@ -6418,20 +6436,75 @@ public class MainActivity extends FragmentActivity {
         if (item == null) {
             return;
         }
-        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        RecordingsRepository.RecordingsResult selectedResult = recordingsController.getCurrentResult();
+        String selectedBasePath = selectedResult == null ? "" : selectedResult.basePath;
+        prepareModalSurface();
+        final Dialog[] dialogHolder = new Dialog[1];
+        List<VodPanelActionUiModel> primaryActions = new ArrayList<>();
+        List<VodPanelActionUiModel> secondaryActions = new ArrayList<>();
         if (item.playable) {
-            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_play), false, this::playSelectedRecording));
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.recording_action_play),
+                    true,
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> playRecording(item, selectedBasePath))
+            ));
             if (getRecordingResumePosition(item.id) > 30_000L) {
-                actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_clear_progress), false, () -> clearSelectedRecordingProgress(item)));
+                secondaryActions.add(new VodPanelActionUiModel(
+                        getString(R.string.recording_action_clear_progress),
+                        false,
+                        () -> dismissModalForNextAction(dialogHolder[0], () -> clearSelectedRecordingProgress(item))
+                ));
             }
-            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_delete), true, () -> confirmDeleteCompletedRecording(item)));
+            secondaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.recording_action_delete),
+                    false,
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> confirmDeleteCompletedRecording(item))
+            ));
         } else {
-            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_edit_time), false, this::showScheduledRecordingEditDialog));
-            actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_cancel), true, this::cancelSelectedScheduledRecording));
+            primaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.recording_action_edit_time),
+                    true,
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> showScheduledRecordingEditDialog(item))
+            ));
+            secondaryActions.add(new VodPanelActionUiModel(
+                    getString(R.string.recording_action_cancel),
+                    false,
+                    () -> dismissModalForNextAction(dialogHolder[0], () -> confirmCancelScheduledRecording(item))
+            ));
         }
-        actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_more), false, () -> showRecordingManagementActionsDialog(item)));
-        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null));
-        showTvMessagePanel(buildRecordingTitle(item), buildRecordingMeta(item), actions, null);
+        secondaryActions.add(new VodPanelActionUiModel(
+                getString(R.string.recording_action_more),
+                false,
+                () -> dismissModalForNextAction(dialogHolder[0], () -> showRecordingManagementActionsDialog(item))
+        ));
+        Runnable closeAction = () -> {
+            if (dialogHolder[0] != null) {
+                dialogHolder[0].dismiss();
+            }
+        };
+        secondaryActions.add(new VodPanelActionUiModel(getString(R.string.dialog_close), false, closeAction));
+
+        ComposeView composeView = new ComposeView(this);
+        attachDialogViewTreeOwners(composeView);
+        VodDetailPanelComposeBinder.bind(
+                composeView,
+                new VodDetailPanelUiModel(
+                        buildRecordingTitle(item),
+                        buildRecordingMeta(item),
+                        buildRecordingDescription(item),
+                        "",
+                        item.poster,
+                        getString(R.string.recording_detail_primary_actions),
+                        getString(R.string.recording_detail_secondary_actions),
+                        getString(R.string.recording_detail_action_hint),
+                        primaryActions,
+                        secondaryActions,
+                        closeAction
+                ),
+                (imageView, model) -> bindRecordingPoster(imageView, model == null ? "" : model.posterUrl)
+        );
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, null, this::handleModalDismissed);
+        dialogHolder[0] = dialog;
     }
 
     private void showRecordingManagementActionsDialog(RecordingsRepository.RecordingItem item) {
@@ -20678,6 +20751,13 @@ public class MainActivity extends FragmentActivity {
             return item.channelName.trim() + "  ·  " + baseMeta;
         }
         return baseMeta;
+    }
+
+    private String buildRecordingDescription(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.description == null || item.description.trim().isEmpty()) {
+            return getString(R.string.timeline_program_desc_empty);
+        }
+        return item.description.trim();
     }
 
     private String recordingDayLabel(RecordingsRepository.RecordingItem item) {

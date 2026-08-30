@@ -235,6 +235,9 @@
     <string name="recording_action_clear_progress">Limpiar progreso guardado</string>
     <string name="recording_action_delete">Eliminar grabacion</string>
     <string name="recording_action_more">Mas opciones</string>
+    <string name="recording_detail_primary_actions">Reproduccion</string>
+    <string name="recording_detail_secondary_actions">Gestion de la grabacion</string>
+    <string name="recording_detail_action_hint">Pulsa OK para elegir una accion.</string>
     <string name="recording_action_delete_confirm">Eliminar definitivamente</string>
     <string name="recording_action_filter_channel">Filtrar canal: %1$s</string>
     <string name="recording_action_filter_current_channel">Filtrar canal actual: %1$s</string>

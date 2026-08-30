@@ -10,6 +10,12 @@ final class StartupChannelPolicy {
         return !cached.isEmpty() && (last.isEmpty() || last.equals(cached));
     }
 
+    static boolean shouldSkipCachedFastChannel(String requestedChannelId, String requestedAction) {
+        String channelId = clean(requestedChannelId);
+        String action = clean(requestedAction);
+        return !channelId.isEmpty() && !"record".equals(action);
+    }
+
     static boolean shouldRememberAsLastLive(boolean vod, boolean replay) {
         return !vod && !replay;
     }

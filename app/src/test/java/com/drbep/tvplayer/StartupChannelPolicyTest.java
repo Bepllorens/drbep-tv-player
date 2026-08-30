@@ -13,6 +13,14 @@ public class StartupChannelPolicyTest {
     }
 
     @Test
+    public void explicitlyRequestedPlaybackSkipsTheCachedFastChannel() {
+        assertTrue(StartupChannelPolicy.shouldSkipCachedFastChannel("canal-solicitado", "play"));
+        assertTrue(StartupChannelPolicy.shouldSkipCachedFastChannel("canal-solicitado", ""));
+        assertFalse(StartupChannelPolicy.shouldSkipCachedFastChannel("canal-solicitado", "record"));
+        assertFalse(StartupChannelPolicy.shouldSkipCachedFastChannel("", "play"));
+    }
+
+    @Test
     public void vodAndReplayDoNotReplaceTheLastLiveChannel() {
         assertTrue(StartupChannelPolicy.shouldRememberAsLastLive(false, false));
         assertFalse(StartupChannelPolicy.shouldRememberAsLastLive(true, false));

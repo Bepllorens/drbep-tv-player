@@ -2973,6 +2973,10 @@ public class MainActivity extends FragmentActivity {
         if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || playerController == null) {
             return;
         }
+        if (StartupChannelPolicy.shouldSkipCachedFastChannel(pendingReminderChannelId, pendingReminderAction)) {
+            Log.w(TAG, "startup fast playback skipped because an explicit channel was requested");
+            return;
+        }
         long startMs = System.currentTimeMillis();
         try {
             ChannelItem cached = catalogSnapshotStore.loadStartupPlaybackChannel(BuildConfig.CATALOG_SNAPSHOT_URL);

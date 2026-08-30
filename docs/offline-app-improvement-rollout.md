@@ -20,6 +20,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | Refactor incremental de grabaciones | 463 | Deteccion de conflictos extraida de la Activity y cubierta por pruebas puras. |
 | 9. Deuda tecnica de diagnosticos | 470 | Clasificacion de errores y recomendaciones extraida de la Activity, sin dependencias de UI y con pruebas de precedencia. |
 | 10. Restauracion de foco | 471 | Los paneles temporales restauran la ultima superficie enfocada visible en vez de elegir otra por orden interno. |
+| 11. Puerta de reproduccion determinista | 472 | El smoke admite un canal estable y el arranque explicito evita que el fast-start cacheado lo sustituya. |
 
 ## Validacion minima antes de promover
 
@@ -35,6 +36,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 
    ```bash
    STRICT_WARNINGS=1 CHECK_GUIDE_KEY=0 \
+     PLAYBACK_CHANNEL_ID=<canal_estable> \
      REPORT_OUTPUT=/tmp/drbep-fire-smoke.json \
      scripts/offline_smoke_test.sh 192.168.93.189:5555
    ```
@@ -56,6 +58,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 
 - La app conserva el proceso al pasar por el launcher y vuelve al primer plano.
 - El canal principal alcanza primer frame sin error de fuente o DRM.
+- Cuando se define `PLAYBACK_CHANNEL_ID`, el smoke no depende del canal adyacente y exige la señal del canal estable elegido.
 - EPG y catalogo cargan sin rechazo ni reduccion inesperada.
 - Multiview muestra la capacidad real, al menos dos canales distintos alcanzan
   primer frame y `READY`, y el canal principal se recupera al salir.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEVICE="${1:-192.168.93.16:5555}"
+DEVICE="${1:-192.168.93.189:5555}"
 APP_PACKAGE="${APP_PACKAGE:-com.drbep.tvplayer.offline}"
 APP_ACTIVITY="${APP_ACTIVITY:-com.drbep.tvplayer.MainActivity}"
 WAIT_BOOT_SECONDS="${WAIT_BOOT_SECONDS:-12}"
@@ -13,6 +13,7 @@ REPORT_OUTPUT="${REPORT_OUTPUT:-}"
 STRICT_WARNINGS="${STRICT_WARNINGS:-0}"
 CHECK_GUIDE_KEY="${CHECK_GUIDE_KEY:-1}"
 CHECK_BACKGROUND="${CHECK_BACKGROUND:-1}"
+PLAYBACK_CHANNEL_ID="${PLAYBACK_CHANNEL_ID:-}"
 TMP_LOG=""
 BACKGROUND_PROCESS_KEPT="unknown"
 
@@ -39,9 +40,10 @@ Variables opcionales:
   STRICT_WARNINGS          Si vale 1, cualquier aviso diagnostico falla el smoke. Default: $STRICT_WARNINGS
   CHECK_GUIDE_KEY          Si vale 1, pulsa KEYCODE_GUIDE durante el smoke. Default: $CHECK_GUIDE_KEY
   CHECK_BACKGROUND         Si vale 1, valida salida y retorno sin reiniciar proceso. Default: $CHECK_BACKGROUND
+  PLAYBACK_CHANNEL_ID      ID opcional de un canal estable que debe alcanzar primer frame.
 
 Ejemplos:
-  $0 192.168.93.16:5555
+  $0 192.168.93.189:5555
   $0 ZY32JB8XR3
 EOF
 }
@@ -49,6 +51,11 @@ EOF
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   usage
   exit 0
+fi
+
+if [ -n "$PLAYBACK_CHANNEL_ID" ] && [[ "$PLAYBACK_CHANNEL_ID" == *[!0-9]* ]]; then
+  echo "PLAYBACK_CHANNEL_ID debe ser un ID numerico de canal" >&2
+  exit 1
 fi
 
 ADB=(adb -s "$DEVICE")
@@ -74,6 +81,7 @@ echo "Activity:    $APP_ACTIVITY"
 echo "Modo estricto avisos: $STRICT_WARNINGS"
 echo "Comprueba GUIDE: $CHECK_GUIDE_KEY"
 echo "Comprueba segundo plano: $CHECK_BACKGROUND"
+echo "Canal de reproduccion: ${PLAYBACK_CHANNEL_ID:-canal previo y zapping relativo}"
 
 echo
 echo "== Version instalada =="
@@ -86,7 +94,11 @@ echo "== Version instalada =="
 sleep 1
 "${ADB[@]}" logcat -c || true
 BOOT_STARTED_AT="$(date +%s)"
-"${ADB[@]}" shell am start -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
+START_ARGS=(-n "$APP_PACKAGE/$APP_ACTIVITY")
+if [ -n "$PLAYBACK_CHANNEL_ID" ]; then
+  START_ARGS+=(--es reminder_channel_id "$PLAYBACK_CHANNEL_ID" --es reminder_action play)
+fi
+"${ADB[@]}" shell am start "${START_ARGS[@]}" >/dev/null
 
 echo "Esperando arranque (${WAIT_BOOT_SECONDS}s)..."
 PID=""
@@ -203,13 +215,23 @@ print_absence_warning() {
 print_health_gates() {
   local log_file="$1"
   local warnings=0
+  local playback_error_label="errores de reproduccion"
+  local playback_error_pattern="Source error|ExoPlaybackException|Playback error|Error de reproduccion"
+  local first_frame_label="player listo o primer frame"
+  local first_frame_pattern="first frame|STATE_READY|playback_health"
+  if [ -n "$PLAYBACK_CHANNEL_ID" ]; then
+    playback_error_label="errores del canal fijado $PLAYBACK_CHANNEL_ID"
+    playback_error_pattern="onPlayerError channel=\\{$PLAYBACK_CHANNEL_ID,"
+    first_frame_label="primer frame del canal fijado $PLAYBACK_CHANNEL_ID"
+    first_frame_pattern="firstFrame channel=\\{$PLAYBACK_CHANNEL_ID,"
+  fi
   echo
   echo "== Senales de salud =="
   print_warning_sample "crashes graves" "FATAL EXCEPTION|Process: $APP_PACKAGE|Unable to start activity|ANR in $APP_PACKAGE" "$log_file" || warnings=$((warnings + 1))
-  print_warning_sample "errores de reproduccion" "Source error|ExoPlaybackException|Playback error|Error de reproduccion" "$log_file" || warnings=$((warnings + 1))
+  print_warning_sample "$playback_error_label" "$playback_error_pattern" "$log_file" || warnings=$((warnings + 1))
   print_warning_sample "catalogo reducido/rechazado" "catalogo candidato reducido|candidate reduced|last rejected|verification warning|caller-provided IV not permitted" "$log_file" || warnings=$((warnings + 1))
   print_warning_sample "EPG con error" "epg.*error|timeline.*error|guide.*error|EPG 0 / 0" "$log_file" || warnings=$((warnings + 1))
-  print_absence_warning "player listo o primer frame" "first frame|STATE_READY|playback_health" "$log_file" || warnings=$((warnings + 1))
+  print_absence_warning "$first_frame_label" "$first_frame_pattern" "$log_file" || warnings=$((warnings + 1))
   print_absence_warning "metricas de catalogo/arranque" "startup catalog|startup parsed|startup playback|startup-load|startup-hydrate|parse.*duration" "$log_file" || warnings=$((warnings + 1))
 
   if [ "$warnings" -gt 0 ]; then
@@ -248,8 +270,12 @@ ensure_main_activity
 send_key "Grabacion" KEYCODE_MEDIA_RECORD
 send_key "Back cerrar grabacion" KEYCODE_BACK
 ensure_main_activity
-send_key "Canal abajo" KEYCODE_DPAD_DOWN
-send_key "Canal arriba" KEYCODE_DPAD_UP
+if [ -n "$PLAYBACK_CHANNEL_ID" ]; then
+  echo "Zapping relativo omitido: la senal se valida sobre el canal fijado $PLAYBACK_CHANNEL_ID"
+else
+  send_key "Canal abajo" KEYCODE_DPAD_DOWN
+  send_key "Canal arriba" KEYCODE_DPAD_UP
+fi
 
 if [ "$CHECK_BACKGROUND" = "1" ]; then
   PID_BEFORE_BACKGROUND="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"

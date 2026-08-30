@@ -6528,7 +6528,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_recording_delete_permission_denied));
             return;
         }
-        if (item.recordingId <= 0L) {
+        if (item.recordingId <= 0L && item.relatedPaths.isEmpty()) {
             showStatus(getString(R.string.status_recording_delete_unavailable));
             return;
         }
@@ -6548,13 +6548,17 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void deleteCompletedRecording(RecordingsRepository.RecordingItem item) {
-        if (item == null || !item.playable || item.recordingId <= 0L) {
+        if (item == null || !item.playable) {
             return;
         }
         showStatus(getString(R.string.status_deleting_recording));
         ioExecutor.execute(() -> {
             try {
-                recordingsRepository.deleteCompletedRecordings(item.relatedRecordingIds);
+                if (item.recordingId > 0L) {
+                    recordingsRepository.deleteCompletedRecordings(item.relatedRecordingIds);
+                } else {
+                    recordingsRepository.deleteLegacyCompletedRecordings(item.relatedPaths);
+                }
                 postUiIfAlive(() -> {
                     clearRecordingResumePosition(item.id);
                     showStatus(getString(R.string.status_recording_deleted));

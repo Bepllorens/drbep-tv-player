@@ -30,6 +30,7 @@ final class RecordingsRepository {
         final boolean playable;
         final long recordingId;
         final List<Long> relatedRecordingIds;
+        final List<String> relatedPaths;
 
         RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable) {
             this(id, name, path, size, modified, channelName, programTitle, poster, "", status, startTime, endTime, playable, 0L, null);
@@ -44,6 +45,10 @@ final class RecordingsRepository {
         }
 
         RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String description, String status, String startTime, String endTime, boolean playable, long recordingId, List<Long> relatedRecordingIds) {
+            this(id, name, path, size, modified, channelName, programTitle, poster, description, status, startTime, endTime, playable, recordingId, relatedRecordingIds, null);
+        }
+
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String description, String status, String startTime, String endTime, boolean playable, long recordingId, List<Long> relatedRecordingIds, List<String> relatedPaths) {
             this.id = id;
             this.name = name;
             this.path = path;
@@ -64,6 +69,13 @@ final class RecordingsRepository {
                         : Collections.emptyList();
             } else {
                 this.relatedRecordingIds = Collections.unmodifiableList(new ArrayList<>(relatedRecordingIds));
+            }
+            if (relatedPaths == null || relatedPaths.isEmpty()) {
+                this.relatedPaths = path == null || path.trim().isEmpty()
+                        ? Collections.emptyList()
+                        : Collections.singletonList(path);
+            } else {
+                this.relatedPaths = Collections.unmodifiableList(new ArrayList<>(relatedPaths));
             }
         }
     }
@@ -184,12 +196,12 @@ final class RecordingsRepository {
             if (file == null) {
                 continue;
             }
-            items.add(buildCompletedItem(representative, file, recordingIds.get(0), recordingIds));
+            items.add(buildCompletedItem(representative, file, recordingIds.get(0), recordingIds, Collections.emptyList()));
         }
 
         // Conserva grabaciones antiguas sin registro de base de datos, pero agrupa
         // sus artefactos original/web/merge para no mostrar el mismo contenido varias veces.
-        Map<String, JSONObject> legacyFiles = new java.util.LinkedHashMap<>();
+        Map<String, List<JSONObject>> legacyFiles = new java.util.LinkedHashMap<>();
         for (JSONObject file : allFiles) {
             if (file.optLong("recording_id", 0L) > 0L) {
                 continue;
@@ -198,19 +210,31 @@ final class RecordingsRepository {
             if (completedArtifactKeys.contains(key)) {
                 continue;
             }
-            JSONObject previous = legacyFiles.get(key);
-            if (previous == null || artifactPreference(file.optString("path", file.optString("name", "")), "")
-                    > artifactPreference(previous.optString("path", previous.optString("name", "")), "")) {
-                legacyFiles.put(key, file);
+            List<JSONObject> group = legacyFiles.get(key);
+            if (group == null) {
+                group = new ArrayList<>();
+                legacyFiles.put(key, group);
             }
+            group.add(file);
         }
-        for (JSONObject file : legacyFiles.values()) {
-            items.add(buildCompletedItem(null, file, 0L, Collections.emptyList()));
+        for (List<JSONObject> group : legacyFiles.values()) {
+            JSONObject file = choosePreferredFile(group, "");
+            if (file == null) {
+                continue;
+            }
+            List<String> relatedPaths = new ArrayList<>();
+            for (JSONObject artifact : group) {
+                String relatedPath = artifact.optString("path", artifact.optString("name", ""));
+                if (relatedPath != null && !relatedPath.trim().isEmpty() && !relatedPaths.contains(relatedPath)) {
+                    relatedPaths.add(relatedPath);
+                }
+            }
+            items.add(buildCompletedItem(null, file, 0L, Collections.emptyList(), relatedPaths));
         }
         return items;
     }
 
-    private static RecordingItem buildCompletedItem(JSONObject record, JSONObject file, long recordingId, List<Long> relatedRecordingIds) {
+    private static RecordingItem buildCompletedItem(JSONObject record, JSONObject file, long recordingId, List<Long> relatedRecordingIds, List<String> relatedPaths) {
         String path = file.optString("path", "");
         String name = file.optString("name", "");
         String poster = preferRecordValue(record, "poster", file.optString("poster", ""));
@@ -232,7 +256,8 @@ final class RecordingsRepository {
                 record == null ? "" : record.optString("end_time", ""),
                 true,
                 recordingId,
-                relatedRecordingIds
+                relatedRecordingIds,
+                relatedPaths
         );
     }
 
@@ -450,6 +475,33 @@ final class RecordingsRepository {
                 deleteCompletedRecording(recordingId);
             }
         }
+    }
+
+    void deleteLegacyCompletedRecordings(List<String> paths) throws Exception {
+        if (paths == null || paths.isEmpty()) {
+            throw new IllegalArgumentException("rutas de grabacion vacias");
+        }
+        StringBuilder url = new StringBuilder(baseUrl).append("/api/recordings/completed");
+        boolean first = true;
+        for (String path : paths) {
+            if (path == null || path.trim().isEmpty()) {
+                continue;
+            }
+            url.append(first ? '?' : '&')
+                    .append("path=")
+                    .append(URLEncoder.encode(fileName(path.trim()), "UTF-8"));
+            first = false;
+        }
+        if (first) {
+            throw new IllegalArgumentException("rutas de grabacion vacias");
+        }
+        HttpClient.Response response = httpClient.delete(
+                url.toString(),
+                10000,
+                20000,
+                jsonHeaders(false)
+        );
+        httpClient.requireSuccess(response, "eliminando grabacion antigua");
     }
 
     void updateScheduledRecording(String recordingId, String startTime, String endTime) throws Exception {

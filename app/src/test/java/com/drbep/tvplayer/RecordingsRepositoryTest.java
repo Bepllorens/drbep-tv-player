@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
+import java.util.Arrays;
 import java.util.Collections;
 
 public class RecordingsRepositoryTest {
@@ -29,6 +30,20 @@ public class RecordingsRepositoryTest {
 
         assertEquals(0L, item.recordingId);
         assertTrue(item.relatedRecordingIds.isEmpty());
+        assertEquals(Collections.singletonList("legacy.mp4"), item.relatedPaths);
+    }
+
+    @Test
+    public void legacyItemKeepsAllArtifactPathsForAtomicDeletion() {
+        RecordingsRepository.RecordingItem item = new RecordingsRepository.RecordingItem(
+                "partido.web.mp4", "partido.web.mp4", "partido.web.mp4", 0L, "", "", "", "", "",
+                "completed", "", "", true, 0L, Collections.emptyList(),
+                Arrays.asList("partido.ts", "partido.web.mp4")
+        );
+
+        assertEquals(2, item.relatedPaths.size());
+        assertTrue(item.relatedPaths.contains("partido.ts"));
+        assertTrue(item.relatedPaths.contains("partido.web.mp4"));
     }
 
     @Test

@@ -10036,24 +10036,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> buildSelectableMultiViewChannels(int slot) {
-        List<ChannelItem> items = new ArrayList<>();
-        Set<String> used = new HashSet<>();
-        for (int i = 0; i < multiViewChannels.size(); i++) {
-            if (i == slot) {
-                continue;
-            }
-            ChannelItem existing = multiViewChannels.get(i);
-            if (existing != null && existing.id != null) {
-                used.add(existing.id);
-            }
-        }
-        for (ChannelItem item : channels) {
-            if (item == null || item.isVod || item.id == null || used.contains(item.id)) {
-                continue;
-            }
-            items.add(item);
-        }
-        return items;
+        return MultiViewChannelSelector.selectable(allChannels, multiViewChannels, slot);
     }
 
     private void tuneMultiViewSlotChannel(int slot, ChannelItem item) {

@@ -1,4 +1,5 @@
 ## Unreleased - adaptive performance and cross-device UX
+- Multiview: el selector de cada ventana permite elegir cualquier canal TV del catálogo autorizado, aunque pertenezca a otra plataforma, sin duplicar canales ya abiertos.
 - Releases: permite publicar el APK ya probado sin recompilar y bloquea la entrega si su version, SHA o certificado no coinciden.
 - Autorreparacion: separa de la Activity la decision de volver a automatico o probar la siguiente ruta, evitando reintentos en bucle para auto, proxy, compatibilidad y reproducciones directas.
 - Rutas de reproduccion: centraliza cuándo descartar una ruta aprendida tras un fallo o una recuperacion por otro modo, respetando configuraciones manuales y overrides temporales.

@@ -16,14 +16,7 @@ final class PlaybackRecoveryCoordinator {
     }
 
     String nextMode(String currentMode) {
-        String clean = sanitizeMode(currentMode);
-        if (PlaybackModeStore.MODE_AUTO.equals(clean)) {
-            return PlaybackModeStore.MODE_DIRECT;
-        }
-        if (PlaybackModeStore.MODE_DIRECT.equals(clean)) {
-            return PlaybackModeStore.MODE_PROXY;
-        }
-        return PlaybackModeStore.MODE_AUTO;
+        return PlaybackAutoRepairPolicy.nextMode(currentMode);
     }
 
     void setTemporaryMode(String channelId, String mode) {

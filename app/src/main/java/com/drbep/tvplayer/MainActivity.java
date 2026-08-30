@@ -20357,29 +20357,24 @@ public class MainActivity extends FragmentActivity {
         if (!playbackRepairEnabled || request == null || request.channelId == null || request.channelId.trim().isEmpty() || request.directPlayback) {
             return;
         }
-        if (invalidateFailedLearnedPlaybackRoute(request)) {
-            showStatus(getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(PlaybackModeStore.MODE_AUTO)));
-            postUiDelayedIfAlive(() -> {
-                ChannelItem current = getCurrentPlaybackChannelItem();
-                if (current != null && request.channelId.equals(current.id)) {
-                    retryCurrentPlayback();
-                }
-            }, 700L);
+        boolean learnedRouteInvalidated = invalidateFailedLearnedPlaybackRoute(request);
+        PlaybackAutoRepairPolicy.Decision decision = PlaybackAutoRepairPolicy.decide(
+                playbackRepairEnabled,
+                request.channelId,
+                request.directPlayback,
+                learnedRouteInvalidated,
+                request.playbackMode
+        );
+        if (PlaybackAutoRepairPolicy.Action.NONE.equals(decision.action)) {
             return;
         }
-        String currentMode = sanitizePlaybackMode(request.playbackMode);
-        if (PlaybackModeStore.MODE_AUTO.equals(currentMode) || PlaybackModeStore.MODE_PROXY.equals(currentMode)) {
-            return;
+        if (PlaybackAutoRepairPolicy.Action.RETRY_MODE.equals(decision.action)) {
+            if (!playbackRecoveryCoordinator.markAttempt(request.channelId, decision.playbackMode)) {
+                return;
+            }
+            playbackRecoveryCoordinator.setTemporaryMode(request.channelId, decision.playbackMode);
         }
-        String nextMode = nextPlaybackMode(currentMode);
-        if (PlaybackModeStore.MODE_AUTO.equals(nextMode)) {
-            return;
-        }
-        if (!playbackRecoveryCoordinator.markAttempt(request.channelId, nextMode)) {
-            return;
-        }
-        playbackRecoveryCoordinator.setTemporaryMode(request.channelId, nextMode);
-        showStatus(getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(nextMode)));
+        showStatus(getString(R.string.status_playback_repair_trying, formatPlaybackModeLabel(decision.playbackMode)));
         postUiDelayedIfAlive(() -> {
             ChannelItem current = getCurrentPlaybackChannelItem();
             if (current != null && request.channelId.equals(current.id)) {

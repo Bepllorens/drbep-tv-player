@@ -25,6 +25,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | Hotfix de carrera en arranque | 473 | El arranque diferido conserva el ID elegido aunque cambie la lista visible y no vuelve a preparar un canal que ya se esta reproduciendo. |
 | 13. Recuperacion de catalogo desacoplada | 474 | La decision de refrescar tras errores 401/403/404 o token queda aislada, con cooldown y requisitos de acceso cubiertos por pruebas puras. |
 | 14. Invalidacion de rutas aprendidas | 475 | Fallo, recuperacion por otra ruta, override temporal y modo manual se resuelven en una politica pura con pruebas de precedencia. |
+| 15. Decision de autorreparacion | 476 | Reintento automatico, siguiente ruta y casos sin accion quedan aislados de la Activity y cubiertos contra bucles. |
 
 ## Validacion minima antes de promover
 

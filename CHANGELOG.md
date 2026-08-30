@@ -1,4 +1,5 @@
 ## Unreleased - adaptive performance and cross-device UX
+- Autorreparacion: separa de la Activity la decision de volver a automatico o probar la siguiente ruta, evitando reintentos en bucle para auto, proxy, compatibilidad y reproducciones directas.
 - Rutas de reproduccion: centraliza cuándo descartar una ruta aprendida tras un fallo o una recuperacion por otro modo, respetando configuraciones manuales y overrides temporales.
 - Recuperacion offline: desacopla de la Activity la decision de refrescar el catalogo tras errores de autorizacion, URL caducada o canal ausente, conservando el limite de un intento cada diez minutos.
 - Grabaciones: consolida reintentos y artefactos físicos bajo una sola tarjeta, abre una ficha de acciones con OK y elimina de forma fiable todos los registros completados relacionados.

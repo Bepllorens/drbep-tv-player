@@ -30,6 +30,21 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | 17. Puerta multipantalla determinista | 476 | El smoke admite portada o directo, abre el mosaico por Herramientas y exige dos canales con primer frame, READY y recuperacion final. |
 | 18. Publicacion del APK probado | 476 | El publicador acepta un APK preconstruido, contrasta su version, SHA y certificado y evita recompilar entre ADB y beta. |
 
+## Cierre del plan tecnico
+
+El plan queda cerrado en la beta 476 para el dispositivo Fire TV de referencia.
+La auditoria final de recursos no encontro layouts heredados duplicados: el unico
+`activity_main.xml` conserva contenedores necesarios para Media3, VLC,
+multipantalla, gestos, mensajes remotos y los hosts Compose. No se elimina para
+evitar una migracion amplia sin beneficio funcional.
+
+Las tareas restantes son validaciones de adopcion, no bloques de codigo:
+
+- observar la beta antes de cualquier promocion a estable;
+- repetir la matriz visual en tablet y telefono fisicos cuando esten disponibles;
+- promover a estable solo por orden expresa, reutilizando exactamente el APK
+  validado y su SHA.
+
 ## Validacion minima antes de promover
 
 1. Instalar exactamente el APK beta candidato, sin recompilar entre la prueba y

@@ -127,6 +127,7 @@ public class MainActivity extends FragmentActivity {
     private static final long OFFLINE_EPG_INITIAL_DELAY_MS = 20L * 1000L;
     private static final long OFFLINE_EPG_PROGRESSIVE_DELAY_MS = 8L * 1000L;
     private static final long OFFLINE_EPG_PRIORITY_DELAY_MS = 2L * 1000L;
+    private static final long OFFLINE_EPG_OVERLAY_REFRESH_COOLDOWN_MS = 45L * 1000L;
     private static final long OFFLINE_EPG_BUSY_RETRY_MS = 5L * 1000L;
     private static final long OFFLINE_EPG_LOAD_TIMEOUT_MS = 25L * 1000L;
     private static final int OFFLINE_EPG_VISIBLE_BATCH_LIMIT = 48;
@@ -552,6 +553,7 @@ public class MainActivity extends FragmentActivity {
     private final Set<String> epgLoadedFilterKeys = new HashSet<>();
     private final Set<String> epgQueuedFilterKeys = new HashSet<>();
     private final Map<String, Integer> epgFilterOffsets = new HashMap<>();
+    private final Map<String, Long> epgFilterLastOverlayRequestAtMs = new HashMap<>();
     private int offlineCatalogRetryCount;
     private int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
@@ -3016,6 +3018,7 @@ public class MainActivity extends FragmentActivity {
         epgLoadedFilterKeys.clear();
         epgQueuedFilterKeys.clear();
         epgFilterOffsets.clear();
+        epgFilterLastOverlayRequestAtMs.clear();
         dynamicMovistarVodLoaded = false;
         dynamicDaznVodLoaded = false;
 		dynamicPrimeVodLoaded = false;
@@ -3481,6 +3484,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> resolvePriorityEpgSourceChannels() {
+        if (channelOverlayCoordinator != null && channelOverlayCoordinator.isOverlayVisible(channelOverlay)) {
+            return new ArrayList<>(channels);
+        }
         ChannelItem current = getCurrentPlaybackChannelItem();
         if (current == null || current.id == null || current.id.trim().isEmpty()) {
             return new ArrayList<>(channels);
@@ -3901,6 +3907,11 @@ public class MainActivity extends FragmentActivity {
     private ChannelFilter resolveCurrentPlaybackEpgFilter() {
         ChannelItem current = getCurrentPlaybackChannelItem();
         ChannelFilter selected = selectedOverlayFilter();
+        if (channelOverlayCoordinator != null
+                && channelOverlayCoordinator.isOverlayVisible(channelOverlay)
+                && selected != null) {
+            return selected;
+        }
         if (current == null) {
             return selected;
         }
@@ -7547,6 +7558,58 @@ public class MainActivity extends FragmentActivity {
         channelOverlay.bringToFront();
         channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, touchDeviceMode ? 0L : OVERLAY_HIDE_MS);
         overlaySurfaceState.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, true);
+        scheduleOverlayEpgHydrationIfNeeded();
+    }
+
+    private void scheduleOverlayEpgHydrationIfNeeded() {
+        if (!BuildConfig.STANDALONE_MODE || channels.isEmpty()) {
+            return;
+        }
+        long nowMs = System.currentTimeMillis();
+        int liveChannels = 0;
+        int channelsWithCurrentProgram = 0;
+        for (ChannelItem channel : channels) {
+            if (channel == null || channel.isVod) {
+                continue;
+            }
+            liveChannels++;
+            EpgRepository.EpgProgramPair pair = EpgRepository.normalizePairForNow(
+                    epgProgramPairByChannelId.get(channel.id),
+                    nowMs
+            );
+            if (pair != null && hasProgramTitle(pair.current)) {
+                channelsWithCurrentProgram++;
+            }
+        }
+        String filterKey = currentEpgFilterKey();
+        long lastRequestAtMs = epgFilterLastOverlayRequestAtMs.getOrDefault(filterKey, 0L);
+        if (!shouldHydrateVisibleEpg(
+                liveChannels,
+                channelsWithCurrentProgram,
+                lastRequestAtMs,
+                nowMs,
+                OFFLINE_EPG_OVERLAY_REFRESH_COOLDOWN_MS
+        )) {
+            return;
+        }
+        epgFilterLastOverlayRequestAtMs.put(filterKey, nowMs);
+        Log.w(TAG, "EPG overlay hydration scheduled filter=" + filterKey
+                + " resolved=" + channelsWithCurrentProgram
+                + " live=" + liveChannels);
+        scheduleVisibleEpgLoad(0L);
+    }
+
+    static boolean shouldHydrateVisibleEpg(
+            int liveChannels,
+            int channelsWithCurrentProgram,
+            long lastRequestAtMs,
+            long nowMs,
+            long cooldownMs
+    ) {
+        if (liveChannels <= 0 || channelsWithCurrentProgram >= liveChannels) {
+            return false;
+        }
+        return lastRequestAtMs <= 0L || nowMs - lastRequestAtMs >= Math.max(0L, cooldownMs);
     }
 
     private void hideOverlay() {

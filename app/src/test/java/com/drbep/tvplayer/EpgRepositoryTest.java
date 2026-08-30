@@ -141,6 +141,39 @@ public class EpgRepositoryTest {
         );
     }
 
+    @Test
+    public void openingChannelListHydratesMissingVisibleEpg() {
+        assertTrue(MainActivity.shouldHydrateVisibleEpg(
+                15,
+                4,
+                0L,
+                100_000L,
+                45_000L
+        ));
+    }
+
+    @Test
+    public void openingChannelListDoesNotRepeatHydrationInsideCooldown() {
+        assertTrue(!MainActivity.shouldHydrateVisibleEpg(
+                15,
+                14,
+                90_000L,
+                100_000L,
+                45_000L
+        ));
+    }
+
+    @Test
+    public void completeChannelListDoesNotRequestAnotherHydration() {
+        assertTrue(!MainActivity.shouldHydrateVisibleEpg(
+                15,
+                15,
+                0L,
+                100_000L,
+                45_000L
+        ));
+    }
+
     private static ChannelItem channel(String id) {
         return new ChannelItem(
                 id,

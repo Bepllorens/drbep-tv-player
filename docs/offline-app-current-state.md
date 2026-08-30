@@ -87,7 +87,7 @@ La app offline ya es operativa en Fire Stick, tablet y movil Android, con UI may
 
 ```bash
 ./gradlew :app:compileReleaseJavaWithJavac
-scripts/publish_offline_update.sh --channel beta --changelog "..."
+scripts/publish_offline_update.sh --channel beta --apk app/build/outputs/apk/release/app-release.apk --changelog "..."
 adb -s 192.168.93.16:5555 install -r app/build/outputs/apk/release/app-release.apk
 adb -s 192.168.93.16:5555 logcat -d -s DRBEP-TV-Native:W CatalogSnapshotStore:W EpgRepository:W PlayerController:W
 ```

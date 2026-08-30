@@ -28,6 +28,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | 15. Decision de autorreparacion | 476 | Reintento automatico, siguiente ruta y casos sin accion quedan aislados de la Activity y cubiertos contra bucles. |
 | 16. Puerta de navegacion y foco | 476 | Un smoke ADB recorre Herramientas, TV/EPG y timeline, exige movimiento real del foco y retorno seguro al directo. |
 | 17. Puerta multipantalla determinista | 476 | El smoke admite portada o directo, abre el mosaico por Herramientas y exige dos canales con primer frame, READY y recuperacion final. |
+| 18. Publicacion del APK probado | 476 | El publicador acepta un APK preconstruido, contrasta su version, SHA y certificado y evita recompilar entre ADB y beta. |
 
 ## Validacion minima antes de promover
 
@@ -64,7 +65,15 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
    scripts/offline_navigation_focus_smoke_test.sh 192.168.93.189:5555
    ```
 
-6. Verificar que publicacion y APK probado tienen el mismo SHA-256 y certificado,
+6. Publicar el mismo APK probado sin recompilar:
+
+   ```bash
+   scripts/publish_offline_update.sh --channel beta \
+     --apk app/build/outputs/apk/release/app-release.apk \
+     --changelog "..."
+   ```
+
+7. Verificar que publicacion y APK probado tienen el mismo SHA-256 y certificado,
    y que el preflight y el canary del canal beta son correctos.
 
 ## Criterios de aceptacion

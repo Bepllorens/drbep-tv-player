@@ -21,6 +21,8 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | 9. Deuda tecnica de diagnosticos | 470 | Clasificacion de errores y recomendaciones extraida de la Activity, sin dependencias de UI y con pruebas de precedencia. |
 | 10. Restauracion de foco | 471 | Los paneles temporales restauran la ultima superficie enfocada visible en vez de elegir otra por orden interno. |
 | 11. Puerta de reproduccion determinista | 472 | El smoke admite un canal estable y el arranque explicito evita que el fast-start cacheado lo sustituya. |
+| 12. Formato de diagnostico desacoplado | 473 | Resolucion, codec, fps y bitrate salen de la Activity y quedan cubiertos por pruebas puras y deterministas. |
+| Hotfix de carrera en arranque | 473 | El arranque diferido conserva el ID elegido aunque cambie la lista visible y no vuelve a preparar un canal que ya se esta reproduciendo. |
 
 ## Validacion minima antes de promover
 

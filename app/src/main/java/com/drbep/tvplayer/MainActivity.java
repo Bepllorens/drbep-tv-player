@@ -3071,6 +3071,15 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         }
+        ChannelItem selectedStartupChannel = channels.get(Math.max(0, Math.min(startIndex, channels.size() - 1)));
+        String visibleStartupChannelId = selectedStartupChannel == null || selectedStartupChannel.id == null
+                ? ""
+                : selectedStartupChannel.id.trim();
+        final String selectedStartupChannelId = StartupChannelPolicy.resolveDeferredTargetChannelId(
+                pendingReminderChannelId,
+                pendingReminderAction,
+                visibleStartupChannelId
+        );
         selectChannelIndex(startIndex);
         tryHandlePendingReminderIntent();
         scheduleStartupEpgLoads();
@@ -3090,22 +3099,36 @@ public class MainActivity extends FragmentActivity {
                     getString(R.string.startup_loading_open_channel),
                     getString(R.string.startup_loading_open_channel_detail)
             );
-            final int deferredStartIndex = startIndex;
-            ChannelItem startupChannel = channels.get(Math.max(0, Math.min(deferredStartIndex, channels.size() - 1)));
+            ChannelItem startupChannel = findChannelItemById(selectedStartupChannelId);
+            if (startupChannel == null && !channels.isEmpty()) {
+                startupChannel = channels.get(Math.max(0, Math.min(resolveStartupPlaybackIndex(), channels.size() - 1)));
+            }
             if (catalogSnapshotStore != null && startupChannel != null && !isProtectedItem(startupChannel)) {
                 catalogSnapshotStore.saveStartupPlaybackChannel(BuildConfig.CATALOG_SNAPSHOT_URL, startupChannel);
             }
+            final String deferredStartChannelId = startupChannel == null || startupChannel.id == null
+                    ? ""
+                    : startupChannel.id.trim();
             postUiDelayedIfAlive(() -> {
                 if (!isActivityReadyForUiWork() || channels.isEmpty()) {
                     return;
                 }
-                int index = Math.max(0, Math.min(deferredStartIndex, channels.size() - 1));
-                ChannelItem channel = channels.get(index);
-                if (startupFastPlaybackStarted
-                        && channel != null
-                        && channel.id != null
-                        && channel.id.equals(startupFastPlaybackChannelId)) {
-                    Log.w(TAG, "startup full catalog playback skipped because fast channel is already playing id=" + channel.id);
+                ChannelItem channel = findChannelItemById(deferredStartChannelId);
+                if (channel == null) {
+                    int index = Math.max(0, Math.min(resolveStartupPlaybackIndex(), channels.size() - 1));
+                    channel = channels.get(index);
+                    Log.w(TAG, "startup deferred channel no longer exists id=" + deferredStartChannelId
+                            + " fallback=" + (channel == null ? "" : channel.id));
+                }
+                String currentRequestChannelId = playerController == null ? "" : playerController.getCurrentRequestChannelId();
+                if (StartupChannelPolicy.shouldSkipDeferredPlayback(
+                        channel == null ? "" : channel.id,
+                        currentRequestChannelId,
+                        startupFastPlaybackStarted,
+                        startupFastPlaybackChannelId
+                )) {
+                    Log.w(TAG, "startup deferred playback skipped because target is already playing id="
+                            + (channel == null ? "" : channel.id));
                     return;
                 }
                 playChannelItem(channel, true);
@@ -10230,7 +10253,7 @@ public class MainActivity extends FragmentActivity {
                 overlayContextLabel(currentChannel),
                 overlayContextLogoUrl(currentChannel),
                 diagnostics,
-                formatPlaybackQualityCompact(diagnostics),
+                PlaybackDiagnosticsFormatter.compact(diagnostics, Locale.getDefault()),
                 epgPair,
                 items
         );
@@ -10505,7 +10528,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public String playbackQuality(PlayerController.PlaybackDiagnostics diagnostics) {
-                return formatPlaybackQualityCompact(diagnostics);
+                return PlaybackDiagnosticsFormatter.compact(diagnostics, Locale.getDefault());
             }
 
             @Override
@@ -13684,7 +13707,7 @@ public class MainActivity extends FragmentActivity {
                         .put("playback_route_class", classifyPlaybackRoute(current, playbackDiagnostics))
                         .put("playback_traffic_scope", playbackTrafficScope(current, playbackDiagnostics, playbackServerTraffic))
                         .put("playback_server_traffic", playbackServerTraffic)
-                        .put("playback_quality_label", formatPlaybackQualityCompact(playbackDiagnostics))
+                        .put("playback_quality_label", PlaybackDiagnosticsFormatter.compact(playbackDiagnostics, Locale.getDefault()))
                         .put("playback_estimated_mbps", playbackEstimatedMbps)
                         .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(playbackEstimatedMbps))
                         .put("playback_health_level", playbackHealth.level)
@@ -13806,7 +13829,7 @@ public class MainActivity extends FragmentActivity {
                     .put("server_traffic", serverTraffic)
                     .put("traffic_scope", playbackTrafficScope(channel, diagnostics, serverTraffic))
                     .put("route_class", classifyPlaybackRoute(channel, diagnostics))
-                    .put("quality_label", formatPlaybackQualityCompact(diagnostics))
+                    .put("quality_label", PlaybackDiagnosticsFormatter.compact(diagnostics, Locale.getDefault()))
                     .put("estimated_mbps", estimatedMbps)
                     .put("estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
                     .put("playback_health_level", playbackHealth.level)
@@ -14174,7 +14197,7 @@ public class MainActivity extends FragmentActivity {
                     .put("playback_route_class", current == null ? "" : classifyPlaybackRoute(current, diagnostics))
                     .put("playback_traffic_scope", current == null ? "" : playbackTrafficScope(current, diagnostics, serverTraffic))
                     .put("playback_server_traffic", serverTraffic)
-                    .put("playback_quality_label", formatPlaybackQualityCompact(diagnostics))
+                    .put("playback_quality_label", PlaybackDiagnosticsFormatter.compact(diagnostics, Locale.getDefault()))
                     .put("playback_estimated_mbps", estimatedMbps)
                     .put("playback_estimated_mb_per_hour", estimatePlaybackMegabytesPerHour(estimatedMbps))
                     .put("playback_health_level", playbackHealth.level)
@@ -20070,7 +20093,11 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public String playbackQuality(PlayerController.PlaybackDiagnostics diagnostics) {
-                return formatPlaybackQuality(diagnostics);
+                return PlaybackDiagnosticsFormatter.detailed(
+                        diagnostics,
+                        getString(R.string.diagnostics_value_unknown),
+                        Locale.getDefault()
+                );
             }
 
             @Override
@@ -20622,72 +20649,6 @@ public class MainActivity extends FragmentActivity {
 
     private String fallbackUnknown(String value) {
         return value == null || value.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : value;
-    }
-
-    private String formatPlaybackQuality(PlayerController.PlaybackDiagnostics diagnostics) {
-        if (diagnostics == null || !diagnostics.hasVideoQuality()) {
-            return getString(R.string.diagnostics_value_unknown);
-        }
-        List<String> parts = new ArrayList<>();
-        if (diagnostics.videoWidth > 0 && diagnostics.videoHeight > 0) {
-            parts.add(diagnostics.videoWidth + "x" + diagnostics.videoHeight);
-        }
-        if (diagnostics.videoCodec != null && !diagnostics.videoCodec.trim().isEmpty()) {
-            parts.add(diagnostics.videoCodec.trim());
-        }
-        if (diagnostics.videoFrameRate > 0f) {
-            parts.add(String.format(Locale.getDefault(), "%.0f fps", diagnostics.videoFrameRate));
-        }
-        if (diagnostics.videoBitrate > 0) {
-            float mbps = diagnostics.videoBitrate / 1_000_000f;
-            parts.add(String.format(Locale.getDefault(), "%.1f Mbps", mbps));
-        }
-        if (diagnostics.audioCodec != null && !diagnostics.audioCodec.trim().isEmpty()) {
-            parts.add("Audio " + diagnostics.audioCodec.trim());
-        }
-        return parts.isEmpty() ? getString(R.string.diagnostics_value_unknown) : joinLabels(parts);
-    }
-
-    private String formatPlaybackQualityCompact(PlayerController.PlaybackDiagnostics diagnostics) {
-        if (diagnostics == null || !diagnostics.hasVideoQuality()) {
-            return "";
-        }
-        List<String> parts = new ArrayList<>();
-        if (diagnostics.videoHeight > 0) {
-            if (diagnostics.videoWidth >= 3840 || diagnostics.videoHeight >= 2160) {
-                parts.add("4K");
-            } else {
-                parts.add(diagnostics.videoHeight + "p");
-            }
-        } else if (diagnostics.videoWidth > 0) {
-            parts.add(diagnostics.videoWidth + "px");
-        }
-        String codec = compactCodecLabel(diagnostics.videoCodec);
-        if (!codec.isEmpty()) {
-            parts.add(codec);
-        }
-        if (diagnostics.videoFrameRate > 0f) {
-            parts.add(String.format(Locale.getDefault(), "%.0f fps", diagnostics.videoFrameRate));
-        }
-        if (diagnostics.videoBitrate > 0) {
-            parts.add(String.format(Locale.getDefault(), "%.1f Mbps", diagnostics.videoBitrate / 1_000_000f));
-        }
-        return joinLabels(parts);
-    }
-
-    private String compactCodecLabel(String codec) {
-        String value = codec == null ? "" : codec.trim();
-        String lower = value.toLowerCase(Locale.ROOT);
-        if (lower.isEmpty()) {
-            return "";
-        }
-        if (lower.contains("avc") || lower.contains("h264") || lower.contains("avc1")) {
-            return "H.264";
-        }
-        if (lower.contains("hevc") || lower.contains("h265") || lower.contains("hvc1") || lower.contains("hev1")) {
-            return "H.265";
-        }
-        return value;
     }
 
     private String formatPlaybackModeLabel(String playbackMode) {

@@ -16,6 +16,32 @@ final class StartupChannelPolicy {
         return !channelId.isEmpty() && !"record".equals(action);
     }
 
+    static String resolveDeferredTargetChannelId(
+            String requestedChannelId,
+            String requestedAction,
+            String selectedChannelId
+    ) {
+        String requested = clean(requestedChannelId);
+        if (!requested.isEmpty() && !"record".equals(clean(requestedAction))) {
+            return requested;
+        }
+        return clean(selectedChannelId);
+    }
+
+    static boolean shouldSkipDeferredPlayback(
+            String targetChannelId,
+            String currentRequestChannelId,
+            boolean fastPlaybackStarted,
+            String fastPlaybackChannelId
+    ) {
+        String target = clean(targetChannelId);
+        if (target.isEmpty()) {
+            return false;
+        }
+        return target.equals(clean(currentRequestChannelId))
+                || (fastPlaybackStarted && target.equals(clean(fastPlaybackChannelId)));
+    }
+
     static boolean shouldRememberAsLastLive(boolean vod, boolean replay) {
         return !vod && !replay;
     }

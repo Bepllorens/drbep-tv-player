@@ -94,11 +94,14 @@ echo "== Version instalada =="
 sleep 1
 "${ADB[@]}" logcat -c || true
 BOOT_STARTED_AT="$(date +%s)"
-START_ARGS=(-n "$APP_PACKAGE/$APP_ACTIVITY")
 if [ -n "$PLAYBACK_CHANNEL_ID" ]; then
-  START_ARGS+=(--es reminder_channel_id "$PLAYBACK_CHANNEL_ID" --es reminder_action play)
+  "${ADB[@]}" shell am start -S -f 0x10008000 \
+    -n "$APP_PACKAGE/$APP_ACTIVITY" \
+    --es reminder_channel_id "$PLAYBACK_CHANNEL_ID" \
+    --es reminder_action play >/dev/null
+else
+  "${ADB[@]}" shell am start -S -f 0x10008000 -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
 fi
-"${ADB[@]}" shell am start "${START_ARGS[@]}" >/dev/null
 
 echo "Esperando arranque (${WAIT_BOOT_SECONDS}s)..."
 PID=""
@@ -126,12 +129,23 @@ send_key() {
   sleep "$WAIT_AFTER_KEY_SECONDS"
 }
 
+bring_main_activity() {
+  if [ -n "$PLAYBACK_CHANNEL_ID" ]; then
+    "${ADB[@]}" shell am start \
+      -n "$APP_PACKAGE/$APP_ACTIVITY" \
+      --es reminder_channel_id "$PLAYBACK_CHANNEL_ID" \
+      --es reminder_action play >/dev/null
+  else
+    "${ADB[@]}" shell am start -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
+  fi
+}
+
 ensure_main_activity() {
   local resumed
   resumed="$("${ADB[@]}" shell dumpsys activity activities 2>/dev/null | grep -m1 "mResumedActivity" || true)"
   if [[ "$resumed" != *"$APP_PACKAGE/$APP_ACTIVITY"* ]]; then
     echo "Restaurando Activity principal para continuar el smoke"
-    "${ADB[@]}" shell am start -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
+    bring_main_activity
     sleep "$WAIT_AFTER_KEY_SECONDS"
   fi
 }
@@ -249,11 +263,15 @@ print_health_gates() {
 # Secuencia conservadora: abrir HUD, navegar botones, abrir/cerrar guia/info/grabaciones
 # sin asumir un canal o plataforma concretos.
 send_key "OK / HUD inferior" KEYCODE_DPAD_CENTER
-send_key "Derecha en HUD" KEYCODE_DPAD_RIGHT
-send_key "Derecha en HUD" KEYCODE_DPAD_RIGHT
-send_key "Izquierda en HUD" KEYCODE_DPAD_LEFT
-send_key "Arriba hacia timeshift" KEYCODE_DPAD_UP
-send_key "Abajo hacia acciones" KEYCODE_DPAD_DOWN
+if [ -n "$PLAYBACK_CHANNEL_ID" ]; then
+  echo "Navegacion direccional omitida: se preserva el canal fijado durante la puerta de reproduccion"
+else
+  send_key "Derecha en HUD" KEYCODE_DPAD_RIGHT
+  send_key "Derecha en HUD" KEYCODE_DPAD_RIGHT
+  send_key "Izquierda en HUD" KEYCODE_DPAD_LEFT
+  send_key "Arriba hacia timeshift" KEYCODE_DPAD_UP
+  send_key "Abajo hacia acciones" KEYCODE_DPAD_DOWN
+fi
 send_key "Back cerrar HUD" KEYCODE_BACK
 ensure_main_activity
 send_key "Info / Guia actual" KEYCODE_INFO
@@ -282,7 +300,7 @@ if [ "$CHECK_BACKGROUND" = "1" ]; then
   send_key "Launcher / segundo plano" KEYCODE_HOME
   sleep "$WAIT_BACKGROUND_SECONDS"
   PID_DURING_BACKGROUND="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
-  "${ADB[@]}" shell am start -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null
+  bring_main_activity
   sleep "$WAIT_AFTER_KEY_SECONDS"
   PID_AFTER_BACKGROUND="$("${ADB[@]}" shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r' || true)"
   if [ -n "$PID_BEFORE_BACKGROUND" ] \

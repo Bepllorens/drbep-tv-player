@@ -20291,28 +20291,15 @@ public class MainActivity extends FragmentActivity {
         if (!BuildConfig.STANDALONE_MODE || catalogSnapshotStore == null || catalogRepository == null || offlineCatalogRefreshRunning) {
             return;
         }
-        String normalized = safeLower(detail);
-        boolean looksCatalogRelated = normalized.contains("response code: 401")
-                || normalized.contains("response code: 403")
-                || normalized.contains("response code: 404")
-                || normalized.contains("http 401")
-                || normalized.contains("http 403")
-                || normalized.contains("http 404")
-                || normalized.contains("invalidresponsecode")
-                || normalized.contains("source error")
-                || normalized.contains("token")
-                || normalized.contains("unauthorized")
-                || normalized.contains("forbidden")
-                || normalized.contains("not found");
-        if (!looksCatalogRelated) {
-            return;
-        }
         long now = System.currentTimeMillis();
-        if (now - lastOfflinePlaybackRecoveryRefreshMs < 10L * 60L * 1000L) {
-            return;
-        }
         CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
-        if (!status.hasAccessToken || status.sourceUrl == null || status.sourceUrl.trim().isEmpty()) {
+        if (!OfflineCatalogRecoveryPolicy.shouldRefresh(
+                detail,
+                now,
+                lastOfflinePlaybackRecoveryRefreshMs,
+                status.hasAccessToken,
+                status.sourceUrl
+        )) {
             return;
         }
         lastOfflinePlaybackRecoveryRefreshMs = now;

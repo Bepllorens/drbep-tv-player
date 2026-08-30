@@ -1,4 +1,5 @@
 ## Unreleased - adaptive performance and cross-device UX
+- Recuperacion offline: desacopla de la Activity la decision de refrescar el catalogo tras errores de autorizacion, URL caducada o canal ausente, conservando el limite de un intento cada diez minutos.
 - Grabaciones: consolida reintentos y artefactos físicos bajo una sola tarjeta, abre una ficha de acciones con OK y elimina de forma fiable todos los registros completados relacionados.
 - Portada: muestra Biblioteca VOD desde el recuento del snapshot aunque el catálogo rápido inicial todavía contenga solo TV.
 - Prime Live: recupera una sola vez los manifiestos DASH obsoletos mientras el relay mantiene estable la sesión del canal.

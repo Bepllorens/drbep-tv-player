@@ -23,6 +23,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | 11. Puerta de reproduccion determinista | 472 | El smoke admite un canal estable y el arranque explicito evita que el fast-start cacheado lo sustituya. |
 | 12. Formato de diagnostico desacoplado | 473 | Resolucion, codec, fps y bitrate salen de la Activity y quedan cubiertos por pruebas puras y deterministas. |
 | Hotfix de carrera en arranque | 473 | El arranque diferido conserva el ID elegido aunque cambie la lista visible y no vuelve a preparar un canal que ya se esta reproduciendo. |
+| 13. Recuperacion de catalogo desacoplada | 474 | La decision de refrescar tras errores 401/403/404 o token queda aislada, con cooldown y requisitos de acceso cubiertos por pruebas puras. |
 
 ## Validacion minima antes de promover
 

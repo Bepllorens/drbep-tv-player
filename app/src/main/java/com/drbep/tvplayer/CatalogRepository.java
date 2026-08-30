@@ -1850,6 +1850,8 @@ final class ChannelItem implements Serializable {
     boolean favorite;
     String nowProgram;
     String nextProgram;
+    String verifiedNowProgram;
+    long verifiedNowProgramUntilMs;
 
     ChannelItem(String id, String name, String tvgId, String logoUrl, String group, String playUrl, String fallbackPlayUrl, int originalOrder, int dashboardOrder, boolean isVod, boolean isAdultVod, int platformId, String platformName, List<String> customGroups, String drmScheme, String drmLicenseUrl, String vodFilterKey, boolean directPlayback) {
         this(id, name, tvgId, logoUrl, group, playUrl, fallbackPlayUrl, originalOrder, dashboardOrder, isVod, isAdultVod, platformId, platformName, customGroups, drmScheme, drmLicenseUrl, vodFilterKey, directPlayback, "", "", 0L, "");
@@ -1900,6 +1902,8 @@ final class ChannelItem implements Serializable {
         this.customGroupLogos = new LinkedHashMap<>();
         this.nowProgram = "";
         this.nextProgram = "";
+        this.verifiedNowProgram = "";
+        this.verifiedNowProgramUntilMs = 0L;
     }
 
     private static String safeText(String value) {

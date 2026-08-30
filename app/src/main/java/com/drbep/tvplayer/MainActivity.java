@@ -1172,9 +1172,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void startBackendSelectionGate() {
-        if (!BuildConfig.STANDALONE_MODE || isEmergencyBackendEnabled()) {
+        if (!BuildConfig.STANDALONE_MODE) {
             continueStartupAfterBackendSelection();
-            showEmergencyBackendNoticeIfNeeded();
             return;
         }
         updateStartupLoading(
@@ -1190,10 +1189,19 @@ public class MainActivity extends FragmentActivity {
             postUiIfAlive(() -> {
                 backendFailoverProbeInFlight = false;
                 if (decision.useEmergency) {
-                    activateEmergencyBackend(true);
+                    if (isEmergencyBackendEnabled()) {
+                        continueStartupAfterBackendSelection();
+                        showEmergencyBackendNoticeIfNeeded();
+                    } else {
+                        activateEmergencyBackend(true);
+                    }
                     return;
                 }
-                continueStartupAfterBackendSelection();
+                if (isEmergencyBackendEnabled()) {
+                    switchToPrimaryBackend();
+                } else {
+                    continueStartupAfterBackendSelection();
+                }
             });
         });
         if (!submitted) {
@@ -1338,7 +1346,13 @@ public class MainActivity extends FragmentActivity {
         postUiDelayedIfAlive(() -> submitExecutorTask(controlExecutor, "backend-primary-recovery", () -> {
             boolean healthy = BackendFailoverManager.probeHealth(BuildConfig.OFFLINE_BASE_URL);
             if (healthy) {
-                postUiIfAlive(() -> showStatus(getString(R.string.backend_failover_primary_available)));
+                postUiIfAlive(() -> {
+                    if (playerController == null || !playerController.isPlaying()) {
+                        switchToPrimaryBackend();
+                    } else {
+                        showStatus(getString(R.string.backend_failover_primary_available));
+                    }
+                });
             }
         }), 30_000L);
     }
@@ -4017,11 +4031,19 @@ public class MainActivity extends FragmentActivity {
                 pairs.put(item.id, pair);
             }
             EpgRepository.EpgProgram next = pair == null ? null : pair.next;
+            EpgRepository.EpgProgram current = pair == null ? null : pair.current;
             String updatedNext = next == null || next.title == null ? "" : next.title.trim();
             item.nowProgram = pair == null
                     ? (updatedNow == null || updatedNow.trim().isEmpty() ? previousNow : updatedNow.trim())
                     : (updatedNow == null ? "" : updatedNow.trim());
             item.nextProgram = updatedNext.isEmpty() ? previousNext : updatedNext;
+            if (hasProgramTitle(current)) {
+                item.verifiedNowProgram = current.title.trim();
+                item.verifiedNowProgramUntilMs = parseIsoMillis(current.endTime);
+            } else if (item.verifiedNowProgramUntilMs <= System.currentTimeMillis()) {
+                item.verifiedNowProgram = "";
+                item.verifiedNowProgramUntilMs = 0L;
+            }
             if (item.nowProgram != null && !item.nowProgram.trim().isEmpty()) {
                 filled++;
             }
@@ -4105,12 +4127,18 @@ public class MainActivity extends FragmentActivity {
         }
         String currentTitle = hasProgramTitle(current) ? current.title.trim() : "";
         String nextTitle = hasProgramTitle(next) ? next.title.trim() : "";
+        long currentUntilMs = hasProgramTitle(current) ? parseIsoMillis(current.endTime) : 0L;
         for (ChannelItem item : items) {
             if (item == null || item.id == null || !channelId.equals(item.id.trim())) {
                 continue;
             }
             if (!currentTitle.isEmpty()) {
                 item.nowProgram = currentTitle;
+                item.verifiedNowProgram = currentTitle;
+                item.verifiedNowProgramUntilMs = currentUntilMs;
+            } else if (item.verifiedNowProgramUntilMs <= System.currentTimeMillis()) {
+                item.verifiedNowProgram = "";
+                item.verifiedNowProgramUntilMs = 0L;
             }
             if (!nextTitle.isEmpty()) {
                 item.nextProgram = nextTitle;

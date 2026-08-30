@@ -38,6 +38,16 @@ public class EpgRepositoryTest {
     }
 
     @Test
+    public void bulkRemoteEpgRepairsASmallNumberOfUnmatchedChannels() {
+        assertTrue(EpgRepository.shouldUseTargetedRemoteFallback(true, 15, 2));
+    }
+
+    @Test
+    public void bulkRemoteEpgDoesNotFanOutWhenManyChannelsAreMissing() {
+        assertTrue(!EpgRepository.shouldUseTargetedRemoteFallback(true, 15, 4));
+    }
+
+    @Test
     public void futureProgramIsNextAndNeverPresentedAsCurrent() {
         long now = 1_800_000L;
         EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
@@ -136,6 +146,60 @@ public class EpgRepositoryTest {
                 OverlayChannelListUiFactory.resolveCurrentProgram(
                         channel,
                         new EpgRepository.EpgProgramPair(future, future),
+                        now
+                )
+        );
+    }
+
+    @Test
+    public void channelListUsesFreshVerifiedNowWhenPairTemporarilyHasOnlyNext() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.verifiedNowProgram = "Programa vigente";
+        channel.verifiedNowProgramUntilMs = now + 600_000L;
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa siguiente",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "Programa vigente",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(null, future),
+                        now
+                )
+        );
+    }
+
+    @Test
+    public void channelListDropsExpiredVerifiedNowProgram() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.verifiedNowProgram = "Programa caducado";
+        channel.verifiedNowProgramUntilMs = now - 1L;
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa siguiente",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(null, future),
                         now
                 )
         );

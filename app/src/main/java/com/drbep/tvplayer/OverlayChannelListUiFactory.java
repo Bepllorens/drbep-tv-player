@@ -140,7 +140,16 @@ final class OverlayChannelListUiFactory {
         EpgRepository.EpgProgramPair normalized = EpgRepository.normalizePairForNow(pair, nowMs);
         if (normalized != null) {
             EpgRepository.EpgProgram current = normalized.current;
-            return current == null || current.title == null ? "" : current.title.trim();
+            if (current != null && current.title != null && !current.title.trim().isEmpty()) {
+                return current.title.trim();
+            }
+            if (channel != null
+                    && channel.verifiedNowProgramUntilMs > nowMs
+                    && channel.verifiedNowProgram != null
+                    && !channel.verifiedNowProgram.trim().isEmpty()) {
+                return channel.verifiedNowProgram.trim();
+            }
+            return "";
         }
         return channel == null || channel.nowProgram == null ? "" : channel.nowProgram.trim();
     }

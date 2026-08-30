@@ -1079,7 +1079,7 @@ final class EpgRepository {
                 missingChannels.add(channel);
             }
         }
-        if (!offlinePublicOnly || missingChannels.isEmpty() || channelItems.size() > 3) {
+        if (!shouldUseTargetedRemoteFallback(offlinePublicOnly, channelItems.size(), missingChannels.size())) {
             return out;
         }
         int beforeFallback = out.size();
@@ -1101,6 +1101,16 @@ final class EpgRepository {
                 + " totalMatched=" + out.size()
                 + " totalMs=" + (System.currentTimeMillis() - fallbackStartMs));
         return out;
+    }
+
+    static boolean shouldUseTargetedRemoteFallback(boolean offlinePublicOnly, int totalChannels, int missingChannels) {
+        if (!offlinePublicOnly || totalChannels <= 0 || missingChannels <= 0) {
+            return false;
+        }
+        // The bulk endpoint is intentionally the fast path. A few channels can fail to match there
+        // even though their individual guide is valid (for example when provider aliases differ).
+        // Bound the repair so opening a large bouquet never turns into one request per channel.
+        return missingChannels <= 3;
     }
 
     private EpgProgramPair fetchRemoteProgramPairForChannel(ChannelItem channel, int connectTimeoutMs, int readTimeoutMs, boolean offlinePublicOnly) throws Exception {

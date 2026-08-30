@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 467
-        versionName "2.0.467-beta-visible-epg-hydration"
+        versionCode 469
+        versionName "2.0.469-beta-primary-route-and-verified-epg"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

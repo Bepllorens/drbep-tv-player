@@ -2352,7 +2352,7 @@ public class MainActivity extends FragmentActivity {
             );
         }
         ensureTouchControlsEpgPair(channel);
-        EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channel.id);
+        EpgRepository.EpgProgramPair pair = normalizedEpgPair(channel.id);
         EpgRepository.EpgProgram currentProgram = pair == null ? null : pair.current;
         EpgRepository.EpgProgram nextProgram = pair == null ? null : pair.next;
         String currentTitle = currentProgram != null && currentProgram.title != null && !currentProgram.title.trim().isEmpty()
@@ -2392,7 +2392,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String channelId = channel.id == null ? "" : channel.id.trim();
-        EpgRepository.EpgProgramPair existingPair = epgProgramPairByChannelId.get(channelId);
+        EpgRepository.EpgProgramPair existingPair = normalizedEpgPair(channelId);
         boolean hasCurrent = hasProgramTitle(existingPair == null ? null : existingPair.current)
                 || (channel.nowProgram != null && !channel.nowProgram.trim().isEmpty());
         boolean hasNext = hasProgramTitle(existingPair == null ? null : existingPair.next)
@@ -2420,7 +2420,7 @@ public class MainActivity extends FragmentActivity {
             EpgRepository.EpgProgram finalNext = next;
             postUiIfAlive(() -> {
                 touchControlsEpgFetchInFlight.remove(channelId);
-                EpgRepository.EpgProgramPair previousPair = epgProgramPairByChannelId.get(channelId);
+                EpgRepository.EpgProgramPair previousPair = normalizedEpgPair(channelId);
                 EpgRepository.EpgProgram mergedCurrent = finalCurrent != null ? finalCurrent : (previousPair == null ? null : previousPair.current);
                 EpgRepository.EpgProgram mergedNext = finalNext != null ? finalNext : (previousPair == null ? null : previousPair.next);
                 if (mergedCurrent != null || mergedNext != null) {
@@ -4000,10 +4000,16 @@ public class MainActivity extends FragmentActivity {
             String previousNow = item.nowProgram == null ? "" : item.nowProgram.trim();
             String previousNext = item.nextProgram == null ? "" : item.nextProgram.trim();
             String updatedNow = updates == null ? "" : updates.getOrDefault(item.id, "");
-            EpgRepository.EpgProgramPair pair = pairs == null ? null : pairs.get(item.id);
+            EpgRepository.EpgProgramPair pair = pairs == null ? null
+                    : EpgRepository.normalizePairForNow(pairs.get(item.id), System.currentTimeMillis());
+            if (pair != null && pairs != null) {
+                pairs.put(item.id, pair);
+            }
             EpgRepository.EpgProgram next = pair == null ? null : pair.next;
             String updatedNext = next == null || next.title == null ? "" : next.title.trim();
-            item.nowProgram = updatedNow == null || updatedNow.trim().isEmpty() ? previousNow : updatedNow.trim();
+            item.nowProgram = pair == null
+                    ? (updatedNow == null || updatedNow.trim().isEmpty() ? previousNow : updatedNow.trim())
+                    : (updatedNow == null ? "" : updatedNow.trim());
             item.nextProgram = updatedNext.isEmpty() ? previousNext : updatedNext;
             if (item.nowProgram != null && !item.nowProgram.trim().isEmpty()) {
                 filled++;
@@ -4018,11 +4024,13 @@ public class MainActivity extends FragmentActivity {
         }
         for (Map.Entry<String, EpgRepository.EpgProgramPair> entry : incoming.entrySet()) {
             String channelId = entry.getKey() == null ? "" : entry.getKey().trim();
-            EpgRepository.EpgProgramPair nextPair = entry.getValue();
+            EpgRepository.EpgProgramPair nextPair = EpgRepository.normalizePairForNow(
+                    entry.getValue(), System.currentTimeMillis());
             if (channelId.isEmpty() || nextPair == null) {
                 continue;
             }
-            EpgRepository.EpgProgramPair previous = target.get(channelId);
+            EpgRepository.EpgProgramPair previous = EpgRepository.normalizePairForNow(
+                    target.get(channelId), System.currentTimeMillis());
             if (previous == null) {
                 target.put(channelId, nextPair);
                 continue;
@@ -4057,6 +4065,19 @@ public class MainActivity extends FragmentActivity {
             return incoming;
         }
         return incomingRich == previousRich ? incoming : previous;
+    }
+
+    private EpgRepository.EpgProgramPair normalizedEpgPair(String channelId) {
+        String cleanChannelId = channelId == null ? "" : channelId.trim();
+        if (cleanChannelId.isEmpty()) {
+            return null;
+        }
+        EpgRepository.EpgProgramPair pair = EpgRepository.normalizePairForNow(
+                epgProgramPairByChannelId.get(cleanChannelId), System.currentTimeMillis());
+        if (pair != null) {
+            epgProgramPairByChannelId.put(cleanChannelId, pair);
+        }
+        return pair;
     }
 
     private void applySingleProgramPairToChannelLists(String channelId, EpgRepository.EpgProgram current, EpgRepository.EpgProgram next) {
@@ -20683,7 +20704,7 @@ public class MainActivity extends FragmentActivity {
         if (channelItem == null || channelItem.id == null) {
             return;
         }
-        EpgRepository.EpgProgramPair pair = epgProgramPairByChannelId.get(channelItem.id);
+        EpgRepository.EpgProgramPair pair = normalizedEpgPair(channelItem.id);
         EpgRepository.EpgProgram current = pair == null ? null : pair.current;
         EpgRepository.EpgProgram next = pair == null ? null : pair.next;
         Log.w(TAG, "HUD EPG state source=" + source

@@ -1124,10 +1124,19 @@ final class EpgRepository {
             return null;
         }
         programs = matchingPrograms;
-        long now = System.currentTimeMillis();
+        return selectCurrentAndNext(programs, System.currentTimeMillis());
+    }
+
+    static EpgProgramPair selectCurrentAndNext(List<EpgProgram> programs, long now) {
         EpgProgram current = null;
         EpgProgram next = null;
+        if (programs == null) {
+            return new EpgProgramPair(null, null);
+        }
         for (EpgProgram program : programs) {
+            if (program == null) {
+                continue;
+            }
             long startMs = parseIsoMillis(program.startTime);
             long endMs = parseIsoMillis(program.endTime);
             if (current == null && startMs <= now && endMs > now) {
@@ -1138,13 +1147,36 @@ final class EpgRepository {
                 next = programWithProgress(program, now);
             }
         }
-        if (current == null && !programs.isEmpty()) {
-            current = programWithProgress(programs.get(0), now);
-            if (programs.size() > 1 && next == null) {
-                next = programWithProgress(programs.get(1), now);
-            }
+        return new EpgProgramPair(current, next);
+    }
+
+    static EpgProgramPair normalizePairForNow(EpgProgramPair pair, long now) {
+        if (pair == null) {
+            return null;
+        }
+        List<EpgProgram> timed = new ArrayList<>();
+        if (hasProgramTiming(pair.current)) {
+            timed.add(pair.current);
+        }
+        if (hasProgramTiming(pair.next)) {
+            timed.add(pair.next);
+        }
+        EpgProgramPair selected = selectCurrentAndNext(timed, now);
+        EpgProgram current = selected.current;
+        EpgProgram next = selected.next;
+        if (current == null && pair.current != null && !hasProgramTiming(pair.current)) {
+            current = pair.current;
+        }
+        if (next == null && pair.next != null && !hasProgramTiming(pair.next)) {
+            next = pair.next;
         }
         return new EpgProgramPair(current, next);
+    }
+
+    private static boolean hasProgramTiming(EpgProgram program) {
+        return program != null
+                && parseIsoMillis(program.startTime) > 0L
+                && parseIsoMillis(program.endTime) > 0L;
     }
 
     private static List<EpgProgram> filterProgramsForChannel(List<EpgProgram> programs, ChannelItem channel) {

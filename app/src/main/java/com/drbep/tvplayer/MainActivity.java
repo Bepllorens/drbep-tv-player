@@ -14484,7 +14484,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isAuthRelatedError(Throwable error) {
-        return isAuthRelatedMessage(error == null ? "" : error.getMessage());
+        return PlaybackIssueClassifier.classify(error == null ? "" : error.getMessage())
+                == PlaybackIssueClassifier.IssueType.AUTH;
     }
 
     private boolean isOfflineRecoveryError(Throwable error) {
@@ -20555,78 +20556,41 @@ public class MainActivity extends FragmentActivity {
             route = safeLower(storedError.routeLabel);
             mode = safeLower(storedError.playbackMode);
         }
-        if (isAuthRelatedMessage(error)) {
-            return getString(R.string.diagnostics_recommend_reactivate);
+        switch (PlaybackIssueClassifier.recommend(route, mode, error)) {
+            case REACTIVATE:
+                return getString(R.string.diagnostics_recommend_reactivate);
+            case LICENSE:
+                return getString(R.string.diagnostics_recommend_license);
+            case DECODER:
+                return getString(R.string.diagnostics_recommend_decoder);
+            case DIRECT:
+                return getString(R.string.diagnostics_recommend_direct);
+            case PROXY:
+                return getString(R.string.diagnostics_recommend_proxy);
+            case AUTO:
+            default:
+                return getString(R.string.diagnostics_recommend_auto);
         }
-        if (isLicenseRelatedMessage(error)) {
-            return getString(R.string.diagnostics_recommend_license);
-        }
-        if (isDecoderRelatedMessage(error)) {
-            return getString(R.string.diagnostics_recommend_decoder);
-        }
-        if (route.contains("proxy") || mode.contains(PlaybackModeStore.MODE_PROXY) || error.contains("proxy")) {
-            return getString(R.string.diagnostics_recommend_direct);
-        }
-        if (error.contains("drm") || error.contains("403") || error.contains("401") || error.contains("mime") || route.contains("direct")) {
-            return getString(R.string.diagnostics_recommend_proxy);
-        }
-        return getString(R.string.diagnostics_recommend_auto);
     }
 
     private String classifyOperationalError(String message) {
-        String error = safeLower(message);
-        if (isAuthRelatedMessage(error)) {
-            return getString(R.string.diagnostics_error_type_token);
+        switch (PlaybackIssueClassifier.classify(message)) {
+            case AUTH:
+                return getString(R.string.diagnostics_error_type_token);
+            case LICENSE:
+                return getString(R.string.diagnostics_error_type_license);
+            case DECODER:
+                return getString(R.string.diagnostics_error_type_decoder);
+            case MANIFEST:
+                return getString(R.string.diagnostics_error_type_manifest);
+            case NETWORK:
+                return getString(R.string.diagnostics_error_type_network);
+            case SERVER:
+                return getString(R.string.diagnostics_error_type_server);
+            case UNKNOWN:
+            default:
+                return getString(R.string.diagnostics_error_type_unknown);
         }
-        if (isLicenseRelatedMessage(error)) {
-            return getString(R.string.diagnostics_error_type_license);
-        }
-        if (isDecoderRelatedMessage(error)) {
-            return getString(R.string.diagnostics_error_type_decoder);
-        }
-        if (error.contains("manifest") || error.contains("source") || error.contains("m3u8") || error.contains("mpd") || error.contains("404")) {
-            return getString(R.string.diagnostics_error_type_manifest);
-        }
-        if (error.contains("timeout") || error.contains("timed out") || error.contains("network") || error.contains("connect") || error.contains("dns") || error.contains("unreachable")) {
-            return getString(R.string.diagnostics_error_type_network);
-        }
-        if (error.contains("500") || error.contains("502") || error.contains("503") || error.contains("504") || error.contains("server")) {
-            return getString(R.string.diagnostics_error_type_server);
-        }
-        return getString(R.string.diagnostics_error_type_unknown);
-    }
-
-    private boolean isAuthRelatedMessage(String message) {
-        String error = safeLower(message);
-        return error.contains("401")
-                || error.contains("403")
-                || error.contains("unauthorized")
-                || error.contains("forbidden")
-                || error.contains("token")
-                || error.contains("session")
-                || error.contains("sesion")
-                || error.contains("expired")
-                || error.contains("caduc");
-    }
-
-    private boolean isLicenseRelatedMessage(String message) {
-        String error = safeLower(message);
-        return error.contains("drm")
-                || error.contains("widevine")
-                || error.contains("license")
-                || error.contains("licence")
-                || error.contains("licencia")
-                || error.contains("clearkey");
-    }
-
-    private boolean isDecoderRelatedMessage(String message) {
-        String error = safeLower(message);
-        return error.contains("decoder")
-                || error.contains("mediacodec")
-                || error.contains("h265")
-                || error.contains("hevc")
-                || error.contains("avc")
-                || error.contains("codec");
     }
 
     private String buildRecentDiagnosticsSummary() {

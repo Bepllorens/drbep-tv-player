@@ -27,6 +27,7 @@ el canal beta y se probaron sobre un Fire TV Amazon AFTKRT conectado por ADB.
 | 14. Invalidacion de rutas aprendidas | 475 | Fallo, recuperacion por otra ruta, override temporal y modo manual se resuelven en una politica pura con pruebas de precedencia. |
 | 15. Decision de autorreparacion | 476 | Reintento automatico, siguiente ruta y casos sin accion quedan aislados de la Activity y cubiertos contra bucles. |
 | 16. Puerta de navegacion y foco | 476 | Un smoke ADB recorre Herramientas, TV/EPG y timeline, exige movimiento real del foco y retorno seguro al directo. |
+| 17. Puerta multipantalla determinista | 476 | El smoke admite portada o directo, abre el mosaico por Herramientas y exige dos canales con primer frame, READY y recuperacion final. |
 
 ## Validacion minima antes de promover
 

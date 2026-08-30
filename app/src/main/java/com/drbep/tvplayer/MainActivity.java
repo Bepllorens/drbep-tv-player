@@ -20394,11 +20394,12 @@ public class MainActivity extends FragmentActivity {
         }
         String channelId = request.channelId.trim();
         String failedMode = sanitizePlaybackMode(request.playbackMode);
-        if (PlaybackModeStore.MODE_AUTO.equals(failedMode)
-                || playbackModeStore == null
-                || !PlaybackModeStore.MODE_AUTO.equals(playbackModeStore.getMode(channelId))
-                || temporaryPlaybackModesByChannelId.containsKey(channelId)
-                || !failedMode.equals(playbackRecoveryCoordinator.learnedMode(channelId))) {
+        if (playbackModeStore == null || !PlaybackRouteLearningPolicy.shouldInvalidateAfterFailure(
+                failedMode,
+                playbackModeStore.getMode(channelId),
+                temporaryPlaybackModesByChannelId.containsKey(channelId),
+                playbackRecoveryCoordinator.learnedMode(channelId)
+        )) {
             return false;
         }
         playbackRecoveryCoordinator.clearLearnedMode(channelId);
@@ -20435,12 +20436,13 @@ public class MainActivity extends FragmentActivity {
         }
         String channelId = request.channelId.trim();
         String failedMode = sanitizePlaybackMode(request.playbackMode);
-        if (PlaybackModeStore.MODE_AUTO.equals(failedMode)
-                || failedMode.equals(recoveredMode)
-                || playbackModeStore == null
-                || !PlaybackModeStore.MODE_AUTO.equals(playbackModeStore.getMode(channelId))
-                || temporaryPlaybackModesByChannelId.containsKey(channelId)
-                || !failedMode.equals(playbackRecoveryCoordinator.learnedMode(channelId))) {
+        if (playbackModeStore == null || !PlaybackRouteLearningPolicy.shouldInvalidateAfterRecovery(
+                failedMode,
+                recoveredMode,
+                playbackModeStore.getMode(channelId),
+                temporaryPlaybackModesByChannelId.containsKey(channelId),
+                playbackRecoveryCoordinator.learnedMode(channelId)
+        )) {
             return;
         }
         playbackRecoveryCoordinator.clearLearnedMode(channelId);

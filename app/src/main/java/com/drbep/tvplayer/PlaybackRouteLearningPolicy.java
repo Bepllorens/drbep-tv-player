@@ -39,4 +39,31 @@ final class PlaybackRouteLearningPolicy {
                 && bufferingCount == 0
                 && expectedGeneration == currentGeneration;
     }
+
+    static boolean shouldInvalidateAfterFailure(
+            String failedMode,
+            String configuredMode,
+            boolean hasTemporaryOverride,
+            String learnedMode
+    ) {
+        String failed = PlaybackRecoveryCoordinator.sanitizeMode(failedMode);
+        return !PlaybackModeStore.MODE_AUTO.equals(failed)
+                && PlaybackModeStore.MODE_AUTO.equals(PlaybackRecoveryCoordinator.sanitizeMode(configuredMode))
+                && !hasTemporaryOverride
+                && failed.equals(PlaybackRecoveryCoordinator.sanitizeMode(learnedMode));
+    }
+
+    static boolean shouldInvalidateAfterRecovery(
+            String failedMode,
+            String recoveredMode,
+            String configuredMode,
+            boolean hasTemporaryOverride,
+            String learnedMode
+    ) {
+        String failed = PlaybackRecoveryCoordinator.sanitizeMode(failedMode);
+        String recovered = PlaybackRecoveryCoordinator.sanitizeMode(recoveredMode);
+        return !PlaybackModeStore.MODE_AUTO.equals(recovered)
+                && !failed.equals(recovered)
+                && shouldInvalidateAfterFailure(failed, configuredMode, hasTemporaryOverride, learnedMode);
+    }
 }

@@ -781,6 +781,14 @@
     <string name="multiview_hint_touch">Toca una ventana para audio. Manten pulsado para cambiar canal</string>
     <string name="multiview_hint_tv">Flechas = mover · OK = audio/full · MENU = cambiar canal</string>
     <string name="multiview_select_channel_title">Elegir canal para ventana</string>
+    <string name="multiview_select_platform_title">Elegir plataforma</string>
+    <string name="multiview_select_platform_subtitle">%1$d plataformas · %2$d canales disponibles</string>
+    <string name="multiview_select_platform_channels_title">%1$s · elegir canal</string>
+    <string name="multiview_platform_unknown">Sin plataforma</string>
+    <plurals name="multiview_platform_channels_available">
+        <item quantity="one">%1$d canal disponible</item>
+        <item quantity="other">%1$d canales disponibles</item>
+    </plurals>
     <string name="multiview_close">Cerrar</string>
     <string name="multiview_slot_label">Ventana %1$d</string>
     <string name="multiview_active_audio">Audio activo</string>

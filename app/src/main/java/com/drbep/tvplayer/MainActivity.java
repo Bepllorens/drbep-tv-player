@@ -10027,11 +10027,82 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_multiview_not_enough_channels));
             return;
         }
+        showMultiViewPlatformPicker(slot, items);
+    }
+
+    private void showMultiViewPlatformPicker(int slot, List<ChannelItem> items) {
+        List<MultiViewChannelSelector.PlatformGroup> platformGroups = MultiViewChannelSelector.groupByPlatform(items);
+        if (platformGroups.isEmpty()) {
+            showStatus(getString(R.string.status_multiview_not_enough_channels));
+            return;
+        }
+        List<ChannelItem> platformRows = new ArrayList<>();
+        Map<String, MultiViewChannelSelector.PlatformGroup> platformByRowId = new LinkedHashMap<>();
+        int order = 1;
+        for (MultiViewChannelSelector.PlatformGroup group : platformGroups) {
+            String rowId = "multiview-platform-" + order;
+            String platformName = group.name.trim().isEmpty()
+                    ? getString(R.string.multiview_platform_unknown)
+                    : group.name.trim();
+            int channelCount = group.channels.size();
+            ChannelItem row = new ChannelItem(
+                    rowId,
+                    platformName,
+                    "",
+                    group.logoUrl,
+                    getResources().getQuantityString(R.plurals.multiview_platform_channels_available, channelCount, channelCount),
+                    "",
+                    "",
+                    order,
+                    order,
+                    false,
+                    false,
+                    group.platformId,
+                    "",
+                    new ArrayList<>(),
+                    "",
+                    "",
+                    "",
+                    false
+            );
+            row.platformLogoUrl = group.logoUrl;
+            platformRows.add(row);
+            platformByRowId.put(rowId, group);
+            order++;
+        }
         showQuickChannelListDialog(
-                getString(R.string.multiview_select_channel_title),
-                items,
+                getString(R.string.multiview_select_platform_title),
+                getString(R.string.multiview_select_platform_subtitle, platformGroups.size(), items.size()),
+                platformRows,
                 getString(R.string.overlay_no_results),
-                item -> tuneMultiViewSlotChannel(slot, item)
+                row -> {
+                    MultiViewChannelSelector.PlatformGroup group = row == null ? null : platformByRowId.get(row.id);
+                    if (group != null) {
+                        showMultiViewPlatformChannels(slot, items, group);
+                    }
+                },
+                null,
+                null
+        );
+    }
+
+    private void showMultiViewPlatformChannels(
+            int slot,
+            List<ChannelItem> allSelectable,
+            MultiViewChannelSelector.PlatformGroup group
+    ) {
+        String platformName = group.name.trim().isEmpty()
+                ? getString(R.string.multiview_platform_unknown)
+                : group.name.trim();
+        int channelCount = group.channels.size();
+        showQuickChannelListDialog(
+                getString(R.string.multiview_select_platform_channels_title, platformName),
+                getResources().getQuantityString(R.plurals.multiview_platform_channels_available, channelCount, channelCount),
+                group.channels,
+                getString(R.string.overlay_no_results),
+                item -> tuneMultiViewSlotChannel(slot, item),
+                () -> showMultiViewPlatformPicker(slot, allSelectable),
+                null
         );
     }
 

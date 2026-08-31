@@ -46,7 +46,10 @@ final class RecordingsPanelController {
     private ComposeView panel;
     private int headerFocusIndex = -1;
     private boolean headerFocusActive;
-    private boolean autoRefreshEnabled;
+    // Keep the open panel aligned with the canonical server library. A recording can
+    // be deleted from the Web App or another offline client while this screen remains
+    // visible, so opting in only after a manual toggle leaves stale cards behind.
+    private boolean autoRefreshEnabled = true;
     private int pendingScrollIndex = -1;
 
     private final Runnable autoRefreshRunnable = new Runnable() {

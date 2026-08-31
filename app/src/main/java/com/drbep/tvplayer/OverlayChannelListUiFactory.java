@@ -113,6 +113,7 @@ final class OverlayChannelListUiFactory {
         }
         final int rowPosition = position;
         return new OverlayChannelRowUiModel(
+                channel.id,
                 channel.logoUrl,
                 name,
                 metaText,

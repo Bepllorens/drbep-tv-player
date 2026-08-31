@@ -453,6 +453,20 @@ final class RecordingsRepository {
         httpClient.requireSuccess(response, "cancelando grabacion programada");
     }
 
+    void stopScheduledRecording(String recordingId) throws Exception {
+        if (recordingId == null || recordingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("recording id vacio");
+        }
+        HttpClient.Response response = httpClient.postJson(
+                baseUrl + "/api/recordings/stop?id=" + URLEncoder.encode(recordingId.trim(), "UTF-8"),
+                new JSONObject(),
+                10000,
+                15000,
+                jsonHeaders(true)
+        );
+        httpClient.requireSuccess(response, "parando grabacion activa");
+    }
+
     void deleteCompletedRecording(long recordingId) throws Exception {
         if (recordingId <= 0L) {
             throw new IllegalArgumentException("recording id invalido");

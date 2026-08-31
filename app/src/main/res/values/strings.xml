@@ -223,6 +223,13 @@
     <string name="recording_action_edit_time">Editar hora</string>
     <string name="recording_action_cancel">Cancelar programacion</string>
     <string name="recording_action_cancel_confirm">Cancelar grabacion</string>
+    <string name="recording_action_stop">Parar grabacion</string>
+    <string name="recording_action_stop_confirm">Parar ahora</string>
+    <string name="title_recording_stop_confirm">Parar grabacion</string>
+    <string name="recording_stop_confirm_message">%1$s\n%2$s\n\nSe cerrara el archivo de forma segura y podras eliminarlo desde Completadas.</string>
+    <string name="status_stopping_recording">Parando grabacion…</string>
+    <string name="status_recording_stopped">Grabacion detenida y archivo cerrado</string>
+    <string name="status_failed_stop_recording">No se pudo parar la grabacion</string>
     <string name="recording_action_shift_earlier">Mover 15 min antes</string>
     <string name="recording_action_shift_later">Mover 15 min despues</string>
     <string name="recording_action_extend">Alargar 15 min</string>
@@ -589,6 +596,10 @@
     <string name="menu_create_next_reminder">Crear recordatorio (proximo)</string>
     <string name="menu_view_recordings">Ver grabaciones</string>
     <string name="menu_record">Grabar</string>
+    <string name="recording_start_choice_title">¿Desde dónde quieres grabar?</string>
+    <string name="recording_start_choice_message">%1$s empezó a las %2$s. Si eliges el principio se recuperará lo ya emitido mediante timeshift.</string>
+    <string name="recording_start_from_beginning">Desde el principio</string>
+    <string name="recording_start_remaining">Solo lo que queda</string>
     <string name="title_touch_program_info">Programa en emision</string>
     <string name="title_about_app">Acerca de DRBEP TV Player v%1$s</string>
     <string name="message_about_app">Esta aplicacion ha sido desarrollada por Bep Llorens sin animo de lucro y con fines didacticos. Su uso esta orientado a pruebas, aprendizaje y entornos controlados. El usuario es el unico responsable de verificar que dispone de autorizacion para acceder, reproducir o grabar los contenidos que utilice desde la app. Las marcas, nombres comerciales, logotipos y contenidos audiovisuales pertenecen a sus respectivos titulares. Esta aplicacion se ofrece tal cual, sin garantias de disponibilidad continua, compatibilidad universal ni idoneidad para un fin concreto.</string>

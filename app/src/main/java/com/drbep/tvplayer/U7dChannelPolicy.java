@@ -39,6 +39,21 @@ final class U7dChannelPolicy {
                 || identity.contains("/hls/ism-mux/");
     }
 
+    static boolean supportsRecordingStartOver(ChannelItem channel) {
+        return isMovistarChannel(channel) || isTivifyChannel(channel);
+    }
+
+    static boolean isTivifyChannel(ChannelItem channel) {
+        if (channel == null || channel.isVod) {
+            return false;
+        }
+        String identity = clean(channel.platformName)
+                + " " + clean(channel.group)
+                + " " + clean(channel.playUrl)
+                + " " + clean(channel.fallbackPlayUrl);
+        return channel.platformId == 2 || identity.contains("tivify");
+    }
+
     static boolean isOrangeChannel(ChannelItem channel) {
         if (channel == null || channel.isVod) {
             return false;

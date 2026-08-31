@@ -29,7 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,36 +46,77 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import java.util.WeakHashMap
 
+private data class OverlayChannelNavigationState(
+    val selectedIndex: Int,
+    val scrollToIndex: Int,
+    val scrollRequestToken: Int
+)
+
 object OverlayChannelListComposeBinder {
-    private val models = WeakHashMap<ComposeView, MutableState<OverlayChannelListUiModel>>()
+    private data class BoundState(
+        val model: MutableState<OverlayChannelListUiModel>,
+        val navigation: MutableState<OverlayChannelNavigationState>
+    )
+
+    private val models = WeakHashMap<ComposeView, BoundState>()
 
     @JvmStatic
     fun bind(composeView: ComposeView?, model: OverlayChannelListUiModel, imageBinder: OverlayChannelImageBinder) {
         if (composeView == null) return
         val existing = models[composeView]
         if (existing != null) {
-            existing.value = model
+            existing.model.value = model
+            existing.navigation.value = navigationFrom(model)
             return
         }
         val modelState = mutableStateOf(model)
-        models[composeView] = modelState
+        val navigationState = mutableStateOf(navigationFrom(model))
+        models[composeView] = BoundState(modelState, navigationState)
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         composeView.setContent {
-            OverlayChannelList(modelState.value, imageBinder)
+            OverlayChannelList(modelState.value, navigationState.value, imageBinder)
         }
+    }
+
+    @JvmStatic
+    fun updateSelection(
+        composeView: ComposeView?,
+        selectedIndex: Int,
+        scrollToIndex: Int,
+        scrollRequestToken: Int
+    ): Boolean {
+        if (composeView == null) return false
+        val state = models[composeView] ?: return false
+        state.navigation.value = OverlayChannelNavigationState(
+            selectedIndex = selectedIndex,
+            scrollToIndex = scrollToIndex,
+            scrollRequestToken = scrollRequestToken
+        )
+        return true
+    }
+
+    private fun navigationFrom(model: OverlayChannelListUiModel): OverlayChannelNavigationState {
+        return OverlayChannelNavigationState(
+            selectedIndex = model.items.indexOfFirst { it.selected },
+            scrollToIndex = model.scrollToIndex,
+            scrollRequestToken = model.scrollRequestToken
+        )
     }
 }
 
 @Composable
-private fun OverlayChannelList(model: OverlayChannelListUiModel, imageBinder: OverlayChannelImageBinder) {
+private fun OverlayChannelList(
+    model: OverlayChannelListUiModel,
+    navigation: OverlayChannelNavigationState,
+    imageBinder: OverlayChannelImageBinder
+) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val listState = rememberLazyListState()
-    LaunchedEffect(model.scrollRequestToken, model.items.size) {
-        if (model.scrollToIndex >= 0 && model.items.isNotEmpty()) {
+    LaunchedEffect(navigation.scrollRequestToken, model.items.size) {
+        if (navigation.scrollToIndex >= 0 && model.items.isNotEmpty()) {
             val headerOffset = if (model.filterLabel.isNotBlank()) 1 else 0
             val anchorPadding = if (compact) 1 else 2
-            val targetIndex = (model.scrollToIndex - anchorPadding + headerOffset).coerceIn(0, model.items.lastIndex + headerOffset)
-            withFrameNanos { }
+            val targetIndex = (navigation.scrollToIndex - anchorPadding + headerOffset).coerceIn(0, model.items.lastIndex + headerOffset)
             listState.scrollToItem(targetIndex)
         }
     }
@@ -134,8 +174,12 @@ private fun OverlayChannelList(model: OverlayChannelListUiModel, imageBinder: Ov
                     OverlayEmptyMessage(model.emptyMessage, compact)
                 }
             }
-            itemsIndexed(model.items) { _, item ->
-                OverlayChannelRow(item, imageBinder, compact)
+            itemsIndexed(
+                items = model.items,
+                key = { index, item -> item.channelId.ifEmpty { "${item.name}:$index" } },
+                contentType = { _, item -> if (item.vod) "vod" else "live" }
+            ) { index, item ->
+                OverlayChannelRow(item, index == navigation.selectedIndex, imageBinder, compact)
             }
         }
     }
@@ -234,12 +278,14 @@ private fun FilterNavButton(label: String, accessibilityLabel: String, action: R
 }
 
 @Composable
-private fun OverlayChannelRow(item: OverlayChannelRowUiModel, imageBinder: OverlayChannelImageBinder, compact: Boolean) {
-    val bg = when {
-        item.selected -> OfflineTvTheme.Colors.focusSurface
-        item.tuned -> OfflineTvTheme.Colors.card.copy(alpha = 0.8f)
-        else -> OfflineTvTheme.Colors.surfaceDeep
-    }
+private fun OverlayChannelRow(
+    item: OverlayChannelRowUiModel,
+    selected: Boolean,
+    imageBinder: OverlayChannelImageBinder,
+    compact: Boolean
+) {
+    val shape = RoundedCornerShape(14.dp)
+    val bg = if (selected) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -248,17 +294,33 @@ private fun OverlayChannelRow(item: OverlayChannelRowUiModel, imageBinder: Overl
             .tvButtonSemantics(
                 item.onClick != null,
                 listOf(item.name, item.meta, if (item.tuned) "Canal sintonizado" else "").filter { it.isNotBlank() }.joinToString(". "),
-                item.tuned
+                selected
             )
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(bg, RoundedCornerShape(14.dp))
+                .then(
+                    if (selected) {
+                        Modifier.border(2.dp, OfflineTvTheme.Colors.accentGold, shape)
+                    } else {
+                        Modifier
+                    }
+                )
+                .background(bg, shape)
                 .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 7.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (item.tuned) {
+                Box(
+                    modifier = Modifier
+                        .width(if (compact) 3.dp else 4.dp)
+                        .height(if (compact) 32.dp else 36.dp)
+                        .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(4.dp))
+                )
+                Spacer(modifier = Modifier.width(if (compact) 6.dp else 8.dp))
+            }
             OverlayChannelLogo(item, imageBinder, compact)
             Spacer(modifier = Modifier.width(if (compact) 6.dp else 8.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -310,6 +372,7 @@ private fun OverlayChannelLogo(item: OverlayChannelRowUiModel, imageBinder: Over
     val width = if (item.vod) (if (compact) 48.dp else 54.dp) else (if (compact) 40.dp else 44.dp)
     val height = if (item.vod) (if (compact) 64.dp else 72.dp) else (if (compact) 40.dp else 44.dp)
     val padding = if (item.vod) 0 else if (compact) 2 else 3
+    val bindingKey = OverlayChannelLogoBindingKey(item.channelId, item.logoUrl, item.name, item.vod)
     AndroidView(
         modifier = Modifier
             .width(width)
@@ -331,12 +394,21 @@ private fun OverlayChannelLogo(item: OverlayChannelRowUiModel, imageBinder: Over
             }
         },
         update = { frame ->
-            frame.setPadding(padding, padding, padding, padding)
-            val image = frame.getChildAt(0) as ImageView
-            imageBinder.bind(image, item)
+            if (frame.tag != bindingKey) {
+                frame.tag = bindingKey
+                val image = frame.getChildAt(0) as ImageView
+                imageBinder.bind(image, item)
+            }
         }
     )
 }
+
+private data class OverlayChannelLogoBindingKey(
+    val channelId: String,
+    val logoUrl: String,
+    val name: String,
+    val vod: Boolean
+)
 
 @Composable
 private fun Chip(text: String, textColor: Color, compact: Boolean) {

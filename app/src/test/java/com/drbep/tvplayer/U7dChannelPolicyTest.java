@@ -29,6 +29,8 @@ public class U7dChannelPolicyTest {
         assertTrue(U7dChannelPolicy.supports(ism));
         assertFalse(U7dChannelPolicy.isMovistarIsmChannel(dash));
         assertTrue(U7dChannelPolicy.isMovistarIsmChannel(ism));
+        assertTrue(U7dChannelPolicy.supportsRecordingStartOver(dash));
+        assertTrue(U7dChannelPolicy.supportsRecordingStartOver(ism));
     }
 
     @Test
@@ -57,6 +59,17 @@ public class U7dChannelPolicyTest {
 
         assertFalse(U7dChannelPolicy.supports(unrelated));
         assertFalse(U7dChannelPolicy.supports(vod));
+        assertFalse(U7dChannelPolicy.supportsRecordingStartOver(unrelated));
+        assertFalse(U7dChannelPolicy.supportsRecordingStartOver(vod));
+    }
+
+    @Test
+    public void recordingStartOverIncludesTivify() {
+        ChannelItem tivifyDash = channel("1103933", "LA 1", 2, "Tivify", "https://example.test/live.mpd");
+        ChannelItem tivifyHls = channel("1103934", "LA 2", 2, "Tivify", "https://example.test/live.m3u8");
+
+        assertTrue(U7dChannelPolicy.supportsRecordingStartOver(tivifyDash));
+        assertTrue(U7dChannelPolicy.supportsRecordingStartOver(tivifyHls));
     }
 
     private static ChannelItem channel(String id, String name, int platformId, String platform, String url) {

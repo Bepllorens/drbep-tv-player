@@ -6,6 +6,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,10 +86,15 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            itemsIndexed(model.items) { index, item ->
+            itemsIndexed(
+                items = model.items,
+                key = { index, item -> item.channelId.ifEmpty { "${item.channelName}:$index" } },
+                contentType = { _, item -> if (item.vod) "vod" else "live" }
+            ) { index, item ->
                 QuickChannelRow(
                     item,
                     imageBinder,
+                    compact,
                     if (index == 0) firstRowRequester else null,
                     if (index == 0) topActionRequester else null,
                     if (index == model.items.lastIndex) bottomActionRequester else null
@@ -176,12 +182,13 @@ private fun PanelHeader(title: String, subtitle: String, compact: Boolean) {
 private fun QuickChannelRow(
     item: QuickChannelRowUiModel,
     imageBinder: QuickChannelImageBinder,
+    compact: Boolean,
     focusRequester: FocusRequester?,
     upEdgeRequester: FocusRequester?,
     downEdgeRequester: FocusRequester?
 ) {
-    val compact = LocalConfiguration.current.screenWidthDp < 600
-    var focused by remember { mutableStateOf(false) }
+    var focused by remember(item.channelId) { mutableStateOf(false) }
+    val shape = RoundedCornerShape(14.dp)
     val rowBackground = if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.surfaceDeep
     val titleColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
     val metaColor = if (focused) OfflineTvTheme.Colors.chip else OfflineTvTheme.Colors.textSoft
@@ -191,7 +198,14 @@ private fun QuickChannelRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(rowBackground, RoundedCornerShape(14.dp))
+            .then(
+                if (focused) {
+                    Modifier.border(3.dp, OfflineTvTheme.Colors.accentGold, shape)
+                } else {
+                    Modifier
+                }
+            )
+            .background(rowBackground, shape)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->
@@ -214,6 +228,18 @@ private fun QuickChannelRow(
             .padding(if (compact) 10.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (item.playing) {
+            Box(
+                modifier = Modifier
+                    .width(if (compact) 4.dp else 5.dp)
+                    .height(if (compact) 34.dp else 38.dp)
+                    .background(
+                        if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan,
+                        RoundedCornerShape(4.dp)
+                    )
+            )
+            Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
+        }
         QuickChannelLogo(item, imageBinder, compact)
         Spacer(modifier = Modifier.width(if (compact) 10.dp else 12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -247,6 +273,9 @@ private fun QuickChannelRow(
 @Composable
 private fun QuickChannelLogo(item: QuickChannelRowUiModel, imageBinder: QuickChannelImageBinder, compact: Boolean) {
     val size = if (compact) 38.dp else 42.dp
+    val bindingKey = remember(item.logoUrl, item.channelName, item.vod) {
+        QuickChannelLogoBindingKey(item.logoUrl, item.channelName, item.vod)
+    }
     AndroidView(
         modifier = Modifier.size(size),
         factory = { context ->
@@ -266,8 +295,17 @@ private fun QuickChannelLogo(item: QuickChannelRowUiModel, imageBinder: QuickCha
             }
         },
         update = { frame ->
-            val imageView = frame.getChildAt(0) as ImageView
-            imageBinder.bind(imageView, item)
+            if (frame.tag != bindingKey) {
+                frame.tag = bindingKey
+                val imageView = frame.getChildAt(0) as ImageView
+                imageBinder.bind(imageView, item)
+            }
         }
     )
 }
+
+private data class QuickChannelLogoBindingKey(
+    val logoUrl: String,
+    val channelName: String,
+    val vod: Boolean
+)

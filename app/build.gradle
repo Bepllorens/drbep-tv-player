@@ -70,8 +70,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 478
-        versionName "2.0.478-beta-multiview-platforms"
+        versionCode 484
+        versionName "2.0.484-beta-overlay-channel-list-performance"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

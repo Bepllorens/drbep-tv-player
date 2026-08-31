@@ -106,6 +106,7 @@ public class MainActivity extends FragmentActivity {
     private static final String TAG = "DRBEP-TV-Native";
     private static final long OVERLAY_HIDE_MS = 6000L;
     private static final long OVERLAY_RENDER_COALESCE_MS = 32L;
+    private static final long OVERLAY_NAVIGATION_RENDER_COALESCE_MS = 8L;
     private static final long PLAYBACK_QUALITY_UI_COALESCE_MS = 120L;
     private static final long TOUCH_CONTROLS_HIDE_MS = 3000L;
     private static final long COMPACT_PLAYBACK_HUD_HIDE_MS = 5500L;
@@ -6028,7 +6029,11 @@ public class MainActivity extends FragmentActivity {
                 if (dialogHolder[0] != null) {
                     dialogHolder[0].dismiss();
                 }
-                scheduleProgram(channel, program);
+                if (canRecordCurrentProgramFromBeginning(channel, program)) {
+                    showRecordingStartChoiceDialog(channel, program);
+                } else {
+                    scheduleProgram(channel, program);
+                }
             }));
         }
         actions.add(new TvMessageActionUiModel(getString(R.string.dialog_close), false, () -> {
@@ -6057,6 +6062,28 @@ public class MainActivity extends FragmentActivity {
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, this::handleModalDismissed);
         dialogHolder[0] = dialog;
         handleModalShown();
+    }
+
+    private boolean canRecordCurrentProgramFromBeginning(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if (!U7dChannelPolicy.supportsRecordingStartOver(channel) || program == null) {
+            return false;
+        }
+        long startMs = parseIsoMillis(program.startTime);
+        long endMs = parseIsoMillis(program.endTime);
+        long now = System.currentTimeMillis();
+        return startMs > 0L && startMs < now && endMs > now;
+    }
+
+    private void showRecordingStartChoiceDialog(ChannelItem channel, EpgRepository.EpgProgram program) {
+        String title = program.title == null || program.title.trim().isEmpty() ? channel.name : program.title.trim();
+        String message = getString(R.string.recording_start_choice_message, title, shortTime(program.startTime));
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.recording_start_from_beginning), true,
+                () -> scheduleProgram(channel, program, "beginning")));
+        actions.add(new TvMessageActionUiModel(getString(R.string.recording_start_remaining), false,
+                () -> scheduleProgram(channel, program, "remaining")));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, null));
+        showTvMessagePanel(getString(R.string.recording_start_choice_title), message, actions, null);
     }
 
     private void createScheduleFromEndpoint(ChannelItem ch, boolean next) {
@@ -6127,6 +6154,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void scheduleProgram(ChannelItem ch, EpgRepository.EpgProgram program) {
+        scheduleProgram(ch, program, "remaining");
+    }
+
+    private void scheduleProgram(ChannelItem ch, EpgRepository.EpgProgram program, String startMode) {
         if (ch == null || program == null) {
             return;
         }
@@ -6148,6 +6179,7 @@ public class MainActivity extends FragmentActivity {
                 req.put("poster", ProgramArtworkResolver.resolve(program, ch));
                 req.put("start_time", program.startTime == null ? "" : program.startTime);
                 req.put("end_time", program.endTime == null ? "" : program.endTime);
+                req.put("start_mode", "beginning".equals(startMode) ? "beginning" : "remaining");
 
                 HttpClient.Response response = httpClient.postJson(
                         baseUrl + "/api/recordings/schedule",
@@ -6407,6 +6439,55 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private boolean isActiveScheduledRecording(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.status == null) {
+            return false;
+        }
+        switch (item.status.trim().toLowerCase(Locale.US)) {
+            case "recording":
+            case "running":
+            case "in_progress":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void confirmStopScheduledRecording(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.playable) {
+            return;
+        }
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        actions.add(new TvMessageActionUiModel(getString(R.string.recording_action_stop_confirm), true,
+                () -> stopScheduledRecording(item)));
+        actions.add(new TvMessageActionUiModel(getString(R.string.dialog_cancel), false, null));
+        showTvMessagePanel(
+                getString(R.string.title_recording_stop_confirm),
+                getString(R.string.recording_stop_confirm_message, buildRecordingTitle(item), buildRecordingMeta(item)),
+                actions,
+                null
+        );
+    }
+
+    private void stopScheduledRecording(RecordingsRepository.RecordingItem item) {
+        if (item == null || item.playable || showOfflineRecordingsUnavailableIfNeeded()) {
+            return;
+        }
+        showStatus(getString(R.string.status_stopping_recording));
+        ioExecutor.execute(() -> {
+            try {
+                recordingsRepository.stopScheduledRecording(item.id);
+                postUiIfAlive(() -> {
+                    showStatus(getString(R.string.status_recording_stopped));
+                    refreshRecordingsPanel();
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "stop scheduled recording failed", e);
+                postUiIfAlive(() -> showStatus(getString(R.string.status_failed_stop_recording)));
+            }
+        });
+    }
+
     private void showScheduledRecordingEditDialog() {
         if (showOfflineRecordingsUnavailableIfNeeded()) {
             return;
@@ -6548,16 +6629,24 @@ public class MainActivity extends FragmentActivity {
                     () -> dismissModalForNextAction(dialogHolder[0], () -> confirmDeleteCompletedRecording(item))
             ));
         } else {
-            primaryActions.add(new VodPanelActionUiModel(
-                    getString(R.string.recording_action_edit_time),
-                    true,
-                    () -> dismissModalForNextAction(dialogHolder[0], () -> showScheduledRecordingEditDialog(item))
-            ));
-            secondaryActions.add(new VodPanelActionUiModel(
-                    getString(R.string.recording_action_cancel),
-                    false,
-                    () -> dismissModalForNextAction(dialogHolder[0], () -> confirmCancelScheduledRecording(item))
-            ));
+            if (isActiveScheduledRecording(item)) {
+                primaryActions.add(new VodPanelActionUiModel(
+                        getString(R.string.recording_action_stop),
+                        true,
+                        () -> dismissModalForNextAction(dialogHolder[0], () -> confirmStopScheduledRecording(item))
+                ));
+            } else {
+                primaryActions.add(new VodPanelActionUiModel(
+                        getString(R.string.recording_action_edit_time),
+                        true,
+                        () -> dismissModalForNextAction(dialogHolder[0], () -> showScheduledRecordingEditDialog(item))
+                ));
+                secondaryActions.add(new VodPanelActionUiModel(
+                        getString(R.string.recording_action_cancel),
+                        false,
+                        () -> dismissModalForNextAction(dialogHolder[0], () -> confirmCancelScheduledRecording(item))
+                ));
+            }
         }
         secondaryActions.add(new VodPanelActionUiModel(
                 getString(R.string.recording_action_more),
@@ -6766,7 +6855,6 @@ public class MainActivity extends FragmentActivity {
         syncOverlayCoordinator();
         channelOverlayCoordinator.moveOverlaySelection(delta);
         syncOverlayStateFromCoordinator();
-        refreshOverlayChannelList();
         scrollOverlayChannelListToPosition(overlayNavigationState.selectedOverlayIndex);
         showOverlay();
     }
@@ -9543,7 +9631,19 @@ public class MainActivity extends FragmentActivity {
     private void scrollOverlayChannelListToPosition(int position) {
         pendingOverlayListScrollIndex = position;
         overlayListScrollRequestToken++;
-        requestChannelOverlaySurfaceRender();
+        if (activityDestroyed) {
+            return;
+        }
+        boolean updated = OverlayChannelListComposeBinder.updateSelection(
+                channelListComposeView,
+                overlayNavigationState.selectedOverlayIndex,
+                pendingOverlayListScrollIndex,
+                overlayListScrollRequestToken
+        );
+        if (!updated) {
+            uiHandler.removeCallbacks(channelOverlayRenderRunnable);
+            postUiDelayedIfAlive(channelOverlayRenderRunnable, OVERLAY_NAVIGATION_RENDER_COALESCE_MS);
+        }
     }
 
     private String currentOverlayFilterLabel() {
@@ -19791,6 +19891,12 @@ public class MainActivity extends FragmentActivity {
             @Override
             public String protectedTypeBadge(ChannelItem item, String fallback) {
                 return buildProtectedTypeBadge(item, fallback);
+            }
+
+            @Override
+            public boolean isPlaying(ChannelItem item) {
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                return current != null && item != null && current.id != null && current.id.equals(item.id);
             }
 
             @Override

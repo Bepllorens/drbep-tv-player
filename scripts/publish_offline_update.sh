@@ -8,6 +8,7 @@ PUBLIC_BASE_URL="${DRBEP_PUBLIC_BASE_URL:-https://iptv.bepllorens.com}"
 API_RELEASE_DIR="${DRBEP_OFFLINE_API_RELEASE_DIR:-/data/offline-app-releases}"
 HOST_RELEASE_DIR="${DRBEP_OFFLINE_HOST_RELEASE_DIR:-}"
 EXPECTED_CERT_SHA256="${DRBEP_RELEASE_EXPECTED_CERT_SHA256:-0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b}"
+REQUIRED_APK_ABIS="${DRBEP_REQUIRED_APK_ABIS:-armeabi-v7a,arm64-v8a}"
 CHANGELOG_TEXT="${DRBEP_UPDATE_CHANGELOG:-Build release publicado desde el servidor.}"
 REQUIRED="${DRBEP_UPDATE_REQUIRED:-0}"
 UPDATE_ENABLED="${DRBEP_UPDATE_ENABLED:-1}"
@@ -109,9 +110,19 @@ if [[ -z "$AAPT" ]]; then
   echo "aapt not found; cannot verify APK version" >&2
   exit 1
 fi
-APK_BADGING="$("$AAPT" dump badging "$APK" | head -n 1)"
-APK_VERSION_CODE="$(printf '%s\n' "$APK_BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
-APK_VERSION_NAME="$(printf '%s\n' "$APK_BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+APK_BADGING="$("$AAPT" dump badging "$APK")"
+APK_PACKAGE="$(printf '%s\n' "$APK_BADGING" | head -n 1)"
+APK_NATIVE_CODE="$(printf '%s\n' "$APK_BADGING" | sed -n "s/^native-code: //p")"
+APK_VERSION_CODE="$(printf '%s\n' "$APK_PACKAGE" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+APK_VERSION_NAME="$(printf '%s\n' "$APK_PACKAGE" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+IFS=',' read -r -a REQUIRED_ABI_LIST <<< "$REQUIRED_APK_ABIS"
+for REQUIRED_ABI in "${REQUIRED_ABI_LIST[@]}"; do
+  REQUIRED_ABI="$(printf '%s' "$REQUIRED_ABI" | xargs)"
+  if [[ -n "$REQUIRED_ABI" && "$APK_NATIVE_CODE" != *"'$REQUIRED_ABI'"* ]]; then
+    echo "APK ABI mismatch: required $REQUIRED_ABI; APK reports ${APK_NATIVE_CODE:-no native code}" >&2
+    exit 1
+  fi
+done
 if [[ "$APK_VERSION_CODE" != "$VERSION_CODE" || "$APK_VERSION_NAME" != "$VERSION_NAME" ]]; then
   echo "APK version mismatch: expected $VERSION_CODE $VERSION_NAME, got $APK_VERSION_CODE $APK_VERSION_NAME" >&2
   exit 1
@@ -146,6 +157,7 @@ fi
 echo "Version: $VERSION_CODE $VERSION_NAME"
 echo "SHA-256: $SHA256"
 echo "Certificate: $CERT_SHA256"
+echo "Native code: ${APK_NATIVE_CODE:-none}"
 echo "Destination: $API_DEST"
 echo "Host copy: $HOST_DEST"
 echo "Channel: $CHANNEL"

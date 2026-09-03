@@ -258,10 +258,12 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
             }
             if (model.progressVisible || timeshift != null) {
                 Spacer(Modifier.height(8.dp))
+                val timeshiftFocused = timeshift?.focused == true
                 if (timeshift != null) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         BasicText(displayedTimeshiftLabel, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 10.sp, fontWeight = FontWeight.Bold))
+                            style = TextStyle(color = if (timeshiftFocused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.textSoft,
+                                fontSize = 10.sp, fontWeight = FontWeight.Bold))
                         if (timeshift.liveVisible) {
                             BasicText(
                                 text = stringResource(R.string.timeshift_live_button),
@@ -281,6 +283,16 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                         modifier = Modifier
                             .weight(1f)
                             .height(if (timeshift != null) 32.dp else 5.dp)
+                            .background(
+                                if (timeshiftFocused) OfflineTvTheme.Colors.focus.copy(alpha = 0.18f) else Color.Transparent,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                width = if (timeshiftFocused) 2.dp else 0.dp,
+                                color = if (timeshiftFocused) OfflineTvTheme.Colors.focus else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = if (timeshiftFocused) 9.dp else 0.dp)
                             .then(
                                 if (timeshift?.seekCommitHandler != null) {
                                     Modifier

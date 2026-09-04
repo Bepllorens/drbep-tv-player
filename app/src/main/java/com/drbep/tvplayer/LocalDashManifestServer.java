@@ -7,12 +7,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -154,28 +153,17 @@ final class LocalDashManifestServer {
     }
 
     private static ManifestFetch fetchManifest(String sourceUrl) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            conn = (HttpURLConnection) new URL(sourceUrl).openConnection();
-            conn.setConnectTimeout(6000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/dash+xml,text/xml,*/*");
-            conn.setRequestProperty("Accept-Encoding", "identity");
-            conn.setRequestProperty("Accept-Language", "es-ES,es;q=0.9,en;q=0.8");
-            conn.setRequestProperty("Connection", "close");
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36");
-            int code = conn.getResponseCode();
-            InputStream input = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
-            String body = input == null ? "" : readAll(input);
-            if (code < 200 || code >= 300 || body.trim().isEmpty()) {
-                throw new IllegalStateException("HTTP " + code + " fetching DASH manifest");
-            }
-            return new ManifestFetch(conn.getURL().toString(), body);
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "application/dash+xml,text/xml,*/*");
+        headers.put("Accept-Encoding", "identity");
+        headers.put("Accept-Language", "es-ES,es;q=0.9,en;q=0.8");
+        headers.put("Connection", "close");
+        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36");
+        HttpClient.Response response = new HttpClient().get(sourceUrl, 6000, 15000, headers);
+        if (!response.isSuccessful() || response.body.trim().isEmpty()) {
+            throw new IllegalStateException("HTTP " + response.code + " fetching DASH manifest");
         }
+        return new ManifestFetch(response.finalUrl.isEmpty() ? sourceUrl : response.finalUrl, response.body);
     }
 
     private static void writeResponse(Socket socket, int code, String contentType, byte[] body) throws Exception {

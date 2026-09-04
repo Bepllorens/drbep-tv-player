@@ -27,6 +27,7 @@ def catalogSnapshotUrl = (project.findProperty('catalogSnapshotUrl') ?: '').toSt
 def offlineBaseUrl = (project.findProperty('offlineBaseUrl') ?: 'https://fire.tvbep.com').toString()
 def emergencyBaseUrl = (project.findProperty('emergencyBaseUrl') ?: 'https://direct.tvbep.com').toString()
 def updateChannel = (project.findProperty('updateChannel') ?: 'stable').toString()
+def dnsHealingRecoveryFirst = (project.findProperty('dnsHealingRecoveryFirst') ?: 'false').toString().toBoolean()
 def fireAbiOnly = (project.findProperty('fireAbiOnly') ?: 'false').toString().toBoolean()
 def offlineSnapshotPublicKey = (project.findProperty('offlineSnapshotPublicKey') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArIoIQfhLQG1NRNGVHHHRYJpJ1+epFzzIhXbP2J80kOLEcW57ruhXydBV1sBNpZrUoC2EAy2ISiN7suLTp8NJSD7EqnExg8vJnyhKcUzUYkBksJpuccWUqSuQhIe43TABw8OM2+OmTT9QgZBgbk9CbgP+zehssXzH1w0OL6RQ/vWMFsmxO9dieqKafdxn4IQLJEVZc7IDIPsk67HwlTfPT+1gmoCEsy7nn3gD8bs++Sz2e4mVwGgjqaqSHU4SJILleQJ17MC/I+DLI/EHLwIJ/5577c+foZS4rDPIRHf9puCcuhiXCTRMX92KsSj6FVhwgklVhFgyxjoKh8y7pUft/QIDAQAB').toString()
 def offlineSnapshotKeyId = (project.findProperty('offlineSnapshotKeyId') ?: 'offline-snapshot-rsa-20260520').toString()
@@ -70,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 489
-        versionName "2.0.489-beta-regression-restore"
+        versionCode 493
+        versionName "2.0.493-cloudflare-dns-healing"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {
@@ -118,6 +119,7 @@ android {
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
             buildConfigField "String", "EMERGENCY_BASE_URL", "\"${escapedEmergencyBaseUrl}\""
             buildConfigField "String", "UPDATE_CHANNEL", "\"${escapedUpdateChannel}\""
+            buildConfigField "boolean", "DNS_HEALING_RECOVERY_FIRST", dnsHealingRecoveryFirst.toString()
             buildConfigField "boolean", "LOG_VERBOSE", "true"
             buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
             buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
@@ -142,6 +144,7 @@ android {
             buildConfigField "String", "OFFLINE_BASE_URL", "\"${escapedOfflineBaseUrl}\""
             buildConfigField "String", "EMERGENCY_BASE_URL", "\"${escapedEmergencyBaseUrl}\""
             buildConfigField "String", "UPDATE_CHANNEL", "\"${escapedUpdateChannel}\""
+            buildConfigField "boolean", "DNS_HEALING_RECOVERY_FIRST", dnsHealingRecoveryFirst.toString()
             buildConfigField "boolean", "LOG_VERBOSE", "false"
             buildConfigField "String", "OFFLINE_SNAPSHOT_PUBLIC_KEY", "\"${escapedOfflineSnapshotPublicKey}\""
             buildConfigField "String", "OFFLINE_SNAPSHOT_KEY_ID", "\"${escapedOfflineSnapshotKeyId}\""
@@ -178,6 +181,9 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.10.1'
     implementation 'androidx.media3:media3-ui:1.10.1'
     implementation 'androidx.media3:media3-session:1.10.1'
+    implementation 'androidx.media3:media3-datasource-okhttp:1.10.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0'
     implementation 'org.videolan.android:libvlc-all:3.7.5'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'

@@ -8,23 +8,33 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+
 final class HttpClient {
     private static final String TAG = "HttpClient";
+    private static final MediaType JSON_MEDIA_TYPE = MediaType.get("application/json; charset=utf-8");
     static final int MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
     static final class Response {
         final int code;
         final String body;
+        final String finalUrl;
 
         Response(int code, String body) {
+            this(code, body, "");
+        }
+
+        Response(int code, String body, String finalUrl) {
             this.code = code;
             this.body = body;
+            this.finalUrl = finalUrl == null ? "" : finalUrl;
         }
 
         boolean isSuccessful() {
@@ -92,38 +102,28 @@ final class HttpClient {
         if (maxResponseBytes <= 0) {
             throw new IllegalArgumentException("limite de respuesta invalido");
         }
-        HttpURLConnection conn = null;
-        try {
-            conn = (HttpURLConnection) new URL(url).openConnection();
-            conn.setRequestMethod(method);
-            conn.setUseCaches(false);
-            conn.setConnectTimeout(connectTimeoutMs);
-            conn.setReadTimeout(readTimeoutMs);
-            if (headers != null) {
-                for (Map.Entry<String, String> entry : headers.entrySet()) {
-                    conn.setRequestProperty(entry.getKey(), entry.getValue());
-                }
+        OkHttpClient client = NetworkClients.withTimeouts(connectTimeoutMs, readTimeoutMs);
+        Request.Builder request = new Request.Builder()
+                .url(url)
+                .header("Cache-Control", "no-cache");
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                request.header(entry.getKey(), entry.getValue());
             }
-            if (body != null) {
-                conn.setDoOutput(true);
-                try (OutputStream outputStream = conn.getOutputStream()) {
-                    outputStream.write(body);
-                }
-            }
-
-            int code = conn.getResponseCode();
-            InputStream inputStream = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
-            int contentLength = conn.getContentLength();
+        }
+        RequestBody requestBody = body == null ? null : RequestBody.create(JSON_MEDIA_TYPE, body);
+        request.method(method, requestBody);
+        try (okhttp3.Response response = client.newCall(request.build()).execute()) {
+            int code = response.code();
+            ResponseBody responseBody = response.body();
+            long contentLengthLong = responseBody == null ? 0L : responseBody.contentLength();
+            int contentLength = contentLengthLong > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) contentLengthLong;
             if (contentLength > maxResponseBytes) {
                 throw new IllegalStateException("respuesta HTTP demasiado grande: " + contentLength + " bytes");
             }
-            String responseBody = inputStream == null ? "" : readAll(inputStream, maxResponseBytes);
-            Log.d(TAG, method + " " + safeEndpoint(url) + " status=" + code + " responseChars=" + responseBody.length());
-            return new Response(code, responseBody);
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
+            String responseText = responseBody == null ? "" : readAll(responseBody.byteStream(), maxResponseBytes);
+            Log.d(TAG, method + " " + safeEndpoint(url) + " status=" + code + " responseChars=" + responseText.length());
+            return new Response(code, responseText, response.request().url().toString());
         }
     }
 
@@ -150,8 +150,8 @@ final class HttpClient {
 
     private static String safeEndpoint(String value) {
         try {
-            URL parsed = new URL(value == null ? "" : value);
-            return parsed.getProtocol() + "://" + parsed.getHost() + parsed.getPath();
+            okhttp3.HttpUrl parsed = okhttp3.HttpUrl.get(value == null ? "" : value);
+            return parsed.scheme() + "://" + parsed.host() + parsed.encodedPath();
         } catch (Exception ignored) {
             return "endpoint-invalido";
         }

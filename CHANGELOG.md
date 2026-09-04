@@ -751,3 +751,8 @@
 
 - Muestra los avisos remotos en una capa propia sobre el reproductor para que sean visibles también en Fire TV.
 - Confirma por separado la entrega y la lectura del aviso desde el botón `Entendido`.
+# 2.0.493-cloudflare-dns-healing
+
+- Añade resolución DNS alternativa dentro de la app para `fire.tvbep.com`, conservando primero la ruta DNS normal.
+- Mantiene URL, Host y validación TLS; solo amplía las direcciones candidatas cuando Cloudflare sufre bloqueos selectivos.
+- Aplica la misma recuperación a API, health, manifiestos y segmentos de reproducción, con límite corto antes de probar la ruta reparada.

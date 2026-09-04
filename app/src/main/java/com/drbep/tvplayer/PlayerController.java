@@ -33,8 +33,9 @@ import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.decoder.CryptoConfig;
 import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.okhttp.OkHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.analytics.PlayerId;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager;
@@ -353,7 +354,8 @@ final class PlayerController {
     private final LocalDashManifestServer localDashManifestServer;
 
     private DefaultTrackSelector trackSelector;
-    private DefaultHttpDataSource.Factory httpDataSourceFactory;
+    private NetworkClients.PlaybackCallFactory playbackCallFactory;
+    private OkHttpDataSource.Factory httpDataSourceFactory;
     private ExoPlayer player;
     private MediaSession mediaSession;
     private VlcDirectPlayController vlcDirectPlayController;
@@ -403,6 +405,7 @@ final class PlayerController {
     private boolean stallReportedForCurrentFreeze;
     private boolean pendingStallRecovery;
     private boolean attemptedVlcAudioDecoderFallback;
+    private boolean attemptedCodecPlayerRecreation;
     private final PlaybackNetworkRecoveryCoordinator networkRecovery = new PlaybackNetworkRecoveryCoordinator();
     private final PlaybackAudioFocusState audioFocusState = new PlaybackAudioFocusState();
     private final PlaybackBackgroundResumeState backgroundResumeState = new PlaybackBackgroundResumeState();
@@ -476,13 +479,17 @@ final class PlayerController {
         }
         trackSelector.setParameters(initialTrackParameters);
 
-        httpDataSourceFactory = new DefaultHttpDataSource.Factory()
-                .setConnectTimeoutMs(PLAYBACK_CONNECT_TIMEOUT_MS)
-                .setReadTimeoutMs(PLAYBACK_READ_TIMEOUT_MS)
+        playbackCallFactory = new NetworkClients.PlaybackCallFactory(
+                PLAYBACK_CONNECT_TIMEOUT_MS,
+                PLAYBACK_READ_TIMEOUT_MS
+        );
+        httpDataSourceFactory = new OkHttpDataSource.Factory(playbackCallFactory)
                 .setDefaultRequestProperties(buildPlaybackRequestHeaders());
         DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
 
-        player = new ExoPlayer.Builder(context)
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+                .setEnableDecoderFallback(true);
+        player = new ExoPlayer.Builder(context, renderersFactory)
                 .setTrackSelector(trackSelector)
                 .setLoadControl(new DefaultLoadControl.Builder()
                         // Keep TV zapping fast, but hold a small extra cushion before
@@ -533,7 +540,7 @@ final class PlayerController {
                 }
 
                 String message = context.getString(R.string.error_playback_message, error.getMessage());
-                lastErrorSummary = message;
+                lastErrorSummary = describePlaybackError(error);
                 transitionPlaybackPhase("error");
                 host.showError(message);
                 host.recordPlaybackError(request, getPlaybackDiagnostics());
@@ -1346,6 +1353,16 @@ final class PlayerController {
             player.play();
             return true;
         }
+        if (!attemptedCodecPlayerRecreation && isMediaCodecRendererError(error)) {
+            attemptedCodecPlayerRecreation = true;
+            Log.w(TAG, "recreating Media3 after decoder failure channel=" + describeRequest(request)
+                    + " decision=" + describeDecision(decision)
+                    + " error=" + describePlaybackError(error));
+            transitionPlaybackPhase("recovering_decoder");
+            host.showStatus(context.getString(R.string.status_retry_compat));
+            markPendingAutoRecovery(context.getString(R.string.status_playback_repair_reason_fallback));
+            return recreateMedia3ForCodecRecovery(request, decision);
+        }
         if (error != null && VlcFallbackPolicy.shouldRetryUnsupportedAudioWithVlc(
                 error.errorCode,
                 error.getMessage(),
@@ -1421,6 +1438,70 @@ final class PlayerController {
             return true;
         }
         return false;
+    }
+
+    private boolean recreateMedia3ForCodecRecovery(
+            PlaybackRequest request,
+            PlaybackRouteResolver.Decision decision
+    ) {
+        if (request == null || player == null) {
+            return false;
+        }
+        try {
+            playerView.setPlayer(null);
+            if (mediaSession != null) {
+                mediaSession.release();
+                mediaSession = null;
+            }
+            player.release();
+            player = null;
+            initialize();
+            currentPlaybackDecision = decision;
+            playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo, 0L);
+            return true;
+        } catch (RuntimeException recoveryError) {
+            Log.w(TAG, "failed to recreate Media3 after decoder failure channel="
+                    + describeRequest(request), recoveryError);
+            return false;
+        }
+    }
+
+    static boolean isMediaCodecRendererError(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String className = current.getClass().getName().toLowerCase(Locale.ROOT);
+            String message = safeLower(current.getMessage());
+            if (className.contains("mediacodec")
+                    || className.contains("decoderinitializationexception")
+                    || message.contains("mediacodecaudiorenderer")
+                    || message.contains("mediacodecvideorenderer")
+                    || message.contains("media codec")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static String describePlaybackError(Throwable error) {
+        if (error == null) {
+            return "";
+        }
+        StringBuilder summary = new StringBuilder();
+        Throwable current = error;
+        for (int depth = 0; current != null && depth < 8; depth++, current = current.getCause()) {
+            if (summary.length() > 0) {
+                summary.append(" <- ");
+            }
+            if (current instanceof PlaybackException) {
+                PlaybackException playbackError = (PlaybackException) current;
+                summary.append(PlaybackException.getErrorCodeName(playbackError.errorCode)).append(": ");
+            }
+            summary.append(current.getClass().getSimpleName());
+            String detail = safeString(current.getMessage());
+            if (!detail.isEmpty()) {
+                summary.append(": ").append(detail);
+            }
+        }
+        return summary.toString();
     }
 
     static boolean isDashManifestStale(Throwable error) {
@@ -2202,6 +2283,7 @@ final class PlayerController {
             pendingAutoRecoveryReadyReport = false;
             pendingAutoRecoveryReason = "";
             attemptedVlcAudioDecoderFallback = false;
+            attemptedCodecPlayerRecreation = false;
             resetPlaybackProgressWatchdog(true);
             prepareAdaptiveQualityForChannel(request);
         }
@@ -2275,7 +2357,7 @@ final class PlayerController {
             player.stop();
             player.clearMediaItems();
         }
-        httpDataSourceFactory.setReadTimeoutMs(playbackReadTimeoutMs(request));
+        playbackCallFactory.setReadTimeoutMs(playbackReadTimeoutMs(request));
         updatePlaybackRequestHeaders();
         applyVideoTrackPolicy(request, decision);
 

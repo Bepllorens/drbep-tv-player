@@ -7,12 +7,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -128,24 +127,16 @@ final class LocalSmoothManifestServer {
     }
 
     private static ManifestFetch fetchManifest(String sourceUrl) throws Exception {
-        HttpURLConnection conn = null;
-        try {
-            conn = (HttpURLConnection) new URL(sourceUrl).openConnection();
-            conn.setConnectTimeout(6000);
-            conn.setReadTimeout(15000);
-            conn.setRequestProperty("Accept", "application/vnd.ms-sstr+xml,text/xml,*/*");
-            int code = conn.getResponseCode();
-            InputStream input = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
-            String body = input == null ? "" : readAll(input);
-            if (code < 200 || code >= 300 || body.trim().isEmpty()) {
-                throw new IllegalStateException("HTTP " + code + " fetching Smooth manifest");
-            }
-            return new ManifestFetch(conn.getURL().toString(), body);
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
+        HttpClient.Response response = new HttpClient().get(
+                sourceUrl,
+                6000,
+                15000,
+                Collections.singletonMap("Accept", "application/vnd.ms-sstr+xml,text/xml,*/*")
+        );
+        if (!response.isSuccessful() || response.body.trim().isEmpty()) {
+            throw new IllegalStateException("HTTP " + response.code + " fetching Smooth manifest");
         }
+        return new ManifestFetch(response.finalUrl.isEmpty() ? sourceUrl : response.finalUrl, response.body);
     }
 
     static String patchManifest(String manifest, String baseUrl) {

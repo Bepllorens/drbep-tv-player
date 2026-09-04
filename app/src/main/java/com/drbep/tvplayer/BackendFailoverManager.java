@@ -1,7 +1,6 @@
 package com.drbep.tvplayer;
 
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.util.Collections;
 
 final class BackendFailoverManager {
     static final int PRIMARY_ATTEMPTS = 3;
@@ -177,16 +176,14 @@ final class BackendFailoverManager {
         if (normalized.isEmpty()) {
             return ProbeResult.unavailable();
         }
-        HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(normalized + "/health").openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(READ_TIMEOUT_MS);
-            connection.setUseCaches(false);
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("Cache-Control", "no-cache");
-            int code = connection.getResponseCode();
+            HttpClient.Response response = new HttpClient().get(
+                    normalized + "/health",
+                    CONNECT_TIMEOUT_MS,
+                    READ_TIMEOUT_MS,
+                    Collections.singletonMap("Accept", "application/json")
+            );
+            int code = response.code;
             return code >= 200 && code < 300
                     ? ProbeResult.healthy()
                     : ProbeResult.unavailable();
@@ -194,10 +191,6 @@ final class BackendFailoverManager {
             return BackendTransportFailurePolicy.isTransportFailure(error)
                     ? ProbeResult.transportFailure()
                     : ProbeResult.unavailable();
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
         }
     }
 

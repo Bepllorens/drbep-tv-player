@@ -38,6 +38,7 @@ public final class ReminderWorker extends Worker {
         String channelName = getInputData().getString(ReminderScheduler.KEY_CHANNEL_NAME);
         String title = getInputData().getString(ReminderScheduler.KEY_TITLE);
         long startAt = getInputData().getLong(ReminderScheduler.KEY_START_AT, 0L);
+        long endAt = getInputData().getLong(ReminderScheduler.KEY_END_AT, 0L);
 
         if (channelName == null || channelName.trim().isEmpty()) {
             channelName = context.getString(R.string.app_name);
@@ -56,12 +57,12 @@ public final class ReminderWorker extends Worker {
             Log.w(TAG, "markNotified failed", e);
         }
 
-        showNotification(context, channelId, channelName, title, startAt);
+        showNotification(context, channelId, channelName, title, startAt, endAt);
         return Result.success();
     }
 
     private void showNotification(Context context, String channelId, String channelName,
-                                  String title, long startAt) {
+                                  String title, long startAt, long endAt) {
         try {
             ensureChannel(context);
 
@@ -70,6 +71,10 @@ public final class ReminderWorker extends Worker {
             if (channelId != null && !channelId.isEmpty()) {
                 launchIntent.putExtra("reminder_channel_id", channelId);
             }
+            launchIntent.putExtra("reminder_action", "watch");
+            launchIntent.putExtra("reminder_title", title);
+            launchIntent.putExtra("reminder_start_at", startAt);
+            launchIntent.putExtra("reminder_end_at", endAt);
 
             int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -78,6 +83,16 @@ public final class ReminderWorker extends Worker {
             int notificationId = buildNotificationId(channelId, startAt);
             PendingIntent contentIntent = PendingIntent.getActivity(
                     context, notificationId, launchIntent, pendingFlags);
+
+            Intent recordIntent = new Intent(launchIntent);
+            recordIntent.putExtra("reminder_action", "record");
+            PendingIntent recordPendingIntent = PendingIntent.getActivity(
+                    context, notificationId + 1, recordIntent, pendingFlags);
+            Intent dismissIntent = new Intent(context, ReminderActionReceiver.class);
+            dismissIntent.setAction(ReminderActionReceiver.ACTION_DISMISS);
+            dismissIntent.putExtra(ReminderActionReceiver.EXTRA_NOTIFICATION_ID, notificationId);
+            PendingIntent dismissPendingIntent = PendingIntent.getBroadcast(
+                    context, notificationId + 2, dismissIntent, pendingFlags);
 
             String contentText = context.getString(
                     R.string.status_reminder_due, channelName, title);
@@ -91,6 +106,9 @@ public final class ReminderWorker extends Worker {
                     .setCategory(NotificationCompat.CATEGORY_REMINDER)
                     .setAutoCancel(true)
                     .setContentIntent(contentIntent)
+                    .addAction(0, context.getString(R.string.reminder_action_watch), contentIntent)
+                    .addAction(0, context.getString(R.string.reminder_action_record), recordPendingIntent)
+                    .addAction(0, context.getString(R.string.reminder_action_dismiss), dismissPendingIntent)
                     .build();
 
             NotificationManagerCompat manager = NotificationManagerCompat.from(context);

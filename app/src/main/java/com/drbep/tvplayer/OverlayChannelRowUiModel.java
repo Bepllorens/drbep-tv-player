@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 public final class OverlayChannelRowUiModel {
+    public final String channelId;
     public final String logoUrl;
     public final String name;
     public final String meta;
@@ -19,6 +20,7 @@ public final class OverlayChannelRowUiModel {
     public final Runnable onFavoriteClick;
 
     public OverlayChannelRowUiModel(
+            String channelId,
             String logoUrl,
             String name,
             String meta,
@@ -36,6 +38,7 @@ public final class OverlayChannelRowUiModel {
             Runnable onClick,
             Runnable onFavoriteClick
     ) {
+        this.channelId = channelId == null ? "" : channelId;
         this.logoUrl = logoUrl == null ? "" : logoUrl;
         this.name = name == null ? "" : name;
         this.meta = meta == null ? "" : meta;

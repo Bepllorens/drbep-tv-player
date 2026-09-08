@@ -20,6 +20,7 @@ final class EpgRepository {
     private static final String TAG = "EpgRepository";
     private static final String PUBLIC_EPG_BASE_URL = "https://iptv.bepllorens.com";
     private static final String OFFLINE_PUBLIC_BASE_URL = "https://fire.tvbep.com";
+    private static final String EMERGENCY_PUBLIC_BASE_URL = "https://direct.tvbep.com";
 
     static final class EpgProgram implements Serializable {
         private static final long serialVersionUID = 1L;
@@ -46,8 +47,8 @@ final class EpgRepository {
             this.title = title;
             this.icon = icon;
             this.description = description;
-            this.startTime = startTime;
-            this.endTime = endTime;
+            this.startTime = EpgTimeCodec.normalizeUtc(startTime);
+            this.endTime = EpgTimeCodec.normalizeUtc(endTime);
             this.category = category == null ? "" : category;
             this.progress = progress;
         }
@@ -63,12 +64,29 @@ final class EpgRepository {
         }
     }
 
+    // Progress is derived from the clock by the UI; it is not new programme content.
+    static boolean sameProgramContent(EpgProgram a, EpgProgram b) {
+        if (a == b) return true;
+        if (a == null || b == null) return false;
+        return java.util.Objects.equals(a.channelId, b.channelId)
+                && java.util.Objects.equals(a.channelName, b.channelName)
+                && java.util.Objects.equals(a.tvgId, b.tvgId)
+                && java.util.Objects.equals(a.title, b.title)
+                && java.util.Objects.equals(a.icon, b.icon)
+                && java.util.Objects.equals(a.description, b.description)
+                && java.util.Objects.equals(a.startTime, b.startTime)
+                && java.util.Objects.equals(a.endTime, b.endTime)
+                && java.util.Objects.equals(a.category, b.category);
+    }
+
     private final String baseUrl;
     private final HttpClient httpClient;
     private final CatalogSnapshotStore snapshotStore;
     private final boolean standaloneMode;
-    private final Map<String, CachedPrograms> programsCache = new HashMap<>();
-    private final Map<String, CachedPrograms> categoryCache = new HashMap<>();
+    private final BoundedMemoryCache<String, CachedPrograms> programsCache =
+            new BoundedMemoryCache<>(64, 4096, value -> value.items.size());
+    private final BoundedMemoryCache<String, CachedPrograms> categoryCache =
+            new BoundedMemoryCache<>(8, 4096, value -> value.items.size());
     private CachedNowPrograms cachedNowPrograms;
     private CachedOfflineProgramMap cachedOfflineProgramMap;
     private String cachedRemoteEpgBaseUrl = "";
@@ -1078,7 +1096,7 @@ final class EpgRepository {
                 missingChannels.add(channel);
             }
         }
-        if (!offlinePublicOnly || missingChannels.isEmpty() || channelItems.size() > 3) {
+        if (!shouldUseTargetedRemoteFallback(offlinePublicOnly, channelItems.size(), missingChannels.size())) {
             return out;
         }
         int beforeFallback = out.size();
@@ -1102,6 +1120,16 @@ final class EpgRepository {
         return out;
     }
 
+    static boolean shouldUseTargetedRemoteFallback(boolean offlinePublicOnly, int totalChannels, int missingChannels) {
+        if (!offlinePublicOnly || totalChannels <= 0 || missingChannels <= 0) {
+            return false;
+        }
+        // The bulk endpoint is intentionally the fast path. A few channels can fail to match there
+        // even though their individual guide is valid (for example when provider aliases differ).
+        // Bound the repair so opening a large bouquet never turns into one request per channel.
+        return missingChannels <= 3;
+    }
+
     private EpgProgramPair fetchRemoteProgramPairForChannel(ChannelItem channel, int connectTimeoutMs, int readTimeoutMs, boolean offlinePublicOnly) throws Exception {
         if (channel == null || channel.id == null || channel.id.trim().isEmpty()) {
             return null;
@@ -1123,10 +1151,19 @@ final class EpgRepository {
             return null;
         }
         programs = matchingPrograms;
-        long now = System.currentTimeMillis();
+        return selectCurrentAndNext(programs, System.currentTimeMillis());
+    }
+
+    static EpgProgramPair selectCurrentAndNext(List<EpgProgram> programs, long now) {
         EpgProgram current = null;
         EpgProgram next = null;
+        if (programs == null) {
+            return new EpgProgramPair(null, null);
+        }
         for (EpgProgram program : programs) {
+            if (program == null) {
+                continue;
+            }
             long startMs = parseIsoMillis(program.startTime);
             long endMs = parseIsoMillis(program.endTime);
             if (current == null && startMs <= now && endMs > now) {
@@ -1137,13 +1174,36 @@ final class EpgRepository {
                 next = programWithProgress(program, now);
             }
         }
-        if (current == null && !programs.isEmpty()) {
-            current = programWithProgress(programs.get(0), now);
-            if (programs.size() > 1 && next == null) {
-                next = programWithProgress(programs.get(1), now);
-            }
+        return new EpgProgramPair(current, next);
+    }
+
+    static EpgProgramPair normalizePairForNow(EpgProgramPair pair, long now) {
+        if (pair == null) {
+            return null;
+        }
+        List<EpgProgram> timed = new ArrayList<>();
+        if (hasProgramTiming(pair.current)) {
+            timed.add(pair.current);
+        }
+        if (hasProgramTiming(pair.next)) {
+            timed.add(pair.next);
+        }
+        EpgProgramPair selected = selectCurrentAndNext(timed, now);
+        EpgProgram current = selected.current;
+        EpgProgram next = selected.next;
+        if (current == null && pair.current != null && !hasProgramTiming(pair.current)) {
+            current = pair.current;
+        }
+        if (next == null && pair.next != null && !hasProgramTiming(pair.next)) {
+            next = pair.next;
         }
         return new EpgProgramPair(current, next);
+    }
+
+    private static boolean hasProgramTiming(EpgProgram program) {
+        return program != null
+                && parseIsoMillis(program.startTime) > 0L
+                && parseIsoMillis(program.endTime) > 0L;
     }
 
     private static List<EpgProgram> filterProgramsForChannel(List<EpgProgram> programs, ChannelItem channel) {
@@ -1527,11 +1587,13 @@ final class EpgRepository {
     private List<String> remoteEpgBaseUrlCandidates(boolean offlinePublicOnly) {
         List<String> candidates = new ArrayList<>();
         if (offlinePublicOnly) {
+            addCandidate(candidates, baseUrl);
             addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
+            addCandidate(candidates, EMERGENCY_PUBLIC_BASE_URL);
             return candidates;
         }
         if (standaloneMode) {
-            addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
+            addCandidate(candidates, baseUrl);
         }
         addCandidate(candidates, cachedRemoteEpgBaseUrl);
         addCandidate(candidates, baseUrl);
@@ -1542,6 +1604,7 @@ final class EpgRepository {
         }
         addCandidate(candidates, PUBLIC_EPG_BASE_URL);
         addCandidate(candidates, OFFLINE_PUBLIC_BASE_URL);
+        addCandidate(candidates, EMERGENCY_PUBLIC_BASE_URL);
         return candidates;
     }
 
@@ -1702,26 +1765,7 @@ final class EpgRepository {
     }
 
     private static long parseIsoMillis(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return 0L;
-        }
-        try {
-            return java.time.Instant.parse(value.trim()).toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.OffsetDateTime.parse(value.trim()).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.ZonedDateTime.parse(value.trim()).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-        }
-        try {
-            return java.time.LocalDateTime.parse(value.trim()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
-        } catch (Exception ignored) {
-            return 0L;
-        }
+        return EpgTimeCodec.parseEpochMillis(value);
     }
 
     private static String normalizeLookupKey(String value) {

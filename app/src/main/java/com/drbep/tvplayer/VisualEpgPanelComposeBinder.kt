@@ -62,13 +62,13 @@ private fun VisualEpgPanel(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xB0101720))
+            .background(OfflineTvTheme.Colors.guideBackdrop)
             .padding(dimensionResource(id = R.dimen.visual_epg_outer_padding))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xE6111822))
+                .background(OfflineTvTheme.Colors.guidePanel)
                 .padding(dimensionResource(id = R.dimen.visual_epg_inner_padding))
         ) {
             if (model.header != null) {

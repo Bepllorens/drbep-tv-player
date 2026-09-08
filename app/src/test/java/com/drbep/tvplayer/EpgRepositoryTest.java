@@ -4,6 +4,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
 import java.util.Collections;
+import java.util.Arrays;
 import java.util.Map;
 
 import org.junit.Test;
@@ -34,6 +35,207 @@ public class EpgRepositoryTest {
                 );
 
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void bulkRemoteEpgRepairsASmallNumberOfUnmatchedChannels() {
+        assertTrue(EpgRepository.shouldUseTargetedRemoteFallback(true, 15, 2));
+    }
+
+    @Test
+    public void bulkRemoteEpgDoesNotFanOutWhenManyChannelsAreMissing() {
+        assertTrue(!EpgRepository.shouldUseTargetedRemoteFallback(true, 15, 4));
+    }
+
+    @Test
+    public void futureProgramIsNextAndNeverPresentedAsCurrent() {
+        long now = 1_800_000L;
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa de las 12",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        EpgRepository.EpgProgramPair pair =
+                EpgRepository.selectCurrentAndNext(Arrays.asList(future), now);
+
+        assertEquals(null, pair.current);
+        assertEquals("Programa de las 12", pair.next.title);
+    }
+
+    @Test
+    public void staleFutureCurrentIsDemotedWhenRestoredFromCache() {
+        long now = 1_800_000L;
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa futuro",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        EpgRepository.EpgProgramPair normalized = EpgRepository.normalizePairForNow(
+                new EpgRepository.EpgProgramPair(future, future), now);
+
+        assertEquals(null, normalized.current);
+        assertEquals("Programa futuro", normalized.next.title);
+    }
+
+    @Test
+    public void channelListUsesNormalizedCurrentInsteadOfStaleInlineProgram() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.nowProgram = "Programa siguiente guardado por error";
+        EpgRepository.EpgProgram current = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa correcto",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now - 600_000L),
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                50
+        );
+        EpgRepository.EpgProgram next = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa siguiente",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "Programa correcto",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(current, next),
+                        now
+                )
+        );
+    }
+
+    @Test
+    public void channelListNeverShowsFutureProgramAsCurrent() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.nowProgram = "Programa futuro guardado";
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa futuro",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(future, future),
+                        now
+                )
+        );
+    }
+
+    @Test
+    public void channelListUsesFreshVerifiedNowWhenPairTemporarilyHasOnlyNext() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.verifiedNowProgram = "Programa vigente";
+        channel.verifiedNowProgramUntilMs = now + 600_000L;
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa siguiente",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "Programa vigente",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(null, future),
+                        now
+                )
+        );
+    }
+
+    @Test
+    public void channelListDropsExpiredVerifiedNowProgram() {
+        long now = 1_800_000L;
+        ChannelItem channel = channel("101");
+        channel.verifiedNowProgram = "Programa caducado";
+        channel.verifiedNowProgramUntilMs = now - 1L;
+        EpgRepository.EpgProgram future = new EpgRepository.EpgProgram(
+                "101",
+                "Canal de prueba",
+                "Programa siguiente",
+                "",
+                "",
+                EpgTimeCodec.formatUtc(now + 600_000L),
+                EpgTimeCodec.formatUtc(now + 1_200_000L),
+                0
+        );
+
+        assertEquals(
+                "",
+                OverlayChannelListUiFactory.resolveCurrentProgram(
+                        channel,
+                        new EpgRepository.EpgProgramPair(null, future),
+                        now
+                )
+        );
+    }
+
+    @Test
+    public void openingChannelListHydratesMissingVisibleEpg() {
+        assertTrue(MainActivity.shouldHydrateVisibleEpg(
+                15,
+                4,
+                0L,
+                100_000L,
+                45_000L
+        ));
+    }
+
+    @Test
+    public void openingChannelListDoesNotRepeatHydrationInsideCooldown() {
+        assertTrue(!MainActivity.shouldHydrateVisibleEpg(
+                15,
+                14,
+                90_000L,
+                100_000L,
+                45_000L
+        ));
+    }
+
+    @Test
+    public void completeChannelListDoesNotRequestAnotherHydration() {
+        assertTrue(!MainActivity.shouldHydrateVisibleEpg(
+                15,
+                15,
+                0L,
+                100_000L,
+                45_000L
+        ));
     }
 
     private static ChannelItem channel(String id) {

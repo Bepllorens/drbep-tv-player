@@ -1,7 +1,9 @@
 package com.drbep.tvplayer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -9,6 +11,46 @@ import java.util.Collections;
 import org.junit.Test;
 
 public class RecordingsControllerTest {
+    @Test
+    public void refreshAfterSelectedRecordingRemovedNeverReturnsDeletedItem() {
+        RecordingsController controller = new RecordingsController();
+        controller.applyResult(result(false, item("a", true, "completed"), item("b", true, "completed")), "b");
+        controller.applyResult(result(false, item("a", true, "completed")), "b");
+        assertEquals("a", controller.getSelectedItem().id);
+        assertEquals(0, controller.getSelectedIndex());
+    }
+
+    @Test
+    public void removalOfLastRecordingLeavesNoActionTarget() {
+        RecordingsController controller = new RecordingsController();
+        controller.applyResult(result(true, item("a", false, "scheduled")), "a");
+        controller.applyResult(result(true), "a");
+        assertNull(controller.getSelectedItem());
+        assertNull(controller.selectIndex(99));
+        assertNull(controller.moveSelection(-1));
+        assertEquals(0, controller.getSelectedIndex());
+        assertTrue(controller.isScheduledMode());
+    }
+
+    @Test
+    public void reorderedRefreshPreservesPreferredRecordingByIdNotPosition() {
+        RecordingsController controller = new RecordingsController();
+        controller.applyResult(result(false, item("a", true, "completed"), item("b", true, "completed")), "b");
+        controller.applyResult(result(false, item("b", true, "completed"), item("a", true, "completed")), "b");
+        assertEquals("b", controller.getSelectedItem().id);
+        assertEquals(0, controller.getSelectedIndex());
+    }
+
+    @Test
+    public void emptyRefreshAfterCompletedModeDoesNotRetainOldTarget() {
+        RecordingsController controller = new RecordingsController();
+        controller.applyResult(result(false, item("a", true, "completed")), "a");
+        controller.applyResult(null, null);
+        assertNull(controller.getSelectedItem());
+        assertEquals(0, controller.buildSummaryStats().total);
+        assertFalse(controller.isScheduledMode());
+    }
+
     @Test
     public void applyResultSelectsPreferredRecordingWhenPresent() {
         RecordingsController controller = new RecordingsController();
@@ -69,6 +111,19 @@ public class RecordingsControllerTest {
         ));
 
         assertEquals(1, stats.conflict);
+    }
+
+    @Test
+    public void conflictDetectionBelongsToRecordingController() {
+        RecordingsRepository.RecordingItem first = item(
+                "a", false, "scheduled", "2026-05-02T10:00:00+02:00", "2026-05-02T11:00:00+02:00");
+        RecordingsRepository.RecordingItem second = item(
+                "b", false, "scheduled", "2026-05-02T10:30:00+02:00", "2026-05-02T12:00:00+02:00");
+        RecordingsRepository.RecordingsResult scheduled = result(true, first, second);
+
+        assertTrue(RecordingsController.hasConflict(first, scheduled));
+        assertTrue(RecordingsController.hasConflict(second, scheduled));
+        assertFalse(RecordingsController.hasConflict(first, result(false, first, second)));
     }
 
     private static RecordingsRepository.RecordingsResult result(boolean scheduledMode, RecordingsRepository.RecordingItem... items) {

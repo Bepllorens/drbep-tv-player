@@ -1,6 +1,9 @@
 package com.drbep.tvplayer;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.Set;
 
 final class OfflineOverlayState {
@@ -15,6 +18,7 @@ final class OfflineOverlayState {
     }
 
     private final Set<Surface> visibleSurfaces = EnumSet.noneOf(Surface.class);
+    private final Deque<Surface> focusHistory = new ArrayDeque<>();
     private Surface focusedSurface;
 
     void setVisible(Surface surface, boolean visible) {
@@ -28,19 +32,20 @@ final class OfflineOverlayState {
         if (visible) {
             visibleSurfaces.add(surface);
             if (takeFocus) {
-                focusedSurface = surface;
+                rememberFocus(surface);
             }
             return;
         }
         visibleSurfaces.remove(surface);
+        focusHistory.remove(surface);
         if (focusedSurface == surface) {
-            focusedSurface = visibleSurfaces.isEmpty() ? null : visibleSurfaces.iterator().next();
+            restoreMostRecentFocus();
         }
     }
 
     void focusSurface(Surface surface) {
         if (surface != null && visibleSurfaces.contains(surface)) {
-            focusedSurface = surface;
+            rememberFocus(surface);
         }
     }
 
@@ -66,6 +71,26 @@ final class OfflineOverlayState {
 
     void reset() {
         visibleSurfaces.clear();
+        focusHistory.clear();
+        focusedSurface = null;
+    }
+
+    private void rememberFocus(Surface surface) {
+        focusHistory.remove(surface);
+        focusHistory.addLast(surface);
+        focusedSurface = surface;
+    }
+
+    private void restoreMostRecentFocus() {
+        Iterator<Surface> iterator = focusHistory.descendingIterator();
+        while (iterator.hasNext()) {
+            Surface candidate = iterator.next();
+            if (visibleSurfaces.contains(candidate)) {
+                focusedSurface = candidate;
+                return;
+            }
+            iterator.remove();
+        }
         focusedSurface = null;
     }
 }

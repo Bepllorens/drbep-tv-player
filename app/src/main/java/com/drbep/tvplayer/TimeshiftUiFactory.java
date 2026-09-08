@@ -37,6 +37,7 @@ final class TimeshiftUiFactory {
                     host.markDragging(true);
                     host.showControls();
                 },
+                () -> host.markDragging(false),
                 previewProgress -> {
                     long previewTarget = state.startMs + Math.round((previewProgress / 1000f) * range);
                     return host.previewLabel(state, previewTarget);
@@ -47,7 +48,8 @@ final class TimeshiftUiFactory {
                     host.markDragging(false);
                     host.update();
                     host.scheduleAutoHide();
-                }
+                },
+                false
         );
     }
 }

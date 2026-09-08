@@ -1,10 +1,12 @@
 package com.drbep.tvplayer
 
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -59,10 +64,15 @@ object QuickChannelListComposeBinder {
 private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: QuickChannelImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val firstRowRequester = rememberTvInitialFocusRequester(model.items.isNotEmpty(), model)
+    val actionRequesters = remember(model) { List(model.actions.size) { FocusRequester() } }
+    val topActionIndex = QuickChannelFocusPolicy.topActionIndex(model.actions)
+    val bottomActionIndex = QuickChannelFocusPolicy.bottomActionIndex(model.actions)
+    val topActionRequester = actionRequesters.getOrNull(topActionIndex)
+    val bottomActionRequester = actionRequesters.getOrNull(bottomActionIndex)
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF20B111A))
+            .background(OfflineTvTheme.Colors.backdrop)
             .tvPanelBackHandler(model.onBack)
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
@@ -70,19 +80,32 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
         )
     ) {
         PanelHeader(model.title, model.subtitle, compact)
-        QuickChannelActions(model.actions, compact)
+        QuickChannelActions(model.actions, actionRequesters, compact)
         LazyColumn(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
         ) {
-            itemsIndexed(model.items) { index, item ->
-                QuickChannelRow(item, imageBinder, if (index == 0) firstRowRequester else null)
+            itemsIndexed(
+                items = model.items,
+                key = { index, item -> item.channelId.ifEmpty { "${item.channelName}:$index" } },
+                contentType = { _, item -> if (item.vod) "vod" else "live" }
+            ) { index, item ->
+                QuickChannelRow(
+                    item,
+                    imageBinder,
+                    compact,
+                    if (index == 0) firstRowRequester else null,
+                    if (index == 0) topActionRequester else null,
+                    if (index == model.items.lastIndex) bottomActionRequester else null
+                )
             }
         }
     }
 }
 
 @Composable
-private fun QuickChannelActions(actions: List<ZapActionItem>, compact: Boolean) {
+private fun QuickChannelActions(actions: List<ZapActionItem>, focusRequesters: List<FocusRequester>, compact: Boolean) {
     if (actions.isEmpty()) return
     LazyRow(
         modifier = Modifier
@@ -90,30 +113,31 @@ private fun QuickChannelActions(actions: List<ZapActionItem>, compact: Boolean) 
             .padding(bottom = if (compact) 10.dp else 14.dp),
         horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
     ) {
-        items(actions) { action ->
-            QuickChannelActionChip(action, compact)
+        itemsIndexed(actions) { index, action ->
+            QuickChannelActionChip(action, focusRequesters.getOrNull(index), compact)
         }
     }
 }
 
 @Composable
-private fun QuickChannelActionChip(action: ZapActionItem, compact: Boolean) {
+private fun QuickChannelActionChip(action: ZapActionItem, focusRequester: FocusRequester?, compact: Boolean) {
     var focused by remember { mutableStateOf(false) }
     val enabled = action.enabled && action.onClick != null
     val background = when {
-        focused -> Color(0xFFFFD47A)
-        action.selected || action.highlighted -> Color(0xFF2B5D9E)
-        enabled -> Color(0xFF1B3554)
-        else -> Color(0xFF182230)
+        focused -> OfflineTvTheme.Colors.focus
+        action.selected || action.highlighted -> OfflineTvTheme.Colors.chipSelected
+        enabled -> OfflineTvTheme.Colors.chip
+        else -> OfflineTvTheme.Colors.surfaceDeep
     }
     val textColor = when {
-        focused -> Color(0xFF101722)
+        focused -> OfflineTvTheme.Colors.focusInk
         enabled -> Color.White
-        else -> Color(0xFF7F8EA1)
+        else -> OfflineTvTheme.Colors.textMuted
     }
     Box(
         modifier = Modifier
             .background(background, RoundedCornerShape(if (compact) 16.dp else 18.dp))
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(enabled)
             .clickable(enabled = enabled) { action.onClick?.run() }
@@ -141,40 +165,81 @@ private fun PanelHeader(title: String, subtitle: String, compact: Boolean) {
         if (title.isNotEmpty()) {
             BasicText(
                 text = title,
-                style = TextStyle(color = Color.White, fontSize = if (compact) 20.sp else 28.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = OfflineTvTheme.Colors.accentGold, fontSize = if (compact) 20.sp else 28.sp, fontWeight = FontWeight.Bold)
             )
         }
         if (subtitle.isNotEmpty()) {
             BasicText(
                 text = subtitle,
                 modifier = Modifier.padding(top = if (compact) 5.dp else 8.dp),
-                style = TextStyle(color = Color(0xFFB7C5D8), fontSize = if (compact) 12.sp else 14.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp)
             )
         }
     }
 }
 
 @Composable
-private fun QuickChannelRow(item: QuickChannelRowUiModel, imageBinder: QuickChannelImageBinder, focusRequester: FocusRequester?) {
-    val compact = LocalConfiguration.current.screenWidthDp < 600
-    var focused by remember { mutableStateOf(false) }
-    val rowBackground = if (focused) Color(0xFFFFD47A) else Color(0xFF1C2733)
-    val titleColor = if (focused) Color(0xFF101722) else Color.White
-    val metaColor = if (focused) Color(0xFF203044) else Color(0xFFC4D0DF)
-    val badgeBackground = if (focused) Color(0xFFEAB85E) else Color(0xFF1E2D3E)
-    val badgeTextColor = if (focused) Color(0xFF101722) else Color(0xFFDCE7F5)
+private fun QuickChannelRow(
+    item: QuickChannelRowUiModel,
+    imageBinder: QuickChannelImageBinder,
+    compact: Boolean,
+    focusRequester: FocusRequester?,
+    upEdgeRequester: FocusRequester?,
+    downEdgeRequester: FocusRequester?
+) {
+    var focused by remember(item.channelId) { mutableStateOf(false) }
+    val shape = RoundedCornerShape(14.dp)
+    val rowBackground = if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.surfaceDeep
+    val titleColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
+    val metaColor = if (focused) OfflineTvTheme.Colors.chip else OfflineTvTheme.Colors.textSoft
+    val badgeBackground = if (focused) Color(0xCCFFFFFF) else OfflineTvTheme.Colors.card
+    val badgeTextColor = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(rowBackground, RoundedCornerShape(14.dp))
+            .then(
+                if (focused) {
+                    Modifier.border(3.dp, OfflineTvTheme.Colors.accentGold, shape)
+                } else {
+                    Modifier
+                }
+            )
+            .background(rowBackground, shape)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) {
+                    return@onPreviewKeyEvent false
+                }
+                val target = when (event.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP -> upEdgeRequester
+                    KeyEvent.KEYCODE_DPAD_DOWN -> downEdgeRequester
+                    else -> null
+                }
+                if (target == null) {
+                    false
+                } else {
+                    runCatching { target.requestFocus() }.isSuccess
+                }
+            }
             .tvButtonSemantics(item.onClick != null)
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(if (compact) 10.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (item.playing) {
+            Box(
+                modifier = Modifier
+                    .width(if (compact) 4.dp else 5.dp)
+                    .height(if (compact) 34.dp else 38.dp)
+                    .background(
+                        if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan,
+                        RoundedCornerShape(4.dp)
+                    )
+            )
+            Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
+        }
         QuickChannelLogo(item, imageBinder, compact)
         Spacer(modifier = Modifier.width(if (compact) 10.dp else 12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -208,6 +273,9 @@ private fun QuickChannelRow(item: QuickChannelRowUiModel, imageBinder: QuickChan
 @Composable
 private fun QuickChannelLogo(item: QuickChannelRowUiModel, imageBinder: QuickChannelImageBinder, compact: Boolean) {
     val size = if (compact) 38.dp else 42.dp
+    val bindingKey = remember(item.logoUrl, item.channelName, item.vod) {
+        QuickChannelLogoBindingKey(item.logoUrl, item.channelName, item.vod)
+    }
     AndroidView(
         modifier = Modifier.size(size),
         factory = { context ->
@@ -227,8 +295,17 @@ private fun QuickChannelLogo(item: QuickChannelRowUiModel, imageBinder: QuickCha
             }
         },
         update = { frame ->
-            val imageView = frame.getChildAt(0) as ImageView
-            imageBinder.bind(imageView, item)
+            if (frame.tag != bindingKey) {
+                frame.tag = bindingKey
+                val imageView = frame.getChildAt(0) as ImageView
+                imageBinder.bind(imageView, item)
+            }
         }
     )
 }
+
+private data class QuickChannelLogoBindingKey(
+    val logoUrl: String,
+    val channelName: String,
+    val vod: Boolean
+)

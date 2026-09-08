@@ -67,6 +67,31 @@ public class OfflineOverlayStateTest {
     }
 
     @Test
+    public void closingPanelRestoresMostRecentlyFocusedVisibleSurface() {
+        OfflineOverlayState state = new OfflineOverlayState();
+        state.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, true);
+        state.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, true);
+        state.setVisible(OfflineOverlayState.Surface.RECORDINGS, true);
+
+        state.setVisible(OfflineOverlayState.Surface.RECORDINGS, false);
+
+        assertEquals(OfflineOverlayState.Surface.TOUCH_CONTROLS, state.focusedSurface());
+    }
+
+    @Test
+    public void explicitlyRefocusedSurfaceIsRestoredAfterTemporaryPanel() {
+        OfflineOverlayState state = new OfflineOverlayState();
+        state.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, true);
+        state.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, true);
+        state.focusSurface(OfflineOverlayState.Surface.CHANNEL_LIST);
+        state.setVisible(OfflineOverlayState.Surface.MULTIVIEW, true);
+
+        state.setVisible(OfflineOverlayState.Surface.MULTIVIEW, false);
+
+        assertEquals(OfflineOverlayState.Surface.CHANNEL_LIST, state.focusedSurface());
+    }
+
+    @Test
     public void resetClearsVisibilityAndFocus() {
         OfflineOverlayState state = new OfflineOverlayState();
         state.setVisible(OfflineOverlayState.Surface.CHANNEL_LIST, true);

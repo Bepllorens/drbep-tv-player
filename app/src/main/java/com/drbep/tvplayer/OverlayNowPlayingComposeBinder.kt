@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,35 +26,38 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.ImageView
+import androidx.appcompat.widget.AppCompatImageView
+import androidx.core.content.ContextCompat
 
 object OverlayNowPlayingComposeBinder {
     @JvmStatic
-    fun bind(composeView: ComposeView?, model: ChannelOverlayUi.NowPlayingModel) {
+    fun bind(composeView: ComposeView?, model: ChannelOverlayUi.NowPlayingModel, logoBinder: ZapLogoBinder) {
         if (composeView == null) return
         composeView.setStableContent("overlay-now-playing", model) { currentModel ->
-            OverlayNowPlayingCard(model = currentModel)
+            OverlayNowPlayingCard(model = currentModel, logoBinder = logoBinder)
         }
     }
 }
 
 @Composable
-private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
+private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoBinder: ZapLogoBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                Brush.linearGradient(listOf(Color(0xCC144A5B), Color(0xA02A3547))),
+                Brush.linearGradient(listOf(OfflineTvTheme.Colors.card.copy(alpha = 0.9f), OfflineTvTheme.Colors.panelGlass)),
                 RoundedCornerShape(22.dp)
             )
-            .border(1.dp, Color(0x5B8EB0C5), RoundedCornerShape(22.dp))
+            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(22.dp))
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             BasicText(
                 text = "VIENDO AHORA",
                 style = TextStyle(
-                    color = Color(0xFF8FB5D4),
+                    color = OfflineTvTheme.Colors.accentGold,
                     fontSize = if (compact) 9.sp else 10.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -64,10 +68,28 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .wrapContentWidth()
-                        .background(Color(0x263E78A0), RoundedCornerShape(999.dp))
+                        .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
                         .padding(start = 3.dp, end = 8.dp, top = 3.dp, bottom = 3.dp)
                 ) {
-                    if (model.contextInitials.isNotBlank()) {
+                    if (model.contextLogoUrl.isNotBlank()) {
+                        AndroidView(
+                            modifier = Modifier.size(if (compact) 19.dp else 22.dp),
+                            factory = { context ->
+                                AppCompatImageView(context).apply {
+                                    scaleType = ImageView.ScaleType.FIT_CENTER
+                                    background = ContextCompat.getDrawable(context, R.drawable.channel_logo_plate_bg)
+                                    contentDescription = model.contextLabel
+                                    setPadding(1, 1, 1, 1)
+                                }
+                            },
+                            update = { imageView ->
+                                val size = if (compact) 19 else 22
+                                imageView.contentDescription = model.contextLabel
+                                logoBinder.bind(imageView, model.contextLogoUrl, model.contextLabel, size, size)
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                    } else if (model.contextInitials.isNotBlank()) {
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
@@ -88,7 +110,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
                     BasicText(
                         text = model.contextLabel,
                         style = TextStyle(
-                            color = Color(0xFFE5F4FF),
+                            color = OfflineTvTheme.Colors.textPrimary,
                             fontSize = if (compact) 9.sp else 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -109,7 +131,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
         BasicText(
             text = model.route,
             style = TextStyle(
-                color = Color(0xFFF9FDFF),
+                color = OfflineTvTheme.Colors.textPrimary,
                 fontSize = if (compact) 9.sp else 10.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -119,13 +141,13 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
             BasicText(
                 text = model.quality,
                 style = TextStyle(
-                    color = Color(0xFF9BD0FF),
+                    color = OfflineTvTheme.Colors.accentCyan,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 modifier = Modifier
                     .wrapContentWidth()
-                    .background(Color(0x1A4F86A8), RoundedCornerShape(12.dp))
+                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                     .padding(horizontal = 7.dp, vertical = 3.dp)
             )
         }
@@ -133,7 +155,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
         BasicText(
             text = model.meta,
             style = TextStyle(
-                color = Color(0xFFCFE0F4),
+                color = OfflineTvTheme.Colors.textSoft,
                 fontSize = if (compact) 9.sp else 10.sp
             )
         )
@@ -141,7 +163,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel) {
         BasicText(
             text = model.recent,
             style = TextStyle(
-                color = Color(0xFFB8CBDF),
+                color = OfflineTvTheme.Colors.textMuted,
                 fontSize = if (compact) 9.sp else 10.sp
             )
         )

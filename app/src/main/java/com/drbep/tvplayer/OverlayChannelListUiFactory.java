@@ -22,6 +22,7 @@ final class OverlayChannelListUiFactory {
         String protectedTypeBadge(ChannelItem item, String fallback);
         boolean isProtected(ChannelItem item);
         String profileTag(ChannelItem item);
+        EpgRepository.EpgProgramPair epgPair(ChannelItem item);
         void selectAndTune(int position);
         void selectAndToggleFavorite(int position);
         void moveSelection(int delta);
@@ -87,9 +88,14 @@ final class OverlayChannelListUiFactory {
         } else {
             String tag = host.profileTag(channel);
             String listLabel = host.membershipLabel(channel, 2);
+            String currentProgram = resolveCurrentProgram(
+                    channel,
+                    host.epgPair(channel),
+                    System.currentTimeMillis()
+            );
             metaText = "";
-            if (channel.nowProgram != null && !channel.nowProgram.trim().isEmpty()) {
-                metaText = tag.isEmpty() ? channel.nowProgram : tag + "  ·  " + channel.nowProgram;
+            if (!currentProgram.isEmpty()) {
+                metaText = tag.isEmpty() ? currentProgram : tag + "  ·  " + currentProgram;
             } else if (channel.group != null && !channel.group.trim().isEmpty()) {
                 metaText = tag.isEmpty() ? channel.group : tag + "  ·  " + channel.group;
             } else if (!tag.isEmpty()) {
@@ -107,6 +113,7 @@ final class OverlayChannelListUiFactory {
         }
         final int rowPosition = position;
         return new OverlayChannelRowUiModel(
+                channel.id,
                 channel.logoUrl,
                 name,
                 metaText,
@@ -124,5 +131,27 @@ final class OverlayChannelListUiFactory {
                 () -> host.selectAndTune(rowPosition),
                 host.touchMode() ? () -> host.selectAndToggleFavorite(rowPosition) : null
         );
+    }
+
+    static String resolveCurrentProgram(
+            ChannelItem channel,
+            EpgRepository.EpgProgramPair pair,
+            long nowMs
+    ) {
+        EpgRepository.EpgProgramPair normalized = EpgRepository.normalizePairForNow(pair, nowMs);
+        if (normalized != null) {
+            EpgRepository.EpgProgram current = normalized.current;
+            if (current != null && current.title != null && !current.title.trim().isEmpty()) {
+                return current.title.trim();
+            }
+            if (channel != null
+                    && channel.verifiedNowProgramUntilMs > nowMs
+                    && channel.verifiedNowProgram != null
+                    && !channel.verifiedNowProgram.trim().isEmpty()) {
+                return channel.verifiedNowProgram.trim();
+            }
+            return "";
+        }
+        return channel == null || channel.nowProgram == null ? "" : channel.nowProgram.trim();
     }
 }

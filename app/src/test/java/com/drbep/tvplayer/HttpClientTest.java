@@ -10,6 +10,17 @@ import java.nio.charset.StandardCharsets;
 
 public class HttpClientTest {
     @Test
+    public void streamingLimitAcceptsExactBodyAndRejectsOverflow() throws Exception {
+        byte[] data = new byte[16384];
+        try (HttpClient.LimitedInputStream input = new HttpClient.LimitedInputStream(new ByteArrayInputStream(data), data.length)) {
+            assertEquals(data.length, input.read(new byte[data.length]));
+            assertEquals(-1, input.read());
+        }
+        try (HttpClient.LimitedInputStream input = new HttpClient.LimitedInputStream(new ByteArrayInputStream(data), data.length - 1)) {
+            assertThrows(java.io.IOException.class, () -> input.read(new byte[data.length]));
+        }
+    }
+    @Test
     public void readAllAcceptsResponseAtLimit() throws Exception {
         byte[] body = "respuesta".getBytes(StandardCharsets.UTF_8);
 

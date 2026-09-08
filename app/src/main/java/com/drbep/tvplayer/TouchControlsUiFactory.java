@@ -8,6 +8,12 @@ final class TouchControlsUiFactory {
         String text(int resId);
         String currentFilterLabel();
         ChannelItem currentChannel();
+        default String currentFilterMark() {
+            return platformMark(currentChannel());
+        }
+        default String currentFilterLogoUrl() {
+            return platformLogo(currentChannel());
+        }
         boolean isOverlayVisible();
         boolean isTabletOrientationLocked();
         boolean supportsOrientationLock();
@@ -48,7 +54,8 @@ final class TouchControlsUiFactory {
             return new TouchControlsBarUiModel(new ArrayList<>());
         }
         ChannelItem current = host.currentChannel();
-        boolean vod = current != null && current.isVod;
+        boolean u7dReplay = current != null && "u7d_proxy".equalsIgnoreCase(current.playbackProfile);
+        boolean vod = current != null && current.isVod && !u7dReplay;
         List<ZapActionItem> actions = new ArrayList<>();
         actions.add(new ZapActionItem(
                 host.text(R.string.touch_button_list),
@@ -57,11 +64,7 @@ final class TouchControlsUiFactory {
                 host.isOverlayVisible(),
                 () -> {
                     host.keepVisible();
-                    if (host.isOverlayVisible()) {
-                        host.hideOverlay();
-                    } else {
-                        host.showOverlay();
-                    }
+                    host.showOverlay();
                 }
         ));
         actions.add(new ZapActionItem(
@@ -69,10 +72,14 @@ final class TouchControlsUiFactory {
                 true,
                 false,
                 false,
+                "platform",
+                host.currentFilterMark(),
+                host.currentFilterLogoUrl(),
                 () -> {
                     host.keepVisible();
                     host.showFilterPicker();
-                }
+                },
+                null
         ));
         actions.add(new ZapActionItem(
                 host.text(vod ? R.string.touch_button_vod_library : R.string.touch_button_guide),
@@ -97,6 +104,18 @@ final class TouchControlsUiFactory {
                     () -> {
                         host.keepVisible();
                         host.openU7d(current);
+                    }
+            ));
+        }
+        if (!vod) {
+            actions.add(new ZapActionItem(
+                    host.text(R.string.touch_button_vod),
+                    true,
+                    false,
+                    false,
+                    () -> {
+                        host.keepVisible();
+                        host.showVodLibrary();
                     }
             ));
         }
@@ -146,6 +165,16 @@ final class TouchControlsUiFactory {
         ));
         if (host.supportsOrientationLock()) {
             actions.add(new ZapActionItem(
+                    host.text(R.string.touch_button_settings),
+                    true,
+                    false,
+                    false,
+                    () -> {
+                        host.keepVisible();
+                        host.showToolsMenu();
+                    }
+            ));
+            actions.add(new ZapActionItem(
                     host.text(host.isTabletOrientationLocked() ? R.string.touch_button_rotate_locked : R.string.touch_button_rotate_free),
                     true,
                     false,
@@ -156,40 +185,42 @@ final class TouchControlsUiFactory {
                     }
             ));
         }
-        actions.add(new ZapActionItem(
-                host.text(R.string.touch_button_rewind),
-                true,
-                false,
-                false,
-                () -> {
-                    host.keepVisible();
-                    if (!host.seekBack()) {
-                        host.showSeekUnavailable();
+        if (vod || u7dReplay) {
+            actions.add(new ZapActionItem(
+                    host.text(R.string.touch_button_rewind),
+                    true,
+                    false,
+                    false,
+                    () -> {
+                        host.keepVisible();
+                        if (!host.seekBack()) {
+                            host.showSeekUnavailable();
+                        }
                     }
-                }
-        ));
-        actions.add(new ZapActionItem(
-                host.text(R.string.touch_button_play_pause),
-                true,
-                false,
-                false,
-                () -> {
-                    host.keepVisible();
-                    host.togglePlayback();
-                }
-        ));
-        actions.add(new ZapActionItem(
-                host.text(R.string.touch_button_forward),
-                true,
-                false,
-                false,
-                () -> {
-                    host.keepVisible();
-                    if (!host.seekForward()) {
-                        host.showSeekUnavailable();
+            ));
+            actions.add(new ZapActionItem(
+                    host.text(R.string.touch_button_play_pause),
+                    true,
+                    false,
+                    false,
+                    () -> {
+                        host.keepVisible();
+                        host.togglePlayback();
                     }
-                }
-        ));
+            ));
+            actions.add(new ZapActionItem(
+                    host.text(R.string.touch_button_forward),
+                    true,
+                    false,
+                    false,
+                    () -> {
+                        host.keepVisible();
+                        if (!host.seekForward()) {
+                            host.showSeekUnavailable();
+                        }
+                    }
+            ));
+        }
         return new TouchControlsBarUiModel(
                 host.text(R.string.filter_navigation_hint),
                 host.currentFilterLabel(),
@@ -201,5 +232,31 @@ final class TouchControlsUiFactory {
                 focusedActionIndex,
                 nowPlaying
         );
+    }
+
+    static String platformMark(ChannelItem channel) {
+        String platform = channel == null || channel.platformName == null
+                ? ""
+                : channel.platformName.trim();
+        return compactMark(platform);
+    }
+
+    static String compactMark(String label) {
+        String value = label == null ? "" : label.trim();
+        String lower = value.toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains("movistar")) return "M+";
+        if (lower.contains("dazn")) return "DAZN";
+        if (lower.contains("tivify")) return "TIV";
+        if (lower.contains("plex")) return "PLEX";
+        if (lower.contains("orange")) return "ORA";
+        String compact = value.replaceAll("[^\\p{L}\\p{N}+]", "").toUpperCase(java.util.Locale.ROOT);
+        if (compact.isEmpty()) return "OTT";
+        return compact.substring(0, Math.min(4, compact.length()));
+    }
+
+    static String platformLogo(ChannelItem channel) {
+        return channel == null || channel.platformLogoUrl == null
+                ? ""
+                : channel.platformLogoUrl.trim();
     }
 }

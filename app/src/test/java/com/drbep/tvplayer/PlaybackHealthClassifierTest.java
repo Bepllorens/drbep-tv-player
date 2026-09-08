@@ -62,7 +62,17 @@ public class PlaybackHealthClassifierTest {
                 1500L,
                 bufferingCount,
                 bufferingMs,
-                firstFrame
+                firstFrame,
+                true,
+                30_000L,
+                AdaptivePlaybackQualityPolicy.LEVEL_NONE,
+                "",
+                "PLAYING",
+                4,
+                true,
+                true,
+                "wifi",
+                0
         );
     }
 }

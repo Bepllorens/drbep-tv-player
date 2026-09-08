@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -63,13 +61,13 @@ private fun TimelineGuidePanel(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xB0101720))
+            .background(OfflineTvTheme.Colors.guideBackdrop)
             .padding(20.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xE6111822))
+                .background(OfflineTvTheme.Colors.guidePanel)
                 .padding(12.dp)
         ) {
             if (model.header != null) {
@@ -79,15 +77,14 @@ private fun TimelineGuidePanel(
                 Spacer(modifier = Modifier.height(8.dp))
                 TimelineScaleRow(model.scale)
             }
-            Column(
+            TimelineGuideRows(
+                model.rows ?: TimelineGuideRowsUiModel(emptyList()),
+                channelImageBinder,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(top = 6.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                TimelineGuideRows(model.rows ?: TimelineGuideRowsUiModel(emptyList()), channelImageBinder)
-            }
+            )
             Spacer(modifier = Modifier.height(8.dp))
             TimelineProgramDetailCard(detail, detailImageBinder)
         }

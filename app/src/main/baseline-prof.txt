@@ -1,0 +1,12 @@
+# Targeted startup classes and home UI, not the whole application.
+# Manually defined from Fire startup traces; retain only after device validation.
+Lcom/drbep/tvplayer/MainActivity;
+Lcom/drbep/tvplayer/TvLauncherActivity;
+Lcom/drbep/tvplayer/StartupHomeHubComposeBinder;
+Lcom/drbep/tvplayer/StartupHomeHubComposeBinderKt;
+Lcom/drbep/tvplayer/StartupHomeHubUiModel;
+HSPLcom/drbep/tvplayer/StartupHomeHub**->**(**)**
+HSPLcom/drbep/tvplayer/ComposeDialogHost;->**(**)**
+HSPLcom/drbep/tvplayer/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/drbep/tvplayer/MainActivity;->showStartupHubDialog(**)**
+HSPLcom/drbep/tvplayer/MainActivity;->buildStartupHomeHubModel(**)**

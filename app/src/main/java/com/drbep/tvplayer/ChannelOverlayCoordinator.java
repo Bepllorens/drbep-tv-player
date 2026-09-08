@@ -93,6 +93,10 @@ final class ChannelOverlayCoordinator {
     }
 
     void applyLoadedChannels(CatalogLoadResult result, String lastChannelId) {
+        applyLoadedChannels(result, lastChannelId, false);
+    }
+
+    void applyLoadedChannels(CatalogLoadResult result, String lastChannelId, boolean alignFilterToLastChannel) {
         allChannels.clear();
         allChannels.addAll(result.channels);
         offlinePermissions = result.offlinePermissions == null ? new OfflinePermissions() : result.offlinePermissions;
@@ -102,7 +106,7 @@ final class ChannelOverlayCoordinator {
         appendLocalFilters();
 
         String startupFilterKey = selectedFilterKey;
-        if (isHeavyStartupFilterKey(startupFilterKey)) {
+        if (alignFilterToLastChannel || isHeavyStartupFilterKey(startupFilterKey)) {
             String naturalFilterKey = findNaturalFilterKeyForChannelId(lastChannelId);
             if (naturalFilterKey != null) {
                 startupFilterKey = naturalFilterKey;

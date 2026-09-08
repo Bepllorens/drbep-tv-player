@@ -67,10 +67,10 @@ private fun StartupLoadingPanel(model: StartupLoadingUiModel) {
                 .widthIn(max = if (compact) 420.dp else 560.dp)
                 .fillMaxWidth(if (compact) 0.92f else 0.46f)
                 .background(
-                    Brush.verticalGradient(listOf(Color(0xF0182636), Color(0xF00A111B))),
+                    Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.94f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))),
                     RoundedCornerShape(if (compact) 22.dp else 28.dp)
                 )
-                .border(1.dp, Color(0x668EB0C5), RoundedCornerShape(if (compact) 22.dp else 28.dp))
+                .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(if (compact) 22.dp else 28.dp))
                 .padding(if (compact) 18.dp else 24.dp)
         ) {
             BasicText(
@@ -85,7 +85,7 @@ private fun StartupLoadingPanel(model: StartupLoadingUiModel) {
             BasicText(
                 text = model.step,
                 style = TextStyle(
-                    color = Color(0xFF9BD0FF),
+                    color = OfflineTvTheme.Colors.accentCyan,
                     fontSize = if (compact) 14.sp else 16.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -94,7 +94,7 @@ private fun StartupLoadingPanel(model: StartupLoadingUiModel) {
             BasicText(
                 text = model.detail,
                 style = TextStyle(
-                    color = Color(0xFFD5E3F2),
+                    color = OfflineTvTheme.Colors.textSoft,
                     fontSize = if (compact) 12.sp else 14.sp
                 )
             )
@@ -103,14 +103,14 @@ private fun StartupLoadingPanel(model: StartupLoadingUiModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp)
-                    .background(Color(0x263E78A0), RoundedCornerShape(999.dp))
+                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.42f)
                         .height(4.dp)
                         .alpha(pulse)
-                        .background(Color(0xFF6AA8FF), RoundedCornerShape(999.dp))
+                        .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(999.dp))
                 )
             }
         }

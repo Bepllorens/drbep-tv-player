@@ -39,13 +39,13 @@ private fun QuickSearchOverlay(model: QuickSearchOverlayUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(if (compact) 14.dp else 18.dp))
-            .background(Color(0xE0161D27))
-            .border(1.dp, Color(0xFF28415C), RoundedCornerShape(if (compact) 14.dp else 18.dp))
+            .background(OfflineTvTheme.Colors.panelGlass)
+            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(if (compact) 14.dp else 18.dp))
             .padding(if (compact) 12.dp else 14.dp)
     ) {
         BasicText(
             text = model.title.uppercase(),
-            style = TextStyle(color = Color(0xFF9FD0FF), fontSize = if (compact) 11.sp else 12.sp, fontWeight = FontWeight.Bold)
+            style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 11.sp else 12.sp, fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(3.dp))
         BasicText(
@@ -60,7 +60,7 @@ private fun QuickSearchOverlay(model: QuickSearchOverlayUiModel) {
                 text = model.result,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-                style = TextStyle(color = Color(0xFFD5E6F8), fontSize = if (compact) 12.sp else 13.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 13.sp)
             )
         }
         if (model.hint.isNotEmpty()) {
@@ -69,7 +69,7 @@ private fun QuickSearchOverlay(model: QuickSearchOverlayUiModel) {
                 text = model.hint,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                style = TextStyle(color = Color(0xFF96AFC8), fontSize = if (compact) 11.sp else 12.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 11.sp else 12.sp)
             )
         }
     }

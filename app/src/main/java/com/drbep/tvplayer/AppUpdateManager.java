@@ -33,6 +33,7 @@ final class AppUpdateManager {
     private static final String LATEST_PATH = "/api/offline/app/latest";
     private static final String APK_MIME = "application/vnd.android.package-archive";
     private static final String PUBLIC_FALLBACK_BASE_URL = "https://fire.tvbep.com";
+    private static final String EMERGENCY_FALLBACK_BASE_URL = "https://direct.tvbep.com";
     private static final String PAYLOAD_SOURCE_BASE_URL = "_source_base_url";
 
     private final Context context;
@@ -67,7 +68,10 @@ final class AppUpdateManager {
                 payload.optInt("version_code", 0),
                 payload.optString("version_name", "").trim(),
                 payload.optString("channel", channel == null ? "" : channel).trim(),
-                resolveUrl(sourceBaseUrl.isEmpty() ? baseUrl : sourceBaseUrl, payload.optString("apk_url", "").trim()),
+                resolveDownloadUrl(
+                        sourceBaseUrl.isEmpty() ? baseUrl : sourceBaseUrl,
+                        payload.optString("apk_url", "").trim()
+                ),
                 payload.optString("sha256", "").trim().toLowerCase(Locale.ROOT),
                 payload.optBoolean("required", false),
                 changelog
@@ -101,6 +105,7 @@ final class AppUpdateManager {
         List<String> candidates = new ArrayList<>();
         addCandidate(candidates, baseUrl);
         addCandidate(candidates, PUBLIC_FALLBACK_BASE_URL);
+        addCandidate(candidates, EMERGENCY_FALLBACK_BASE_URL);
         return candidates;
     }
 
@@ -312,6 +317,11 @@ final class AppUpdateManager {
             return joinUrl(baseUrl, trimmed);
         }
         return trimmed;
+    }
+
+    static String resolveDownloadUrl(String sourceBaseUrl, String url) {
+        String resolved = resolveUrl(sourceBaseUrl, url);
+        return PublicBackendUrlPolicy.rebaseLegacyUrl(resolved, sourceBaseUrl);
     }
 
     private static String toHex(byte[] bytes) {

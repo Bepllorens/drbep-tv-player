@@ -12,6 +12,7 @@ final class QuickChannelListUiFactory {
         String protectedTitle(ChannelItem item, String title);
         String protectedMeta(ChannelItem item, String meta);
         String protectedTypeBadge(ChannelItem item, String fallback);
+        boolean isPlaying(ChannelItem item);
         void choose(ChannelItem item);
     }
 
@@ -64,7 +65,9 @@ final class QuickChannelListUiFactory {
                 host.protectedTypeBadge(item, typeLabel),
                 item.logoUrl,
                 displayName,
+                item.id,
                 item.isVod,
+                host.isPlaying(item),
                 () -> host.choose(item)
         );
     }

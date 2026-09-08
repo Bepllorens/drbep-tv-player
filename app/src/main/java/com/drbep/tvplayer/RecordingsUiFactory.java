@@ -23,7 +23,7 @@ final class RecordingsUiFactory {
         int pendingScrollIndex();
         void switchMode(boolean scheduledMode);
         void refresh();
-        void selectAndPlay(int position, RecordingsRepository.RecordingItem item, String basePath);
+        void selectAndOpenActions(int position);
     }
 
     interface PresentationHost {
@@ -99,7 +99,6 @@ final class RecordingsUiFactory {
             for (int i = 0; i < result.items.size(); i++) {
                 final int position = i;
                 final RecordingsRepository.RecordingItem item = result.items.get(i);
-                final String basePath = result.basePath;
                 items.add(new RecordingListRowUiModel(
                         host.title(item),
                         host.meta(item),
@@ -108,7 +107,7 @@ final class RecordingsUiFactory {
                         host.statusBadgeColor(item),
                         item == null ? "" : item.poster,
                         position == host.selectedIndex(),
-                        () -> host.selectAndPlay(position, item, basePath)
+                        () -> host.selectAndOpenActions(position)
                 ));
             }
         }
@@ -156,7 +155,7 @@ final class RecordingsUiFactory {
 
     static int statusBadgeColor(RecordingsRepository.RecordingItem item, RecordingsRepository.RecordingsResult result, PresentationHost host) {
         if (item == null || item.status == null) {
-            return 0xFF4F3A23;
+            return OfflineTvTheme.cardArgb();
         }
         if (host.hasConflict(item, result)) {
             return 0xFF9A6B28;
@@ -168,12 +167,12 @@ final class RecordingsUiFactory {
             case "recording":
                 return 0xFF8B3D2F;
             case "scheduled":
-                return 0xFF3F5877;
+                return OfflineTvTheme.cardArgb();
             case "failed":
             case "error":
                 return 0xFF7A3340;
             default:
-                return 0xFF4F3A23;
+                return OfflineTvTheme.cardArgb();
         }
     }
 
@@ -193,7 +192,7 @@ final class RecordingsUiFactory {
             case "canceled":
                 return 0xFFC7D2E2;
             default:
-                return 0xFF9BD0FF;
+                return OfflineTvTheme.accentCyanArgb();
         }
     }
 }

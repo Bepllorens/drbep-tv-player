@@ -28,6 +28,7 @@ final class ReminderScheduler {
     static final String KEY_CHANNEL_NAME = "channel_name";
     static final String KEY_TITLE = "title";
     static final String KEY_START_AT = "start_at";
+    static final String KEY_END_AT = "end_at";
 
     private ReminderScheduler() {
     }
@@ -53,6 +54,7 @@ final class ReminderScheduler {
                 .putString(KEY_CHANNEL_NAME, item.channelName)
                 .putString(KEY_TITLE, item.title)
                 .putLong(KEY_START_AT, item.startAtMillis)
+                .putLong(KEY_END_AT, item.endAtMillis)
                 .build();
 
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(ReminderWorker.class)

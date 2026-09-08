@@ -44,7 +44,7 @@ private fun VodActionsHeader(model: VodActionsHeaderUiModel) {
                 text = model.meta,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                style = TextStyle(color = Color(0xFFB7C4D6), fontSize = if (compact) 12.sp else 13.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 13.sp)
             )
         }
     }

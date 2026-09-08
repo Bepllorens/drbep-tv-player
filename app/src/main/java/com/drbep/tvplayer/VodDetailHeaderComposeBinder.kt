@@ -54,7 +54,7 @@ private fun VodDetailHeader(model: VodDetailHeaderUiModel, posterBinder: VodPost
             modifier = Modifier
                 .size(width = if (compact) 112.dp else 150.dp, height = if (compact) 154.dp else 202.dp)
                 .clip(RoundedCornerShape(if (compact) 10.dp else 14.dp))
-                .background(Color(0xFF0E1820)),
+                .background(OfflineTvTheme.Colors.backdrop),
             factory = { context ->
                 FrameLayout(context).apply {
                     addView(
@@ -87,7 +87,7 @@ private fun VodDetailHeader(model: VodDetailHeaderUiModel, posterBinder: VodPost
                     text = model.meta,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color(0xFF9BD0FF), fontSize = if (compact) 13.sp else 15.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 13.sp else 15.sp)
                 )
             }
             if (model.description.isNotEmpty()) {
@@ -96,7 +96,7 @@ private fun VodDetailHeader(model: VodDetailHeaderUiModel, posterBinder: VodPost
                     text = model.description,
                     maxLines = if (compact) 4 else 3,
                     overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color(0xFFD5E6F8), fontSize = if (compact) 12.sp else 14.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp)
                 )
             }
             if (model.progressLabel.isNotEmpty()) {
@@ -106,7 +106,7 @@ private fun VodDetailHeader(model: VodDetailHeaderUiModel, posterBinder: VodPost
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0xFF2F3A25))
-                        .border(1.dp, Color(0xFFFFD782), RoundedCornerShape(8.dp))
+                        .border(1.dp, OfflineTvTheme.Colors.focus, RoundedCornerShape(8.dp))
                         .padding(horizontal = 12.dp, vertical = if (compact) 9.dp else 10.dp)
                 ) {
                     BasicText(

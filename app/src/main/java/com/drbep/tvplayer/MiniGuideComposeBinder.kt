@@ -41,7 +41,7 @@ private fun MiniGuidePanel(model: MiniGuideUiModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF20B111A))
+            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp
@@ -70,7 +70,7 @@ private fun PanelHeader(title: String, subtitle: String, compact: Boolean) {
             BasicText(
                 text = subtitle,
                 modifier = Modifier.padding(top = if (compact) 5.dp else 8.dp),
-                style = TextStyle(color = Color(0xFFB7C5D8), fontSize = if (compact) 12.sp else 14.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp)
             )
         }
     }
@@ -83,14 +83,14 @@ private fun MiniGuideRow(item: MiniGuideProgramRowUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(Color(0xFF2A2F3A), RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Colors.card, RoundedCornerShape(14.dp))
             .tvButtonSemantics(item.onClick != null)
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(if (compact) 12.dp else 14.dp)
     ) {
         BasicText(
             text = item.time,
-            style = TextStyle(color = Color(0xFF8BC4FF), fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold)
+            style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(if (compact) 7.dp else 8.dp))
         Box(
@@ -100,7 +100,7 @@ private fun MiniGuideRow(item: MiniGuideProgramRowUiModel) {
         ) {
             BasicText(
                 text = item.badge,
-                style = TextStyle(color = Color(0xFFEAF2FF), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
             )
         }
         Spacer(modifier = Modifier.height(if (compact) 6.dp else 8.dp))
@@ -114,13 +114,13 @@ private fun MiniGuideRow(item: MiniGuideProgramRowUiModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
-                    .background(Color(0x332B3B4D), RoundedCornerShape(999.dp))
+                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.33f), RoundedCornerShape(999.dp))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth((item.progress.coerceIn(0, 100) / 100f))
                         .height(8.dp)
-                        .background(Color(0xFF61B3FF), RoundedCornerShape(999.dp))
+                        .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(999.dp))
                 )
             }
         }
@@ -128,7 +128,7 @@ private fun MiniGuideRow(item: MiniGuideProgramRowUiModel) {
             Spacer(modifier = Modifier.height(if (compact) 8.dp else 10.dp))
             BasicText(
                 text = item.meta,
-                style = TextStyle(color = Color(0xFFC7D2E2), fontSize = if (compact) 12.sp else 13.sp)
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 13.sp)
             )
         }
     }

@@ -2,11 +2,25 @@
 -keep class androidx.media3.** { *; }
 -keep class com.google.android.exoplayer2.** { *; }
 
+# libVLC resolves its Java bridge classes from native JNI_OnLoad. R8 cannot see
+# those references, so release minification must preserve the complete bridge.
+-keep class org.videolan.libvlc.** { *; }
+-keep interface org.videolan.libvlc.** { *; }
+
 # Release builds should not leak verbose local diagnostics.
 -assumenosideeffects class android.util.Log {
     public static int v(...);
     public static int d(...);
     public static int i(...);
+}
+
+# Keep the canonical snapshot verifier as a stable, auditable unit.
+-keepclassmembers class com.drbep.tvplayer.CatalogSnapshotStore {
+    private static void validateSnapshotSignature(org.json.JSONObject);
+    private static void updateCanonicalSnapshotPayload(java.security.Signature, org.json.JSONObject);
+    private static void appendCanonicalJson(java.security.Signature, java.lang.Object, boolean);
+    private static java.lang.String numberToCanonicalString(java.lang.Number);
+    private static java.lang.String goStyleJsonQuote(java.lang.String);
 }
 
 # --- Estabilidad de las caches serializadas entre versiones (OTA) ---

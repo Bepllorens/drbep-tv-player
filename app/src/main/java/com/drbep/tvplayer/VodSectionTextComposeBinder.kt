@@ -33,7 +33,7 @@ private fun VodSectionText(model: VodSectionTextUiModel) {
         maxLines = if (model.title) 1 else 2,
         overflow = TextOverflow.Ellipsis,
         style = TextStyle(
-            color = if (model.title) Color.White else Color(0xFFB7C4D6),
+            color = if (model.title) Color.White else OfflineTvTheme.Colors.textSoft,
             fontSize = if (model.title) {
                 if (compact) 14.sp else 15.sp
             } else {

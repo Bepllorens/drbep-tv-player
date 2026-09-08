@@ -10,6 +10,28 @@ import static org.junit.Assert.assertTrue;
 
 public class ChannelCollectionStoreTest {
     @Test
+    public void membershipIsIndependentAcrossGroupsAndChannels() {
+        ChannelCollectionStore store = new ChannelCollectionStore(null, "collections");
+        store.setMembership("deportes", "ch-1", true);
+        store.setMembership("noticias", "ch-1", true);
+        store.setMembership("deportes", "ch-2", true);
+        store.setMembership("deportes", "ch-1", false);
+        assertFalse(store.contains("deportes", "ch-1"));
+        assertTrue(store.contains("noticias", "ch-1"));
+        assertTrue(store.contains("deportes", "ch-2"));
+    }
+
+    @Test
+    public void renamingCollectionPreservesMembership() {
+        ChannelCollectionStore store = new ChannelCollectionStore(null, "collections");
+        ChannelCollectionStore.ChannelCollection group = store.createCollection("Cine");
+        store.setMembership(group.key, "ch-1", true);
+        assertTrue(store.renameCollection(group.key, "Cine noche"));
+        assertTrue(store.contains(group.key, "ch-1"));
+        assertEquals("Cine noche", store.getMembershipLabels("ch-1", 1).get(0));
+    }
+
+    @Test
     public void defaultCollectionsAreAvailable() {
         ChannelCollectionStore store = new ChannelCollectionStore(null, "collections");
 

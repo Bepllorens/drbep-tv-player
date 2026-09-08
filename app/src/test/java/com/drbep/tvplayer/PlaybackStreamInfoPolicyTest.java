@@ -57,6 +57,14 @@ public class PlaybackStreamInfoPolicyTest {
     }
 
     @Test
+    public void movistarHlsResolvesBeforePlaybackToExposeDeclaredQuality() {
+        ChannelItem channel = channel("51", "LA 1", "Movistar HLS", "Movistar", "https://fire.tvbep.com/drm/direct/51", "", false, "clearkey", "", true);
+        PlayerController.PlaybackRequest request = request(channel, true);
+
+        assertTrue(PlaybackStreamInfoPolicy.shouldResolveBeforePlayback(true, channel, request, channel.name));
+    }
+
+    @Test
     public void nonStandaloneDoesNotResolveBeforePlayback() {
         ChannelItem channel = channel("60", "Orange 2", "Orange TV", "Orange", "https://fire.tvbep.com/orange/live/60.mpd", "", false, "", "", false);
         PlayerController.PlaybackRequest request = request(channel, false);

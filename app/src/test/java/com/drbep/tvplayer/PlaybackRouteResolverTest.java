@@ -103,6 +103,71 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void widevineProxyManifestKeepsDrmBeforeStreamInfoResolves() {
+        PlayerController.PlaybackRequest request = new PlayerController.PlaybackRequest(
+                "1114666",
+                "Eurosport 1",
+                "DAZN",
+                "https://iptv.example.com/proxy/manifest/1114666",
+                "https://iptv.example.com/proxy/manifest/1114666",
+                PlaybackModeStore.MODE_AUTO,
+                "widevine",
+                "drbep-drm://channel/1114666",
+                false,
+                "proxy_manifest"
+        );
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(request, false, null);
+
+        assertEquals(MimeTypes.APPLICATION_MPD, decision.mimeType);
+        assertEquals("widevine", decision.drmType);
+    }
+
+    @Test
+    public void widevineCompatibilityFallbackKeepsDrmForDashProxy() {
+        PlayerController.PlaybackRequest request = new PlayerController.PlaybackRequest(
+                "1114667",
+                "Eurosport 2",
+                "DAZN",
+                "https://iptv.example.com/proxy/manifest/1114667",
+                "https://iptv.example.com/proxy/manifest/1114667",
+                PlaybackModeStore.MODE_AUTO,
+                "widevine",
+                "drbep-drm://channel/1114667",
+                false,
+                "proxy_manifest"
+        );
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(request, true, null);
+
+        assertEquals(MimeTypes.APPLICATION_MPD, decision.mimeType);
+        assertEquals("widevine", decision.drmType);
+        assertTrue(decision.useFallback);
+    }
+
+    @Test
+    public void movistarSampleAesHlsUsesDirectCopyBridge() {
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                requestWithPlatformAndProfile(
+                        "1113364",
+                        "LA 2",
+                        "Movistar HLS",
+                        "https://iptv.example.com/proxy/manifest/1113364",
+                        "",
+                        PlaybackModeStore.MODE_AUTO,
+                        "proxy_manifest"
+                ),
+                false,
+                null
+        );
+
+        assertEquals("https://iptv.example.com/drm/direct/1113364", decision.targetUrl);
+        assertEquals(MimeTypes.VIDEO_MP2T, decision.mimeType);
+        assertEquals("", decision.drmType);
+        assertFalse(decision.allowCompatibilityFallback);
+    }
+
+    @Test
     public void encryptedStreamInfoUsesDirectRouteInStandalone() {
         PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
         streamInfo.encrypted = true;
@@ -249,6 +314,30 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void adultDirectRecoveryDoesNotExposeInternalSourceUrl() {
+        PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
+        streamInfo.type = "hls";
+        streamInfo.sourceUrl = "http://adult-proxy:8788/channel/internal/index.m3u8";
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                requestWithPlatformAndProfile(
+                        "401",
+                        "Adult Example",
+                        "Adultos",
+                        "https://iptv.example.com/proxy/manifest/401",
+                        "",
+                        PlaybackModeStore.MODE_DIRECT,
+                        "proxy_manifest"
+                ),
+                false,
+                streamInfo
+        );
+
+        assertEquals("https://iptv.example.com/proxy/manifest/401", decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_M3U8, decision.mimeType);
+    }
+
+    @Test
     public void explicitFallbackUsesFallbackUrl() {
         PlaybackRouteResolver.Decision decision = resolver.buildDecision(
                 request("33", "https://origin.example.com/live/broken.mpd", "https://iptv.example.com/proxy/manifest/33", PlaybackModeStore.MODE_AUTO, false, ""),
@@ -294,8 +383,40 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void inferMimeTypeDetectsDaznVodManifestRoute() {
+        assertEquals(
+                MimeTypes.APPLICATION_MPD,
+                PlaybackRouteResolver.inferMimeType("https://fire.tvbep.com/api/vod/dazn/manifest/asset-1")
+        );
+    }
+
+    @Test
+    public void inferMimeTypeDetectsOrangeOfflineU7dTransportStream() {
+        assertEquals(
+                MimeTypes.VIDEO_MP2T,
+                PlaybackRouteResolver.inferMimeType(
+                        "https://iptv.bepllorens.com/api/offline/u7d/orange/stream?channel_id=1108469"
+                )
+        );
+    }
+
+    @Test
     public void inferMimeTypeIsNullSafe() {
         assertNull(PlaybackRouteResolver.inferMimeType(null));
+    }
+
+    @Test
+    public void primeVodManifestWithoutExtensionIsDash() {
+        String url = "https://fire.example.com/api/vod/prime/manifest/amzn1.dv.gti.01234567-89ab-cdef-0123-456789abcdef";
+
+        assertEquals(MimeTypes.APPLICATION_MPD, PlaybackRouteResolver.inferMimeType(url));
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                request("prime-vod", url, "", PlaybackModeStore.MODE_AUTO, true, "widevine"),
+                false,
+                null
+        );
+        assertEquals(MimeTypes.APPLICATION_MPD, decision.mimeType);
+        assertEquals("widevine", decision.drmType);
     }
 
     private static PlayerController.PlaybackRequest request(String channelId, String playUrl, String fallbackUrl, String playbackMode, boolean directPlayback, String drmScheme) {

@@ -47,7 +47,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xD018202A))
+            .background(OfflineTvTheme.Colors.panelGlass)
             .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact) 7.dp else 10.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -58,7 +58,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
                     .clip(RoundedCornerShape(10.dp)),
                 factory = { context ->
                     FrameLayout(context).apply {
-                        setBackgroundColor(0xFF16202A.toInt())
+                        setBackgroundColor(OfflineTvTheme.surfaceDeepArgb())
                         addView(
                             AppCompatImageView(context).apply {
                                 layoutParams = FrameLayout.LayoutParams(
@@ -95,7 +95,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(999.dp))
-                            .background(Color(0xFF2D74D6))
+                            .background(OfflineTvTheme.Colors.chipSelected)
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         androidx.compose.foundation.text.BasicText(
@@ -112,7 +112,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
                     text = model.meta,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color(0xFFCFE0F4), fontSize = if (compact) 11.sp else 12.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 12.sp)
                 )
             }
             if (model.description.isNotEmpty()) {
@@ -120,21 +120,21 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
                     text = model.description,
                     maxLines = if (compact) 2 else 3,
                     overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color(0xFFB7C9DB), fontSize = if (compact) 11.sp else 12.sp)
+                    style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 11.sp else 12.sp)
                 )
             }
             if (model.actionHint.isNotEmpty()) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0x331D8BFF))
+                        .background(OfflineTvTheme.Colors.card.copy(alpha = 0.33f))
                         .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     androidx.compose.foundation.text.BasicText(
                         text = model.actionHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(color = Color(0xFF9EC5FF), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.SemiBold)
+                        style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.SemiBold)
                     )
                 }
             }

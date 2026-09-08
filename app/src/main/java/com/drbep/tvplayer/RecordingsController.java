@@ -157,6 +157,32 @@ final class RecordingsController {
         return conflicts;
     }
 
+    static boolean hasConflict(
+            RecordingsRepository.RecordingItem item,
+            RecordingsRepository.RecordingsResult result
+    ) {
+        if (item == null || result == null || result.items == null || !result.scheduledMode) {
+            return false;
+        }
+        long start = parseIsoMillis(item.startTime);
+        long end = parseIsoMillis(item.endTime);
+        if (start <= 0L || end <= start) {
+            return false;
+        }
+        for (RecordingsRepository.RecordingItem other : result.items) {
+            if (other == null || item == other || (item.id != null && item.id.equals(other.id))) {
+                continue;
+            }
+            long otherStart = parseIsoMillis(other.startTime);
+            long otherEnd = parseIsoMillis(other.endTime);
+            if (otherStart > 0L && otherEnd > otherStart
+                    && start < otherEnd && otherStart < end) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void normalizeSelectedIndex() {
         if (currentResult == null || currentResult.items == null || currentResult.items.isEmpty()) {
             selectedIndex = 0;

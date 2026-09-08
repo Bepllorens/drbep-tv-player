@@ -23,12 +23,32 @@ final class RecordingsRepository {
         final String channelName;
         final String programTitle;
         final String poster;
+        final String description;
         final String status;
         final String startTime;
         final String endTime;
         final boolean playable;
+        final long recordingId;
+        final List<Long> relatedRecordingIds;
+        final List<String> relatedPaths;
 
         RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable) {
+            this(id, name, path, size, modified, channelName, programTitle, poster, "", status, startTime, endTime, playable, 0L, null);
+        }
+
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable, long recordingId) {
+            this(id, name, path, size, modified, channelName, programTitle, poster, "", status, startTime, endTime, playable, recordingId, null);
+        }
+
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String status, String startTime, String endTime, boolean playable, long recordingId, List<Long> relatedRecordingIds) {
+            this(id, name, path, size, modified, channelName, programTitle, poster, "", status, startTime, endTime, playable, recordingId, relatedRecordingIds);
+        }
+
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String description, String status, String startTime, String endTime, boolean playable, long recordingId, List<Long> relatedRecordingIds) {
+            this(id, name, path, size, modified, channelName, programTitle, poster, description, status, startTime, endTime, playable, recordingId, relatedRecordingIds, null);
+        }
+
+        RecordingItem(String id, String name, String path, long size, String modified, String channelName, String programTitle, String poster, String description, String status, String startTime, String endTime, boolean playable, long recordingId, List<Long> relatedRecordingIds, List<String> relatedPaths) {
             this.id = id;
             this.name = name;
             this.path = path;
@@ -37,10 +57,26 @@ final class RecordingsRepository {
             this.channelName = channelName;
             this.programTitle = programTitle;
             this.poster = poster;
+            this.description = description;
             this.status = status;
             this.startTime = startTime;
             this.endTime = endTime;
             this.playable = playable;
+            this.recordingId = recordingId;
+            if (relatedRecordingIds == null || relatedRecordingIds.isEmpty()) {
+                this.relatedRecordingIds = recordingId > 0L
+                        ? Collections.singletonList(recordingId)
+                        : Collections.emptyList();
+            } else {
+                this.relatedRecordingIds = Collections.unmodifiableList(new ArrayList<>(relatedRecordingIds));
+            }
+            if (relatedPaths == null || relatedPaths.isEmpty()) {
+                this.relatedPaths = path == null || path.trim().isEmpty()
+                        ? Collections.emptyList()
+                        : Collections.singletonList(path);
+            } else {
+                this.relatedPaths = Collections.unmodifiableList(new ArrayList<>(relatedPaths));
+            }
         }
     }
 
@@ -71,41 +107,243 @@ final class RecordingsRepository {
     }
 
     RecordingsResult fetchCompletedRecordings() throws Exception {
-        JSONObject body = httpClient.getJsonObject(
+        JSONArray completed = httpClient.getJsonArray(
+                withCacheBuster(baseUrl + "/api/recordings/completed"),
+                10000,
+                20000,
+                jsonHeaders(false),
+                "cargando grabaciones completadas"
+        );
+        JSONObject filesBody = httpClient.getJsonObject(
                 withCacheBuster(baseUrl + "/api/recordings/files"),
                 10000,
                 20000,
                 jsonHeaders(false),
-                "cargando grabaciones"
+                "cargando archivos de grabaciones"
         );
-        String basePath = body.optString("path", "");
-        JSONArray files = body.optJSONArray("files");
+        String basePath = filesBody.optString("path", "");
+        return new RecordingsResult(basePath, parseCompletedItems(completed, filesBody.optJSONArray("files")), false);
+    }
+
+    static List<RecordingItem> parseCompletedItems(JSONArray completed, JSONArray files) {
         List<RecordingItem> items = new ArrayList<>();
+        List<JSONObject> allFiles = new ArrayList<>();
+        Map<Long, List<JSONObject>> filesByRecording = new HashMap<>();
         if (files != null) {
             for (int i = 0; i < files.length(); i++) {
                 JSONObject file = files.optJSONObject(i);
                 if (file == null) {
                     continue;
                 }
-                String path = file.optString("path", "");
-                String name = file.optString("name", "");
-                items.add(new RecordingItem(
-                        path.isEmpty() ? name : path,
-                        name,
-                        path,
-                        file.optLong("size", 0L),
-                        file.optString("modified", ""),
-                        file.optString("channel_name", ""),
-                        file.optString("program_title", ""),
-                        file.optString("poster", ""),
-                        "completed",
-                        "",
-                        "",
-                        true
-                ));
+                allFiles.add(file);
+                long recordingId = file.optLong("recording_id", 0L);
+                if (recordingId > 0L) {
+                    List<JSONObject> candidates = filesByRecording.get(recordingId);
+                    if (candidates == null) {
+                        candidates = new ArrayList<>();
+                        filesByRecording.put(recordingId, candidates);
+                    }
+                    candidates.add(file);
+                }
             }
         }
-        return new RecordingsResult(basePath, items, false);
+
+        Map<String, List<JSONObject>> completedGroups = new java.util.LinkedHashMap<>();
+        java.util.Set<String> completedArtifactKeys = new java.util.HashSet<>();
+        if (completed != null) {
+            for (int i = 0; i < completed.length(); i++) {
+                JSONObject record = completed.optJSONObject(i);
+                if (record == null) {
+                    continue;
+                }
+                long recordingId = record.optLong("id", 0L);
+                if (recordingId <= 0L) {
+                    continue;
+                }
+                String key = completedRecordingKey(record);
+                List<JSONObject> group = completedGroups.get(key);
+                if (group == null) {
+                    group = new ArrayList<>();
+                    completedGroups.put(key, group);
+                }
+                group.add(record);
+            }
+        }
+        for (List<JSONObject> records : completedGroups.values()) {
+            if (records.isEmpty()) {
+                continue;
+            }
+            JSONObject representative = records.get(0);
+            String outputPath = representative.optString("output_path", "");
+            completedArtifactKeys.add(legacyArtifactKey(outputPath));
+            List<Long> recordingIds = new ArrayList<>();
+            List<JSONObject> candidates = new ArrayList<>();
+            for (JSONObject record : records) {
+                long recordingId = record.optLong("id", 0L);
+                if (recordingId <= 0L) {
+                    continue;
+                }
+                recordingIds.add(recordingId);
+                List<JSONObject> recordFiles = filesByRecording.get(recordingId);
+                if (recordFiles != null) {
+                    candidates.addAll(recordFiles);
+                }
+            }
+            JSONObject file = choosePreferredFile(candidates, outputPath);
+            if (file == null) {
+                file = chooseOutputPathMatch(allFiles, outputPath);
+            }
+            if (file == null) {
+                continue;
+            }
+            items.add(buildCompletedItem(representative, file, recordingIds.get(0), recordingIds, Collections.emptyList()));
+        }
+
+        // Conserva grabaciones antiguas sin registro de base de datos, pero agrupa
+        // sus artefactos original/web/merge para no mostrar el mismo contenido varias veces.
+        Map<String, List<JSONObject>> legacyFiles = new java.util.LinkedHashMap<>();
+        for (JSONObject file : allFiles) {
+            if (file.optLong("recording_id", 0L) > 0L) {
+                continue;
+            }
+            String key = legacyArtifactKey(file.optString("name", file.optString("path", "")));
+            if (completedArtifactKeys.contains(key)) {
+                continue;
+            }
+            List<JSONObject> group = legacyFiles.get(key);
+            if (group == null) {
+                group = new ArrayList<>();
+                legacyFiles.put(key, group);
+            }
+            group.add(file);
+        }
+        for (List<JSONObject> group : legacyFiles.values()) {
+            JSONObject file = choosePreferredFile(group, "");
+            if (file == null) {
+                continue;
+            }
+            List<String> relatedPaths = new ArrayList<>();
+            for (JSONObject artifact : group) {
+                String relatedPath = artifact.optString("path", artifact.optString("name", ""));
+                if (relatedPath != null && !relatedPath.trim().isEmpty() && !relatedPaths.contains(relatedPath)) {
+                    relatedPaths.add(relatedPath);
+                }
+            }
+            items.add(buildCompletedItem(null, file, 0L, Collections.emptyList(), relatedPaths));
+        }
+        return items;
+    }
+
+    private static RecordingItem buildCompletedItem(JSONObject record, JSONObject file, long recordingId, List<Long> relatedRecordingIds, List<String> relatedPaths) {
+        String path = file.optString("path", "");
+        String name = file.optString("name", "");
+        String poster = preferRecordValue(record, "poster", file.optString("poster", ""));
+        if (poster == null || poster.trim().isEmpty()) {
+            poster = preferRecordValue(record, "epg_poster", file.optString("epg_poster", ""));
+        }
+        return new RecordingItem(
+                path.isEmpty() ? name : path,
+                name,
+                path,
+                file.optLong("size", record == null ? 0L : record.optLong("file_size_bytes", 0L)),
+                file.optString("modified", record == null ? "" : record.optString("updated_at", "")),
+                preferRecordValue(record, "channel_name", file.optString("channel_name", "")),
+                preferRecordValue(record, "program_title", file.optString("program_title", "")),
+                poster,
+                preferRecordValue(record, "description", file.optString("description", "")),
+                "completed",
+                record == null ? "" : record.optString("start_time", ""),
+                record == null ? "" : record.optString("end_time", ""),
+                true,
+                recordingId,
+                relatedRecordingIds,
+                relatedPaths
+        );
+    }
+
+    private static String completedRecordingKey(JSONObject record) {
+        String outputPath = record.optString("output_path", "").trim().toLowerCase(Locale.US);
+        if (!outputPath.isEmpty()) {
+            return "path:" + outputPath;
+        }
+        return "meta:"
+                + record.optString("channel_name", "").trim().toLowerCase(Locale.US) + "|"
+                + record.optString("program_title", "").trim().toLowerCase(Locale.US) + "|"
+                + record.optString("start_time", "").trim() + "|"
+                + record.optString("end_time", "").trim();
+    }
+
+    private static String preferRecordValue(JSONObject record, String key, String fallback) {
+        String value = record == null ? "" : record.optString(key, "");
+        return value == null || value.trim().isEmpty() ? fallback : value;
+    }
+
+    private static JSONObject chooseOutputPathMatch(List<JSONObject> files, String outputPath) {
+        if (outputPath == null || outputPath.trim().isEmpty()) {
+            return null;
+        }
+        List<JSONObject> matches = new ArrayList<>();
+        String outputName = fileName(outputPath);
+        for (JSONObject file : files) {
+            String path = file.optString("path", "");
+            String name = file.optString("name", "");
+            if (outputPath.equals(path) || outputName.equals(name) || outputName.equals(fileName(path))) {
+                matches.add(file);
+            }
+        }
+        return choosePreferredFile(matches, outputPath);
+    }
+
+    private static JSONObject choosePreferredFile(List<JSONObject> candidates, String outputPath) {
+        JSONObject best = null;
+        int bestScore = Integer.MIN_VALUE;
+        if (candidates == null) {
+            return null;
+        }
+        for (JSONObject candidate : candidates) {
+            String path = candidate.optString("path", candidate.optString("name", ""));
+            int score = artifactPreference(path, outputPath);
+            if (best == null || score > bestScore) {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    static int artifactPreference(String path, String outputPath) {
+        String normalized = path == null ? "" : path.trim().toLowerCase(Locale.US);
+        String expected = outputPath == null ? "" : outputPath.trim().toLowerCase(Locale.US);
+        int score = !expected.isEmpty() && normalized.equals(expected) ? 100 : 0;
+        if (normalized.endsWith(".web.mp4")) {
+            score += 70;
+        } else if (normalized.endsWith(".mp4")) {
+            score += 55;
+        } else if (normalized.endsWith(".mkv")) {
+            score += 40;
+        } else if (normalized.endsWith(".ts")) {
+            score += 30;
+        }
+        if (normalized.contains(".merge.")) {
+            score -= 120;
+        }
+        return score;
+    }
+
+    private static String legacyArtifactKey(String value) {
+        String name = fileName(value == null ? "" : value).toLowerCase(Locale.US);
+        name = name.replaceAll("(?i)\\.merge\\.[^.]+(?=\\.[^.]+$)", "");
+        name = name.replaceAll("(?i)\\.part\\.[^.]+(?=\\.[^.]+$)", "");
+        name = name.replaceAll("(?i)\\.web(?=\\.mp4$)", "");
+        return name;
+    }
+
+    private static String fileName(String value) {
+        if (value == null) {
+            return "";
+        }
+        int slash = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        return slash >= 0 ? value.substring(slash + 1) : value;
     }
 
     RecordingsResult fetchScheduledRecordings() throws Exception {
@@ -141,10 +379,13 @@ final class RecordingsRepository {
                         channelName,
                         programTitle,
                         record.optString("poster", ""),
+                        record.optString("description", ""),
                         status,
                         record.optString("start_time", ""),
                         endTime,
-                        false
+                        false,
+                        record.optLong("id", 0L),
+                        null
                 ));
             }
         }
@@ -210,6 +451,71 @@ final class RecordingsRepository {
                 jsonHeaders(false)
         );
         httpClient.requireSuccess(response, "cancelando grabacion programada");
+    }
+
+    void stopScheduledRecording(String recordingId) throws Exception {
+        if (recordingId == null || recordingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("recording id vacio");
+        }
+        HttpClient.Response response = httpClient.postJson(
+                baseUrl + "/api/recordings/stop?id=" + URLEncoder.encode(recordingId.trim(), "UTF-8"),
+                new JSONObject(),
+                10000,
+                15000,
+                jsonHeaders(true)
+        );
+        httpClient.requireSuccess(response, "parando grabacion activa");
+    }
+
+    void deleteCompletedRecording(long recordingId) throws Exception {
+        if (recordingId <= 0L) {
+            throw new IllegalArgumentException("recording id invalido");
+        }
+        HttpClient.Response response = httpClient.delete(
+                baseUrl + "/api/recordings/completed?id=" + recordingId,
+                10000,
+                20000,
+                jsonHeaders(false)
+        );
+        httpClient.requireSuccess(response, "eliminando grabacion completada");
+    }
+
+    void deleteCompletedRecordings(List<Long> recordingIds) throws Exception {
+        if (recordingIds == null || recordingIds.isEmpty()) {
+            throw new IllegalArgumentException("recording ids vacios");
+        }
+        for (Long recordingId : recordingIds) {
+            if (recordingId != null && recordingId > 0L) {
+                deleteCompletedRecording(recordingId);
+            }
+        }
+    }
+
+    void deleteLegacyCompletedRecordings(List<String> paths) throws Exception {
+        if (paths == null || paths.isEmpty()) {
+            throw new IllegalArgumentException("rutas de grabacion vacias");
+        }
+        StringBuilder url = new StringBuilder(baseUrl).append("/api/recordings/completed");
+        boolean first = true;
+        for (String path : paths) {
+            if (path == null || path.trim().isEmpty()) {
+                continue;
+            }
+            url.append(first ? '?' : '&')
+                    .append("path=")
+                    .append(URLEncoder.encode(fileName(path.trim()), "UTF-8"));
+            first = false;
+        }
+        if (first) {
+            throw new IllegalArgumentException("rutas de grabacion vacias");
+        }
+        HttpClient.Response response = httpClient.delete(
+                url.toString(),
+                10000,
+                20000,
+                jsonHeaders(false)
+        );
+        httpClient.requireSuccess(response, "eliminando grabacion antigua");
     }
 
     void updateScheduledRecording(String recordingId, String startTime, String endTime) throws Exception {
@@ -294,6 +600,10 @@ final class RecordingsRepository {
         if (token != null && !token.trim().isEmpty()) {
             headers.put("Authorization", "Bearer " + token.trim());
             headers.put("X-DRBEP-Access-Token", token.trim());
+        }
+        String deviceId = snapshotStore == null ? "" : snapshotStore.getDeviceId();
+        if (deviceId != null && !deviceId.trim().isEmpty()) {
+            headers.put("X-DRBEP-Device-Id", deviceId.trim());
         }
         return headers;
     }

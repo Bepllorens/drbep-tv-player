@@ -8,6 +8,7 @@ final class PlaybackModeStore {
     static final String MODE_AUTO = "auto";
     static final String MODE_DIRECT = "direct";
     static final String MODE_PROXY = "proxy";
+    static final String MODE_COMPAT = "compat";
 
     private final SharedPreferences prefs;
     private final String preferenceKey;

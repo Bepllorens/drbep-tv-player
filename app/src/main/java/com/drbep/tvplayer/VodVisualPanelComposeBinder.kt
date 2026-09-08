@@ -68,7 +68,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(Color(0xCC000000)),
+            .background(OfflineTvTheme.Colors.overlayScrim),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -76,7 +76,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
                 .fillMaxWidth(if (compact) 0.94f else 0.96f)
                 .fillMaxHeight(if (compact) 0.94f else 0.91f)
                 .clip(RoundedCornerShape(if (compact) 20.dp else 28.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xF21B2635), Color(0xF20A1018))))
+                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
                 .padding(if (compact) 14.dp else 20.dp)
         ) {
             BasicText(
@@ -88,7 +88,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
             Spacer(modifier = Modifier.height(5.dp))
             BasicText(
                 text = model.subtitle,
-                style = TextStyle(color = Color(0xFFC4D2E3), fontSize = if (compact) 12.sp else 14.sp),
+                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -110,7 +110,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     BasicText(
                         text = model.emptyLabel,
-                        style = TextStyle(color = Color(0xFFC4D2E3), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     )
                 }
             } else {
@@ -131,8 +131,8 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
 @OptIn(ExperimentalFoundationApi::class)
 private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean, focusRequester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
-    val background = if (focused) Color(0xFFFFD782) else if (action.filter) Color(0xFF235D78) else Color(0xFF263645)
-    val textColor = if (focused) Color(0xFF111820) else Color.White
+    val background = if (focused) OfflineTvTheme.Colors.focus else if (action.filter) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.chip
+    val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
     Box(
         modifier = Modifier
             .height(if (compact) 38.dp else 42.dp)
@@ -141,7 +141,7 @@ private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean
             .background(background)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action.onClick != null)
+            .tvButtonSemantics(action.onClick != null, action.label)
             .combinedClickable(enabled = action.onClick != null, onClick = { action.onClick?.run() })
             .padding(horizontal = if (compact) 10.dp else 12.dp),
         contentAlignment = Alignment.Center
@@ -168,7 +168,7 @@ private fun VodVisualSection(section: VodVisualSectionUiModel, imageBinder: VodV
             Spacer(modifier = Modifier.height(3.dp))
             BasicText(
                 text = section.subtitle,
-                style = TextStyle(color = Color(0xFF91A9C1), fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium),
+                style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -186,11 +186,19 @@ private fun VodVisualSection(section: VodVisualSectionUiModel, imageBinder: VodV
 @OptIn(ExperimentalFoundationApi::class)
 private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPosterImageBinder, compact: Boolean) {
     var focused by remember { mutableStateOf(false) }
+    val dense = item.compactCard
     Column(
         modifier = Modifier
             .width(if (compact) 124.dp else 150.dp)
+            .height(
+                if (dense) {
+                    if (compact) 244.dp else 282.dp
+                } else {
+                    if (compact) 272.dp else 326.dp
+                }
+            )
             .clip(RoundedCornerShape(16.dp))
-            .background(if (focused) Color(0xFF314966) else Color(0xFF172332))
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent {
                 if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU) {
@@ -200,14 +208,23 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                     false
                 }
             }
-            .tvButtonSemantics(item.onClick != null)
+            .tvButtonSemantics(
+                item.onClick != null,
+                listOf(item.title, item.meta, item.progressLabel).filter { it.isNotBlank() }.joinToString(". ")
+            )
             .combinedClickable(enabled = item.onClick != null, onClick = { item.onClick?.run() }, onLongClick = item.onMenu?.let { { it.run() } })
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 150.dp else 184.dp)
+                .height(
+                    if (dense) {
+                        if (compact) 108.dp else 136.dp
+                    } else {
+                        if (compact) 150.dp else 184.dp
+                    }
+                )
                 .clip(RoundedCornerShape(12.dp)),
             factory = { context ->
                 FrameLayout(context).apply {
@@ -215,7 +232,7 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                     addView(
                         AppCompatImageView(context).apply {
                             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            scaleType = ImageView.ScaleType.FIT_CENTER
                             contentDescription = null
                         }
                     )
@@ -225,34 +242,60 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                 imageBinder.bind(frame.getChildAt(0) as ImageView, item)
             }
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(if (dense) 6.dp else 8.dp))
         BasicText(
             text = item.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (dense) { if (compact) 36.dp else 38.dp } else { if (compact) 32.dp else 36.dp }),
             style = TextStyle(color = Color.White, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
-        if (item.meta.isNotBlank()) {
-            Spacer(modifier = Modifier.height(4.dp))
-            BasicText(
-                text = item.meta,
-                style = TextStyle(color = Color(0xFFB9C7D6), fontSize = if (compact) 10.sp else 11.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (item.progressLabel.isNotBlank()) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF2C6B58))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
+        Spacer(modifier = Modifier.height(if (dense) 3.dp else 4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (dense) { if (compact) 36.dp else 38.dp } else { if (compact) 28.dp else 32.dp })
+        ) {
+            if (item.meta.isNotBlank()) {
                 BasicText(
-                    text = item.progressLabel,
-                    style = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    text = item.meta,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = TextStyle(
+                        color = OfflineTvTheme.Colors.textSoft,
+                        fontSize = if (compact) 10.sp else 11.sp,
+                        lineHeight = if (compact) 13.sp else 14.sp
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
+            }
+        }
+        Spacer(modifier = Modifier.height(if (dense) 4.dp else 6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (dense) 24.dp else 28.dp),
+            contentAlignment = Alignment.TopStart
+        ) {
+            if (item.progressLabel.isNotBlank()) {
+                val badgeFill = when (item.badgeTone) {
+                    "available" -> OfflineTvTheme.Colors.statusLive
+                    "finished" -> Color(0xFF46515D)
+                    else -> Color(0xFF2C6B58)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(badgeFill)
+                        .padding(horizontal = 8.dp, vertical = if (dense) 3.dp else 4.dp)
+                ) {
+                    BasicText(
+                        text = item.progressLabel,
+                        style = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    )
+                }
             }
         }
     }

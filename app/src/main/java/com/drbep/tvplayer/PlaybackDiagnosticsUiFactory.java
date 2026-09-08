@@ -42,32 +42,48 @@ final class PlaybackDiagnosticsUiFactory {
     }
 
     static PlaybackDiagnosticsPanelUiModel buildCurrent(PlayerController.PlaybackDiagnostics diagnostics, ChannelItem currentChannel, PlaybackDiagnosticsStore.ErrorRecord storedError, Host host) {
+        PlaybackGuidancePolicy.Result guidance = PlaybackGuidancePolicy.evaluate(diagnostics, storedError);
         if (diagnostics == null || (isBlank(diagnostics.channelName) && isBlank(diagnostics.targetUrl))) {
-            String message = host.text(R.string.diagnostics_none);
             List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
-            rows.add(new PlaybackDiagnosticsRowUiModel(host.text(R.string.title_playback_diagnostics), "Estado", message, "warn"));
+            addGuidanceRows(rows, guidance);
             if (storedError != null) {
-                message = message + "\n\n" + host.text(R.string.diagnostics_persistent_error, storedError.shortLabel());
                 rows.add(new PlaybackDiagnosticsRowUiModel(host.text(R.string.title_playback_diagnostics), "Fallo guardado", storedError.shortLabel(), "error"));
             }
             return new PlaybackDiagnosticsPanelUiModel(
                     host.text(R.string.title_playback_diagnostics),
                     currentChannel == null ? "" : host.displayName(currentChannel),
-                    message,
+                    guidance.headline + "\n" + guidance.explanation,
                     rows,
                     Collections.emptyList(),
-                    buildPrimaryActions(currentChannel, host)
+                    buildPrimaryActions(currentChannel, guidance, host)
             );
         }
 
         StringBuilder message = new StringBuilder();
         List<PlaybackDiagnosticsRowUiModel> rows = new ArrayList<>();
+        addGuidanceRows(rows, guidance);
         appendLine(message, host.text(R.string.diagnostics_channel, host.safeText(diagnostics.channelName)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Canal", host.safeText(diagnostics.channelName), ""));
         appendLine(message, host.text(R.string.diagnostics_state, host.safeText(diagnostics.playbackState)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Estado", host.safeText(diagnostics.playbackState), ""));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Fase", host.fallbackUnknown(diagnostics.playbackPhase), phaseTone(diagnostics.playbackPhase)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Sesion", host.fallbackUnknown(diagnostics.sessionState), phaseTone(diagnostics.playbackPhase)));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Transiciones", String.valueOf(diagnostics.sessionTransitionCount), ""));
         rows.add(new PlaybackDiagnosticsRowUiModel("Reproduccion", "Intento", String.valueOf(diagnostics.attemptGeneration), ""));
+        String networkAvailability = host.text(diagnostics.networkAvailable
+                ? R.string.diagnostics_network_available
+                : R.string.diagnostics_network_unavailable);
+        String networkValidation = host.text(diagnostics.networkValidated
+                ? R.string.diagnostics_network_validated
+                : R.string.diagnostics_network_unvalidated);
+        rows.add(new PlaybackDiagnosticsRowUiModel(
+                "Red",
+                "Conexion",
+                networkAvailability + " · " + networkValidation,
+                diagnostics.networkAvailable ? "ok" : "error"
+        ));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Red", "Transporte", host.fallbackUnknown(diagnostics.networkTransport), ""));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Red", "Recuperaciones", String.valueOf(diagnostics.networkRecoveryAttempts), diagnostics.networkRecoveryAttempts > 0 ? "warn" : ""));
         rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Prepare", diagnostics.prepareElapsedMs + " ms", timingTone(diagnostics.prepareElapsedMs, 8_000L)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Ready", diagnostics.readyElapsedMs + " ms", timingTone(diagnostics.readyElapsedMs, 5_000L)));
         rows.add(new PlaybackDiagnosticsRowUiModel("Tiempos", "Buffering", diagnostics.bufferingCount + " / " + diagnostics.bufferingTotalMs + " ms", diagnostics.bufferingCount > 1 ? "warn" : ""));
@@ -132,16 +148,17 @@ final class PlaybackDiagnosticsUiFactory {
         appendLine(message, host.text(R.string.diagnostics_actions_hint));
 
         List<String> notes = new ArrayList<>();
+        notes.add("Que hacer ahora: " + guidance.nextStep);
         notes.add(host.text(R.string.diagnostics_recommendation, recommendation));
         notes.add(host.text(R.string.diagnostics_recent, host.recentSummary()));
         notes.add(host.text(R.string.diagnostics_actions_hint));
         return new PlaybackDiagnosticsPanelUiModel(
                 host.text(R.string.title_playback_diagnostics),
                 host.safeText(diagnostics.channelName),
-                message.toString().trim(),
+                guidance.headline + "\n" + guidance.explanation,
                 rows,
                 notes,
-                buildPrimaryActions(currentChannel, host)
+                buildPrimaryActions(currentChannel, guidance, host)
         );
     }
 
@@ -206,20 +223,33 @@ final class PlaybackDiagnosticsUiFactory {
         );
     }
 
-    private static List<TvMessageActionUiModel> buildPrimaryActions(ChannelItem currentChannel, Host host) {
+    private static List<TvMessageActionUiModel> buildPrimaryActions(ChannelItem currentChannel, PlaybackGuidancePolicy.Result guidance, Host host) {
         List<TvMessageActionUiModel> actions = new ArrayList<>();
-        actions.add(new TvMessageActionUiModel(host.text(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route), false, () -> {
-            if (currentChannel == null) {
-                host.retryCurrentPlayback();
-            } else {
-                host.retryWithNextRoute(currentChannel);
-            }
-        }));
+        if (PlaybackGuidancePolicy.ACTION_RETRY.equals(guidance.primaryAction)) {
+            actions.add(new TvMessageActionUiModel(host.text(R.string.diagnostics_action_retry), false, host::retryCurrentPlayback));
+        } else if (PlaybackGuidancePolicy.ACTION_NEXT_ROUTE.equals(guidance.primaryAction)) {
+            actions.add(new TvMessageActionUiModel(host.text(currentChannel == null ? R.string.diagnostics_action_retry : R.string.diagnostics_action_retry_next_route), false, () -> {
+                if (currentChannel == null) {
+                    host.retryCurrentPlayback();
+                } else {
+                    host.retryWithNextRoute(currentChannel);
+                }
+            }));
+        }
         if (currentChannel != null) {
             actions.add(new TvMessageActionUiModel(host.text(R.string.diagnostics_action_more), false, () -> host.showActions(currentChannel)));
         }
         actions.add(new TvMessageActionUiModel(host.text(R.string.dialog_close), false, null));
         return actions;
+    }
+
+    private static void addGuidanceRows(List<PlaybackDiagnosticsRowUiModel> rows, PlaybackGuidancePolicy.Result guidance) {
+        if (rows == null || guidance == null) {
+            return;
+        }
+        rows.add(new PlaybackDiagnosticsRowUiModel("Diagnostico guiado", "Resultado", guidance.headline, guidance.level));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Diagnostico guiado", "Que ocurre", guidance.explanation, guidance.level));
+        rows.add(new PlaybackDiagnosticsRowUiModel("Diagnostico guiado", "Siguiente paso", guidance.nextStep, ""));
     }
 
     private static void appendLine(StringBuilder builder, String line) {

@@ -1262,6 +1262,14 @@ final class CatalogRepository {
         }
     }
 
+    com.bumptech.glide.load.model.GlideUrl privateVodPoster(String query) {
+        com.bumptech.glide.load.model.LazyHeaders.Builder headers = new com.bumptech.glide.load.model.LazyHeaders.Builder();
+        for (Map.Entry<String, String> entry : authenticatedVodHeaders().entrySet()) {
+            if (!entry.getKey().equals("Accept")) headers.addHeader(entry.getKey(), entry.getValue());
+        }
+        return new com.bumptech.glide.load.model.GlideUrl(vodApiBaseUrl() + "/api/vod/private/hbomax/poster?" + query, headers.build());
+    }
+
     JSONObject fetchPrivateVodMetadata(String query) throws Exception {
         String path = "/api/vod/private/hbomax";
         if (query != null && !query.isEmpty()) path += "/catalog?" + query;

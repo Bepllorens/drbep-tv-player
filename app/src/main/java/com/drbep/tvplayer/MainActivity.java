@@ -11216,6 +11216,26 @@ public class MainActivity extends FragmentActivity {
                         new TvTextInputFieldUiModel("Título", value, false, false)),
                         values -> submit.accept(values.isEmpty() ? "" : values.get(0)), back, null));
             }
+            public void cards(String title, String message, List<PrivateVodBrowser.Card> cards, List<String> labels, List<Runnable> actions, Runnable back) {
+                prepareModalSurface();
+                final Dialog[] holder = new Dialog[1];
+                ComposeView view = new ComposeView(MainActivity.this);
+                attachDialogViewTreeOwners(view);
+                PrivateVodCardsBinder.bind(view, title, message, cards, labels, actions,
+                        action -> dismissModalForNextAction(holder[0], action),
+                        (image, query) -> {
+                            if (query.equals(image.getTag())) return;
+                            image.setTag(query);
+                            Glide.with(image).load(catalogRepository.privateVodPoster(query))
+                                    .override(192, 300).fitCenter().diskCacheStrategy(DiskCacheStrategy.NONE)
+                                    .skipMemoryCache(true).placeholder(new android.graphics.drawable.ColorDrawable(0xFF223247))
+                                    .error(new android.graphics.drawable.ColorDrawable(0xFF223247)).into(image);
+                        });
+                holder[0] = ComposeDialogHost.showFullscreen(MainActivity.this, view, () -> {
+                    if (back != null) postUiIfAlive(back);
+                }, MainActivity.this::handleModalDismissed);
+                handleModalShown();
+            }
             public void ui(Runnable action) { postUiIfAlive(action); }
         }, catalogRepository::fetchPrivateVodMetadata, interactiveExecutor);
         privateVodBrowser.open(onBack);

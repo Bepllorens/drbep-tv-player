@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 544
-        versionName "2.0.544-beta-private-vod-browser"
+        versionCode 545
+        versionName "2.0.545-beta-private-vod-cards"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

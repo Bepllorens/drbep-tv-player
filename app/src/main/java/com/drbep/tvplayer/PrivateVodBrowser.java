@@ -15,6 +15,16 @@ final class PrivateVodBrowser {
         void show(String title, String message, List<String> labels, List<Runnable> actions, Runnable back);
         void search(String value, Consumer<String> submit, Runnable back);
         void ui(Runnable action);
+        default void cards(String title, String message, List<Card> cards, List<String> labels, List<Runnable> actions, Runnable back) {
+            show(title, message, labels, actions, back);
+        }
+    }
+    static final class Card {
+        final String title, synopsis, posterQuery;
+        final Runnable action;
+        Card(String title, String synopsis, String posterQuery, Runnable action) {
+            this.title = title; this.synopsis = synopsis; this.posterQuery = posterQuery; this.action = action;
+        }
     }
     interface Source { JSONObject get(String query) throws Exception; }
     private final Host host;
@@ -76,6 +86,7 @@ final class PrivateVodBrowser {
             JSONArray items = result.optJSONArray("items");
             if (items == null || items.length() > 40) { error("Página de catálogo no válida."); return; }
             List<String> labels = new ArrayList<>(); List<Runnable> actions = new ArrayList<>();
+            List<Card> cards = new ArrayList<>();
             Runnable current = () -> page(kind, series, title, query, previous, parent);
             labels.add("Buscar" + (query.isEmpty() ? "" : ": " + query));
             actions.add(() -> host.search(query, text -> page(kind, series, title, text.trim(), new ArrayList<>(), parent), current));
@@ -85,7 +96,7 @@ final class PrivateVodBrowser {
                 if (row == null || row.optString("id").isEmpty()) continue;
                 String name = row.optString("title", "Sin título");
                 if (kind.equals("episode")) name = "T"+row.optInt("season")+" · E"+row.optInt("episode")+" — "+name;
-                labels.add(name);
+                int actionIndex = actions.size();
                 if (kind.equals("series")) {
                     actions.add(() -> page("episode", row.optString("id"), row.optString("title", "Serie"), "", new ArrayList<>(), current));
                 } else {
@@ -97,6 +108,10 @@ final class PrivateVodBrowser {
                             + "\n\nSolo consulta. Reproducción aún no habilitada.";
                     actions.add(() -> host.show(itemTitle, text, Arrays.asList("Volver al catálogo"), Arrays.asList(current), current));
                 }
+                Runnable itemAction = actions.remove(actionIndex);
+                JSONObject summary = synopses == null ? null : synopses.optJSONObject(row.optString("id"));
+                String poster = "revision="+enc(revision)+"&kind="+kind+"&id="+enc(row.optString("id"));
+                cards.add(new Card(name, summary == null ? "" : summary.optString("text"), poster, itemAction));
             }
             String next = result.optString("next");
             if (!next.isEmpty() && !next.equals(after) && previous.size() < 1000) {
@@ -107,8 +122,8 @@ final class PrivateVodBrowser {
                 List<String> prior = new ArrayList<>(previous); prior.remove(prior.size()-1);
                 labels.add("Página anterior"); actions.add(() -> page(kind, series, title, query, prior, parent));
             }
-            host.show("HBO Max · " + title, "Página " + (previous.size()+1) + " · " + items.length()
-                    + " elementos · Catálogo en pruebas", labels, actions, parent);
+            host.cards("HBO Max · " + title, "Página " + (previous.size()+1) + " · " + items.length()
+                    + " elementos · Solo consulta", cards, labels, actions, parent);
         }, parent);
     }
 }

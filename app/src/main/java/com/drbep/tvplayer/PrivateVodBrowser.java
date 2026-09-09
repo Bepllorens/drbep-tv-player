@@ -15,6 +15,7 @@ final class PrivateVodBrowser {
         void show(String title, String message, List<String> labels, List<Runnable> actions, Runnable back);
         void search(String value, Consumer<String> submit, Runnable back);
         void ui(Runnable action);
+        default void dismiss() {}
         default void cards(String title, String message, List<Card> cards, List<String> labels, List<Runnable> actions, Runnable back) {
             show(title, message, labels, actions, back);
         }
@@ -37,7 +38,7 @@ final class PrivateVodBrowser {
     PrivateVodBrowser(Host host, Source source, ExecutorService executor) {
         this.host = host; this.source = source; this.executor = executor;
     }
-    void close() { generation++; if (pending != null) pending.cancel(true); pending = null; }
+    void close() { generation++; if (pending != null) pending.cancel(true); pending = null; host.dismiss(); }
     void open(Runnable back) {
         exit = () -> { close(); if (back != null) back.run(); };
         load("HBO Max", "", descriptor -> {

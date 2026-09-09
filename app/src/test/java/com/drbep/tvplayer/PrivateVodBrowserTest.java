@@ -15,6 +15,8 @@ public class PrivateVodBrowserTest {
         final BlockingQueue<Runnable> ui = new LinkedBlockingQueue<>();
         String message;
         int displays;
+        int dismisses;
+        public void dismiss() { dismisses++; }
         public void show(String title, String message, List<String> labels, List<Runnable> actions, Runnable back) {
             this.message = message; displays++;
         }
@@ -35,6 +37,7 @@ public class PrivateVodBrowserTest {
             browser.close();
             completion.run();
             assertEquals(1, host.displays);
+            assertTrue(host.dismisses >= 2);
         } finally { executor.shutdownNow(); }
     }
 

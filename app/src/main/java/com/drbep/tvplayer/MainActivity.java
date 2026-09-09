@@ -11207,16 +11207,28 @@ public class MainActivity extends FragmentActivity {
         if (catalogRepository == null) return;
         if (privateVodBrowser != null) privateVodBrowser.close();
         privateVodBrowser = new PrivateVodBrowser(new PrivateVodBrowser.Host() {
+            private Dialog ownedDialog;
+            public void dismiss() {
+                if (ownedDialog != null && ownedDialog.isShowing()) {
+                    beginModalTransition(null);
+                    ownedDialog.dismiss();
+                    finishModalTransitionAfterDelay();
+                }
+                ownedDialog = null;
+            }
             public void show(String title, String message, List<String> labels, List<Runnable> actions, Runnable back) {
-                showTvOptionsDialog(title, message, labels, actions, back);
+                dismiss();
+                ownedDialog = showTvOptionsDialog(title, message, labels, actions, back, null);
             }
             public void search(String value, java.util.function.Consumer<String> submit, Runnable back) {
-                showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar en HBO Max", "Busca en el catálogo del servidor",
+                dismiss();
+                ownedDialog = showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar en HBO Max", "Busca en el catálogo del servidor",
                         "Buscar", "Cancelar", "", java.util.Collections.singletonList(
                         new TvTextInputFieldUiModel("Título", value, false, false)),
                         values -> submit.accept(values.isEmpty() ? "" : values.get(0)), back, null));
             }
             public void cards(String title, String message, List<PrivateVodBrowser.Card> cards, List<String> labels, List<Runnable> actions, Runnable back) {
+                dismiss();
                 prepareModalSurface();
                 final Dialog[] holder = new Dialog[1];
                 ComposeView view = new ComposeView(MainActivity.this);
@@ -11232,8 +11244,11 @@ public class MainActivity extends FragmentActivity {
                                     .error(new android.graphics.drawable.ColorDrawable(0xFF223247)).into(image);
                         });
                 holder[0] = ComposeDialogHost.showFullscreen(MainActivity.this, view, () -> {
+                    beginModalTransition(null);
                     if (back != null) postUiIfAlive(back);
+                    finishModalTransitionAfterDelay();
                 }, MainActivity.this::handleModalDismissed);
+                ownedDialog = holder[0];
                 handleModalShown();
             }
             public void ui(Runnable action) { postUiIfAlive(action); }
@@ -16589,9 +16604,9 @@ public class MainActivity extends FragmentActivity {
         handleModalShown();
     }
 
-    private void showTvTextInputPanel(TvTextInputPanelUiModel model) {
+    private Dialog showTvTextInputPanel(TvTextInputPanelUiModel model) {
         if (model == null) {
-            return;
+            return null;
         }
         prepareModalSurface();
         final Dialog[] dialogHolder = new Dialog[1];
@@ -16624,6 +16639,7 @@ public class MainActivity extends FragmentActivity {
         }, this::handleModalDismissed);
         dialogHolder[0] = dialog;
         handleModalShown();
+        return dialog;
     }
 
     private void showTvOptionsDialog(int titleResId, String message, List<String> options, List<Runnable> actions, Runnable onBack) {
@@ -16634,7 +16650,7 @@ public class MainActivity extends FragmentActivity {
         showTvOptionsDialog(title, message, options, actions, onBack, null);
     }
 
-    private void showTvOptionsDialog(String title, String message, List<String> options, List<Runnable> actions, Runnable onBack,
+    private Dialog showTvOptionsDialog(String title, String message, List<String> options, List<Runnable> actions, Runnable onBack,
             List<java.util.function.Consumer<ImageView>> artwork) {
         prepareModalSurface();
         final boolean[] navigationHandled = {false};
@@ -16682,6 +16698,7 @@ public class MainActivity extends FragmentActivity {
             });
         }
         handleModalShown();
+        return dialog;
     }
 
     private void maybeShowStartupHub() {

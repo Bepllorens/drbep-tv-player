@@ -40,3 +40,20 @@ a blue border and contrasting background without changing its dimensions.
 
 Compilation/unit tests passed; real-device appearance/performance still needs
 verification after update. Playback remains disabled. No backend restart required.
+
+## 546 — Owned modal lifecycle
+
+545 reproduced on Fire 192.168.93.164: five app windows accumulated, and Back from
+the regular VOD library exposed a stale private loading window. The private Host
+now owns its dialog and dismisses it before any replacement (loading, result,
+search, detail). Browser close/cancel also disposes its owned window; late request
+callbacks are still invalidated. Generic options/input builders return their dialog
+so ownership does not require dismissing unrelated app windows. Card Back uses the
+existing modal transition guard. Unit test checks cancellation invokes dismissal.
+
+546 installed with adb install -r on .164, retaining user data. Real-device checks:
+40 movie cards, page 2, Back through HBO/menu/library to home, LA 2 displaying video.
+ViewRootImpl stays at 2 in catalog and returns to 1 on TV (545 had 5). A second
+visit searched Batman, returned eight cards with artwork, and retained two windows.
+No FATAL EXCEPTION, ANR or OutOfMemoryError in the inspected logcat interval.
+This confirms the tested navigation path, not an exhaustive performance benchmark.

@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 543
-        versionName "2.0.543-beta-pluto-proxy-start"
+        versionCode 544
+        versionName "2.0.544-beta-private-vod-browser"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

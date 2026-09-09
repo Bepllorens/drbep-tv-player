@@ -8934,6 +8934,7 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onDestroy() {
+        if (privateVodBrowser != null) privateVodBrowser.close();
         activityDestroyed = true;
         if (startupSummaryRequests != null) startupSummaryRequests.close();
         rememberCurrentVodPosition();
@@ -11200,6 +11201,26 @@ public class MainActivity extends FragmentActivity {
         showVodVisualLibraryDialog(VodVisualTypeFilter.GENERAL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, "", onBack);
     }
 
+    private PrivateVodBrowser privateVodBrowser;
+
+    private void showPrivateVodBrowser(Runnable onBack) {
+        if (catalogRepository == null) return;
+        if (privateVodBrowser != null) privateVodBrowser.close();
+        privateVodBrowser = new PrivateVodBrowser(new PrivateVodBrowser.Host() {
+            public void show(String title, String message, List<String> labels, List<Runnable> actions, Runnable back) {
+                showTvOptionsDialog(title, message, labels, actions, back);
+            }
+            public void search(String value, java.util.function.Consumer<String> submit, Runnable back) {
+                showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar en HBO Max", "Busca en el catálogo del servidor",
+                        "Buscar", "Cancelar", "", java.util.Collections.singletonList(
+                        new TvTextInputFieldUiModel("Título", value, false, false)),
+                        values -> submit.accept(values.isEmpty() ? "" : values.get(0)), back, null));
+            }
+            public void ui(Runnable action) { postUiIfAlive(action); }
+        }, catalogRepository::fetchPrivateVodMetadata, interactiveExecutor);
+        privateVodBrowser.open(onBack);
+    }
+
     private void showVodLibraryMenuDialog() {
         showVodLibraryMenuDialog(null);
     }
@@ -11311,6 +11332,10 @@ public class MainActivity extends FragmentActivity {
                     }
                 }
         );
+        if ("beta".equals(BuildConfig.UPDATE_CHANNEL)) {
+            menu.options.add(0, "HBO Max · Catálogo en pruebas");
+            menu.actions.add(0, () -> showPrivateVodBrowser(returnToThisMenu));
+        }
         showTvOptionsDialog(R.string.tools_section_vod, menu.message, menu.options, menu.actions, onBack);
     }
 

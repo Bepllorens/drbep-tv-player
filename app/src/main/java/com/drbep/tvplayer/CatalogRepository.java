@@ -1262,6 +1262,13 @@ final class CatalogRepository {
         }
     }
 
+    JSONObject fetchPrivateVodMetadata(String query) throws Exception {
+        String path = "/api/vod/private/hbomax";
+        if (query != null && !query.isEmpty()) path += "/catalog?" + query;
+        return httpClient.getJsonObject(vodApiBaseUrl() + path, 10000, 15000,
+                authenticatedVodHeaders(), "catálogo privado");
+    }
+
     private Map<String, String> authenticatedVodHeaders() {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Accept", "application/json");

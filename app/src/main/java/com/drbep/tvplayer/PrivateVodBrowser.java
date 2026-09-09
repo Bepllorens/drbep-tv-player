@@ -80,17 +80,42 @@ final class PrivateVodBrowser {
     }
     private static String enc(String value) { return android.net.Uri.encode(value); }
     private void page(String kind, String series, String title, String query, List<String> previous, Runnable parent) {
+        page(kind, series, title, query, previous, parent, 0);
+    }
+    static String seasonLabel(int season) {
+        return season > 0 ? "Temporada " + season : "Todas las temporadas";
+    }
+    private void page(String kind, String series, String title, String query, List<String> previous, Runnable parent, int season) {
         String after = previous.isEmpty() ? "" : previous.get(previous.size()-1);
         String params = "revision="+enc(revision)+"&kind="+kind+"&series_id="+enc(series)
-                +"&q="+enc(query)+"&after="+enc(after)+"&order="+(kind.equals("episode") ? "episode" : "newest");
+                +"&q="+enc(query)+"&after="+enc(after)+"&season="+season+"&order="+(kind.equals("episode") ? "episode" : "newest");
         load(title, params, result -> {
             JSONArray items = result.optJSONArray("items");
             if (items == null || items.length() > 40) { error("Página de catálogo no válida."); return; }
             List<String> labels = new ArrayList<>(); List<Runnable> actions = new ArrayList<>();
             List<Card> cards = new ArrayList<>();
-            Runnable current = () -> page(kind, series, title, query, previous, parent);
+            Runnable current = () -> page(kind, series, title, query, previous, parent, season);
             labels.add("Buscar" + (query.isEmpty() ? "" : ": " + query));
-            actions.add(() -> host.search(query, text -> page(kind, series, title, text.trim(), new ArrayList<>(), parent), current));
+            actions.add(() -> host.search(query, text -> page(kind, series, title, text.trim(), new ArrayList<>(), parent, season), current));
+            JSONArray seasons = result.optJSONArray("seasons");
+            if (kind.equals("episode") && seasons != null && seasons.length() > 0) {
+                labels.add(seasonLabel(season));
+                actions.add(() -> {
+                    List<String> choices = new ArrayList<>();
+                    List<Runnable> select = new ArrayList<>();
+                    choices.add(seasonLabel(0));
+                    select.add(() -> page(kind, series, title, query, new ArrayList<>(), parent, 0));
+                    for (int index = 0; index < seasons.length(); index++) {
+                        JSONObject row = seasons.optJSONObject(index);
+                        if (row == null) continue;
+                        final int number = row.optInt("number");
+                        if (number < 1 || number > 10000) continue;
+                        choices.add(seasonLabel(number) + " · " + row.optInt("episodes") + " episodios");
+                        select.add(() -> page(kind, series, title, query, new ArrayList<>(), parent, number));
+                    }
+                    host.show(title, "Selecciona una temporada", choices, select, current);
+                });
+            }
             JSONObject synopses = result.optJSONObject("synopses");
             for (int i=0; i<items.length(); i++) {
                 JSONObject row = items.optJSONObject(i);
@@ -117,13 +142,13 @@ final class PrivateVodBrowser {
             String next = result.optString("next");
             if (!next.isEmpty() && !next.equals(after) && previous.size() < 1000) {
                 List<String> forward = new ArrayList<>(previous); forward.add(next);
-                labels.add("Página siguiente"); actions.add(() -> page(kind, series, title, query, forward, parent));
+                labels.add("Página siguiente"); actions.add(() -> page(kind, series, title, query, forward, parent, season));
             }
             if (!previous.isEmpty()) {
                 List<String> prior = new ArrayList<>(previous); prior.remove(prior.size()-1);
-                labels.add("Página anterior"); actions.add(() -> page(kind, series, title, query, prior, parent));
+                labels.add("Página anterior"); actions.add(() -> page(kind, series, title, query, prior, parent, season));
             }
-            host.cards("HBO Max · " + title, "Página " + (previous.size()+1) + " · " + items.length()
+            host.cards("HBO Max · " + title, (kind.equals("episode") ? seasonLabel(season) + " · " : "") + "Página " + (previous.size()+1) + " · " + items.length()
                     + " elementos · Solo consulta", cards, labels, actions, parent);
         }, parent);
     }

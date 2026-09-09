@@ -57,3 +57,18 @@ ViewRootImpl stays at 2 in catalog and returns to 1 on TV (545 had 5). A second
 visit searched Batman, returned eight cards with artwork, and retained two windows.
 No FATAL EXCEPTION, ANR or OutOfMemoryError in the inspected logcat interval.
 This confirms the tested navigation path, not an exhaustive performance benchmark.
+
+## 547 — Season filter
+
+Episode pages offer a season selector using server counts, plus All seasons.
+Search and next/previous retain the selected season; selecting a season resets
+the page cursor. Detail return retains it too. The series title stays in the
+header. Existing modal ownership is unchanged. No backend restart or full snapshot
+download. Playback remains a separate pending block.
+
+547 installed on Fire .164 retaining app data. Real check: 2 Dope Queens shows
+8 episodes across both seasons, then 4 in season 2. Returning from detail keeps
+season 2 and the series header. Back through the catalog to LA 2 displays live TV;
+window roots return from 2 to 1. No FATAL, ANR or OOM in the inspected log interval.
+Season pagination preservation is implemented but not exercised with a >40 episode
+season on device. Unit tests and signed release build passed.

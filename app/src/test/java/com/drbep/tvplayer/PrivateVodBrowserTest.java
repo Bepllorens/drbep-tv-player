@@ -11,6 +11,10 @@ import java.util.function.Consumer;
 import static org.junit.Assert.*;
 
 public class PrivateVodBrowserTest {
+    @Test public void labelsDistinguishAllFromOneSeason() {
+        assertEquals("Todas las temporadas", PrivateVodBrowser.seasonLabel(0));
+        assertEquals("Temporada 2", PrivateVodBrowser.seasonLabel(2));
+    }
     static final class Host implements PrivateVodBrowser.Host {
         final BlockingQueue<Runnable> ui = new LinkedBlockingQueue<>();
         String message;

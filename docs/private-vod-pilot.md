@@ -3,7 +3,7 @@
 Based on published stable/beta 543, commit 30f517f. Local macOS sources at version
 489 are stale and were not used. Isolated branch: codex/private-vod-browser.
 
-Beta builds expose **VOD > Más opciones > HBO Max · Catálogo en pruebas** through
+Beta builds expose **VOD > Vista lista > HBO Max · Catálogo en pruebas** through
 the existing VOD menu. The server must opt the user into
 DRBEP_PRIVATE_VOD_PREVIEW_USERS and require the ordinary VOD permission.
 The entry is beta-only; it is not evidence that an account is enabled.

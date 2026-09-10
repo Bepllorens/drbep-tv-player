@@ -11252,6 +11252,12 @@ public class MainActivity extends FragmentActivity {
                 handleModalShown();
             }
             public void ui(Runnable action) { postUiIfAlive(action); }
+            public void play(String id, String title, String kind, String posterQuery) {
+                if (privateVodBrowser != null) { privateVodBrowser.close(); privateVodBrowser = null; }
+                ChannelItem item = catalogRepository.buildHbomaxVodItem(id, title, kind, posterQuery);
+                if (item == null) return;
+                playVodItem(item, true);
+            }
         }, catalogRepository::fetchPrivateVodMetadata, interactiveExecutor);
         privateVodBrowser.open(onBack);
     }
@@ -11368,7 +11374,7 @@ public class MainActivity extends FragmentActivity {
                 }
         );
         if ("beta".equals(BuildConfig.UPDATE_CHANNEL)) {
-            menu.options.add(0, "HBO Max · Catálogo en pruebas");
+            menu.options.add(0, "HBO Max");
             menu.actions.add(0, () -> showPrivateVodBrowser(returnToThisMenu));
         }
         showTvOptionsDialog(R.string.tools_section_vod, menu.message, menu.options, menu.actions, onBack);
@@ -11643,6 +11649,10 @@ public class MainActivity extends FragmentActivity {
             actions.add(() -> openVodVisualPlatformSelection(candidate, typeFilter, statusFilter, sortFilter, query, onBack));
         }
         Runnable returnToVod = () -> showVodVisualLibraryDialog(typeFilter, currentPlatformFilter, statusFilter, sortFilter, query, onBack);
+        if ("beta".equals(BuildConfig.UPDATE_CHANNEL)) {
+            options.add("HBO Max");
+            actions.add(() -> showPrivateVodBrowser(returnToVod));
+        }
         showTvOptionsDialog(
                 R.string.vod_visual_platform_picker_title,
                 getString(R.string.vod_visual_platform_picker_message),
@@ -11887,6 +11897,17 @@ public class MainActivity extends FragmentActivity {
             @Override
             public void openListView() {
                 dismissModalForNextAction(dialogHolder[0], () -> showVodLibraryMenuDialog(() -> showVodVisualLibraryDialog(onBack)));
+            }
+
+            @Override
+            public boolean hboBrowserAvailable() {
+                return "beta".equals(BuildConfig.UPDATE_CHANNEL);
+            }
+
+            @Override
+            public void openHboBrowser() {
+                dismissModalForNextAction(dialogHolder[0], () -> showPrivateVodBrowser(
+                        () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, onBack)));
             }
 
             @Override

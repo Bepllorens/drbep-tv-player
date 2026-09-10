@@ -581,6 +581,9 @@ final class PlaybackRouteResolver {
         if (lower.contains("/api/vod/prime/manifest/")) {
             return MimeTypes.APPLICATION_MPD;
         }
+        if (lower.contains("/api/vod/hbomax/manifest/")) {
+            return MimeTypes.APPLICATION_MPD;
+        }
         if (lower.contains("/api/offline/u7d/movistar-ism/stream")
                 || lower.contains("/api/offline/u7d/orange/stream")) {
             if (lower.contains("/api/offline/u7d/movistar-ism/stream") && lower.contains("transport=buffered_hls")) {

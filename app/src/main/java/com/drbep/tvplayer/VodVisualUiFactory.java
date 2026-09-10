@@ -33,6 +33,8 @@ final class VodVisualUiFactory {
         }
         default void openPlexBrowser() {
         }
+        default boolean hboBrowserAvailable() { return false; }
+        default void openHboBrowser() { }
         List<ChannelItem> progressItems();
         List<ChannelItem> alphaItems();
         String displayName(ChannelItem item);
@@ -88,6 +90,9 @@ final class VodVisualUiFactory {
             Host host
     ) {
         List<VodVisualActionUiModel> actions = new ArrayList<>();
+        if (host.hboBrowserAvailable()) {
+            actions.add(new VodVisualActionUiModel("HBO Max", false, host::openHboBrowser));
+        }
         if (searchMode) {
             actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_edit_search), false, () -> host.editSearch(query)));
         }

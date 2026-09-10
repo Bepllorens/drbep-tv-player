@@ -12,6 +12,24 @@ import org.junit.Test;
 
 public class VodVisualUiFactoryTest {
     @Test
+    public void hboOpensDirectlyWithoutListAndIsHiddenWhenUnavailable() {
+        FakeHost host = new FakeHost();
+        host.hboAvailable = true;
+        VodVisualPanelUiModel model = VodVisualUiFactory.build(
+                MainActivity.VodVisualTypeFilter.ALL, MainActivity.VodVisualPlatformFilter.ALL,
+                MainActivity.VodVisualStatusFilter.ALL, MainActivity.VodVisualSortFilter.SMART,
+                "", host);
+        assertEquals("HBO Max", model.actions.get(0).label);
+        model.actions.get(0).onClick.run();
+        assertTrue(host.hboOpened);
+        host.hboAvailable = false;
+        model = VodVisualUiFactory.build(
+                MainActivity.VodVisualTypeFilter.ALL, MainActivity.VodVisualPlatformFilter.ALL,
+                MainActivity.VodVisualStatusFilter.ALL, MainActivity.VodVisualSortFilter.SMART,
+                "", host);
+        for (VodVisualActionUiModel action : model.actions) assertFalse("HBO Max".equals(action.label));
+    }
+    @Test
     public void defaultLibraryLimitsLargeSectionsAndShowsLimitedHint() {
         FakeHost host = new FakeHost();
         host.movistar = vodItems(60);
@@ -122,6 +140,10 @@ public class VodVisualUiFactoryTest {
     }
 
     private static final class FakeHost implements VodVisualUiFactory.Host {
+        boolean hboAvailable;
+        boolean hboOpened;
+        @Override public boolean hboBrowserAvailable() { return hboAvailable; }
+        @Override public void openHboBrowser() { hboOpened = true; }
         List<ChannelItem> filtered = Collections.emptyList();
         List<ChannelItem> filteredWithQuery = Collections.emptyList();
         List<ChannelItem> movistar = Collections.emptyList();

@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 547
-        versionName "2.0.547-beta-private-vod-seasons"
+        versionCode 549
+        versionName "2.0.549-beta-hbo-vod-navigation"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

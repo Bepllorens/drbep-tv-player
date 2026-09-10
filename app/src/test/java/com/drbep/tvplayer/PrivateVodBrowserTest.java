@@ -25,6 +25,7 @@ public class PrivateVodBrowserTest {
             this.message = message; displays++;
         }
         public void search(String value, Consumer<String> submit, Runnable back) {}
+        public void play(String provider, String revision, String assetId, String title) {}
         public void ui(Runnable action) { ui.add(action); }
     }
 

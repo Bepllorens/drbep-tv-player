@@ -1270,6 +1270,45 @@ final class CatalogRepository {
         return new com.bumptech.glide.load.model.GlideUrl(vodApiBaseUrl() + "/api/vod/private/hbomax/poster?" + query, headers.build());
     }
 
+    ChannelItem buildHbomaxVodItem(String id, String title, String kind, String posterQuery) {
+        String safeId = id == null ? "" : id.trim();
+        if (safeId.isEmpty()) {
+            return null;
+        }
+        String base = vodApiBaseUrl();
+        String encodedId = Uri.encode(safeId);
+        String playUrl = base + "/api/vod/hbomax/manifest/" + encodedId;
+        String licenseUrl = base + "/api/vod/hbomax/clearkey/" + encodedId;
+        String logo = (posterQuery == null || posterQuery.isEmpty())
+                ? ""
+                : base + "/api/vod/private/hbomax/poster?" + posterQuery;
+        String name = (title == null || title.trim().isEmpty()) ? "HBO Max" : title.trim();
+        String group = "episode".equals(kind) ? "HBO Max Episodios" : "HBO Max Peliculas";
+        return new ChannelItem(
+                "hbomax:" + safeId,
+                name,
+                "",
+                logo,
+                group,
+                playUrl,
+                "",
+                0,
+                0,
+                true,
+                false,
+                0,
+                "HBO Max",
+                new ArrayList<>(),
+                "clearkey",
+                licenseUrl,
+                "vod:hbomax",
+                true,
+                "",
+                "",
+                0L
+        );
+    }
+
     JSONObject fetchPrivateVodMetadata(String query) throws Exception {
         String path = "/api/vod/private/hbomax";
         if (query != null && !query.isEmpty()) path += "/catalog?" + query;

@@ -14,6 +14,7 @@ final class PrivateVodBrowser {
     interface Host {
         void show(String title, String message, List<String> labels, List<Runnable> actions, Runnable back);
         void search(String value, Consumer<String> submit, Runnable back);
+        void play(String id, String title, String kind, String posterQuery);
         void ui(Runnable action);
         default void dismiss() {}
         default void cards(String title, String message, List<Card> cards, List<String> labels, List<Runnable> actions, Runnable back) {
@@ -34,6 +35,7 @@ final class PrivateVodBrowser {
     private Future<?> pending;
     private int generation;
     private String revision = "";
+    private boolean playbackEnabled;
     private Runnable exit;
     PrivateVodBrowser(Host host, Source source, ExecutorService executor) {
         this.host = host; this.source = source; this.executor = executor;
@@ -43,6 +45,7 @@ final class PrivateVodBrowser {
         exit = () -> { close(); if (back != null) back.run(); };
         load("HBO Max", "", descriptor -> {
             revision = descriptor.optString("revision");
+            playbackEnabled = descriptor.optBoolean("playback_enabled");
             if (!revision.matches("[a-f0-9]{32}") || !descriptor.optBoolean("metadata_preview")) {
                 error("Respuesta de catálogo no válida."); return;
             }
@@ -50,7 +53,7 @@ final class PrivateVodBrowser {
         }, exit);
     }
     private void home() {
-        host.show("HBO Max · Catálogo en pruebas", "Solo metadatos. Reproducción aún no habilitada.",
+        host.show("HBO Max · Catálogo en pruebas", playbackEnabled ? "Catálogo en pruebas. Selecciona un título para reproducirlo." : "Solo metadatos. Reproducción aún no habilitada.",
                 Arrays.asList("Películas", "Series"), Arrays.asList(
                 () -> page("movie", "", "Películas", "", new ArrayList<>(), this::home),
                 () -> page("series", "", "Series", "", new ArrayList<>(), this::home)), exit);
@@ -123,11 +126,16 @@ final class PrivateVodBrowser {
                 String name = row.optString("title", "Sin título");
                 if (kind.equals("episode")) name = "T"+row.optInt("season")+" · E"+row.optInt("episode")+" — "+name;
                 int actionIndex = actions.size();
+                final String itemId = row.optString("id");
+                final String poster = "revision="+enc(revision)+"&kind="+kind+"&id="+enc(itemId);
                 if (kind.equals("series")) {
-                    actions.add(() -> page("episode", row.optString("id"), row.optString("title", "Serie"), "", new ArrayList<>(), current));
+                    actions.add(() -> page("episode", itemId, row.optString("title", "Serie"), "", new ArrayList<>(), current));
+                } else if (playbackEnabled) {
+                    final String itemTitle = name;
+                    actions.add(() -> host.play(itemId, itemTitle, kind, poster));
                 } else {
                     final String itemTitle = name;
-                    JSONObject synopsis = synopses == null ? null : synopses.optJSONObject(row.optString("id"));
+                    JSONObject synopsis = synopses == null ? null : synopses.optJSONObject(itemId);
                     final String text = (kind.equals("episode") ? title+"\n" : "")
                             + row.optString("air_date") + " · " + row.optLong("duration_seconds")/60 + " min\n\n"
                             + (synopsis == null ? "Sin sinopsis disponible." : synopsis.optString("text", "Sin sinopsis disponible."))
@@ -135,8 +143,7 @@ final class PrivateVodBrowser {
                     actions.add(() -> host.show(itemTitle, text, Arrays.asList("Volver al catálogo"), Arrays.asList(current), current));
                 }
                 Runnable itemAction = actions.remove(actionIndex);
-                JSONObject summary = synopses == null ? null : synopses.optJSONObject(row.optString("id"));
-                String poster = "revision="+enc(revision)+"&kind="+kind+"&id="+enc(row.optString("id"));
+                JSONObject summary = synopses == null ? null : synopses.optJSONObject(itemId);
                 cards.add(new Card(name, summary == null ? "" : summary.optString("text"), poster, itemAction));
             }
             String next = result.optString("next");
@@ -149,7 +156,7 @@ final class PrivateVodBrowser {
                 labels.add("Página anterior"); actions.add(() -> page(kind, series, title, query, prior, parent, season));
             }
             host.cards("HBO Max · " + title, (kind.equals("episode") ? seasonLabel(season) + " · " : "") + "Página " + (previous.size()+1) + " · " + items.length()
-                    + " elementos · Solo consulta", cards, labels, actions, parent);
+                    + " elementos" + (playbackEnabled ? "" : " · Solo consulta"), cards, labels, actions, parent);
         }, parent);
     }
 }

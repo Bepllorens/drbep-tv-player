@@ -3288,8 +3288,10 @@ public class MainActivity extends FragmentActivity {
         if (ch == null) {
             return;
         }
+        rememberCurrentVodPosition();
         long resumePositionMs = getVodResumePosition(ch.id);
         Runnable startFromBeginning = () -> {
+            if(ch.id.startsWith("hbomax:")){hboHistory().restart(ch.id);saveHboHistory();}
             clearVodResumePosition(ch.id);
             playChannelItemInternal(ch, autoPlay, 0L);
         };
@@ -7467,6 +7469,8 @@ public class MainActivity extends FragmentActivity {
             recentChannelsStore.mergeIds(jsonStringList(payload.optJSONArray("recents"), 50), namesById);
         }
 
+        hboHistory().merge(payload);
+        saveHboHistory();
         JSONObject progress = payload.optJSONObject("vod_progress");
         if (progress != null) {
             Map<String, Long> localPositions = new HashMap<>(vodResumePositions);
@@ -7477,6 +7481,7 @@ public class MainActivity extends FragmentActivity {
             java.util.Iterator<String> keys = progress.keys();
             while (keys.hasNext()) {
                 String id = keys.next();
+                if(id.startsWith("hbomax:"))continue;
                 JSONObject entry = progress.optJSONObject(id);
                 if (entry == null) {
                     continue;
@@ -7621,6 +7626,7 @@ public class MainActivity extends FragmentActivity {
             payload.put("series_continuity", remoteUserPreferences.optJSONObject("series_continuity") == null
                     ? new JSONObject()
                     : new JSONObject(remoteUserPreferences.optJSONObject("series_continuity").toString()));
+            hboHistory().exportInto(payload);
             if (remoteUserPreferences.optJSONObject("interface_preferences") != null) {
                 payload.put("interface_preferences", new JSONObject(remoteUserPreferences.optJSONObject("interface_preferences").toString()));
             }
@@ -11202,6 +11208,62 @@ public class MainActivity extends FragmentActivity {
     }
 
     private PrivateVodBrowser privateVodBrowser;
+    private HboWatchHistory hboHistory;
+    private String hboHistoryScope="";
+    private String hboPosterRevision="";
+    private final Set<String> hboNextLoading=new HashSet<>();
+
+    private synchronized HboWatchHistory hboHistory() {
+        String subject=catalogSnapshotStore==null?"":catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL).subject;
+        String scope="hbo_watch_history:"+(subject==null?"":subject);
+        if(hboHistory==null||!scope.equals(hboHistoryScope)) {
+            hboHistoryScope=scope; hboHistory=new HboWatchHistory();
+            hboHistory.load(prefs==null?"":prefs.getString(scope,""));
+            hboPosterRevision=prefs==null?"":prefs.getString(scope+":revision","");
+            for(ChannelItem cached:vodResumeItems.values()) {
+                if(cached==null||!cached.id.startsWith("hbomax:")||hboHistory.get(cached.id)!=null)continue;
+                try {
+                    hboHistory.remember(new JSONObject().put("id",HboWatchHistory.rawId(cached.id)).put("title",cached.name).put("kind","movie").put("duration_seconds",cached.vodDurationSeconds));
+                    hboHistory.record(cached.id,vodResumePositions.getOrDefault(cached.id,0L),cached.vodDurationSeconds*1000, vodResumeUpdatedAt.getOrDefault(cached.id,0L));
+                    if(hboPosterRevision.isEmpty()&&!cached.logoUrl.isEmpty()) {
+                        String revision=Uri.parse(cached.logoUrl).getQueryParameter("revision");
+                        if(revision!=null)hboPosterRevision=revision;
+                    }
+                }catch(Exception ignored){}
+            }
+        }
+        return hboHistory;
+    }
+    private void saveHboHistory() { HboWatchHistory history=hboHistory(); if(prefs!=null)prefs.edit().putString(hboHistoryScope,history.save()).putString(hboHistoryScope+":revision",hboPosterRevision).apply(); }
+    private ChannelItem hboItem(HboWatchHistory.Entry e) {
+        if(e==null||catalogRepository==null)return null;
+        String poster=hboPosterRevision.isEmpty()?"":"revision="+Uri.encode(hboPosterRevision)+"&kind="+e.kind+"&id="+Uri.encode(e.id);
+        return catalogRepository.buildHbomaxVodItem(e.id,e.label(),e.kind,poster,e.duration);
+    }
+    private List<ChannelItem> withHboContinue(List<ChannelItem> items) {
+        List<ChannelItem> result=new ArrayList<>();
+        for(HboWatchHistory.Entry e:hboHistory().continuing()){ChannelItem item=hboItem(e);if(item!=null)result.add(item);}
+        for(ChannelItem item:items)if(item!=null&&!item.id.startsWith("hbomax:"))result.add(item);
+        return result;
+    }
+    private void resolveNextHboEpisode(String id) {
+        HboWatchHistory history=hboHistory();
+        HboWatchHistory.Entry entry=history.get(id);
+        if(entry==null||entry.seriesId.isEmpty()||!hboNextLoading.add(id))return;
+        interactiveExecutor.execute(() -> {
+            JSONObject next=null; boolean succeeded=false;
+            try { next=catalogRepository.fetchNextHboEpisode(entry); succeeded=true; }
+            catch(Exception e){Log.w(TAG,"HBO next episode lookup unavailable");}
+            final JSONObject result=next; final boolean success=succeeded;
+            postUiIfAlive(() -> {
+                hboNextLoading.remove(id);
+                if(history!=hboHistory())return;
+                if(success)history.next(id,result);
+                saveHboHistory();scheduleUserPreferencePush();
+            });
+        });
+    }
+
 
     private void showPrivateVodBrowser(Runnable onBack) {
         if (catalogRepository == null) return;
@@ -11251,10 +11313,15 @@ public class MainActivity extends FragmentActivity {
                 ownedDialog = holder[0];
                 handleModalShown();
             }
+            public void remember(JSONObject metadata) { hboHistory().remember(metadata); saveHboHistory(); }
+            public String progress(String id) { return hboHistory().badge(id); }
             public void ui(Runnable action) { postUiIfAlive(action); }
             public void play(String id, String title, String kind, String posterQuery) {
                 if (privateVodBrowser != null) { privateVodBrowser.close(); privateVodBrowser = null; }
-                ChannelItem item = catalogRepository.buildHbomaxVodItem(id, title, kind, posterQuery);
+                hboPosterRevision=Uri.parse("https://local/?"+posterQuery).getQueryParameter("revision");
+                if(hboPosterRevision==null)hboPosterRevision="";
+                HboWatchHistory.Entry entry=hboHistory().get(id);
+                ChannelItem item = entry==null?catalogRepository.buildHbomaxVodItem(id, title, kind, posterQuery):hboItem(entry);
                 if (item == null) return;
                 playVodItem(item, true);
             }
@@ -16755,11 +16822,12 @@ public class MainActivity extends FragmentActivity {
         CatalogSnapshotStore.SnapshotStatus localStatus = catalogSnapshotStore == null ? null
                 : catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL);
         int localVodCount = Math.max(countItemsForQuickTarget("vod"), localStatus == null ? 0 : localStatus.vodCount);
-        StartupHubState localState = new StartupHubState(current, localContinue,
+        StartupHubState localState = new StartupHubState(current, withHboContinue(localContinue),
                 localVodCount, null, new ArrayList<>(), "", 0, 0,
                 new LinkedHashMap<>(epgProgramPairByChannelId));
         localState.refreshing = true;
         showStartupHubDialog(localState);
+        for(String pending:hboHistory().unresolved())resolveNextHboEpisode(pending);
         final long summaryGeneration = startupSummaryGate.current();
         final RequestCancellationScope requests = new RequestCancellationScope();
         startupSummaryRequests = requests;
@@ -16854,6 +16922,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> resolveStartupContinueVodItems() {
+        try { hboPosterRevision=catalogRepository.fetchPrivateVodMetadata("").optString("revision"); }
+        catch(Exception ignored) {}
         Set<String> requestedIds = new java.util.LinkedHashSet<>();
         for (Map.Entry<String, Long> entry : vodResumePositions.entrySet()) {
             if (entry != null && entry.getKey() != null && entry.getValue() != null && entry.getValue() > 30_000L) {
@@ -16895,7 +16965,7 @@ public class MainActivity extends FragmentActivity {
             }
         }
         resolved.sort((left, right) -> Long.compare(getVodResumePosition(right.id), getVodResumePosition(left.id)));
-        return resolved;
+        return withHboContinue(resolved);
     }
 
     private RecordingsRepository.RecordingItem findResumeRecording(RecordingsRepository.RecordingsResult completed) {
@@ -17210,12 +17280,12 @@ public class MainActivity extends FragmentActivity {
             float progress = durationMs > 0L ? Math.min(1f, (float) resumeMs / (float) durationMs) : 0f;
             continueCards.add(new StartupHomeHubUiModel.ContinueCard(
                     decorateProtectedItemTitle(vod, displayName(vod)),
-                    getString(R.string.startup_home_vod_progress, formatDurationShort(resumeMs)),
+                    vod.id.startsWith("hbomax:") && resumeMs==0 ? "Siguiente episodio" : getString(R.string.startup_home_vod_progress, formatDurationShort(resumeMs)),
                     vod.logoUrl,
                     displayName(vod),
                     true,
                     progress,
-                    open.apply(() -> showVodInfoDialog(vod))
+                    open.apply(() -> { if(vod.id.startsWith("hbomax:"))playVodItem(vod,true);else showVodInfoDialog(vod); })
             ));
         }
         RecordingsRepository.RecordingItem resumeRecording = state == null ? null : state.resumeRecording;
@@ -18671,7 +18741,7 @@ public class MainActivity extends FragmentActivity {
             }
         }
         sortVodLibraryItems(items);
-        return items;
+        return withHboContinue(items);
     }
 
     private List<ChannelItem> buildRecentVodItems() {
@@ -21505,6 +21575,11 @@ public class MainActivity extends FragmentActivity {
         if (positionMs <= 0L) {
             return;
         }
+        if(currentPlaybackVodId.startsWith("hbomax:")) {
+            if(hboHistory().record(currentPlaybackVodId,positionMs,playerController.getCurrentVodDurationMs(),System.currentTimeMillis()))
+                resolveNextHboEpisode(currentPlaybackVodId);
+            saveHboHistory();scheduleUserPreferencePush();return;
+        }
         vodResumePositions.put(currentPlaybackVodId, positionMs);
         vodResumeUpdatedAt.put(currentPlaybackVodId, System.currentTimeMillis());
         ChannelItem item = currentPlaybackTransientItem;
@@ -21520,6 +21595,7 @@ public class MainActivity extends FragmentActivity {
         if (vodId == null || vodId.trim().isEmpty()) {
             return 0L;
         }
+        if(vodId.startsWith("hbomax:")){HboWatchHistory.Entry e=hboHistory().get(vodId);return e==null||e.completed?0L:e.position;}
         Long value = vodResumePositions.get(vodId);
         return value == null ? 0L : Math.max(0L, value);
     }

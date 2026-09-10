@@ -1271,6 +1271,10 @@ final class CatalogRepository {
     }
 
     ChannelItem buildHbomaxVodItem(String id, String title, String kind, String posterQuery) {
+        return buildHbomaxVodItem(id,title,kind,posterQuery,0L);
+    }
+
+    ChannelItem buildHbomaxVodItem(String id, String title, String kind, String posterQuery, long durationSeconds) {
         String safeId = id == null ? "" : id.trim();
         if (safeId.isEmpty()) {
             return null;
@@ -1305,8 +1309,18 @@ final class CatalogRepository {
                 true,
                 "",
                 "",
-                0L
+                durationSeconds
         );
+    }
+
+    JSONObject fetchNextHboEpisode(HboWatchHistory.Entry entry) throws Exception {
+        JSONObject descriptor=fetchPrivateVodMetadata("");
+        String revision=descriptor.optString("revision");
+        JSONObject page=fetchPrivateVodMetadata("revision="+Uri.encode(revision)+"&kind=episode&series_id="+Uri.encode(entry.seriesId)+"&order=episode&after="+Uri.encode(entry.id));
+        JSONArray rows=page.optJSONArray("items");
+        if(rows==null||rows.length()==0)return null;
+        JSONObject row=rows.getJSONObject(0);
+        return row.put("kind","episode").put("series_id",entry.seriesId).put("series_title",entry.seriesTitle);
     }
 
     JSONObject fetchPrivateVodMetadata(String query) throws Exception {

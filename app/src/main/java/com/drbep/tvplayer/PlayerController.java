@@ -2141,6 +2141,8 @@ final class PlayerController {
         return currentRecordingUrl != null && !currentRecordingUrl.trim().isEmpty();
     }
 
+    long getCurrentVodDurationMs() { return player == null ? 0L : Math.max(0L, player.getDuration()); }
+
     long getCurrentPlaybackPosition() {
         if (isVlcDirectPlayActive()) {
             return vlcDirectPlayController.getTime();

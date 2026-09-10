@@ -16,6 +16,8 @@ final class PrivateVodBrowser {
         void search(String value, Consumer<String> submit, Runnable back);
         void play(String id, String title, String kind, String posterQuery);
         void ui(Runnable action);
+        default void remember(JSONObject metadata) {}
+        default String progress(String id) { return ""; }
         default void dismiss() {}
         default void cards(String title, String message, List<Card> cards, List<String> labels, List<Runnable> actions, Runnable back) {
             show(title, message, labels, actions, back);
@@ -132,7 +134,9 @@ final class PrivateVodBrowser {
                     actions.add(() -> page("episode", itemId, row.optString("title", "Serie"), "", new ArrayList<>(), current));
                 } else if (playbackEnabled) {
                     final String itemTitle = name;
-                    actions.add(() -> host.play(itemId, itemTitle, kind, poster));
+                    final JSONObject metadata = row;
+                    try { metadata.put("kind",kind).put("series_id",series).put("series_title",kind.equals("episode")?title:""); } catch(Exception ignored) {}
+                    actions.add(() -> { host.remember(metadata); host.play(itemId, itemTitle, kind, poster); });
                 } else {
                     final String itemTitle = name;
                     JSONObject synopsis = synopses == null ? null : synopses.optJSONObject(itemId);
@@ -144,7 +148,8 @@ final class PrivateVodBrowser {
                 }
                 Runnable itemAction = actions.remove(actionIndex);
                 JSONObject summary = synopses == null ? null : synopses.optJSONObject(itemId);
-                cards.add(new Card(name, summary == null ? "" : summary.optString("text"), poster, itemAction));
+                String badge=host.progress(itemId);
+                cards.add(new Card(name, (badge.isEmpty()?"":badge+"\n")+(summary == null ? "" : summary.optString("text")), poster, itemAction));
             }
             String next = result.optString("next");
             if (!next.isEmpty() && !next.equals(after) && previous.size() < 1000) {

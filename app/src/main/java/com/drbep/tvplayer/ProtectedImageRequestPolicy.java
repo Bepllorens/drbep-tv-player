@@ -10,7 +10,7 @@ final class ProtectedImageRequestPolicy {
 
     static boolean requiresDeviceAuth(String imageUrl, String... trustedBaseUrls) {
         URI image = parseHttpUri(imageUrl);
-        if (image == null || image.getPath() == null || !image.getPath().startsWith(PLEX_IMAGE_PATH)) {
+        if (image == null || image.getPath() == null || !(image.getPath().startsWith(PLEX_IMAGE_PATH) || image.getPath().equals("/api/vod/private/hbomax/poster"))) {
             return false;
         }
         if (trustedBaseUrls == null) {

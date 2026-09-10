@@ -22,4 +22,8 @@ public class ProtectedImageRequestPolicyTest {
                 "https://iptv.bepllorens.com/play"
         ));
     }
+    @org.junit.Test public void hboPostersAuthenticateOnlyAgainstTrustedOrigin() {
+        org.junit.Assert.assertTrue(ProtectedImageRequestPolicy.requiresDeviceAuth("https://fire.tvbep.com/api/vod/private/hbomax/poster?id=a", "https://fire.tvbep.com"));
+        org.junit.Assert.assertFalse(ProtectedImageRequestPolicy.requiresDeviceAuth("https://untrusted.invalid/api/vod/private/hbomax/poster?id=a", "https://fire.tvbep.com"));
+    }
 }

@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 550
-        versionName "2.0.550-beta-hbo-watch-progress"
+        versionCode 557
+        versionName "2.0.557-beta-vod-end-screen"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

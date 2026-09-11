@@ -33,22 +33,25 @@ internal object PrivateVodCardsBinder {
                        perform: Consumer<Runnable>, image: BiConsumer<ImageView, String>) {
         view.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         view.setContent {
-            val first = rememberTvInitialFocusRequester(labels.isNotEmpty(), title)
+            val selectedIndex = cards.indexOfFirst { it.preferredFocus }
+            val first = rememberTvInitialFocusRequester(labels.isNotEmpty() || selectedIndex >= 0, title)
+            val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = selectedIndex.coerceAtLeast(0))
             Column(Modifier.fillMaxSize().background(Color(0xFF081321)).padding(22.dp)) {
                 BasicText(title, style = TextStyle(color=Color.White, fontSize=24.sp, fontWeight=FontWeight.Bold), maxLines=2)
                 BasicText(message, style=TextStyle(color=Color(0xFFB8CADA), fontSize=14.sp))
                 LazyRow(Modifier.padding(vertical=12.dp), horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                     items(labels.indices.toList()) { index ->
-                        FocusTile(Modifier.then(if(index==0) Modifier.focusRequester(first) else Modifier), { perform.accept(actions[index]) }) {
+                        FocusTile(Modifier.then(if(index==0 && selectedIndex < 0) Modifier.focusRequester(first) else Modifier), { perform.accept(actions[index]) }) {
                             BasicText(labels[index], Modifier.padding(10.dp), style=TextStyle(color=Color.White, fontSize=15.sp))
                         }
                     }
                 }
                 if(cards.isEmpty()) BasicText("No hay resultados", style=TextStyle(color=Color.White))
                 LazyVerticalGrid(GridCells.Adaptive(300.dp), Modifier.weight(1f),
+                    state=gridState,
                     horizontalArrangement=Arrangement.spacedBy(12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     items(cards, key={it.posterQuery}) { card ->
-                        FocusTile(Modifier.fillMaxWidth(), { perform.accept(card.action) }) {
+                        FocusTile(Modifier.fillMaxWidth().then(if(card.preferredFocus) Modifier.focusRequester(first) else Modifier), { perform.accept(card.action) }) {
                             Row(Modifier.padding(10.dp).height(150.dp), horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 AndroidView(factory={ context -> ImageView(context).apply { scaleType=ImageView.ScaleType.FIT_CENTER } },
                                     modifier=Modifier.width(96.dp).fillMaxHeight(),

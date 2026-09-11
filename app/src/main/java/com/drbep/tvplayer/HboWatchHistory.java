@@ -41,6 +41,15 @@ final class HboWatchHistory {
     }catch(Exception e){throw new IllegalStateException(e);}}
     private static boolean valid(Entry e){return e.id.matches("[A-Za-z0-9_-]{1,180}")&&!e.title.isEmpty()&&(e.kind.equals("movie")||e.kind.equals("episode"));}
     synchronized Entry get(String id){return entries.get(rawId(id));}
+    synchronized void complete(String id, long now) {
+        Entry e = get(id);
+        if (e == null || e.completed) return;
+        e.completed = true;
+        e.pending = false;
+        e.position = 0;
+        e.updated = now;
+        watched.add("hbomax:" + e.id);
+    }
     static String rawId(String id){return id!=null&&id.startsWith("hbomax:")?id.substring(7):id;}
     synchronized void remember(JSONObject metadata){Entry e=new Entry(metadata);if(!valid(e))return;
         Entry old=entries.get(e.id);if(old!=null){e.position=old.position;e.updated=old.updated;e.completed=old.completed;e.pending=old.pending;e.nextResolved=old.nextResolved;if(e.duration==0)e.duration=old.duration;}

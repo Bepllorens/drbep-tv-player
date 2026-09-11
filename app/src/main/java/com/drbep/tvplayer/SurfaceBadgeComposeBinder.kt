@@ -3,6 +3,14 @@ package com.drbep.tvplayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +31,46 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object SurfaceBadgeComposeBinder {
+    @JvmStatic
+    fun bindFormats(composeView: ComposeView?, label: String) {
+        if (composeView == null) return
+        composeView.setStableContent("playback-formats", label) { current ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                current.split("  ·  ").filter { it.isNotBlank() }.take(2).forEach { value ->
+                    val video = value.contains("VISION") || value.startsWith("HDR")
+                    val dolby = value.startsWith("DOLBY ")
+                    Row(
+                        Modifier.clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xEB10151E))
+                            .border(1.dp, Color(0x557B879C), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Canvas(Modifier.size(24.dp)) {
+                            val ink = Color(0xFFEAF0FA)
+                            val stroke = Stroke(width = 1.5.dp.toPx())
+                            if (video) {
+                                drawRoundRect(ink, Offset(0f,size.height*.16f), Size(size.width,size.height*.64f),
+                                    androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()), style=stroke)
+                                drawLine(ink,Offset(size.width*.3f,size.height*.94f),Offset(size.width*.7f,size.height*.94f),1.5.dp.toPx())
+                            } else {
+                                drawLine(ink,Offset(size.width*.2f,size.height*.35f),Offset(size.width*.2f,size.height*.65f),3.dp.toPx())
+                                drawLine(ink,Offset(size.width*.4f,size.height*.2f),Offset(size.width*.4f,size.height*.8f),3.dp.toPx())
+                                drawArc(ink,-65f,130f,false,Offset(size.width*.3f,0f),Size(size.width*.65f,size.height),style=stroke)
+                            }
+                        }
+                        Column(verticalArrangement=Arrangement.spacedBy(1.dp)) {
+                            BasicText(if (dolby) "DOLBY" else "VÍDEO",
+                                style=TextStyle(color=Color(0xFFB8C5D9),fontSize=9.sp,fontWeight=FontWeight.SemiBold,letterSpacing=1.3.sp))
+                            BasicText(value.removePrefix("DOLBY "),maxLines=1,
+                                style=TextStyle(color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,letterSpacing=.3.sp))
+                        }
+                    }
+                }
+            }
+        }
+    }
     @JvmStatic
     fun bind(composeView: ComposeView?, model: SurfaceBadgeUiModel) {
         if (composeView == null) return

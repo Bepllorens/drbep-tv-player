@@ -4,6 +4,25 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 import static org.junit.Assert.*;
 public class HboWatchHistoryTest {
+    @Test public void actualEndCompletesEvenWithoutDurationAndDoesNotResumeAgain() throws Exception {
+        HboWatchHistory h = new HboWatchHistory();
+        h.remember(episode("end",1,1).put("duration_seconds",0));
+        h.record("end",123000,0,100);
+        h.complete("end",200);
+        assertEquals("Visto",h.badge("end"));
+        assertFalse(h.record("end",124000,0,300));
+        assertTrue(h.continuing().isEmpty());
+        HboWatchHistory restored = new HboWatchHistory(); restored.load(h.save());
+        assertTrue(restored.get("end").completed);
+        restored.restart("end");
+        assertFalse(restored.get("end").completed);
+    }
+    @Test public void repeatedEndDoesNotHideAlreadyOfferedNextEpisode() throws Exception {
+        HboWatchHistory h = new HboWatchHistory();
+        h.remember(episode("a",1,1)); h.complete("a",100);
+        h.next("a",episode("b",1,2)); h.complete("a",200);
+        assertEquals("b",h.continuing().get(0).id);
+    }
     JSONObject episode(String id,int season,int number)throws Exception{return new JSONObject().put("id",id).put("title","Episode "+number).put("kind","episode").put("series_id","series1").put("series_title","Series").put("season",season).put("episode",number).put("duration_seconds",1200);}
     JSONObject payload()throws Exception{return new JSONObject().put("vod_progress",new JSONObject()).put("series_continuity",new JSONObject()).put("watched",new JSONArray());}
     @Test public void savesResumeAndGroupsOneCardPerSeries()throws Exception{

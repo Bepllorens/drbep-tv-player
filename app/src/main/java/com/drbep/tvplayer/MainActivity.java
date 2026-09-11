@@ -1501,6 +1501,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void onPlaybackEnded(PlayerController.PlaybackRequest request, PlayerController.PlaybackDiagnostics diagnostics) {
+                if (request != null && request.vod && showFinishedVod(request.channelId)) return;
                 rememberCurrentVodPosition();
                 rememberCurrentRecordingPosition();
                 stopPlaybackHeartbeat("stop");
@@ -3300,13 +3301,17 @@ public class MainActivity extends FragmentActivity {
             List<TvMessageActionUiModel> actions = new ArrayList<>();
             actions.add(new TvMessageActionUiModel(getString(R.string.vod_action_continue), false, resumeFromSaved));
             actions.add(new TvMessageActionUiModel(getString(R.string.vod_action_start_over), true, startFromBeginning));
-            showTvMessagePanel(displayName(ch), getString(R.string.vod_continue_prompt, formatDurationShort(resumePositionMs)), actions, null);
+            showTvMessagePanel(displayName(ch), getString(R.string.vod_continue_prompt, formatDurationShort(resumePositionMs)), actions, null,
+                    ch.logoUrl == null || ch.logoUrl.trim().isEmpty() ? null
+                            : imageView -> bindVodPosterThumbnail(imageView, ch.logoUrl));
             return;
         }
         startFromBeginning.run();
     }
 
     private void playChannelItemInternal(ChannelItem ch, boolean autoPlay, long resumePositionMs) {
+        endedVodId = "";
+        if (vodEndDialog != null) { vodEndDialog.dismiss(); vodEndDialog = null; }
         if (!isActivityReadyForUiWork()) {
             Log.w(TAG, "Ignoring playback request because activity is no longer active channel=" + (ch == null ? "" : ch.id));
             return;
@@ -5793,6 +5798,7 @@ public class MainActivity extends FragmentActivity {
         if (channel == null) {
             return;
         }
+        vodPlaybackReturn = onBack;
         if (isPrimeSeriesGroup(channel)) {
             showPrimeSeriesEpisodes(channel, onBack);
             return;
@@ -11208,6 +11214,77 @@ public class MainActivity extends FragmentActivity {
     }
 
     private PrivateVodBrowser privateVodBrowser;
+    private Runnable vodPlaybackReturn;
+    private String privateVodReturnId = "";
+    private String privateVodReturnSeries = "";
+    private String endedVodId = "";
+    private Dialog vodEndDialog;
+    private final Map<String, JSONObject> hboNextCandidates = new HashMap<>();
+
+    private boolean showFinishedVod(String id) {
+        ChannelItem finished = getCurrentPlaybackChannelItem();
+        if (finished == null || !finished.isVod || !finished.id.equals(id) || !id.equals(currentPlaybackVodId) || isU7dReplayItem(finished)) return false;
+        if (id.equals(endedVodId)) return true;
+        endedVodId = id;
+        stopPlaybackHeartbeat("stop");
+        clearVodResumePosition(id);
+        if (id.startsWith("hbomax:")) {
+            hboHistory().complete(id, System.currentTimeMillis());
+            saveHboHistory();
+        } else {
+            try {
+                JSONArray watched = remoteUserPreferences.optJSONArray("watched");
+                if (watched == null) watched = new JSONArray();
+                boolean present = false;
+                for (int i = 0; i < watched.length(); i++) if (id.equals(watched.optString(i))) present = true;
+                if (!present) watched.put(id);
+                remoteUserPreferences.put("watched", watched);
+            } catch (Exception ignored) { }
+        }
+        scheduleUserPreferencePush();
+        showVodEndPanel(finished, hboNextCandidates.get(id), false);
+        HboWatchHistory.Entry entry = id.startsWith("hbomax:") ? hboHistory().get(id) : null;
+        if (entry != null && !entry.seriesId.isEmpty() && !hboNextCandidates.containsKey(id)) resolveNextHboEpisode(id);
+        return true;
+    }
+
+    private void returnFromFinishedVod(ChannelItem finished) {
+        HboWatchHistory.Entry entry = finished.id.startsWith("hbomax:") ? hboHistory().get(finished.id) : null;
+        if (finished.id.startsWith("hbomax:")) {
+            if (privateVodBrowser != null && (finished.id.equals(privateVodReturnId)
+                    || (entry != null && !privateVodReturnSeries.isEmpty() && privateVodReturnSeries.equals(entry.seriesId)))) privateVodBrowser.restore();
+            else showPrivateVodBrowser(this::showVodLibraryDialog);
+        } else if (vodPlaybackReturn != null) vodPlaybackReturn.run();
+        else showVodLibraryDialog();
+    }
+
+    private void showVodEndPanel(ChannelItem finished, JSONObject nextMetadata, boolean lookupFailed) {
+        ChannelItem next = nextMetadata == null ? null : hboItem(new HboWatchHistory.Entry(nextMetadata));
+        List<TvMessageActionUiModel> actions = new ArrayList<>();
+        if (next != null) actions.add(new TvMessageActionUiModel("Reproducir siguiente episodio", false, () -> playChannelItem(next, true)));
+        actions.add(new TvMessageActionUiModel("Volver al catálogo", false, () -> returnFromFinishedVod(finished)));
+        actions.add(new TvMessageActionUiModel("Ir a TV en directo", false, () -> {
+            ChannelItem live = findChannelItemById(lastChannelId);
+            if (live == null || live.isVod) {
+                live = null;
+                for (ChannelItem item : channels) if (!item.isVod) { live = item; break; }
+            }
+            if (live != null) playChannelItem(live, true);
+            else showQuickHubDialog();
+        }));
+        actions.add(new TvMessageActionUiModel("Volver a ver", false, () -> {
+            if (finished.id.startsWith("hbomax:")) { hboHistory().restart(finished.id); saveHboHistory(); }
+            clearVodResumePosition(finished.id);
+            playChannelItemInternal(finished, true, 0L);
+        }));
+        String message = displayName(finished) + "\n\n" + (next != null ? "Siguiente: " + displayName(next)
+                : lookupFailed ? "No se pudo consultar el siguiente episodio. Puedes volver al catálogo."
+                : "Elige qué quieres ver ahora.");
+        ChannelItem artwork = next == null ? finished : next;
+        vodEndDialog = showTvMessagePanel("Reproducción finalizada", message, actions,
+                () -> returnFromFinishedVod(finished),
+                artwork.logoUrl == null || artwork.logoUrl.isEmpty() ? null : image -> bindVodPosterThumbnail(image, artwork.logoUrl), true);
+    }
     private HboWatchHistory hboHistory;
     private String hboHistoryScope="";
     private String hboPosterRevision="";
@@ -11217,6 +11294,7 @@ public class MainActivity extends FragmentActivity {
         String subject=catalogSnapshotStore==null?"":catalogSnapshotStore.getStatus(BuildConfig.CATALOG_SNAPSHOT_URL).subject;
         String scope="hbo_watch_history:"+(subject==null?"":subject);
         if(hboHistory==null||!scope.equals(hboHistoryScope)) {
+            hboNextCandidates.clear();
             hboHistoryScope=scope; hboHistory=new HboWatchHistory();
             hboHistory.load(prefs==null?"":prefs.getString(scope,""));
             hboPosterRevision=prefs==null?"":prefs.getString(scope+":revision","");
@@ -11259,7 +11337,14 @@ public class MainActivity extends FragmentActivity {
                 hboNextLoading.remove(id);
                 if(history!=hboHistory())return;
                 if(success)history.next(id,result);
+                if(success)hboNextCandidates.put(id,result);
                 saveHboHistory();scheduleUserPreferencePush();
+                if (id.equals(endedVodId) && vodEndDialog != null && vodEndDialog.isShowing()) {
+                    ChannelItem finished = getCurrentPlaybackChannelItem();
+                    if (finished != null && id.equals(finished.id)) {
+                        dismissModalForNextAction(vodEndDialog, () -> showVodEndPanel(finished, result, !success));
+                    }
+                }
             });
         });
     }
@@ -11317,10 +11402,13 @@ public class MainActivity extends FragmentActivity {
             public String progress(String id) { return hboHistory().badge(id); }
             public void ui(Runnable action) { postUiIfAlive(action); }
             public void play(String id, String title, String kind, String posterQuery) {
-                if (privateVodBrowser != null) { privateVodBrowser.close(); privateVodBrowser = null; }
+                if (privateVodBrowser != null) privateVodBrowser.close();
+                vodPlaybackReturn = null;
                 hboPosterRevision=Uri.parse("https://local/?"+posterQuery).getQueryParameter("revision");
                 if(hboPosterRevision==null)hboPosterRevision="";
                 HboWatchHistory.Entry entry=hboHistory().get(id);
+                privateVodReturnId = "hbomax:" + id;
+                privateVodReturnSeries = entry == null ? "" : entry.seriesId;
                 ChannelItem item = entry==null?catalogRepository.buildHbomaxVodItem(id, title, kind, posterQuery):hboItem(entry);
                 if (item == null) return;
                 playVodItem(item, true);
@@ -16596,6 +16684,16 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showTvMessagePanel(String title, String message, List<TvMessageActionUiModel> actions, Runnable onCancel) {
+        showTvMessagePanel(title, message, actions, onCancel, null);
+    }
+
+    private Dialog showTvMessagePanel(String title, String message, List<TvMessageActionUiModel> actions, Runnable onCancel,
+            java.util.function.Consumer<ImageView> bindPoster) {
+        return showTvMessagePanel(title, message, actions, onCancel, bindPoster, false);
+    }
+
+    private Dialog showTvMessagePanel(String title, String message, List<TvMessageActionUiModel> actions, Runnable onCancel,
+            java.util.function.Consumer<ImageView> bindPoster, boolean backReturnsToCatalog) {
         prepareModalSurface();
         final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
@@ -16620,7 +16718,8 @@ public class MainActivity extends FragmentActivity {
         }
         Runnable closeAction = () -> {
             if (dialogHolder[0] != null) {
-                dialogHolder[0].dismiss();
+                if (backReturnsToCatalog && onCancel != null) dismissModalForNextAction(dialogHolder[0], onCancel);
+                else dialogHolder[0].dismiss();
             }
         };
         TvMessagePanelComposeBinder.bind(
@@ -16629,7 +16728,8 @@ public class MainActivity extends FragmentActivity {
                         title == null || title.trim().isEmpty() ? getString(R.string.app_name) : title,
                         message == null || message.trim().isEmpty() ? getString(R.string.diagnostics_value_unknown) : message,
                         wrappedActions,
-                        closeAction
+                        closeAction,
+                        bindPoster
                 )
         );
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
@@ -16641,6 +16741,7 @@ public class MainActivity extends FragmentActivity {
         }, this::handleModalDismissed);
         dialogHolder[0] = dialog;
         handleModalShown();
+        return dialog;
     }
 
     private void showStructuredStatusPanel(String title, String subtitle, String summary, List<PlaybackDiagnosticsRowUiModel> rows, List<String> notes, List<TvMessageActionUiModel> actions) {
@@ -21568,6 +21669,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void rememberCurrentVodPosition() {
+        if (currentPlaybackVodId != null && currentPlaybackVodId.equals(endedVodId)) return;
         if (playerController == null || currentPlaybackVodId == null || currentPlaybackVodId.trim().isEmpty()) {
             return;
         }

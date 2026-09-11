@@ -500,7 +500,15 @@ final class PlayerController {
                 .setDefaultRequestProperties(buildPlaybackRequestHeaders());
         DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
 
-        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
+            @Override protected androidx.media3.exoplayer.audio.AudioSink buildAudioSink(
+                    Context audioContext, boolean floatOutput, boolean playbackParameters) {
+                androidx.media3.exoplayer.audio.AudioSink sink =
+                        super.buildAudioSink(audioContext, floatOutput, playbackParameters);
+                return sink != null && "beta".equals(BuildConfig.UPDATE_CHANNEL)
+                        ? new DiagnosticAudioSink(sink) : sink;
+            }
+        }
                 .setEnableDecoderFallback(true);
         player = new ExoPlayer.Builder(context, renderersFactory)
                 .setTrackSelector(trackSelector)
@@ -699,6 +707,7 @@ final class PlayerController {
                         + " bufferCount=" + currentBufferingCount
                         + " bufferTotalMs=" + currentBufferingTotalMs);
                 host.onFirstVideoFrameRendered(request == null ? "" : request.channelId);
+                maybeShowHdrBadge();
                 scheduleAdaptiveQualityStabilityCheck();
             }
 
@@ -720,6 +729,7 @@ final class PlayerController {
             @Override
             public void onTracksChanged(@NonNull Tracks tracks) {
                 updateSelectedPlaybackFormats();
+                maybeShowHdrBadge();
                 if (host.isMultiViewPlayback()) {
                     Log.println(Log.INFO, TAG, "multiview selected role=" + host.multiViewQualityRole()
                             + " video=" + lastVideoWidth + "x" + lastVideoHeight
@@ -1499,6 +1509,8 @@ final class PlayerController {
         if (request == null || player == null) {
             return false;
         }
+        // Capture before releasing the old player; a VOD retry must not start at zero.
+        long resumePositionMs = request.vod ? getCurrentPlaybackPosition() : 0L;
         try {
             playerView.setPlayer(null);
             if (mediaSession != null) {
@@ -1509,7 +1521,7 @@ final class PlayerController {
             player = null;
             initialize();
             currentPlaybackDecision = decision;
-            playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo, 0L);
+            playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo, resumePositionMs);
             return true;
         } catch (RuntimeException recoveryError) {
             Log.w(TAG, "failed to recreate Media3 after decoder failure channel="
@@ -3086,23 +3098,10 @@ final class PlayerController {
         if (player == null || currentRequest == null || currentRequest.channelId == null) {
             return;
         }
-        if (currentRequest.channelId.equals(lastHdrBadgeChannelId)) {
-            return;
-        }
-        androidx.media3.common.Format format = player.getVideoFormat();
-        if (format == null) {
-            return;
-        }
-        ColorInfo colorInfo = format.colorInfo;
-        if (colorInfo == null) {
-            return;
-        }
-        int transfer = colorInfo.colorTransfer;
-        if (transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG) {
-            lastHdrBadgeChannelId = currentRequest.channelId;
-            String label = transfer == C.COLOR_TRANSFER_HLG
-                    ? context.getString(R.string.status_hlg_detected)
-                    : context.getString(R.string.status_hdr10_detected);
+        String label = PlaybackFormatBadges.label(player.getVideoFormat(), player.getAudioFormat());
+        String badgeKey = currentRequest.channelId + "|" + label;
+        if (!label.isEmpty() && !badgeKey.equals(lastHdrBadgeChannelId)) {
+            lastHdrBadgeChannelId = badgeKey;
             host.showHdrBadge(label);
         }
     }

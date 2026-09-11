@@ -125,8 +125,7 @@ final class OverlayUiController {
         String text = label == null || label.trim().isEmpty()
                 ? context.getString(R.string.status_hdr_detected)
                 : label.trim();
-        SurfaceBadgeComposeBinder.bind(hdrBadgeText,
-                new SurfaceBadgeUiModel(text, 0xE0A86A00, 0xFFFFFFFF, false, false));
+        SurfaceBadgeComposeBinder.bindFormats(hdrBadgeText, text);
         hdrBadgeText.setVisibility(View.VISIBLE);
         uiHandler.removeCallbacks(hideHdrBadgeRunnable);
         uiHandler.postDelayed(hideHdrBadgeRunnable, HDR_BADGE_HIDE_MS);

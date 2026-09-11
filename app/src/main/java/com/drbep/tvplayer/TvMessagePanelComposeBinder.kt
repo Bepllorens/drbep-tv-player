@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.ImageView
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -85,14 +88,30 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
                     .padding(if (compact) 12.dp else 16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 18.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                if (model.bindPoster != null) {
+                    AndroidView(
+                        factory = { context -> ImageView(context).apply {
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                            model.bindPoster.accept(this)
+                        } },
+                        onRelease = { image -> com.bumptech.glide.Glide.with(image).clear(image) },
+                        modifier = Modifier.size(if (compact) 88.dp else 120.dp, if (compact) 132.dp else 180.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                }
                 BasicText(
                     text = model.message,
+                    modifier = Modifier.weight(1f),
                     style = TextStyle(
                         color = OfflineTvTheme.Colors.textSoft,
                         fontSize = if (compact) 13.sp else 15.sp,
                         fontFamily = FontFamily.SansSerif
                     )
                 )
+                }
             }
             Spacer(modifier = Modifier.height(if (compact) 12.dp else 16.dp))
             Row(

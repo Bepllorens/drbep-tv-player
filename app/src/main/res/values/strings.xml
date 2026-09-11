@@ -657,7 +657,7 @@
     <string name="dazn_event_join_live_action">▶ Únete al directo</string>
     <string name="dazn_event_start_over_action">Ver desde el principio</string>
     <string name="dazn_event_not_yet_message">Este evento todavía no está en su ventana de emisión. %1$s.</string>
-    <string name="vod_plex_explore">Explorar Plex</string>
+    <string name="vod_plex_explore">Plex</string>
     <string name="vod_plex_movies">Películas</string>
     <string name="vod_plex_series">Series</string>
     <string name="vod_plex_all_libraries">Todas las bibliotecas</string>

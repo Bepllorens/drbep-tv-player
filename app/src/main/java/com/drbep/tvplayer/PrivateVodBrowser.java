@@ -24,6 +24,7 @@ final class PrivateVodBrowser {
         }
     }
     static final class Card {
+        boolean preferredFocus;
         final String title, synopsis, posterQuery;
         final Runnable action;
         Card(String title, String synopsis, String posterQuery, Runnable action) {
@@ -39,6 +40,9 @@ final class PrivateVodBrowser {
     private String revision = "";
     private boolean playbackEnabled;
     private Runnable exit;
+    private Runnable playbackReturn;
+    private String selectedPoster = "";
+    void restore() { if (playbackReturn != null) playbackReturn.run(); else home(); }
     PrivateVodBrowser(Host host, Source source, ExecutorService executor) {
         this.host = host; this.source = source; this.executor = executor;
     }
@@ -55,7 +59,7 @@ final class PrivateVodBrowser {
         }, exit);
     }
     private void home() {
-        host.show("HBO Max · Catálogo en pruebas", playbackEnabled ? "Catálogo en pruebas. Selecciona un título para reproducirlo." : "Solo metadatos. Reproducción aún no habilitada.",
+        host.show("HBO Max", playbackEnabled ? "Selecciona un título para reproducirlo." : "Reproducción no disponible para este usuario.",
                 Arrays.asList("Películas", "Series"), Arrays.asList(
                 () -> page("movie", "", "Películas", "", new ArrayList<>(), this::home),
                 () -> page("series", "", "Series", "", new ArrayList<>(), this::home)), exit);
@@ -74,7 +78,7 @@ final class PrivateVodBrowser {
                     if (request != generation) return;
                     error(message.contains("HTTP 409") ? "El catálogo ha cambiado. Vuelve a abrir HBO Max."
                             : message.contains("HTTP 404") || message.contains("HTTP 403")
-                            ? "El piloto no está habilitado para este usuario."
+                            ? "El acceso a HBO Max no está habilitado para este usuario."
                             : "No se pudo consultar el catálogo. Inténtalo de nuevo más tarde.");
                 });
             }
@@ -136,7 +140,7 @@ final class PrivateVodBrowser {
                     final String itemTitle = name;
                     final JSONObject metadata = row;
                     try { metadata.put("kind",kind).put("series_id",series).put("series_title",kind.equals("episode")?title:""); } catch(Exception ignored) {}
-                    actions.add(() -> { host.remember(metadata); host.play(itemId, itemTitle, kind, poster); });
+                    actions.add(() -> { playbackReturn = current; selectedPoster = poster; host.remember(metadata); host.play(itemId, itemTitle, kind, poster); });
                 } else {
                     final String itemTitle = name;
                     JSONObject synopsis = synopses == null ? null : synopses.optJSONObject(itemId);
@@ -150,6 +154,7 @@ final class PrivateVodBrowser {
                 JSONObject summary = synopses == null ? null : synopses.optJSONObject(itemId);
                 String badge=host.progress(itemId);
                 cards.add(new Card(name, (badge.isEmpty()?"":badge+"\n")+(summary == null ? "" : summary.optString("text")), poster, itemAction));
+                cards.get(cards.size()-1).preferredFocus = poster.equals(selectedPoster);
             }
             String next = result.optString("next");
             if (!next.isEmpty() && !next.equals(after) && previous.size() < 1000) {

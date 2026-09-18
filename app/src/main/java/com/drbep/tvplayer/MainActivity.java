@@ -401,6 +401,8 @@ public class MainActivity extends FragmentActivity {
     private boolean dynamicDaznVodLoading = false;
     private boolean dynamicPrimeVodLoaded = false;
     private boolean dynamicPrimeVodLoading = false;
+    private boolean dynamicSkyshowtimeVodLoaded = false;
+    private boolean dynamicSkyshowtimeVodLoading = false;
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
@@ -2949,6 +2951,7 @@ public class MainActivity extends FragmentActivity {
         dynamicMovistarVodLoaded = false;
         dynamicDaznVodLoaded = false;
 		dynamicPrimeVodLoaded = false;
+		dynamicSkyshowtimeVodLoaded = false;
         invalidateVodDerivedCaches();
         channelOverlayCoordinator.applyLoadedChannels(result, keepChannelId);
         syncOverlayStateFromCoordinator();
@@ -3041,6 +3044,7 @@ public class MainActivity extends FragmentActivity {
         dynamicMovistarVodLoaded = false;
         dynamicDaznVodLoaded = false;
 		dynamicPrimeVodLoaded = false;
+		dynamicSkyshowtimeVodLoaded = false;
         invalidateVodDerivedCaches();
         uiHandler.removeCallbacks(progressiveEpgRunnable);
         long coordinatorStartMs = System.currentTimeMillis();
@@ -11295,7 +11299,8 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
 			boolean pendingDynamicLoad = (candidate == VodVisualPlatformFilter.DAZN && !dynamicDaznVodLoaded
-					|| candidate == VodVisualPlatformFilter.PRIME && !dynamicPrimeVodLoaded) && count == 0;
+					|| candidate == VodVisualPlatformFilter.PRIME && !dynamicPrimeVodLoaded
+					|| candidate == VodVisualPlatformFilter.SKYSHOWTIME && !dynamicSkyshowtimeVodLoaded) && count == 0;
             if (pendingDynamicLoad) {
                 options.add(getString(
                         candidate == currentPlatformFilter
@@ -11325,7 +11330,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isVodPlatformFilterAvailable(VodVisualPlatformFilter filter, int visibleCount) {
-        if (filter == VodVisualPlatformFilter.ALL || filter == VodVisualPlatformFilter.DAZN || filter == VodVisualPlatformFilter.PRIME) {
+        if (filter == VodVisualPlatformFilter.ALL || filter == VodVisualPlatformFilter.DAZN || filter == VodVisualPlatformFilter.PRIME || filter == VodVisualPlatformFilter.SKYSHOWTIME) {
             return true;
         }
         if (filter == VodVisualPlatformFilter.MOVISTAR) {
@@ -11373,6 +11378,10 @@ public class MainActivity extends FragmentActivity {
 				&& !dynamicPrimeVodLoaded
 				&& !dynamicPrimeVodLoading) {
 			loadDynamicPrimeVodCatalog(openSelectedPlatform);
+		} else if (platformFilter == VodVisualPlatformFilter.SKYSHOWTIME
+				&& !dynamicSkyshowtimeVodLoaded
+				&& !dynamicSkyshowtimeVodLoading) {
+			loadDynamicSkyshowtimeVodCatalog(openSelectedPlatform);
         } else {
             openSelectedPlatform.run();
         }
@@ -17358,7 +17367,58 @@ public class MainActivity extends FragmentActivity {
 		mergeDynamicVodItems(loaded, replaceMovistar, replaceTivify, replaceRuntime, replaceDazn, false);
 	}
 
+    private void loadDynamicSkyshowtimeVodCatalog(Runnable onReady) {
+        if (catalogRepository == null) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        if (dynamicSkyshowtimeVodLoaded) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        dynamicSkyshowtimeVodLoading = true;
+        showLoading(
+                getString(R.string.tools_section_vod),
+                "Actualizando SkyShowtime",
+                "Cargando películas y episodios de series"
+        );
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> loaded = new ArrayList<>();
+            Exception failure = null;
+            try {
+                loaded.addAll(catalogRepository.fetchSkyshowtimeVodCatalog());
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "dynamic SkyShowtime VOD request failed", e);
+            }
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                dynamicSkyshowtimeVodLoading = false;
+                dynamicSkyshowtimeVodLoaded = finalFailure == null;
+                if (!loaded.isEmpty()) {
+                    mergeDynamicVodItems(loaded, false, false, false, false, false, true);
+                } else if (finalFailure != null) {
+                    showStatus("SkyShowtime no disponible; vuelve a intentarlo en unos segundos");
+                } else {
+                    showStatus("SkyShowtime no tiene contenido disponible ahora mismo");
+                }
+                if (onReady != null) {
+                    onReady.run();
+                }
+            });
+        });
+    }
+
 	private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime, boolean replaceDazn, boolean replacePrime) {
+		mergeDynamicVodItems(loaded, replaceMovistar, replaceTivify, replaceRuntime, replaceDazn, replacePrime, false);
+	}
+
+	private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime, boolean replaceDazn, boolean replacePrime, boolean replaceSkyshowtime) {
         if (loaded == null || loaded.isEmpty()) {
             return;
         }
@@ -17371,7 +17431,8 @@ public class MainActivity extends FragmentActivity {
                         || (replaceTivify && (filterKey.contains("tivify") || platform.contains("tivify")))
                         || (replaceRuntime && (filterKey.contains("runtime") || platform.contains("runtime")))
 						|| (replaceDazn && (filterKey.contains("dazn") || platform.contains("dazn")))
-						|| (replacePrime && (filterKey.contains("prime") || platform.contains("prime")))) {
+						|| (replacePrime && (filterKey.contains("prime") || platform.contains("prime")))
+						|| (replaceSkyshowtime && (filterKey.contains("skyshowtime") || platform.contains("skyshowtime")))) {
                     continue;
                 }
             }
@@ -17884,6 +17945,7 @@ public class MainActivity extends FragmentActivity {
         PLEX("Plex"),
         DAZN("DAZN"),
         PRIME("Prime Video"),
+        SKYSHOWTIME("SkyShowtime"),
         OTHER("Otros");
 
         final String label;
@@ -18033,6 +18095,7 @@ public class MainActivity extends FragmentActivity {
         boolean isPlex = filterKey.contains("plex") || platform.contains("plex");
         boolean isDazn = filterKey.contains("dazn") || platform.contains("dazn");
         boolean isPrime = filterKey.contains("prime") || platform.contains("prime");
+        boolean isSkyshowtime = filterKey.contains("skyshowtime") || platform.contains("skyshowtime");
         if (platformFilter == VodVisualPlatformFilter.MOVISTAR) {
             return isMovistar;
         }
@@ -18051,7 +18114,10 @@ public class MainActivity extends FragmentActivity {
         if (platformFilter == VodVisualPlatformFilter.PRIME) {
             return isPrime;
         }
-        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime;
+        if (platformFilter == VodVisualPlatformFilter.SKYSHOWTIME) {
+            return isSkyshowtime;
+        }
+        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime && !isSkyshowtime;
     }
 
     private boolean matchesVodVisualStatus(ChannelItem item, VodVisualStatusFilter statusFilter) {

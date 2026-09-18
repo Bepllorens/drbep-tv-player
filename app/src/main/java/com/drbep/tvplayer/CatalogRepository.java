@@ -961,6 +961,10 @@ final class CatalogRepository {
     }
 
     private void appendPrimeVodArray(List<ChannelItem> parsed, JSONArray rows) {
+        appendPrimeVodArray(parsed, rows, "Prime Video");
+    }
+
+    private void appendPrimeVodArray(List<ChannelItem> parsed, JSONArray rows, String providerLabel) {
         if (rows == null) {
             return;
         }
@@ -1007,7 +1011,7 @@ final class CatalogRepository {
                     true,
                     false,
                     0,
-                    "Prime Video",
+                    providerLabel,
                     new ArrayList<>(),
                     firstNonEmpty(safeCatalogText(row.optString("drm_type", "")), "widevine"),
                     licenseUrl,
@@ -1018,6 +1022,19 @@ final class CatalogRepository {
                     0L
             ));
         }
+    }
+
+    List<ChannelItem> fetchSkyshowtimeVodCatalog() throws Exception {
+        JSONObject payload = httpClient.getJsonObject(
+                vodApiBaseUrl() + "/api/vod/private/skyshowtime/catalog",
+                10000,
+                45000,
+                authenticatedVodHeaders(),
+                "cargando películas y series SkyShowtime"
+        );
+        List<ChannelItem> parsed = new ArrayList<>();
+        appendPrimeVodArray(parsed, payload.optJSONArray("items"), "SkyShowtime");
+        return parsed;
     }
 
     List<ChannelItem> fetchPrimeSeriesEpisodes(String seriesAssetId) throws Exception {

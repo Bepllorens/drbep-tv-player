@@ -710,19 +710,16 @@ final class CatalogSnapshotStore {
         if (sourceUrl.isEmpty()) {
             throw new IllegalStateException("no hay URL de catalogo configurada");
         }
-        HttpClient.Response response = httpClient.get(
+        JSONObject payload = httpClient.getStreamingObject(
                 sourceUrl,
                 10000,
                 30000,
                 buildSnapshotHeaders(),
                 MAX_SNAPSHOT_HTTP_BYTES
         );
-        httpClient.requireSuccess(response, "descargando candidato de catalogo");
-        String rawBody = response.body == null ? "" : response.body;
-        JSONObject payload = new JSONObject(rawBody);
         validateSnapshotPayload(payload);
         validateSnapshotDoesNotRegress(payload, snapshotFile(), true);
-        return new PendingSnapshot(payload, rawBody, configuredUrl);
+        return new PendingSnapshot(payload, "", configuredUrl);
     }
 
     void commitPendingSnapshot(PendingSnapshot pending) throws Exception {
@@ -949,12 +946,10 @@ final class CatalogSnapshotStore {
         }
         // rawJson can exceed 50 MB. String.trim() creates another full-sized String on
         // Fire OS and was the final allocation that caused an OOM during background sync.
-        String jsonToWrite = rawJson == null || rawJson.isEmpty() ? payload.toString() : rawJson;
-        writeSnapshotString(tmp, jsonToWrite);
+        writeSnapshotPayload(tmp, payload, rawJson);
         if (!tmp.renameTo(current)) {
-            writeSnapshotString(current, jsonToWrite);
-            //noinspection ResultOfMethodCallIgnored
             tmp.delete();
+            throw new IOException("no se pudo sustituir el catalogo de forma atomica");
         }
         deleteFileQuietly(epgChannelCacheFile());
         prefs.edit()
@@ -1618,6 +1613,10 @@ final class CatalogSnapshotStore {
     }
 
     private void writeSnapshotString(File file, String value) throws Exception {
+        writeSnapshotPayload(file, null, value);
+    }
+
+    private void writeSnapshotPayload(File file, JSONObject payload, String rawJson) throws Exception {
         try (FileOutputStream outputStream = new FileOutputStream(file, false)) {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSnapshotKey());
@@ -1628,7 +1627,11 @@ final class CatalogSnapshotStore {
             outputStream.write(SNAPSHOT_ENCRYPTED_MAGIC);
             outputStream.write(iv);
             try (CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher)) {
-                writeUtf8StringToStream(cipherOutputStream, value);
+                if (payload != null && (rawJson == null || rawJson.isEmpty())) {
+                    StreamingCatalogJson.write(cipherOutputStream, payload);
+                } else {
+                    writeUtf8StringToStream(cipherOutputStream, rawJson);
+                }
             }
         }
     }

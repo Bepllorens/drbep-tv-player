@@ -50,6 +50,51 @@ final class HttpClient {
         return request("GET", url, connectTimeoutMs, readTimeoutMs, headers, null, maxResponseBytes);
     }
 
+    JSONObject getStreamingObject(String url, int connectTimeoutMs, int readTimeoutMs,
+                                  Map<String, String> headers, int maxBytes) throws Exception {
+        if (maxBytes <= 0) throw new IllegalArgumentException("limite de respuesta invalido");
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            conn.setUseCaches(false);
+            conn.setConnectTimeout(connectTimeoutMs);
+            conn.setReadTimeout(readTimeoutMs);
+            if (headers != null) {
+                for (Map.Entry<String, String> entry : headers.entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue());
+                }
+            }
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) throw new IllegalStateException("catalogo: HTTP " + code);
+            if (conn.getContentLengthLong() > maxBytes) throw new IllegalStateException("catalogo demasiado grande");
+            try (InputStream input = new LimitedInputStream(conn.getInputStream(), maxBytes)) {
+                return StreamingCatalogJson.read(input);
+            }
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    static final class LimitedInputStream extends java.io.FilterInputStream {
+        private long remaining;
+        LimitedInputStream(InputStream input, int limit) {
+            super(input);
+            if (limit <= 0) throw new IllegalArgumentException("limite invalido");
+            remaining = limit;
+        }
+        @Override public int read() throws java.io.IOException {
+            byte[] one = new byte[1];
+            return read(one, 0, 1) == -1 ? -1 : one[0] & 255;
+        }
+        @Override public int read(byte[] buffer, int offset, int length) throws java.io.IOException {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("lectura cancelada");
+            if (length == 0) return 0;
+            int count = in.read(buffer, offset, (int) Math.min(length, remaining + 1));
+            if (count > remaining) throw new java.io.IOException("catalogo supera el limite de bytes");
+            if (count > 0) remaining -= count;
+            return count;
+        }
+    }
+
     Response delete(String url, int connectTimeoutMs, int readTimeoutMs, Map<String, String> headers) throws Exception {
         return request("DELETE", url, connectTimeoutMs, readTimeoutMs, headers, null, MAX_RESPONSE_BYTES);
     }

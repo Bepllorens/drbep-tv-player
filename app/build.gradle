@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 493
-        versionName "2.0.493-cloudflare-dns-healing"
+        versionCode 558
+        versionName "2.0.558-beta-skyshowtime"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

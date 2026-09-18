@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -77,12 +78,14 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 1f else 0.82f)
+                .fillMaxHeight(0.94f)
                 .clip(RoundedCornerShape(if (compact) 18.dp else 24.dp))
                 .background(OfflineTvTheme.Colors.panelGlass)
                 .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(if (compact) 18.dp else 24.dp))
                 .padding(if (compact) 14.dp else 20.dp)
-                .verticalScroll(rememberScrollState())
         ) {
+            VodTitle(model, compact)
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             VodHeader(model, posterBinder, compact, firstActionRequester)
             if (model.secondaryActions.isNotEmpty()) {
                 SectionTitle(model.secondaryTitle, compact)
@@ -103,25 +106,21 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
                     }
                 }
             }
+            }
         }
     }
 }
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun VodHeader(
-    model: VodDetailPanelUiModel,
-    posterBinder: VodPosterBinder?,
-    compact: Boolean,
-    firstActionRequester: FocusRequester
-) {
+private fun VodTitle(model: VodDetailPanelUiModel, compact: Boolean) {
     BasicText(
         text = model.title,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
         style = TextStyle(
             color = Color.White,
-            fontSize = if (compact) 22.sp else 30.sp,
+            fontSize = if (compact) 20.sp else 24.sp,
             fontWeight = FontWeight.Bold
         )
     )
@@ -139,6 +138,11 @@ private fun VodHeader(
         )
     }
     Spacer(modifier = Modifier.height(if (compact) 12.dp else 18.dp))
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinder?, compact: Boolean, firstActionRequester: FocusRequester) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         AndroidView(
             modifier = Modifier

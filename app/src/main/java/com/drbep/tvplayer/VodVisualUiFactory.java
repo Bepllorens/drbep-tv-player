@@ -35,6 +35,7 @@ final class VodVisualUiFactory {
         }
         default boolean hboBrowserAvailable() { return false; }
         default void openHboBrowser() { }
+        default boolean adultAvailable() { return false; }
         List<ChannelItem> progressItems();
         List<ChannelItem> alphaItems();
         String displayName(ChannelItem item);
@@ -72,8 +73,8 @@ final class VodVisualUiFactory {
         List<VodVisualSectionUiModel> sections = buildSections(typeFilter, platformFilter, statusFilter, sortFilter, trimmedQuery, searchMode, host);
         return new VodVisualPanelUiModel(
                 searchMode ? host.text(R.string.vod_search_results_title, trimmedQuery) : host.text(R.string.tools_section_vod),
-                searchMode ? host.searchSummary(trimmedQuery) : host.librarySummary(),
-                host.text(R.string.vod_visual_help),
+                platformFilter.label,
+                "",
                 host.text(R.string.vod_library_empty),
                 actions,
                 sections
@@ -90,31 +91,23 @@ final class VodVisualUiFactory {
             Host host
     ) {
         List<VodVisualActionUiModel> actions = new ArrayList<>();
-        if (host.hboBrowserAvailable()) {
-            actions.add(new VodVisualActionUiModel("HBO Max", false, host::openHboBrowser));
-        }
+        actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> host.choosePlatform(typeFilter, platformFilter, statusFilter, sortFilter, query)));
         if (searchMode) {
             actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_edit_search), false, () -> host.editSearch(query)));
-        }
-        if (host.plexBrowserAvailable()) {
-            actions.add(new VodVisualActionUiModel(host.text(R.string.vod_plex_explore), false, host::openPlexBrowser));
-        }
+        } else actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_search), false, host::openSearch));
         actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_type, typeFilter.label), true, () -> {
             MainActivity.VodVisualTypeFilter nextType = typeFilter.next();
+            if (nextType == MainActivity.VodVisualTypeFilter.ADULT && !host.adultAvailable()) nextType = MainActivity.VodVisualTypeFilter.GENERAL;
             if (nextType == MainActivity.VodVisualTypeFilter.ADULT && host.protectAdultVod() && host.protectedContentLocked()) {
                 host.unlockAdultAndOpen(nextType, platformFilter, statusFilter, sortFilter, query);
                 return;
             }
             host.openType(nextType, platformFilter, statusFilter, sortFilter, query);
         }));
-        actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_platform, platformFilter.label), true, () -> host.choosePlatform(typeFilter, platformFilter, statusFilter, sortFilter, query)));
         actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_status, statusFilter.label), true, () -> host.openStatus(typeFilter, platformFilter, statusFilter.next(), sortFilter, query)));
         actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_sort, sortFilter.label), true, () -> host.openSort(typeFilter, platformFilter, statusFilter, sortFilter.next(), query)));
         if (searchMode) {
             actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_clear_search), false, host::clearSearch));
-        } else {
-            actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_search), false, host::openSearch));
-            actions.add(new VodVisualActionUiModel(host.text(R.string.vod_visual_filter_list_view), false, host::openListView));
         }
         return actions;
     }
@@ -133,13 +126,9 @@ final class VodVisualUiFactory {
             addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter, query), host, RESULT_SECTION_LIMIT);
         } else if (host.defaultFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
             addSection(sections, host.text(R.string.vod_library_continue), host.continueItems(), host, DEFAULT_SECTION_LIMIT);
-            addSection(sections, host.text(R.string.vod_library_recent), host.recentItems(), host, DEFAULT_SECTION_LIMIT);
-            addSection(sections, host.text(R.string.vod_library_movistar), host.movistarItems(), host, DEFAULT_SECTION_LIMIT);
-            addSection(sections, host.text(R.string.vod_library_runtime), host.runtimeItems(), host, DEFAULT_SECTION_LIMIT);
-            addSection(sections, host.text(R.string.vod_library_tivify), host.tivifyItems(), host, DEFAULT_SECTION_LIMIT);
-            addSection(sections, host.text(R.string.vod_library_plex), host.plexItems(), host, DEFAULT_SECTION_LIMIT);
-            addSection(sections, host.text(R.string.vod_library_dazn), host.daznItems(), host, DEFAULT_SECTION_LIMIT);
-            addSection(sections, host.text(R.string.vod_library_with_progress), host.progressItems(), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, "Películas", host.filteredItems(MainActivity.VodVisualTypeFilter.MOVIES, platformFilter, statusFilter, sortFilter), host, DEFAULT_SECTION_LIMIT);
+            addSection(sections, "Series", host.filteredItems(MainActivity.VodVisualTypeFilter.SERIES, platformFilter, statusFilter, sortFilter), host, DEFAULT_SECTION_LIMIT);
+            if (sections.isEmpty()) addSection(sections, "Catálogo", host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter), host, DEFAULT_SECTION_LIMIT);
         } else {
             addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter), host, RESULT_SECTION_LIMIT);
         }

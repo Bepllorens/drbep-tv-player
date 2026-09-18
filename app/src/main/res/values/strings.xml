@@ -628,7 +628,7 @@
     <string name="vod_search_visual_summary">%1$d resultados  ·  Movistar %2$d  ·  Tivify %3$d  ·  Runtime %4$d  ·  Adulto %5$d  ·  Con progreso %6$d</string>
     <string name="vod_library_summary">Total VOD: %1$d\nAdulto: %2$d  -  Con progreso: %3$d</string>
     <string name="vod_library_continue">Continuar viendo</string>
-    <string name="vod_library_recent">VOD recientes</string>
+    <string name="vod_library_recent">Vistos recientemente</string>
     <string name="vod_library_movistar">Movistar VOD</string>
     <string name="vod_library_tivify">Tivify VOD</string>
     <string name="vod_library_tivify_adult">Tivify Adulto</string>
@@ -669,7 +669,7 @@
     <string name="vod_plex_unavailable">No se pudo cargar el catálogo Plex</string>
     <string name="vod_plex_empty">No hay contenidos en esta selección</string>
     <string name="vod_plex_search">Buscar en esta selección</string>
-    <string name="vod_plex_sort_recent">Orden: añadidos recientemente</string>
+    <string name="vod_plex_sort_recent">Orden: fecha más reciente</string>
     <string name="vod_plex_sort_title">Orden: título A-Z</string>
     <string name="vod_library_with_progress">Con progreso</string>
     <string name="vod_library_not_started">Sin empezar</string>
@@ -682,15 +682,15 @@
     <string name="vod_visual_help">OK: ficha  ·  Menu: acciones</string>
     <string name="vod_visual_results">Resultados VOD</string>
     <string name="vod_visual_filters">Filtros VOD</string>
-    <string name="vod_visual_filter_type">Tipo: %1$s</string>
-    <string name="vod_visual_filter_platform">Origen: %1$s</string>
+    <string name="vod_visual_filter_type">Contenido: %1$s</string>
+    <string name="vod_visual_filter_platform">Origen</string>
     <string name="vod_visual_platform_picker_title">Seleccionar origen</string>
     <string name="vod_visual_platform_picker_message">Elige directamente el catálogo que quieres consultar.</string>
     <string name="vod_visual_platform_picker_option">%1$s · %2$d títulos</string>
     <string name="vod_visual_platform_picker_option_selected">✓ %1$s · %2$d títulos</string>
     <string name="vod_visual_platform_picker_option_pending">%1$s · cargar catálogo</string>
     <string name="vod_visual_platform_picker_option_pending_selected">✓ %1$s · cargar catálogo</string>
-    <string name="vod_visual_filter_status">Estado: %1$s</string>
+    <string name="vod_visual_filter_status">Mi actividad: %1$s</string>
     <string name="vod_visual_filter_sort">Orden: %1$s</string>
     <string name="vod_visual_filter_search">Buscar</string>
     <string name="vod_visual_filter_list_view">Vista lista</string>

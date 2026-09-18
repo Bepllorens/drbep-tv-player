@@ -12,16 +12,16 @@ import org.junit.Test;
 
 public class VodVisualUiFactoryTest {
     @Test
-    public void hboOpensDirectlyWithoutListAndIsHiddenWhenUnavailable() {
+    public void originIsFirstAndProviderShortcutsAreNotDuplicated() {
         FakeHost host = new FakeHost();
         host.hboAvailable = true;
         VodVisualPanelUiModel model = VodVisualUiFactory.build(
                 MainActivity.VodVisualTypeFilter.ALL, MainActivity.VodVisualPlatformFilter.ALL,
                 MainActivity.VodVisualStatusFilter.ALL, MainActivity.VodVisualSortFilter.SMART,
                 "", host);
-        assertEquals("HBO Max", model.actions.get(0).label);
         model.actions.get(0).onClick.run();
-        assertTrue(host.hboOpened);
+        assertEquals(MainActivity.VodVisualPlatformFilter.ALL, host.chosenPlatform);
+        assertFalse(host.hboOpened);
         host.hboAvailable = false;
         model = VodVisualUiFactory.build(
                 MainActivity.VodVisualTypeFilter.ALL, MainActivity.VodVisualPlatformFilter.ALL,
@@ -32,7 +32,7 @@ public class VodVisualUiFactoryTest {
     @Test
     public void defaultLibraryLimitsLargeSectionsAndShowsLimitedHint() {
         FakeHost host = new FakeHost();
-        host.movistar = vodItems(60);
+        host.filtered = vodItems(60);
 
         VodVisualPanelUiModel model = VodVisualUiFactory.build(
                 MainActivity.VodVisualTypeFilter.GENERAL,
@@ -43,9 +43,9 @@ public class VodVisualUiFactoryTest {
                 host
         );
 
-        assertEquals(1, model.sections.size());
+        assertEquals(2, model.sections.size());
         VodVisualSectionUiModel section = model.sections.get(0);
-        assertEquals("Movistar (48/60)", section.title);
+        assertEquals("Películas (48/60)", section.title);
         assertEquals("Mostrando 48 de 60 contenidos. Usa busqueda o filtros para afinar sin cargar toda la seccion.", section.subtitle);
         assertEquals(48, section.items.size());
     }
@@ -69,7 +69,7 @@ public class VodVisualUiFactoryTest {
         assertEquals("Resultados (96/120)", section.title);
         assertEquals(96, section.items.size());
         assertFalse(model.actions.isEmpty());
-        assertEquals("Editar busqueda", model.actions.get(0).label);
+        assertEquals("Editar busqueda", model.actions.get(1).label);
     }
 
     @Test
@@ -107,7 +107,7 @@ public class VodVisualUiFactoryTest {
                 host
         );
 
-        model.actions.get(1).onClick.run();
+        model.actions.get(0).onClick.run();
 
         assertEquals(MainActivity.VodVisualPlatformFilter.PLEX, host.chosenPlatform);
     }
@@ -204,7 +204,7 @@ public class VodVisualUiFactoryTest {
         @Override public List<ChannelItem> filteredItems(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter) { return filtered; }
         @Override public List<ChannelItem> filteredItems(MainActivity.VodVisualTypeFilter typeFilter, MainActivity.VodVisualPlatformFilter platformFilter, MainActivity.VodVisualStatusFilter statusFilter, MainActivity.VodVisualSortFilter sortFilter, String query) { return filteredWithQuery; }
         @Override public List<ChannelItem> continueItems() { return Collections.emptyList(); }
-        @Override public List<ChannelItem> recentItems() { return Collections.emptyList(); }
+        @Override public List<ChannelItem> recentItems() { throw new AssertionError("Recent row must not duplicate continue watching"); }
         @Override public List<ChannelItem> movistarItems() { return movistar; }
         @Override public List<ChannelItem> runtimeItems() { return Collections.emptyList(); }
         @Override public List<ChannelItem> tivifyItems() { return Collections.emptyList(); }

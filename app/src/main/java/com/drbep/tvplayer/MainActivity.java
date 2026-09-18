@@ -297,6 +297,7 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, Long> vodResumePositions = new HashMap<>();
     private final Map<String, Long> vodResumeUpdatedAt = new HashMap<>();
     private final Map<String, ChannelItem> vodResumeItems = new HashMap<>();
+    private final Map<String, Long> vodResumeDurations = new HashMap<>();
     private boolean refreshingTimelineDialog;
     private View channelOverlay;
     private ComposeView zapBanner;
@@ -413,6 +414,8 @@ public class MainActivity extends FragmentActivity {
     private boolean dynamicDaznVodLoading = false;
     private boolean dynamicPrimeVodLoaded = false;
     private boolean dynamicPrimeVodLoading = false;
+    private boolean dynamicSkyshowtimeVodLoaded = false;
+    private boolean dynamicSkyshowtimeVodLoading = false;
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
@@ -513,6 +516,8 @@ public class MainActivity extends FragmentActivity {
     private final ZapBannerController zapBannerController = new ZapBannerController(uiHandler, createZapBannerHost());
     private final QuickSearchController quickSearchController = new QuickSearchController(uiHandler, createQuickSearchHost());
     private OfflinePermissions currentOfflinePermissions = new OfflinePermissions();
+    private OfflinePermissions checkedPrivateVodPermissions;
+    private long checkedPrivateVodPermissionsAt;
     private String recordingsChannelFilter = "";
     private String recordingsDayFilter = RECORDINGS_DAY_ALL;
     private boolean touchDeviceMode;
@@ -2267,6 +2272,15 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean canOpenVod() { return canOpenVodLibrary(); }
+
+            @Override
+            public void showAudioTracks() { showAudioTrackDialog(); }
+
+            @Override
+            public void showSubtitles() { showTextTrackDialog(null); }
+
+            @Override
             public void openTimelineGuide() {
                 hideTouchControlsForRemote();
                 hideZapBanner();
@@ -3014,6 +3028,7 @@ public class MainActivity extends FragmentActivity {
         dynamicMovistarVodLoaded = false;
         dynamicDaznVodLoaded = false;
 		dynamicPrimeVodLoaded = false;
+		dynamicSkyshowtimeVodLoaded = false;
         invalidateVodDerivedCaches();
         channelOverlayCoordinator.applyLoadedChannels(result, keepChannelId);
         syncOverlayStateFromCoordinator();
@@ -3123,6 +3138,7 @@ public class MainActivity extends FragmentActivity {
         dynamicMovistarVodLoaded = false;
         dynamicDaznVodLoaded = false;
 		dynamicPrimeVodLoaded = false;
+		dynamicSkyshowtimeVodLoaded = false;
         invalidateVodDerivedCaches();
         uiHandler.removeCallbacks(progressiveEpgRunnable);
         long coordinatorStartMs = System.currentTimeMillis();
@@ -3396,7 +3412,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean supportsU7d(ChannelItem channel) {
-        return U7dChannelPolicy.supports(channel);
+        return currentOfflinePermissions != null && currentOfflinePermissions.vodEnabled
+                && U7dChannelPolicy.supports(channel);
+    }
+
+    private boolean canOpenVodLibrary() {
+        return currentOfflinePermissions != null && currentOfflinePermissions.hasVodCatalogAccess();
     }
 
     private String displayName(ChannelItem channelItem) {
@@ -5799,6 +5820,17 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         vodPlaybackReturn = onBack;
+        if (channel.playUrl.startsWith("sky-series:")) {
+            List<ChannelItem> episodes = new ArrayList<>();
+            String seriesId = channel.playUrl.substring("sky-series:".length());
+            for (ChannelItem item : allChannels) {
+                if (item != null && "SkyShowtime".equals(item.platformName) && seriesId.equals(item.vodSeriesId)) episodes.add(item);
+            }
+            episodes.sort(java.util.Comparator.comparingInt((ChannelItem item) -> item.vodSeason)
+                    .thenComparingInt(item -> item.vodEpisode).thenComparing(item -> item.id));
+            showPagedVodLibraryList(channel.name, episodes, onBack, 0);
+            return;
+        }
         if (isPrimeSeriesGroup(channel)) {
             showPrimeSeriesEpisodes(channel, onBack);
             return;
@@ -5984,6 +6016,10 @@ public class MainActivity extends FragmentActivity {
 
     private void showVodActionsDialog(ChannelItem channel, Runnable onBack) {
         if (channel == null) {
+            return;
+        }
+        if (channel.playUrl.startsWith("sky-series:") || isPrimeSeriesGroup(channel)) {
+            showVodInfoDialog(channel, onBack);
             return;
         }
         prepareModalSurface();
@@ -7507,6 +7543,7 @@ public class MainActivity extends FragmentActivity {
                 }
                 if (positionMs > 0L && durationMs > 60_000L && positionMs < durationMs * 0.98d) {
                     vodResumePositions.put(id, positionMs);
+                    vodResumeDurations.put(id, durationMs);
                     vodResumeUpdatedAt.put(id, updatedAtMs);
                 }
             }
@@ -7516,7 +7553,8 @@ public class MainActivity extends FragmentActivity {
                 if (!vodResumePositions.containsKey(local.getKey())
                         && local.getValue() != null
                         && local.getValue() > 0L
-                        && localTime > remotePayloadUpdatedAt) {
+                        && shouldPreserveLocalVodProgress(localTime, remotePayloadUpdatedAt,
+                            progress.has(local.getKey()), vodResumeDuration(local.getKey()))) {
                     vodResumePositions.put(local.getKey(), local.getValue());
                     vodResumeUpdatedAt.put(local.getKey(), localTime);
                     preservedLocal = true;
@@ -7599,7 +7637,7 @@ public class MainActivity extends FragmentActivity {
                 if (item == null) {
                     item = vodResumeItems.get(saved.getKey());
                 }
-                long durationMs = item == null ? 0L : Math.max(0L, item.vodDurationSeconds * 1000L);
+                long durationMs = vodResumeDuration(saved.getKey());
                 long positionMs = saved.getValue() == null ? 0L : Math.max(0L, saved.getValue());
                 if (durationMs <= 60_000L || positionMs <= 0L || positionMs >= durationMs * 0.98d) {
                     continue;
@@ -9472,6 +9510,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean shouldShowGenericVodQuickTarget(boolean adult) {
+        if (!canOpenVodLibrary()) return false;
+        if (adult && !currentOfflinePermissions.allowsTivifyAdultVod()) return false;
+        if (!adult) return true;
         // Provider-specific VOD filters (Prime movies/series, DAZN, Plex, ...)
         // refine the library; they must not remove the library entry point from
         // the startup hub. At startup the snapshot can advertise VOD before all
@@ -11160,6 +11201,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodLibraryDialog(Runnable onBack) {
+        if (!canOpenVodLibrary()) return;
         if (BuildConfig.STANDALONE_MODE && !hasLoadedVodItems()) {
             prepareVodVisualCatalogOnDemand(onBack);
             return;
@@ -11544,6 +11586,29 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodVisualLibraryDialog(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String searchQuery, Runnable onBack) {
+        if (!canOpenVodLibrary()) return;
+        if (catalogRepository != null && !currentOfflinePermissions.privateVodPermissionsExplicit && (checkedPrivateVodPermissions != currentOfflinePermissions
+                || android.os.SystemClock.elapsedRealtime() - checkedPrivateVodPermissionsAt > 30_000L)) {
+            OfflinePermissions checking = currentOfflinePermissions;
+            showStatus("Comprobando tus plataformas…");
+            interactiveExecutor.execute(() -> {
+                Boolean hbo = catalogRepository.canAccessPrivateVodCatalog("hbomax");
+                Boolean sky = catalogRepository.canAccessPrivateVodCatalog("skyshowtime");
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed() || currentOfflinePermissions != checking) return;
+                    if (hbo != null) checking.hboVodEnabled = hbo;
+                    if (sky != null) checking.skyVodEnabled = sky;
+                    checkedPrivateVodPermissions = checking;
+                    checkedPrivateVodPermissionsAt = android.os.SystemClock.elapsedRealtime();
+                    showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, searchQuery, onBack);
+                });
+            });
+            return;
+        }
+        if (!isVodPlatformFilterAvailable(platformFilter, 0)) {
+            showVodVisualLibraryDialog(VodVisualTypeFilter.GENERAL, VodVisualPlatformFilter.ALL, VodVisualStatusFilter.ALL, VodVisualSortFilter.SMART, "", onBack);
+            return;
+        }
         rememberCurrentVodPosition();
         prepareModalSurface();
         final Dialog[] dialogHolder = new Dialog[1];
@@ -11776,67 +11841,41 @@ public class MainActivity extends FragmentActivity {
             String query,
             Runnable onBack
     ) {
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        for (VodVisualPlatformFilter candidate : VodVisualPlatformFilter.values()) {
-            int count = buildVodVisualFilteredItems(typeFilter, candidate, statusFilter, sortFilter, query).size();
-            if (!isVodPlatformFilterAvailable(candidate, count)) {
-                continue;
-            }
-			boolean pendingDynamicLoad = (candidate == VodVisualPlatformFilter.DAZN && !dynamicDaznVodLoaded
-					|| candidate == VodVisualPlatformFilter.PRIME && !dynamicPrimeVodLoaded) && count == 0;
-            if (pendingDynamicLoad) {
-                options.add(getString(
-                        candidate == currentPlatformFilter
-                                ? R.string.vod_visual_platform_picker_option_pending_selected
-                                : R.string.vod_visual_platform_picker_option_pending,
-                        candidate.label
-                ));
-            } else {
-                options.add(getString(
-                        candidate == currentPlatformFilter
-                                ? R.string.vod_visual_platform_picker_option_selected
-                                : R.string.vod_visual_platform_picker_option,
-                        candidate.label,
-                        count
-                ));
-            }
-            actions.add(() -> openVodVisualPlatformSelection(candidate, typeFilter, statusFilter, sortFilter, query, onBack));
-        }
+        List<VodVisualItemUiModel> origins = new ArrayList<>();
+        final Dialog[] picker = new Dialog[1];
         Runnable returnToVod = () -> showVodVisualLibraryDialog(typeFilter, currentPlatformFilter, statusFilter, sortFilter, query, onBack);
-        if ("beta".equals(BuildConfig.UPDATE_CHANNEL)) {
-            options.add("HBO Max");
-            actions.add(() -> showPrivateVodBrowser(returnToVod));
+        for (VodVisualPlatformFilter candidate : VodVisualPlatformFilter.values()) {
+            if (!isVodPlatformFilterAvailable(candidate, 0)) continue;
+            origins.add(new VodVisualItemUiModel(candidate.label, candidate == currentPlatformFilter ? "Seleccionado" : "", "",
+                    vodOriginLogo(candidate), () -> dismissModalForNextAction(picker[0], () ->
+                    openVodVisualPlatformSelection(candidate, VodVisualTypeFilter.GENERAL, VodVisualStatusFilter.ALL,
+                            VodVisualSortFilter.SMART, "", onBack)), null));
         }
-        showTvOptionsDialog(
-                R.string.vod_visual_platform_picker_title,
-                getString(R.string.vod_visual_platform_picker_message),
-                options,
-                actions,
-                returnToVod
-        );
+        prepareModalSurface();
+        ComposeView view = new ComposeView(this);
+        attachDialogViewTreeOwners(view);
+        VodOriginPickerComposeBinder.bind(view, origins, (image, item) -> bindChannelLogo(image, item.posterUrl, item.title, 160, 64));
+        picker[0] = ComposeDialogHost.showFullscreen(this, view, () -> modalReturnAction = returnToVod, this::handleModalDismissed);
+        handleModalShown();
     }
 
     private boolean isVodPlatformFilterAvailable(VodVisualPlatformFilter filter, int visibleCount) {
-        if (filter == VodVisualPlatformFilter.ALL || filter == VodVisualPlatformFilter.DAZN || filter == VodVisualPlatformFilter.PRIME) {
-            return true;
+        return VodOriginPolicy.allowed(currentOfflinePermissions, filter.name());
+    }
+
+    private String vodOriginLogo(VodVisualPlatformFilter source) {
+        if (source == VodVisualPlatformFilter.ALL) return "";
+        if (source == VodVisualPlatformFilter.HBO) return "https://cdn.prod.website-files.com/6911e6b4bcc8af690d496a26/6911e6b4bcc8af690d497038_HBO%20Max_White.jpg";
+        if (source == VodVisualPlatformFilter.SKYSHOWTIME) return "https://d21buns5ku92am.cloudfront.net/69678/logo/retina-1734098031.png";
+        for (ChannelItem item : allChannels) {
+            if (item != null && matchesVodVisualPlatform(item, source) && item.platformLogoUrl != null && !item.platformLogoUrl.trim().isEmpty()) return item.platformLogoUrl;
         }
-        if (filter == VodVisualPlatformFilter.MOVISTAR) {
-            return currentOfflinePermissions == null || currentOfflinePermissions.allowsMovistarVod();
+        for (ChannelItem item : allChannels) {
+            if (item != null && item.platformName != null
+                    && item.platformName.toLowerCase(java.util.Locale.ROOT).contains(source.label.toLowerCase(java.util.Locale.ROOT))
+                    && item.platformLogoUrl != null && !item.platformLogoUrl.trim().isEmpty()) return item.platformLogoUrl;
         }
-        if (filter == VodVisualPlatformFilter.TIVIFY) {
-            return currentOfflinePermissions == null || currentOfflinePermissions.allowsTivifyVod();
-        }
-        if (filter == VodVisualPlatformFilter.RUNTIME) {
-            return currentOfflinePermissions == null || currentOfflinePermissions.allowsRuntimeVod();
-        }
-        if (filter == VodVisualPlatformFilter.PLEX) {
-            return currentOfflinePermissions == null || currentOfflinePermissions.allowsPlexVod();
-        }
-		if (filter == VodVisualPlatformFilter.PRIME) {
-			return currentOfflinePermissions == null || currentOfflinePermissions.allowsPrimeVod();
-		}
-        return visibleCount > 0;
+        return "";
     }
 
     private void openVodVisualPlatformSelection(
@@ -11847,6 +11886,15 @@ public class MainActivity extends FragmentActivity {
             String query,
             Runnable onBack
     ) {
+        if (!isVodPlatformFilterAvailable(platformFilter, 0)) return;
+        if (platformFilter == VodVisualPlatformFilter.HBO) {
+            showPrivateVodBrowser(() -> showVodPlatformFilterDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack));
+            return;
+        }
+        if (platformFilter == VodVisualPlatformFilter.PLEX) {
+            showPlexVodBrowser(() -> showVodPlatformFilterDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack));
+            return;
+        }
         Runnable openSelectedPlatform = () -> {
             if (platformFilter == VodVisualPlatformFilter.DAZN && (query == null || query.trim().isEmpty())) {
                 showDaznCompetitionBouquetDialog(onBack);
@@ -11866,6 +11914,10 @@ public class MainActivity extends FragmentActivity {
 				&& !dynamicPrimeVodLoaded
 				&& !dynamicPrimeVodLoading) {
 			loadDynamicPrimeVodCatalog(openSelectedPlatform);
+		} else if (platformFilter == VodVisualPlatformFilter.SKYSHOWTIME
+				&& !dynamicSkyshowtimeVodLoaded
+				&& !dynamicSkyshowtimeVodLoading) {
+			loadDynamicSkyshowtimeVodCatalog(openSelectedPlatform);
         } else {
             openSelectedPlatform.run();
         }
@@ -11886,6 +11938,11 @@ public class MainActivity extends FragmentActivity {
             @Override
             public boolean protectAdultVod() {
                 return currentOfflinePermissions != null && currentOfflinePermissions.protectAdultVod;
+            }
+
+            @Override
+            public boolean adultAvailable() {
+                return currentOfflinePermissions != null && currentOfflinePermissions.allowsTivifyAdultVod();
             }
 
             @Override
@@ -11920,12 +11977,12 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public List<ChannelItem> continueItems() {
-                return buildVodContinueItems();
+                return filterVisibleVodOrigin(buildVodContinueItems(), platformFilter);
             }
 
             @Override
             public List<ChannelItem> recentItems() {
-                return buildRecentVodItems();
+                return filterVisibleVodOrigin(buildRecentVodItems(), platformFilter);
             }
 
             @Override
@@ -12009,7 +12066,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void editSearch(String query) {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog(query));
+                dismissModalForNextAction(dialogHolder[0], () -> searchVodOrigin(query, typeFilter, platformFilter, statusFilter, sortFilter, onBack));
             }
 
             @Override
@@ -12041,12 +12098,12 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void clearSearch() {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(onBack));
+                dismissModalForNextAction(dialogHolder[0], () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, "", onBack));
             }
 
             @Override
             public void openSearch() {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodSearchDialog("", () -> showVodVisualLibraryDialog(onBack)));
+                dismissModalForNextAction(dialogHolder[0], () -> searchVodOrigin("", typeFilter, platformFilter, statusFilter, sortFilter, onBack));
             }
 
             @Override
@@ -12056,7 +12113,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean hboBrowserAvailable() {
-                return "beta".equals(BuildConfig.UPDATE_CHANNEL);
+                return currentOfflinePermissions != null && currentOfflinePermissions.allowsHboVod();
             }
 
             @Override
@@ -12074,12 +12131,12 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openInfo(ChannelItem item) {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodInfoDialog(item, () -> showVodVisualLibraryDialog(onBack)));
+                dismissModalForNextAction(dialogHolder[0], () -> showVodInfoDialog(item, () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, onBack)));
             }
 
             @Override
             public void openActions(ChannelItem item) {
-                dismissModalForNextAction(dialogHolder[0], () -> showVodActionsDialog(item, () -> showVodVisualLibraryDialog(onBack)));
+                dismissModalForNextAction(dialogHolder[0], () -> showVodActionsDialog(item, () -> showVodVisualLibraryDialog(typeFilter, platformFilter, statusFilter, sortFilter, trimmedSearchQuery, onBack)));
             }
         });
     }
@@ -16457,6 +16514,7 @@ public class MainActivity extends FragmentActivity {
     private void clearAllVodProgress() {
         rememberCurrentVodPosition();
         vodResumePositions.clear();
+        vodResumeDurations.clear();
         vodResumeUpdatedAt.clear();
         vodResumeItems.clear();
         if (catalogSnapshotStore != null) {
@@ -17065,8 +17123,9 @@ public class MainActivity extends FragmentActivity {
                 Log.w(TAG, "startup Plex continue lookup failed", e);
             }
         }
-        resolved.sort((left, right) -> Long.compare(getVodResumePosition(right.id), getVodResumePosition(left.id)));
-        return withHboContinue(resolved);
+        List<ChannelItem> continuing = withHboContinue(resolved);
+        continuing.sort((left, right) -> Long.compare(vodLastViewed(right), vodLastViewed(left)));
+        return continuing;
     }
 
     private RecordingsRepository.RecordingItem findResumeRecording(RecordingsRepository.RecordingsResult completed) {
@@ -17377,7 +17436,7 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             long resumeMs = getVodResumePosition(vod.id);
-            long durationMs = Math.max(0L, vod.vodDurationSeconds * 1000L);
+            long durationMs = Math.max(vodResumeDuration(vod.id), vod.vodDurationSeconds * 1000L);
             float progress = durationMs > 0L ? Math.min(1f, (float) resumeMs / (float) durationMs) : 0f;
             continueCards.add(new StartupHomeHubUiModel.ContinueCard(
                     decorateProtectedItemTitle(vod, displayName(vod)),
@@ -17955,6 +18014,53 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private void loadDynamicSkyshowtimeVodCatalog(Runnable onReady) {
+        if (catalogRepository == null) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        if (dynamicSkyshowtimeVodLoaded) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        dynamicSkyshowtimeVodLoading = true;
+        showLoading(
+                getString(R.string.tools_section_vod),
+                "Actualizando SkyShowtime",
+                "Cargando películas y episodios de series"
+        );
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> loaded = new ArrayList<>();
+            Exception failure = null;
+            try {
+                loaded.addAll(catalogRepository.fetchSkyshowtimeVodCatalog());
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "dynamic SkyShowtime VOD request failed", e);
+            }
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                dynamicSkyshowtimeVodLoading = false;
+                dynamicSkyshowtimeVodLoaded = finalFailure == null;
+                if (!loaded.isEmpty()) {
+                    mergeDynamicVodItems(loaded, false, false, false, false, false, true);
+                } else if (finalFailure != null) {
+                    showStatus("SkyShowtime no disponible; vuelve a intentarlo en unos segundos");
+                } else {
+                    showStatus("SkyShowtime no tiene contenido disponible ahora mismo");
+                }
+                if (onReady != null) {
+                    onReady.run();
+                }
+            });
+        });
+    }
+
     private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime) {
 		mergeDynamicVodItems(loaded, replaceMovistar, replaceTivify, replaceRuntime, false, false);
     }
@@ -17964,6 +18070,10 @@ public class MainActivity extends FragmentActivity {
 	}
 
 	private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime, boolean replaceDazn, boolean replacePrime) {
+		mergeDynamicVodItems(loaded, replaceMovistar, replaceTivify, replaceRuntime, replaceDazn, replacePrime, false);
+	}
+
+	private void mergeDynamicVodItems(List<ChannelItem> loaded, boolean replaceMovistar, boolean replaceTivify, boolean replaceRuntime, boolean replaceDazn, boolean replacePrime, boolean replaceSkyshowtime) {
         if (loaded == null || loaded.isEmpty()) {
             return;
         }
@@ -17976,7 +18086,8 @@ public class MainActivity extends FragmentActivity {
                         || (replaceTivify && (filterKey.contains("tivify") || platform.contains("tivify")))
                         || (replaceRuntime && (filterKey.contains("runtime") || platform.contains("runtime")))
 						|| (replaceDazn && (filterKey.contains("dazn") || platform.contains("dazn")))
-						|| (replacePrime && (filterKey.contains("prime") || platform.contains("prime")))) {
+						|| (replacePrime && (filterKey.contains("prime") || platform.contains("prime")))
+						|| (replaceSkyshowtime && (filterKey.contains("skyshowtime") || platform.contains("skyshowtime")))) {
                     continue;
                 }
             }
@@ -18463,7 +18574,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     enum VodVisualTypeFilter {
-        GENERAL("General"),
+        GENERAL("Todo"),
         MOVIES("Peliculas"),
         SERIES("Series"),
         ADULT("Adulto"),
@@ -18476,19 +18587,22 @@ public class MainActivity extends FragmentActivity {
         }
 
         VodVisualTypeFilter next() {
+            if (this == ADULT || this == ALL) return GENERAL;
             VodVisualTypeFilter[] values = values();
             return values[(ordinal() + 1) % values.length];
         }
     }
 
     enum VodVisualPlatformFilter {
-        ALL("Todo"),
+        ALL("Mis plataformas"),
+        HBO("HBO Max"),
         MOVISTAR("Movistar"),
         TIVIFY("Tivify"),
         RUNTIME("Runtime"),
         PLEX("Plex"),
         DAZN("DAZN"),
         PRIME("Prime Video"),
+        SKYSHOWTIME("SkyShowtime"),
         OTHER("Otros");
 
         final String label;
@@ -18505,9 +18619,10 @@ public class MainActivity extends FragmentActivity {
 
     enum VodVisualStatusFilter {
         ALL("Todo"),
-        CONTINUE("Continuar"),
+        CONTINUE("Pendientes"),
         PROGRESS("Con progreso"),
-        NOT_STARTED("Sin empezar");
+        NOT_STARTED("Sin empezar"),
+        WATCHED("Vistos");
 
         final String label;
 
@@ -18516,6 +18631,7 @@ public class MainActivity extends FragmentActivity {
         }
 
         VodVisualStatusFilter next() {
+            if (this == CONTINUE || this == PROGRESS) return NOT_STARTED;
             VodVisualStatusFilter[] values = values();
             return values[(ordinal() + 1) % values.length];
         }
@@ -18524,7 +18640,7 @@ public class MainActivity extends FragmentActivity {
     enum VodVisualSortFilter {
         SMART("Recomendado"),
         ALPHA("A-Z"),
-        RECENT("Recientes"),
+        RECENT("Últimos vistos"),
         YEAR("Ano"),
         DURATION("Duracion");
 
@@ -18542,7 +18658,6 @@ public class MainActivity extends FragmentActivity {
 
     private boolean isDefaultVodVisualFilter(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter) {
         return typeFilter == VodVisualTypeFilter.GENERAL
-                && platformFilter == VodVisualPlatformFilter.ALL
                 && statusFilter == VodVisualStatusFilter.ALL
                 && sortFilter == VodVisualSortFilter.SMART;
     }
@@ -18551,11 +18666,35 @@ public class MainActivity extends FragmentActivity {
         return buildVodVisualFilteredItems(typeFilter, platformFilter, statusFilter, sortFilter, "");
     }
 
+    private boolean isVodItemAuthorized(ChannelItem item) {
+        if (item == null || !canOpenVodLibrary()) return false;
+        if (item.isAdultVod) return currentOfflinePermissions.allowsTivifyAdultVod();
+        for (VodVisualPlatformFilter origin : VodVisualPlatformFilter.values()) {
+            if (origin == VodVisualPlatformFilter.ALL || origin == VodVisualPlatformFilter.OTHER) continue;
+            if (matchesVodVisualPlatform(item, origin)) return isVodPlatformFilterAvailable(origin, 0);
+        }
+        return false;
+    }
+
+    private List<ChannelItem> filterVisibleVodOrigin(List<ChannelItem> source, VodVisualPlatformFilter origin) {
+        List<ChannelItem> visible = new ArrayList<>();
+        for (ChannelItem item : source) if (isVodItemAuthorized(item) && !item.isAdultVod && matchesVodVisualPlatform(item, origin) && !shouldHideProtectedItem(item)) visible.add(item);
+        return visible;
+    }
+
+    private void searchVodOrigin(String query, VodVisualTypeFilter type, VodVisualPlatformFilter origin,
+            VodVisualStatusFilter status, VodVisualSortFilter sort, Runnable back) {
+        Runnable restore = () -> showVodVisualLibraryDialog(type, origin, status, sort, query, back);
+        showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar · " + origin.label, "", "Buscar", "Cancelar", "",
+                java.util.Collections.singletonList(new TvTextInputFieldUiModel("Título o serie", query, false, false)),
+                values -> showVodVisualLibraryDialog(type, origin, status, sort, values.isEmpty() ? "" : values.get(0), back), restore, null));
+    }
+
     private List<ChannelItem> buildVodVisualFilteredItems(VodVisualTypeFilter typeFilter, VodVisualPlatformFilter platformFilter, VodVisualStatusFilter statusFilter, VodVisualSortFilter sortFilter, String query) {
         String trimmedQuery = query == null ? "" : query.trim();
         List<ChannelItem> items = new ArrayList<>();
         for (ChannelItem item : allChannels) {
-            if (item == null || !item.isVod || shouldHideProtectedItem(item) || !matchesVodVisualType(item, typeFilter) || !matchesVodVisualPlatform(item, platformFilter) || !matchesVodVisualStatus(item, statusFilter)) {
+            if (item == null || !item.isVod || !isVodItemAuthorized(item) || shouldHideProtectedItem(item) || !matchesVodVisualType(item, typeFilter) || !matchesVodVisualPlatform(item, platformFilter) || !matchesVodVisualStatus(item, statusFilter)) {
                 continue;
             }
             if (!matchesVodSearchQuery(item, trimmedQuery)) {
@@ -18563,8 +18702,29 @@ public class MainActivity extends FragmentActivity {
             }
             items.add(item);
         }
+        if (statusFilter == VodVisualStatusFilter.ALL) items = groupSkySeries(items);
         sortVodVisualFilteredItems(items, sortFilter);
         return items;
+    }
+
+    static List<ChannelItem> groupSkySeries(List<ChannelItem> items) {
+        List<ChannelItem> grouped = new ArrayList<>();
+        Map<String, ChannelItem> series = new LinkedHashMap<>();
+        for (ChannelItem item : items) {
+            if (!"SkyShowtime".equals(item.platformName) || item.vodSeriesId == null || item.vodSeriesId.isEmpty()) {
+                grouped.add(item); continue;
+            }
+            ChannelItem card = series.get(item.vodSeriesId);
+            if (card == null) {
+                String title = item.vodSeriesTitle == null || item.vodSeriesTitle.isEmpty() ? item.name : item.vodSeriesTitle;
+                card = new ChannelItem("sky-series:" + item.vodSeriesId, title, "", item.logoUrl, item.group,
+                        "sky-series:" + item.vodSeriesId, "", item.originalOrder, item.dashboardOrder,
+                        true, false, item.platformId, item.platformName, new ArrayList<>(), "", "", "vod:skyshowtime:series", false);
+                card.vodReleaseDate = item.vodReleaseDate;
+                series.put(item.vodSeriesId, card); grouped.add(card);
+            } else if (VodCatalogOrder.dateKey(item) > VodCatalogOrder.dateKey(card)) card.vodReleaseDate = item.vodReleaseDate;
+        }
+        return grouped;
     }
 
     private boolean matchesVodSearchQuery(ChannelItem item, String query) {
@@ -18574,7 +18734,7 @@ public class MainActivity extends FragmentActivity {
         if (item == null) {
             return false;
         }
-        String haystack = displayName(item) + " " + item.group + " " + item.platformName + " " + item.vodYear;
+        String haystack = displayName(item) + " " + item.group + " " + item.platformName + " " + item.vodYear + " " + item.vodSeriesTitle;
         return matchesSearch(haystack, query);
     }
 
@@ -18638,6 +18798,9 @@ public class MainActivity extends FragmentActivity {
         boolean isPlex = filterKey.contains("plex") || platform.contains("plex");
         boolean isDazn = filterKey.contains("dazn") || platform.contains("dazn");
         boolean isPrime = filterKey.contains("prime") || platform.contains("prime");
+        boolean isSkyshowtime = filterKey.contains("skyshowtime") || platform.contains("skyshowtime");
+        boolean isHbo = filterKey.contains("hbomax") || platform.contains("hbo");
+        if (platformFilter == VodVisualPlatformFilter.HBO) return isHbo;
         if (platformFilter == VodVisualPlatformFilter.MOVISTAR) {
             return isMovistar;
         }
@@ -18656,7 +18819,10 @@ public class MainActivity extends FragmentActivity {
         if (platformFilter == VodVisualPlatformFilter.PRIME) {
             return isPrime;
         }
-        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime;
+        if (platformFilter == VodVisualPlatformFilter.SKYSHOWTIME) {
+            return isSkyshowtime;
+        }
+        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime && !isSkyshowtime;
     }
 
     private boolean matchesVodVisualStatus(ChannelItem item, VodVisualStatusFilter statusFilter) {
@@ -18664,8 +18830,12 @@ public class MainActivity extends FragmentActivity {
             return true;
         }
         long progress = getVodResumePosition(item == null ? null : item.id);
+        boolean watched = item != null && (item.id.startsWith("hbomax:")
+                ? hboHistory().get(item.id) != null && hboHistory().get(item.id).completed
+                : item.vodDurationSeconds > 0 && progress >= item.vodDurationSeconds * 950L);
+        if (statusFilter == VodVisualStatusFilter.WATCHED) return watched;
         if (statusFilter == VodVisualStatusFilter.CONTINUE || statusFilter == VodVisualStatusFilter.PROGRESS) {
-            return progress > 30_000L;
+            return progress > 30_000L && !watched;
         }
         return progress <= 0L;
     }
@@ -18695,7 +18865,7 @@ public class MainActivity extends FragmentActivity {
                 return rankCompare != 0 ? rankCompare : displayName(left).compareToIgnoreCase(displayName(right));
             });
         } else {
-            sortVodLibraryItems(items);
+            VodCatalogOrder.newest(items);
         }
     }
 
@@ -18841,8 +19011,17 @@ public class MainActivity extends FragmentActivity {
                 items.add(item);
             }
         }
-        sortVodLibraryItems(items);
-        return withHboContinue(items);
+        List<ChannelItem> continuing = withHboContinue(items);
+        continuing.sort((a, b) -> Long.compare(vodLastViewed(b), vodLastViewed(a)));
+        return continuing;
+    }
+
+    private long vodLastViewed(ChannelItem item) {
+        if (item.id.startsWith("hbomax:")) {
+            HboWatchHistory.Entry entry = hboHistory().get(item.id);
+            return entry == null ? 0L : entry.updated;
+        }
+        return vodResumeUpdatedAt.getOrDefault(item.id, 0L);
     }
 
     private List<ChannelItem> buildRecentVodItems() {
@@ -18917,6 +19096,7 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             ChannelItem item = findChannelItemById(entry.getKey());
+            if (item == null) item = vodResumeItems.get(entry.getKey());
             if (item != null && item.isVod && !shouldHideProtectedItem(item)) {
                 items.add(item);
             }
@@ -21683,6 +21863,8 @@ public class MainActivity extends FragmentActivity {
             saveHboHistory();scheduleUserPreferencePush();return;
         }
         vodResumePositions.put(currentPlaybackVodId, positionMs);
+        long detectedDuration = playerController.getCurrentVodDurationMs();
+        if (detectedDuration > 60_000L) vodResumeDurations.put(currentPlaybackVodId, detectedDuration);
         vodResumeUpdatedAt.put(currentPlaybackVodId, System.currentTimeMillis());
         ChannelItem item = currentPlaybackTransientItem;
         if (item == null || !currentPlaybackVodId.equals(item.id)) {
@@ -21707,6 +21889,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         if (vodResumePositions.remove(vodId) != null) {
+            vodResumeDurations.remove(vodId);
             vodResumeUpdatedAt.remove(vodId);
             vodResumeItems.remove(vodId);
             if (catalogSnapshotStore != null) {
@@ -21719,6 +21902,7 @@ public class MainActivity extends FragmentActivity {
 
     private void loadVodResumePositions() {
         vodResumePositions.clear();
+        vodResumeDurations.clear();
         vodResumeUpdatedAt.clear();
         invalidateVodDerivedCaches();
         if (prefs == null) {
@@ -21737,6 +21921,7 @@ public class MainActivity extends FragmentActivity {
                 if (rawValue instanceof JSONObject) {
                     JSONObject entry = (JSONObject) rawValue;
                     vodResumePositions.put(key, Math.max(0L, entry.optLong("position", 0L)));
+                    vodResumeDurations.put(key, Math.max(0L, entry.optLong("duration", 0L)));
                     vodResumeUpdatedAt.put(key, Math.max(0L, entry.optLong("updated_at", 0L)));
                 } else {
                     long position = Math.max(0L, json.optLong(key, 0L));
@@ -21771,6 +21956,7 @@ public class MainActivity extends FragmentActivity {
                 if (value > 0L) {
                     json.put(entry.getKey(), new JSONObject()
                             .put("position", value)
+                            .put("duration", vodResumeDuration(entry.getKey()))
                             .put("updated_at", Math.max(0L, vodResumeUpdatedAt.getOrDefault(entry.getKey(), System.currentTimeMillis()))));
                 }
             }
@@ -21781,6 +21967,18 @@ public class MainActivity extends FragmentActivity {
         } catch (Exception e) {
             Log.w(TAG, "failed to save vod resume positions", e);
         }
+    }
+
+    static boolean shouldPreserveLocalVodProgress(long localTime, long remoteTime, boolean remoteHasEntry, long durationMs) {
+        // An absent entry cannot acknowledge a local bookmark we could not upload
+        // because its duration was unknown. Explicit remote entries still win.
+        return localTime > remoteTime || (!remoteHasEntry && durationMs <= 60_000L);
+    }
+
+    private long vodResumeDuration(String id) {
+        ChannelItem item = findChannelItemById(id);
+        if (item == null) item = vodResumeItems.get(id);
+        return Math.max(vodResumeDurations.getOrDefault(id, 0L), item == null ? 0L : item.vodDurationSeconds * 1000L);
     }
 
     private void rememberVodResumeItem(ChannelItem item) {

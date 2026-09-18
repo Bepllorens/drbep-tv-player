@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 557
-        versionName "2.0.557-beta-vod-end-screen"
+        versionCode 567
+        versionName "2.0.567-beta-vod-permissions"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

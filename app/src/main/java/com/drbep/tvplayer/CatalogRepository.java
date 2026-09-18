@@ -961,6 +961,10 @@ final class CatalogRepository {
     }
 
     private void appendPrimeVodArray(List<ChannelItem> parsed, JSONArray rows) {
+        appendPrimeVodArray(parsed, rows, "Prime Video");
+    }
+
+    private void appendPrimeVodArray(List<ChannelItem> parsed, JSONArray rows, String providerLabel) {
         if (rows == null) {
             return;
         }
@@ -992,7 +996,7 @@ final class CatalogRepository {
             if (filterKey.isEmpty()) {
                 filterKey = "movie".equals(kind) ? "vod:prime:movies" : "vod:prime:series";
             }
-            String group = firstNonEmpty(safeCatalogText(row.optString("group", "")), "Prime Video");
+            String group = firstNonEmpty(safeCatalogText(row.optString("group", "")), providerLabel);
             String licenseUrl = absolutizeVodUrl(safeCatalogUrl(row.optString("license_url", "")));
             parsed.add(new ChannelItem(
                     buildVodItemId(selectedUrl, title, false),
@@ -1007,17 +1011,46 @@ final class CatalogRepository {
                     true,
                     false,
                     0,
-                    "Prime Video",
+                    providerLabel,
                     new ArrayList<>(),
                     firstNonEmpty(safeCatalogText(row.optString("drm_type", "")), "widevine"),
                     licenseUrl,
                     filterKey,
                     true,
                     safeCatalogText(row.optString("description", "")),
-                    "",
-                    0L
+                    safeCatalogText(row.optString("year", "")),
+                    row.optLong("duration_seconds", 0L)
             ));
+            ChannelItem added = parsed.get(parsed.size() - 1);
+            added.vodReleaseDate = firstNonEmpty(row.optString("air_date"), row.optString("release_date"), row.optString("premiere_date"), row.optString("year"));
+            added.vodSeriesId = row.optString("series_id");
+            added.vodSeriesTitle = row.optString("series_title");
+            added.vodSeason = row.optInt("season");
+            added.vodEpisode = row.optInt("episode");
         }
+    }
+
+    List<ChannelItem> fetchSkyshowtimeVodCatalog() throws Exception {
+        List<ChannelItem> parsed = new ArrayList<>();
+        String revision = "";
+        for (String kind : new String[]{"movie", "episode"}) {
+            String after = "";
+            Set<String> seen = new HashSet<>();
+            do {
+                JSONObject page = httpClient.getJsonObject(
+                        vodApiBaseUrl() + "/api/vod/private/skyshowtime/catalog?paged=1&kind=" + kind
+                                + "&after=" + Uri.encode(after) + "&revision=" + Uri.encode(revision),
+                        10000, 20000, authenticatedVodHeaders(), "cargando catálogo SkyShowtime");
+                if (!page.optBoolean("paged")) throw new java.io.IOException("Actualiza el servidor para cargar SkyShowtime por páginas");
+                String pageRevision = page.optString("revision");
+                if (!revision.isEmpty() && !revision.equals(pageRevision)) throw new java.io.IOException("El catálogo ha cambiado; vuelve a abrirlo");
+                revision = pageRevision;
+                appendPrimeVodArray(parsed, page.optJSONArray("items"), "SkyShowtime");
+                after = page.optString("next");
+                if (!after.isEmpty() && !seen.add(after)) throw new java.io.IOException("No se pudo avanzar en el catálogo SkyShowtime");
+            } while (!after.isEmpty());
+        }
+        return parsed;
     }
 
     List<ChannelItem> fetchPrimeSeriesEpisodes(String seriesAssetId) throws Exception {
@@ -1104,7 +1137,7 @@ final class CatalogRepository {
                 .appendPath("plex")
                 .appendPath("catalog")
                 .appendQueryParameter("kind", "series".equalsIgnoreCase(kind) ? "series" : "movies".equalsIgnoreCase(kind) ? "movies" : "all")
-                .appendQueryParameter("sort", "title".equalsIgnoreCase(sort) ? "title" : "recent")
+                .appendQueryParameter("sort", "title".equalsIgnoreCase(sort) ? "title" : "release")
                 .appendQueryParameter("offset", String.valueOf(Math.max(0, offset)))
                 .appendQueryParameter("limit", String.valueOf(Math.max(1, Math.min(500, limit))));
         if (libraryId > 0L) {
@@ -1144,7 +1177,7 @@ final class CatalogRepository {
                 .appendPath("vod")
                 .appendPath("plex")
                 .appendPath("series")
-                .appendQueryParameter("sort", "title".equalsIgnoreCase(sort) ? "title" : "recent")
+                .appendQueryParameter("sort", "title".equalsIgnoreCase(sort) ? "title" : "release")
                 .appendQueryParameter("offset", String.valueOf(Math.max(0, offset)))
                 .appendQueryParameter("limit", String.valueOf(Math.max(1, Math.min(500, limit))));
         if (libraryId > 0L) {
@@ -1328,6 +1361,22 @@ final class CatalogRepository {
         if (query != null && !query.isEmpty()) path += "/catalog?" + query;
         return httpClient.getJsonObject(vodApiBaseUrl() + path, 10000, 15000,
                 authenticatedVodHeaders(), "catálogo privado");
+    }
+
+    Boolean canAccessPrivateVodCatalog(String provider) {
+        if (!"hbomax".equals(provider) && !"skyshowtime".equals(provider)) return false;
+        try {
+            HttpClient.Response response = httpClient.get(
+                    vodApiBaseUrl() + "/api/vod/private/" + provider, 5000, 5000,
+                    authenticatedVodHeaders());
+            if (response.code == 401) return null;
+            if (response.code == 403 || response.code == 404) return false;
+            if (response.code != 200) return null;
+            JSONObject descriptor = new JSONObject(response.body);
+            return provider.equals(descriptor.optString("provider"));
+        } catch (Exception unavailable) {
+            return null;
+        }
     }
 
     private Map<String, String> authenticatedVodHeaders() {
@@ -1768,13 +1817,18 @@ final class CatalogRepository {
             return permissions;
         }
         permissions.liveEnabled = payload.optBoolean("live", true);
-        permissions.vodEnabled = payload.optBoolean("vod", true);
-        permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", true);
-        permissions.runtimeEnabled = payload.optBoolean("runtime", true);
-        permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", true);
-        permissions.plexVodEnabled = payload.optBoolean("plex_vod", true);
-        permissions.primeVodEnabled = payload.optBoolean("prime_vod", true);
-        permissions.daznVodEnabled = payload.optBoolean("dazn_vod", true);
+        permissions.vodEnabled = payload.optBoolean("vod", false);
+        permissions.tivifyGeneralEnabled = payload.optBoolean("tivify_general", false);
+        permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", false);
+        permissions.runtimeEnabled = payload.optBoolean("runtime", false);
+        permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", false);
+        permissions.plexVodEnabled = payload.optBoolean("plex_vod", false);
+        permissions.primeVodEnabled = payload.optBoolean("prime_vod", false);
+        permissions.daznVodEnabled = payload.optBoolean("dazn_vod", false);
+        Set<String> vodGroups = parseStringArray(payload.optJSONArray("groups"));
+        permissions.hboVodEnabled = payload.optBoolean("hbomax_vod", vodGroups.contains("hbo max vod"));
+        permissions.skyVodEnabled = payload.optBoolean("skyshowtime_vod", vodGroups.contains("skyshowtime vod"));
+        permissions.privateVodPermissionsExplicit = payload.has("hbomax_vod") && payload.has("skyshowtime_vod");
         permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
         permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
         permissions.canDeleteRecordings = payload.optBoolean("recordings_delete", false);
@@ -1904,6 +1958,11 @@ final class ChannelItem implements Serializable {
     final String vodDescription;
     final String vodYear;
     final long vodDurationSeconds;
+    String vodReleaseDate = "";
+    String vodSeriesId = "";
+    String vodSeriesTitle = "";
+    int vodSeason;
+    int vodEpisode;
     String daznStart;
     String daznEnd;
     String daznCompetitionId;
@@ -2103,7 +2162,11 @@ final class OfflinePermissions implements Serializable {
     private static final long serialVersionUID = 1L;
 
     boolean liveEnabled = true;
-    boolean vodEnabled = true;
+    boolean vodEnabled = false;
+    boolean tivifyGeneralEnabled = false;
+    boolean hboVodEnabled = false;
+    boolean privateVodPermissionsExplicit = false;
+    boolean skyVodEnabled = false;
     boolean tivifyAdultEnabled = true;
     boolean runtimeEnabled = true;
     boolean movistarVodEnabled = true;
@@ -2130,7 +2193,7 @@ final class OfflinePermissions implements Serializable {
     }
 
     boolean allowsTivifyVod() {
-        return vodEnabled;
+        return vodEnabled && tivifyGeneralEnabled;
     }
 
     boolean allowsTivifyAdultVod() {
@@ -2138,7 +2201,16 @@ final class OfflinePermissions implements Serializable {
     }
 
     boolean allowsRuntimeVod() {
-        return runtimeEnabled;
+        return vodEnabled && runtimeEnabled;
+    }
+
+    boolean allowsHboVod() { return vodEnabled && hboVodEnabled; }
+    boolean allowsSkyVod() { return vodEnabled && skyVodEnabled; }
+
+    boolean hasVodCatalogAccess() {
+        return allowsTivifyVod() || allowsTivifyAdultVod() || allowsRuntimeVod()
+                || allowsMovistarVod() || allowsPlexVod() || allowsPrimeVod()
+                || allowsDaznVod() || allowsHboVod() || allowsSkyVod();
     }
 
     boolean allowsMovistarVod() {

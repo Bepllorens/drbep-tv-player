@@ -92,6 +92,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            if (model.help.isNotBlank()) {
             Spacer(modifier = Modifier.height(if (compact) 8.dp else 10.dp))
             BasicText(
                 text = model.help,
@@ -99,6 +100,7 @@ private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualP
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            }
             Spacer(modifier = Modifier.height(if (compact) 10.dp else 12.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)) {
                 items((model.actions ?: emptyList()).withIndex().toList()) { indexedAction ->
@@ -136,7 +138,7 @@ private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean
     Box(
         modifier = Modifier
             .height(if (compact) 38.dp else 42.dp)
-            .width(if (compact) 138.dp else 170.dp)
+            .width(if (compact) 138.dp else 156.dp)
             .clip(RoundedCornerShape(13.dp))
             .background(background)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -194,7 +196,7 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                 if (dense) {
                     if (compact) 244.dp else 282.dp
                 } else {
-                    if (compact) 272.dp else 326.dp
+                    if (compact) 244.dp else 270.dp
                 }
             )
             .clip(RoundedCornerShape(16.dp))
@@ -222,7 +224,7 @@ private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPo
                     if (dense) {
                         if (compact) 108.dp else 136.dp
                     } else {
-                        if (compact) 150.dp else 184.dp
+                        if (compact) 120.dp else 132.dp
                     }
                 )
                 .clip(RoundedCornerShape(12.dp)),

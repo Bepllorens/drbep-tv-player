@@ -22,6 +22,7 @@ final class TouchControlsUiFactory {
         void showOverlay();
         void showFilterPicker();
         void showVodLibrary();
+        default boolean canOpenVod() { return false; }
         void openTimelineGuide();
         boolean supportsU7d(ChannelItem item);
         void openU7d(ChannelItem item);
@@ -36,6 +37,8 @@ final class TouchControlsUiFactory {
         boolean seekForward();
         void showSeekUnavailable();
         void togglePlayback();
+        void showAudioTracks();
+        void showSubtitles();
     }
 
     private TouchControlsUiFactory() {
@@ -57,7 +60,7 @@ final class TouchControlsUiFactory {
         boolean u7dReplay = current != null && "u7d_proxy".equalsIgnoreCase(current.playbackProfile);
         boolean vod = current != null && current.isVod && !u7dReplay;
         List<ZapActionItem> actions = new ArrayList<>();
-        actions.add(new ZapActionItem(
+        if (!vod) actions.add(new ZapActionItem(
                 host.text(R.string.touch_button_list),
                 true,
                 false,
@@ -67,7 +70,7 @@ final class TouchControlsUiFactory {
                     host.showOverlay();
                 }
         ));
-        actions.add(new ZapActionItem(
+        if (!vod) actions.add(new ZapActionItem(
                 host.text(R.string.touch_button_platform),
                 true,
                 false,
@@ -81,7 +84,7 @@ final class TouchControlsUiFactory {
                 },
                 null
         ));
-        actions.add(new ZapActionItem(
+        if (!vod || host.canOpenVod()) actions.add(new ZapActionItem(
                 host.text(vod ? R.string.touch_button_vod_library : R.string.touch_button_guide),
                 true,
                 false,
@@ -107,7 +110,7 @@ final class TouchControlsUiFactory {
                     }
             ));
         }
-        if (!vod) {
+        if (!vod && host.canOpenVod()) {
             actions.add(new ZapActionItem(
                     host.text(R.string.touch_button_vod),
                     true,
@@ -149,7 +152,7 @@ final class TouchControlsUiFactory {
                     }
             ));
         }
-        actions.add(new ZapActionItem(
+        if (!vod) actions.add(new ZapActionItem(
                 host.text(R.string.touch_button_recordings),
                 true,
                 false,
@@ -220,6 +223,16 @@ final class TouchControlsUiFactory {
                         }
                     }
             ));
+        }
+        if (vod) {
+            actions.add(new ZapActionItem(host.text(R.string.audio_track_title), true, false, false, () -> {
+                host.keepVisible();
+                host.showAudioTracks();
+            }));
+            actions.add(new ZapActionItem(host.text(R.string.subtitle_track_title), true, false, false, () -> {
+                host.keepVisible();
+                host.showSubtitles();
+            }));
         }
         return new TouchControlsBarUiModel(
                 host.text(R.string.filter_navigation_hint),

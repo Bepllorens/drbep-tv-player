@@ -12,6 +12,17 @@ import org.junit.Test;
 
 public class TouchControlsUiFactoryTest {
     @Test
+    public void vodWithoutPermissionIsRemovedNotDisabled() {
+        FakeHost host = new FakeHost();
+        host.current = channel(false);
+        host.vodAllowed = false;
+        host.u7dSupported = false;
+        TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
+        assertFalse(hasLabel(model, "VOD"));
+        assertFalse(hasLabel(model, "U7D"));
+        assertLabels(model, "Canales", "Plataforma", "Guia", "Anterior", "Info", "Grab");
+    }
+    @Test
     public void liveChannelWithU7dKeepsExpectedActionOrder() {
         FakeHost host = new FakeHost();
         host.current = channel(false);
@@ -35,7 +46,10 @@ public class TouchControlsUiFactoryTest {
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
 
-        assertLabels(model, "Canales", "Plataforma", "Biblioteca VOD", "Ficha VOD", "Grab", "Rebobinar", "Pausa", "Avanzar");
+        assertLabels(model, "Biblioteca VOD", "Ficha VOD", "Rebobinar", "Pausa", "Avanzar", "Audio", "Subtitulos");
+        click(model, "Audio");
+        click(model, "Subtitulos");
+        assertEquals("keep,audio,keep,subtitles", String.join(",", host.events));
         assertFalse(hasLabel(model, "U7D"));
         assertFalse(hasLabel(model, "Info"));
         assertFalse(hasLabel(model, "Anterior"));
@@ -134,7 +148,7 @@ public class TouchControlsUiFactoryTest {
     @Test
     public void channelsAlwaysOpensOverlayEvenWhenVisibilityWasStale() {
         FakeHost host = new FakeHost();
-        host.current = channel(true);
+        host.current = channel(false);
         host.overlayVisible = true;
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
@@ -234,6 +248,10 @@ public class TouchControlsUiFactoryTest {
     }
 
     private static final class FakeHost implements TouchControlsUiFactory.Host {
+        @Override public void showAudioTracks() { events.add("audio"); }
+        @Override public void showSubtitles() { events.add("subtitles"); }
+        boolean vodAllowed = true;
+        @Override public boolean canOpenVod() { return vodAllowed; }
         final List<String> events = new ArrayList<>();
         ChannelItem current;
         boolean overlayVisible;
@@ -244,6 +262,8 @@ public class TouchControlsUiFactoryTest {
         String filterLogoUrl;
 
         @Override public String text(int resId) {
+            if (resId == R.string.audio_track_title) return "Audio";
+            if (resId == R.string.subtitle_track_title) return "Subtitulos";
             if (resId == R.string.touch_button_list) return "Canales";
             if (resId == R.string.touch_button_platform) return "Plataforma";
             if (resId == R.string.touch_button_guide) return "Guia";

@@ -320,6 +320,7 @@
     <string name="zap_action_record">Grabar</string>
     <string name="zap_action_family">Familia</string>
     <string name="zap_action_audio">Audio</string>
+    <string name="touch_button_tv">TV</string>
     <string name="zap_action_quality">Calidad</string>
     <string name="zap_action_favorite">Favorito</string>
     <string name="zap_action_more">Mas</string>

@@ -2310,6 +2310,9 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public void returnToLiveTv() { MainActivity.this.returnToLiveTv(); }
+
+            @Override
             public void openProgramInfo() {
                 hideTouchControlsForRemote();
                 hideZapBanner();
@@ -12254,8 +12257,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void openLive() {
-                applyQuickOverlayTarget("tv");
-                showOverlay();
+                returnToLiveTv();
             }
 
             @Override
@@ -17401,7 +17403,7 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.startup_home_live_subtitle),
                 getResources().getQuantityString(R.plurals.startup_home_channels, tvCount, tvCount),
                 false,
-                open.apply(() -> applyQuickOverlayTarget("tv"))
+                open.apply(this::returnToLiveTv)
         ));
         if (StartupHomeHubUiModel.shouldIncludeVodCard(vodCount, shouldShowGenericVodQuickTarget(false))) {
             primaryCards.add(new StartupHomeHubUiModel.PrimaryCard(
@@ -20754,6 +20756,27 @@ public class MainActivity extends FragmentActivity {
             }
         }
         return favorites;
+    }
+
+    private void returnToLiveTv() {
+        ChannelItem live = findChannelItemById(lastChannelId);
+        if (!isLinearStartupChannel(live)) {
+            live = null;
+            for (ChannelItem candidate : allChannels) {
+                if (isLinearStartupChannel(candidate) && !shouldHideProtectedItem(candidate)) {
+                    live = candidate;
+                    break;
+                }
+            }
+        }
+        if (live == null) {
+            applyQuickOverlayTarget("tv");
+            showOverlay();
+            return;
+        }
+        hideTouchControlsForRemote();
+        hideZapBanner();
+        tuneChannelById(live.id);
     }
 
     private void tunePreviousChannel() {

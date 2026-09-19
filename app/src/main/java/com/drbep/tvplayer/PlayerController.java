@@ -2925,10 +2925,13 @@ final class PlayerController {
         if (!group.isTrackSupported(option.trackIndex)) {
             return false;
         }
-        trackSelector.setParameters(trackSelector.buildUponParameters()
+        if (group.isTrackSelected(option.trackIndex)) {
+            return true;
+        }
+        applyAudioTrackParameters(trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                .setOverrideForType(new TrackSelectionOverride(group.getMediaTrackGroup(), option.trackIndex)));
+                .setOverrideForType(new TrackSelectionOverride(group.getMediaTrackGroup(), option.trackIndex)).build());
         if (!safeString(option.language).isEmpty()) {
             prefs.edit().putString(PREF_PREFERRED_AUDIO_LANGUAGE, option.language.trim()).apply();
         }
@@ -2939,10 +2942,29 @@ final class PlayerController {
         if (trackSelector == null) {
             return;
         }
-        trackSelector.setParameters(trackSelector.buildUponParameters()
+        applyAudioTrackParameters(trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false));
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build());
         prefs.edit().remove(PREF_PREFERRED_AUDIO_LANGUAGE).apply();
+    }
+
+    private void applyAudioTrackParameters(DefaultTrackSelector.Parameters parameters) {
+        // Rebuild the VOD period when changing audio. In-place switching on Fire TV
+        // can leave the renderer buffering without loading after a codec change.
+        // Keep the existing media source, position and pause state; do not re-resolve
+        // the title or alter the live-channel switching path.
+        boolean restart = player != null && currentRequest != null && currentRequest.vod
+                && !"u7d_proxy".equals(safeLower(currentRequest.playbackProfile));
+        long positionMs = restart ? Math.max(0L, player.getCurrentPosition()) : 0L;
+        boolean playWhenReady = restart && player.getPlayWhenReady();
+        if (restart) player.stop();
+        trackSelector.setParameters(parameters);
+        if (restart) {
+            Log.i(TAG, "VOD audio switch: preparing at positionMs=" + positionMs);
+            player.seekTo(positionMs);
+            player.prepare();
+            player.setPlayWhenReady(playWhenReady);
+        }
     }
 
     List<TextTrackOption> getTextTrackOptions() {

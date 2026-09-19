@@ -451,13 +451,15 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
     }
 }
 
-private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, OTHER }
+private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, OTHER }
 
 private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
     if (item.iconHint.equals("platform", ignoreCase = true)) return ModernActionIconKind.PLATFORM
     val value = item.label.lowercase()
     return when {
-        "canal" in value -> ModernActionIconKind.CHANNELS
+        "audio" in value -> ModernActionIconKind.AUDIO
+        "subt" in value -> ModernActionIconKind.SUBTITLES
+        value == "tv" || "canal" in value -> ModernActionIconKind.CHANNELS
         "plataforma" in value -> ModernActionIconKind.PLATFORM
         "guía" in value || "guia" in value -> ModernActionIconKind.GUIDE
         "u7d" in value -> ModernActionIconKind.U7D
@@ -517,6 +519,27 @@ private fun ModernActionIcon(item: ZapActionItem, focused: Boolean, artworkBinde
                 val strokeWidth = 2.15.dp.toPx()
                 val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 when (kind) {
+                    ModernActionIconKind.AUDIO -> {
+                        val speaker = Path().apply {
+                            moveTo(w * .12f, h * .38f)
+                            lineTo(w * .29f, h * .38f)
+                            lineTo(w * .49f, h * .21f)
+                            lineTo(w * .49f, h * .79f)
+                            lineTo(w * .29f, h * .62f)
+                            lineTo(w * .12f, h * .62f)
+                            close()
+                        }
+                        drawPath(speaker, iconColor, style = stroke)
+                        drawArc(iconColor, -55f, 110f, false, Offset(w * .41f, h * .32f), Size(w * .30f, h * .36f), style = stroke)
+                        drawArc(iconColor, -55f, 110f, false, Offset(w * .40f, h * .17f), Size(w * .49f, h * .66f), style = stroke)
+                    }
+                    ModernActionIconKind.SUBTITLES -> {
+                        drawRoundRect(iconColor, Offset(w * .09f, h * .21f), Size(w * .82f, h * .58f), CornerRadius(w * .08f), style = stroke)
+                        for (y in listOf(.45f, .60f)) {
+                            drawLine(iconColor, Offset(w * .22f, h * y), Offset(w * .43f, h * y), strokeWidth, StrokeCap.Round)
+                            drawLine(iconColor, Offset(w * .55f, h * y), Offset(w * .78f, h * y), strokeWidth, StrokeCap.Round)
+                        }
+                    }
                     ModernActionIconKind.CHANNELS -> {
                         drawRoundRect(iconColor, Offset(w * .09f, h * .18f), Size(w * .82f, h * .64f), CornerRadius(w * .09f), style = stroke)
                         val cell = w * .115f

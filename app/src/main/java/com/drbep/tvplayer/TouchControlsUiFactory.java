@@ -28,6 +28,7 @@ final class TouchControlsUiFactory {
         void openU7d(ChannelItem item);
         void showVodInfo(ChannelItem item);
         void tunePreviousChannel();
+        void returnToLiveTv();
         void openProgramInfo();
         void showPlaybackDiagnostics();
         void openRecordings();
@@ -60,6 +61,12 @@ final class TouchControlsUiFactory {
         boolean u7dReplay = current != null && "u7d_proxy".equalsIgnoreCase(current.playbackProfile);
         boolean vod = current != null && current.isVod && !u7dReplay;
         List<ZapActionItem> actions = new ArrayList<>();
+        if (vod) actions.add(new ZapActionItem(
+                host.text(R.string.touch_button_tv), true, false, false, () -> {
+                    host.keepVisible();
+                    host.returnToLiveTv();
+                }
+        ));
         if (!vod) actions.add(new ZapActionItem(
                 host.text(R.string.touch_button_list),
                 true,

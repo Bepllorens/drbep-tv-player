@@ -46,10 +46,11 @@ public class TouchControlsUiFactoryTest {
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
 
-        assertLabels(model, "Biblioteca VOD", "Ficha VOD", "Rebobinar", "Pausa", "Avanzar", "Audio", "Subtitulos");
+        assertLabels(model, "TV", "Biblioteca VOD", "Ficha VOD", "Rebobinar", "Pausa", "Avanzar", "Audio", "Subtitulos");
+        click(model, "TV");
         click(model, "Audio");
         click(model, "Subtitulos");
-        assertEquals("keep,audio,keep,subtitles", String.join(",", host.events));
+        assertEquals("keep,liveTv,keep,audio,keep,subtitles", String.join(",", host.events));
         assertFalse(hasLabel(model, "U7D"));
         assertFalse(hasLabel(model, "Info"));
         assertFalse(hasLabel(model, "Anterior"));
@@ -262,6 +263,7 @@ public class TouchControlsUiFactoryTest {
         String filterLogoUrl;
 
         @Override public String text(int resId) {
+            if (resId == R.string.touch_button_tv) return "TV";
             if (resId == R.string.audio_track_title) return "Audio";
             if (resId == R.string.subtitle_track_title) return "Subtitulos";
             if (resId == R.string.touch_button_list) return "Canales";
@@ -301,6 +303,7 @@ public class TouchControlsUiFactoryTest {
         @Override public void openU7d(ChannelItem item) { events.add("openU7D"); }
         @Override public void showVodInfo(ChannelItem item) { events.add("showVodInfo"); }
         @Override public void tunePreviousChannel() { events.add("previous"); }
+        @Override public void returnToLiveTv() { events.add("liveTv"); }
         @Override public void openProgramInfo() { events.add("info"); }
         @Override public void showPlaybackDiagnostics() { events.add("diagnostics"); }
         @Override public void openRecordings() { events.add("recordings"); }

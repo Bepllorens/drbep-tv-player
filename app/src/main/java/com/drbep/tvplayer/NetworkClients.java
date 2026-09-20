@@ -46,6 +46,12 @@ final class NetworkClients {
         return SHARED;
     }
 
+    static Call.Factory licenseCallFactory() {
+        // Transport only. Media3 retains ownership of license URLs, bodies and
+        // per-item authorization headers; default TLS verification is unchanged.
+        return new PlaybackCallFactory(20_000, 30_000);
+    }
+
     static OkHttpClient withTimeouts(int connectTimeoutMs, int readTimeoutMs) {
         return SHARED.newBuilder()
                 .connectTimeout(Math.max(1, connectTimeoutMs), TimeUnit.MILLISECONDS)

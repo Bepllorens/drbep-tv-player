@@ -346,7 +346,7 @@ public class MainActivity extends FragmentActivity {
                 renderOverlayNowPlayingSurface();
             }
             ChannelItem currentChannel = getCurrentPlaybackChannelItem();
-            if (currentChannel != null && zapBanner != null && zapBanner.getVisibility() == View.VISIBLE) {
+            if (currentChannel != null && touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE) {
                 updatePlaybackHudContent(currentChannel);
             }
         }
@@ -2422,7 +2422,8 @@ public class MainActivity extends FragmentActivity {
                     remaining,
                     progress,
                     durationMs > 0L,
-                    ""
+                    "",
+                    playerController == null ? "" : playerController.getVodStreamInfo()
             );
         }
         if (isU7dReplayItem(channel)) {
@@ -5819,8 +5820,30 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showVodInfoDialog(ChannelItem channel, Runnable onBack) {
+        showVodInfoDialog(channel, onBack, true);
+    }
+
+    private void showVodInfoDialog(ChannelItem channel, Runnable onBack, boolean refreshMetadata) {
         if (channel == null) {
             return;
+        }
+        // Home/history can hold the old snapshot item even after the provider
+        // catalog has been enriched. Resolve its metadata before opening the card.
+        if (refreshMetadata && channel.vodDescription.trim().isEmpty()
+                && "Prime Video".equals(channel.platformName) && catalogRepository != null) {
+            ChannelItem latest = findChannelItemById(channel.id);
+            if (latest != null && !latest.vodDescription.trim().isEmpty()) {
+                showVodInfoDialog(latest, onBack, false);
+                return;
+            }
+            if (!dynamicPrimeVodLoaded && !dynamicPrimeVodLoading) {
+                loadDynamicPrimeVodCatalog(() -> {
+                    ChannelItem refreshed = findChannelItemById(channel.id);
+                    showVodInfoDialog(refreshed != null && !refreshed.vodDescription.trim().isEmpty()
+                            ? refreshed : channel, onBack, false);
+                });
+                return;
+            }
         }
         vodPlaybackReturn = onBack;
         if (channel.playUrl.startsWith("sky-series:")) {
@@ -16907,6 +16930,8 @@ public class MainActivity extends FragmentActivity {
         ComposeView composeView = new ComposeView(this);
         attachDialogViewTreeOwners(composeView);
         List<TvOptionsPanelRowUiModel> rows = new ArrayList<>();
+        boolean trackSelectorPanel = getString(R.string.audio_track_title).equals(title)
+                || getString(R.string.subtitle_track_title).equals(title);
         for (int i = 0; options != null && i < options.size(); i++) {
             final int index = i;
             rows.add(new TvOptionsPanelRowUiModel(
@@ -16918,7 +16943,8 @@ public class MainActivity extends FragmentActivity {
                             dismissModalForNextAction(dialogHolder[0], actions.get(index));
                         }
                     },
-                    artwork != null && index < artwork.size() ? artwork.get(index) : null
+                    artwork != null && index < artwork.size() ? artwork.get(index) : null,
+                    trackSelectorPanel
             ));
         }
         Runnable backAction = () -> {
@@ -20963,6 +20989,20 @@ public class MainActivity extends FragmentActivity {
                 }
             });
         }
+        String[] sizes = {"Pequeño", "Mediano", "Grande"};
+        options.add("Tamaño de subtítulos: " + sizes[playerController.getSubtitleSize()]);
+        actions.add(() -> {
+            List<Runnable> sizeActions = new ArrayList<>();
+            for (int i = 0; i < sizes.length; i++) {
+                final int size = i;
+                sizeActions.add(() -> {
+                    if (playerController != null) playerController.setSubtitleSize(size);
+                    showTextTrackDialog(onBack);
+                });
+            }
+            showTvOptionsDialog("Tamaño de subtítulos", "Se guarda para las siguientes reproducciones",
+                    java.util.Arrays.asList(sizes), sizeActions, () -> showTextTrackDialog(onBack), null);
+        });
         showTvOptionsDialog(R.string.subtitle_track_title, tracks.isEmpty() ? getString(R.string.subtitle_track_unavailable) : null, options, actions, onBack);
     }
 

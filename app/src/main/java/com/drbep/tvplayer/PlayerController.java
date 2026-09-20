@@ -79,9 +79,80 @@ import java.util.regex.Pattern;
 final class PlayerController {
     private static final String TAG = "PlayerController";
     private static final String PREFS = "drbep_tv_prefs";
-    private static final String PREF_PREFERRED_AUDIO_LANGUAGE = "preferred_audio_language";
+    private boolean audioLanguageChosenForItem;
     private static final String PREF_PREFERRED_TEXT_LANGUAGE = "preferred_text_language";
     private static final String PREF_TEXT_TRACKS_ENABLED = "text_tracks_enabled";
+    private static final String PREF_TEXT_TRACK_MODE = "text_track_mode";
+    private String textTrackMode = "off";
+    private androidx.media3.exoplayer.upstream.DefaultAllocator diagnosticAllocator;
+
+    private String vodTrackPreferenceKey(String kind) {
+        return currentRequest != null && currentRequest.vod
+                ? "vod_track_" + kind + ":" + currentRequest.channelId : "";
+    }
+
+    private String trackIdentity(Format format) {
+        return VodTrackPreference.identity(format.language, format.label, format.sampleMimeType,
+                format.codecs, format.channelCount, format.bitrate, format.roleFlags, format.selectionFlags);
+    }
+
+    private void rememberVodTrack(String kind, String value) {
+        String key = vodTrackPreferenceKey(kind);
+        if (!key.isEmpty()) prefs.edit().putString(key, value).apply();
+    }
+
+    private void restoreVodTracks(Tracks tracks) {
+        // DASH periods and manifest refreshes can replace TrackGroups without a
+        // new MediaItem. Rebind semantic preferences on every tracks change.
+        if (trackSelector == null || tracks.getGroups().isEmpty()) return;
+        String audioKey = vodTrackPreferenceKey("audio");
+        if (audioKey.isEmpty()) return;
+        String audio = prefs.getString(audioKey, "");
+        String text = prefs.getString(vodTrackPreferenceKey("text"), "");
+        DefaultTrackSelector.Parameters.Builder parameters = trackSelector.buildUponParameters();
+        Tracks.Group audioGroup = null, textGroup = null;
+        int audioIndex = -1, textIndex = -1, audioScore = 0, textScore = 0;
+        for (Tracks.Group group : tracks.getGroups()) {
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSupported(i)) continue;
+                String identity = trackIdentity(group.getTrackFormat(i));
+                if (group.getType() == C.TRACK_TYPE_AUDIO) {
+                    int score = VodTrackPreference.matchScore(audio, identity);
+                    if (score > audioScore) {
+                        audioGroup = group; audioIndex = i; audioScore = score;
+                    }
+                }
+                if (group.getType() == C.TRACK_TYPE_TEXT && "manual".equals(textTrackMode)) {
+                    int score = VodTrackPreference.matchScore(text, identity);
+                    if (score > textScore) {
+                        textGroup = group; textIndex = i; textScore = score;
+                    }
+                }
+            }
+        }
+        if (!audio.isEmpty()) {
+            audioLanguageChosenForItem = true; // Explicit choice wins over ES defaults.
+            String language = VodTrackPreference.language(audio);
+            if (!language.isEmpty()) parameters.setPreferredAudioLanguages(language);
+            parameters.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, audioGroup == null);
+            if (audioGroup != null) parameters.setOverrideForType(
+                    new TrackSelectionOverride(audioGroup.getMediaTrackGroup(), audioIndex));
+        }
+        if ("manual".equals(textTrackMode)) {
+            // Missing temporarily is not permission to erase the user's choice.
+            parameters.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, textGroup == null);
+            if (textGroup != null) parameters.setOverrideForType(
+                    new TrackSelectionOverride(textGroup.getMediaTrackGroup(), textIndex));
+        }
+        DefaultTrackSelector.Parameters next = parameters.build();
+        if (!next.equals(trackSelector.getParameters())) {
+            Log.w(TAG, "VOD track preferences rebound audioMatch=" + audioScore
+                    + " textMode=" + textTrackMode + " textMatch=" + textScore);
+            trackSelector.setParameters(next);
+        }
+    }
     private static final String PREF_ADAPTIVE_QUALITY_LEVEL_PREFIX = "adaptive_quality_level_";
     private static final String PREF_ADAPTIVE_QUALITY_UNTIL_PREFIX = "adaptive_quality_until_";
     private static final String CLEARKEY_DATA_URI_PREFIX = "data:application/json;base64,";
@@ -459,7 +530,25 @@ final class PlayerController {
         return compactTouchDevice ? 8_000 : 6_000;
     }
 
+    int getSubtitleSize() {
+        return Math.max(0, Math.min(2, prefs.getInt("subtitle_size", 1)));
+    }
+
+    void setSubtitleSize(int size) {
+        prefs.edit().putInt("subtitle_size", Math.max(0, Math.min(2, size))).apply();
+        applySubtitleSize();
+    }
+
+    private void applySubtitleSize() {
+        androidx.media3.ui.SubtitleView subtitles = playerView.getSubtitleView();
+        if (subtitles == null) return;
+        // TTML embedded font sizes must not override the user's readability setting.
+        subtitles.setApplyEmbeddedFontSizes(false);
+        subtitles.setFractionalTextSize(new float[]{0.028f, 0.035f, 0.045f}[getSubtitleSize()]);
+    }
+
     void initialize() {
+        applySubtitleSize();
         installPlaybackCrashGuard();
         boolean multiViewPlayback = host.isMultiViewPlayback();
         if (shouldRegisterSystemMediaControls(multiViewPlayback)) {
@@ -469,22 +558,14 @@ final class PlayerController {
         DefaultTrackSelector.Parameters.Builder initialTrackParameters = trackSelector.buildUponParameters()
                 .setForceHighestSupportedBitrate(PlaybackQualityPolicy.forceHighestBitrate(host.playbackQualityMode()))
                 .setMaxVideoBitrate(videoQualityLimits(false)[2]);
-        String preferredAudioLanguage = safeString(prefs.getString(PREF_PREFERRED_AUDIO_LANGUAGE, "es-ES"));
-        if (!preferredAudioLanguage.isEmpty()) {
-            if ("es".equalsIgnoreCase(preferredAudioLanguage)) {
-                initialTrackParameters.setPreferredAudioLanguages("es-ES", "es");
-            } else {
-                initialTrackParameters.setPreferredAudioLanguages(preferredAudioLanguage);
-            }
-        }
+        initialTrackParameters.setPreferredAudioLanguages("es-ES", "es");
         String preferredTextLanguage = safeString(prefs.getString(PREF_PREFERRED_TEXT_LANGUAGE, "es"));
         if (!preferredTextLanguage.isEmpty()) {
             initialTrackParameters.setPreferredTextLanguages(preferredTextLanguage);
         }
-        initialTrackParameters.setTrackTypeDisabled(
-                C.TRACK_TYPE_TEXT,
-                !prefs.getBoolean(PREF_TEXT_TRACKS_ENABLED, false)
-        );
+        textTrackMode = prefs.getString(PREF_TEXT_TRACK_MODE,
+                prefs.getBoolean(PREF_TEXT_TRACKS_ENABLED, false) ? "forced" : "off");
+        initialTrackParameters.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !"manual".equals(textTrackMode));
         int initialMaxWidth = videoQualityLimits(false)[0];
         int initialMaxHeight = videoQualityLimits(false)[1];
         if (initialMaxWidth != Integer.MAX_VALUE || initialMaxHeight != Integer.MAX_VALUE) {
@@ -510,9 +591,11 @@ final class PlayerController {
             }
         }
                 .setEnableDecoderFallback(true);
+        diagnosticAllocator = new androidx.media3.exoplayer.upstream.DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE);
         player = new ExoPlayer.Builder(context, renderersFactory)
                 .setTrackSelector(trackSelector)
                 .setLoadControl(new DefaultLoadControl.Builder()
+                        .setAllocator(diagnosticAllocator)
                         // Keep TV zapping fast, but hold a small extra cushion before
                         // resume to avoid short rebuffer loops on live HLS edges.
                         .setBufferDurationsMs(
@@ -547,6 +630,13 @@ final class PlayerController {
         playerView.setFocusable(true);
         playerView.setFocusableInTouchMode(true);
 
+        player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
+            @Override
+            public void onVideoInputFormatChanged(EventTime eventTime, Format format,
+                    androidx.media3.exoplayer.DecoderReuseEvaluation decoderReuseEvaluation) {
+                updateSelectedPlaybackFormats();
+            }
+        });
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
@@ -728,6 +818,9 @@ final class PlayerController {
 
             @Override
             public void onTracksChanged(@NonNull Tracks tracks) {
+                restoreVodTracks(tracks);
+                selectDefaultSpanishAudio(tracks);
+                selectForcedTextTrack(tracks);
                 updateSelectedPlaybackFormats();
                 maybeShowHdrBadge();
                 if (host.isMultiViewPlayback()) {
@@ -1066,7 +1159,7 @@ final class PlayerController {
                 + safeLower(diagnostics.videoCodec) + "|"
                 + diagnostics.videoBitrate + "|"
                 + Math.round(diagnostics.videoFrameRate) + "|"
-                + safeLower(diagnostics.audioCodec);
+                + safeLower(diagnostics.audioCodec) + "|" + getVodStreamInfo();
         if (key.equals(lastPlaybackQualityKey)) {
             return;
         }
@@ -1188,6 +1281,10 @@ final class PlayerController {
 
     private DrmSessionManagerProvider createDrmSessionManagerProvider() {
         DefaultDrmSessionManagerProvider defaultProvider = new DefaultDrmSessionManagerProvider();
+        // Use the same bounded DNS/connection recovery as media requests. Keep a
+        // separate factory: media request headers must not leak to license hosts.
+        defaultProvider.setDrmHttpDataSourceFactory(
+                new OkHttpDataSource.Factory(NetworkClients.licenseCallFactory()));
         return mediaItem -> {
             if (mediaItem.localConfiguration == null || mediaItem.localConfiguration.drmConfiguration == null) {
                 return DrmSessionManager.DRM_UNSUPPORTED;
@@ -2402,6 +2499,11 @@ final class PlayerController {
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         PlaybackRequest previousRequest = currentRequest;
         if (!isSameChannel(request, previousRequest)) {
+            audioLanguageChosenForItem = false;
+            trackSelector.setParameters(trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setPreferredAudioLanguages("es-ES", "es")
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false));
             pendingAutoRecoveryReadyReport = false;
             pendingAutoRecoveryReason = "";
             attemptedVlcAudioDecoderFallback = false;
@@ -2410,6 +2512,13 @@ final class PlayerController {
             prepareAdaptiveQualityForChannel(request);
         }
         currentRequest = request;
+        if (!isSameChannel(request, previousRequest)) {
+            String defaultMode = prefs.getString(PREF_TEXT_TRACK_MODE, "off");
+            if ("manual".equals(defaultMode)) defaultMode = "forced";
+            textTrackMode = request.vod ? prefs.getString(vodTrackPreferenceKey("mode"), defaultMode) : defaultMode;
+            trackSelector.setParameters(trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true));
+        }
         streamInfo = ensurePatchedClearKeyManifestsForRoute(request, streamInfo, useFallback);
         currentStreamInfo = streamInfo;
         currentRecordingUrl = null;
@@ -2910,6 +3019,36 @@ final class PlayerController {
         return options;
     }
 
+    private void selectDefaultSpanishAudio(Tracks tracks) {
+        if (audioLanguageChosenForItem || trackSelector == null) return;
+        Tracks.Group bestGroup = null;
+        int bestTrack = -1;
+        int bestPriority = 0;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSupported(i)) continue;
+                Format format = group.getTrackFormat(i);
+                int priority = DefaultAudioPolicy.priority(format.language, format.label);
+                if ((format.roleFlags & C.ROLE_FLAG_DESCRIBES_VIDEO) != 0) priority -= 10;
+                if (priority > bestPriority || (priority == bestPriority && priority > 0
+                        && group.isTrackSelected(i))) {
+                    bestPriority = priority;
+                    bestGroup = group;
+                    bestTrack = i;
+                }
+            }
+        }
+        if (bestGroup == null) return;
+        audioLanguageChosenForItem = true;
+        if (!bestGroup.isTrackSelected(bestTrack)) {
+            applyAudioTrackParameters(trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setOverrideForType(new TrackSelectionOverride(bestGroup.getMediaTrackGroup(), bestTrack))
+                    .build());
+        }
+    }
+
     boolean selectAudioTrack(AudioTrackOption option) {
         if (option == null || player == null || trackSelector == null) {
             return false;
@@ -2925,6 +3064,8 @@ final class PlayerController {
         if (!group.isTrackSupported(option.trackIndex)) {
             return false;
         }
+        audioLanguageChosenForItem = true;
+        rememberVodTrack("audio", trackIdentity(group.getTrackFormat(option.trackIndex)));
         if (group.isTrackSelected(option.trackIndex)) {
             return true;
         }
@@ -2932,9 +3073,6 @@ final class PlayerController {
                 .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                 .setOverrideForType(new TrackSelectionOverride(group.getMediaTrackGroup(), option.trackIndex)).build());
-        if (!safeString(option.language).isEmpty()) {
-            prefs.edit().putString(PREF_PREFERRED_AUDIO_LANGUAGE, option.language.trim()).apply();
-        }
         return true;
     }
 
@@ -2942,10 +3080,13 @@ final class PlayerController {
         if (trackSelector == null) {
             return;
         }
+        rememberVodTrack("audio", "");
         applyAudioTrackParameters(trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setPreferredAudioLanguages("es-ES", "es")
                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build());
-        prefs.edit().remove(PREF_PREFERRED_AUDIO_LANGUAGE).apply();
+        audioLanguageChosenForItem = false;
+        if (player != null) selectDefaultSpanishAudio(player.getCurrentTracks());
     }
 
     private void applyAudioTrackParameters(DefaultTrackSelector.Parameters parameters) {
@@ -2957,14 +3098,25 @@ final class PlayerController {
                 && !"u7d_proxy".equals(safeLower(currentRequest.playbackProfile));
         long positionMs = restart ? Math.max(0L, player.getCurrentPosition()) : 0L;
         boolean playWhenReady = restart && player.getPlayWhenReady();
-        if (restart) player.stop();
-        trackSelector.setParameters(parameters);
         if (restart) {
-            Log.i(TAG, "VOD audio switch: preparing at positionMs=" + positionMs);
-            player.seekTo(positionMs);
+            MediaItem item = player.getCurrentMediaItem();
+            if (item == null) return;
+            String textMode = textTrackMode;
+            // stop/prepare retained the stalled Fire TV renderer. Release it fully
+            // while preserving the media item, position, selected tracks and pause state.
+            playerView.setPlayer(null);
+            if (mediaSession != null) { mediaSession.release(); mediaSession = null; }
+            player.release();
+            player = null;
+            initialize();
+            textTrackMode = textMode;
+            audioLanguageChosenForItem = false;
+            trackSelector.setParameters(parameters);
+            Log.i(TAG, "VOD audio switch: recreated renderer at positionMs=" + positionMs);
+            player.setMediaItem(item, positionMs);
             player.prepare();
             player.setPlayWhenReady(playWhenReady);
-        }
+        } else trackSelector.setParameters(parameters);
     }
 
     List<TextTrackOption> getTextTrackOptions() {
@@ -2994,6 +3146,31 @@ final class PlayerController {
         return options;
     }
 
+    private void selectForcedTextTrack(Tracks tracks) {
+        if (!"forced".equals(textTrackMode) || trackSelector == null) return;
+        String preferred = "es-ES";
+        Tracks.Group best = null;
+        int index = -1;
+        int score = 0;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSupported(i)) continue;
+                Format format = group.getTrackFormat(i);
+                int rank = TrackDisplayPolicy.forcedPriority(
+                        (format.selectionFlags & C.SELECTION_FLAG_FORCED) != 0,
+                        format.language, preferred);
+                if (rank > score) { best = group; index = i; score = rank; }
+            }
+        }
+        DefaultTrackSelector.Parameters.Builder parameters = trackSelector.buildUponParameters()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, best == null);
+        if (best != null) parameters.setOverrideForType(new TrackSelectionOverride(best.getMediaTrackGroup(), index));
+        DefaultTrackSelector.Parameters next = parameters.build();
+        if (!next.equals(trackSelector.getParameters())) trackSelector.setParameters(next);
+    }
+
     boolean selectTextTrack(TextTrackOption option) {
         if (option == null || player == null || trackSelector == null) {
             return false;
@@ -3008,11 +3185,15 @@ final class PlayerController {
                 || !group.isTrackSupported(option.trackIndex)) {
             return false;
         }
+        textTrackMode = "manual";
+        rememberVodTrack("mode", textTrackMode);
+        rememberVodTrack("text", trackIdentity(group.getTrackFormat(option.trackIndex)));
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 .setOverrideForType(new TrackSelectionOverride(group.getMediaTrackGroup(), option.trackIndex)));
-        SharedPreferences.Editor editor = prefs.edit().putBoolean(PREF_TEXT_TRACKS_ENABLED, true);
+        SharedPreferences.Editor editor = prefs.edit().putBoolean(PREF_TEXT_TRACKS_ENABLED, true)
+                .putString(PREF_TEXT_TRACK_MODE, textTrackMode);
         if (!safeString(option.language).isEmpty()) {
             editor.putString(PREF_PREFERRED_TEXT_LANGUAGE, option.language.trim());
         }
@@ -3024,40 +3205,42 @@ final class PlayerController {
         if (trackSelector == null) {
             return;
         }
+        textTrackMode = enabled ? "forced" : "off";
+        rememberVodTrack("mode", textTrackMode);
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled));
-        prefs.edit().putBoolean(PREF_TEXT_TRACKS_ENABLED, enabled).apply();
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true));
+        prefs.edit().putBoolean(PREF_TEXT_TRACKS_ENABLED, enabled)
+                .putString(PREF_TEXT_TRACK_MODE, textTrackMode).apply();
+        if (enabled && player != null) selectForcedTextTrack(player.getCurrentTracks());
     }
 
     private String textTrackLabel(Format format, int fallbackNumber) {
         String label = format == null ? "" : safeString(format.label);
         String language = format == null ? "" : safeString(format.language);
+        String name;
         if (!label.isEmpty() && !language.isEmpty()) {
-            return label + " (" + language.toUpperCase(Locale.ROOT) + ")";
+            name = label + " (" + language.toUpperCase(Locale.ROOT) + ")";
+        } else if (!label.isEmpty()) {
+            name = label;
+        } else if (!language.isEmpty()) {
+            name = language.toUpperCase(Locale.ROOT);
+        } else {
+            name = context.getString(R.string.subtitle_track_fallback, fallbackNumber);
         }
-        if (!label.isEmpty()) {
-            return label;
-        }
-        if (!language.isEmpty()) {
-            return language.toUpperCase(Locale.ROOT);
-        }
-        return context.getString(R.string.subtitle_track_fallback, fallbackNumber);
+        return TrackDisplayPolicy.subtitle(name, format != null
+                && (format.selectionFlags & C.SELECTION_FLAG_FORCED) != 0);
     }
 
     private String audioTrackLabel(Format format, int fallbackNumber) {
         String label = format == null ? "" : safeString(format.label);
         String language = format == null ? "" : safeString(format.language);
-        if (!label.isEmpty() && !language.isEmpty()) {
-            return label + " (" + language.toUpperCase(Locale.ROOT) + ")";
-        }
-        if (!label.isEmpty()) {
-            return label;
-        }
-        if (!language.isEmpty()) {
-            return language.toUpperCase(Locale.ROOT);
-        }
-        return context.getString(R.string.audio_track_fallback, fallbackNumber);
+        String name = !label.isEmpty() ? label + (language.isEmpty() ? "" : " (" + language.toUpperCase(Locale.ROOT) + ")")
+                : !language.isEmpty() ? language.toUpperCase(Locale.ROOT)
+                : context.getString(R.string.audio_track_fallback, fallbackNumber);
+        return format == null ? name : TrackDisplayPolicy.audio(name, format.sampleMimeType,
+                format.codecs, format.channelCount, format.bitrate,
+                (format.roleFlags & C.ROLE_FLAG_DESCRIBES_VIDEO) != 0, fallbackNumber);
     }
 
     private static String safeString(String value) {
@@ -3116,6 +3299,14 @@ final class PlayerController {
                 && isHlsDecision(decision);
     }
 
+    String getVodStreamInfo() {
+        if (player == null || currentRequest == null || !currentRequest.vod || isVlcDirectPlayActive()) return "";
+        Format format = player.getVideoFormat();
+        if (format == null) return "";
+        return VodStreamInfo.label(format.width, format.height, format.sampleMimeType,
+                format.codecs, PlaybackFormatBadges.video(format), format.bitrate);
+    }
+
     private void maybeShowHdrBadge() {
         if (player == null || currentRequest == null || currentRequest.channelId == null) {
             return;
@@ -3161,7 +3352,18 @@ final class PlayerController {
                 + " bufferedMs=" + bufferedMs
                 + " bufferedPositionMs=" + bufferedPositionMs
                 + " durationMs=" + durationMs
-                + " liveOffsetMs=" + liveOffsetMs;
+                + " liveOffsetMs=" + liveOffsetMs
+                + " loading=" + player.isLoading()
+                + " allocated=" + (diagnosticAllocator == null ? -1 : diagnosticAllocator.getTotalBytesAllocated())
+                + " audio=" + decoderProgress(player.getAudioDecoderCounters())
+                + " video=" + decoderProgress(player.getVideoDecoderCounters());
+    }
+
+    private static String decoderProgress(@Nullable androidx.media3.exoplayer.DecoderCounters counters) {
+        if (counters == null) return "none";
+        counters.ensureUpdated();
+        return counters.queuedInputBufferCount + "/" + counters.renderedOutputBufferCount
+                + "/" + counters.skippedOutputBufferCount + "/" + counters.droppedBufferCount;
     }
 
     private void applyMovistarIsmFastZapOffsetIfNeeded() {

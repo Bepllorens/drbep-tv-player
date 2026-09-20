@@ -4,20 +4,13 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class TvOptionsPanelRowUiModelTest {
-    @Test public void existingMenusKeepNumericFallbackAndAction() {
-        Runnable action = () -> {};
-        TvOptionsPanelRowUiModel row = new TvOptionsPanelRowUiModel("Canal", "3", action);
-        assertEquals("3", row.indexLabel);
-        assertSame(action, row.onClick);
-        assertNull(row.bindArtwork);
+    @Test public void normalMenusKeepCompactRows() {
+        assertFalse(new TvOptionsPanelRowUiModel("Opción", "1", null).wrapLabel);
     }
-    @Test public void optionalArtworkDoesNotReplaceSelectionAction() {
-        Runnable action = () -> {};
-        java.util.function.Consumer<android.widget.ImageView> artwork = view -> {};
-        TvOptionsPanelRowUiModel row = new TvOptionsPanelRowUiModel(null, null, action, artwork);
-        assertEquals("", row.label);
-        assertEquals("", row.indexLabel);
-        assertSame(action, row.onClick);
-        assertSame(artwork, row.bindArtwork);
+    @Test public void trackRowsKeepAllTechnicalDetails() {
+        String label = "✓ ES-ES · Dolby Digital Plus · 5.1 · 640 kb/s · Audiodescripción · Pista 16";
+        TvOptionsPanelRowUiModel row = new TvOptionsPanelRowUiModel(label, "16", null, null, true);
+        assertTrue(row.wrapLabel);
+        assertEquals(label, row.label);
     }
 }

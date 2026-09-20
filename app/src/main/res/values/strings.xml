@@ -721,11 +721,11 @@
     <string name="vod_action_retry_route">Reintentar VOD con otra ruta</string>
     <string name="vod_action_temporary_mode">Modo temporal para este VOD</string>
     <string name="vod_action_playback_diagnostics">Diagnostico playback de este VOD</string>
-    <string name="vod_action_add_favorite">Anadir este VOD a favoritos</string>
-    <string name="vod_action_remove_favorite">Quitar este VOD de favoritos</string>
+    <string name="vod_action_add_favorite">Añadir a favoritos</string>
+    <string name="vod_action_remove_favorite">Quitar de favoritos</string>
     <string name="vod_action_personal_lists">Listas personales para este VOD</string>
     <string name="vod_action_clear_progress">Borrar progreso</string>
-    <string name="vod_action_clear_progress_vod">Borrar progreso de este VOD</string>
+    <string name="vod_action_clear_progress_vod">Borrar progreso</string>
     <string name="vod_detail_primary_actions">Reproduccion</string>
     <string name="vod_detail_secondary_actions">Mas opciones</string>
     <string name="vod_detail_action_hint">OK abre una accion  ·  ARRIBA/ABAJO cambia bloque  ·  BACK cierra la ficha.</string>
@@ -1106,9 +1106,9 @@
     <string name="subtitle_track_action">Subtitulos</string>
     <string name="subtitle_track_title">Subtitulos</string>
     <string name="subtitle_track_off">Desactivados</string>
-    <string name="subtitle_track_auto">Automaticos</string>
+    <string name="subtitle_track_auto">Solo forzados (español de España)</string>
     <string name="subtitle_track_off_selected">Subtitulos desactivados</string>
-    <string name="subtitle_track_auto_selected">Subtitulos automaticos</string>
+    <string name="subtitle_track_auto_selected">Solo subtítulos forzados; si no hay pista, no se muestran</string>
     <string name="subtitle_track_changed">Subtitulos: %1$s</string>
     <string name="subtitle_track_unavailable">No hay pistas de subtitulos disponibles</string>
     <string name="subtitle_track_selected">✓ %1$s</string>

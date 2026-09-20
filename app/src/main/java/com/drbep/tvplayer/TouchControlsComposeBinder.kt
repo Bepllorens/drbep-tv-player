@@ -256,6 +256,11 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                 BasicText(model.nextProgram, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = OfflineTvTheme.Colors.focus, fontSize = 11.sp, fontWeight = FontWeight.Bold))
             }
+            if (model.streamInfo.isNotBlank()) {
+                Spacer(Modifier.height(3.dp))
+                BasicText(model.streamInfo, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp))
+            }
             if (model.progressVisible || timeshift != null) {
                 Spacer(Modifier.height(8.dp))
                 val timeshiftFocused = timeshift?.focused == true
@@ -717,6 +722,11 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                         fontWeight = FontWeight.Bold
                     )
                 )
+            }
+            if (model.streamInfo.isNotBlank()) {
+                Spacer(Modifier.height(3.dp))
+                BasicText(model.streamInfo, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp))
             }
             if (model.progressVisible) {
                 Spacer(modifier = Modifier.height(5.dp))

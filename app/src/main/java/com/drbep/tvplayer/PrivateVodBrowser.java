@@ -59,10 +59,7 @@ final class PrivateVodBrowser {
         }, exit);
     }
     private void home() {
-        host.show("HBO Max", playbackEnabled ? "Selecciona un título para reproducirlo." : "Reproducción no disponible para este usuario.",
-                Arrays.asList("Películas", "Series"), Arrays.asList(
-                () -> page("movie", "", "Películas", "", new ArrayList<>(), this::home),
-                () -> page("series", "", "Series", "", new ArrayList<>(), this::home)), exit);
+        page("movie", "", "Películas", "", new ArrayList<>(), exit);
     }
     private void load(String title, String query, Consumer<JSONObject> ready, Runnable back) {
         close(); final int request = generation;
@@ -104,6 +101,12 @@ final class PrivateVodBrowser {
             List<String> labels = new ArrayList<>(); List<Runnable> actions = new ArrayList<>();
             List<Card> cards = new ArrayList<>();
             Runnable current = () -> page(kind, series, title, query, previous, parent, season);
+            if (!kind.equals("episode")) {
+                boolean movies = kind.equals("movie");
+                labels.add(movies ? "Ver series" : "Ver películas");
+                actions.add(() -> page(movies ? "series" : "movie", "",
+                        movies ? "Series" : "Películas", "", new ArrayList<>(), exit));
+            }
             labels.add("Buscar" + (query.isEmpty() ? "" : ": " + query));
             actions.add(() -> host.search(query, text -> page(kind, series, title, text.trim(), new ArrayList<>(), parent, season), current));
             JSONArray seasons = result.optJSONArray("seasons");

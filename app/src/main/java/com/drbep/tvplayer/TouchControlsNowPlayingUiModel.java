@@ -30,6 +30,7 @@ public final class TouchControlsNowPlayingUiModel {
     public final int progress;
     public final boolean progressVisible;
     public final String endTimeText;
+    public final String streamInfo;
 
     public TouchControlsNowPlayingUiModel(
             boolean visible,
@@ -46,6 +47,16 @@ public final class TouchControlsNowPlayingUiModel {
             boolean progressVisible,
             String endTimeText
     ) {
+        this(visible, logoUrl, channelBadge, channelName, programTitle, programMeta,
+                nextProgram, nextProgramVisible, posterUrl, remainingText, progress,
+                progressVisible, endTimeText, "");
+    }
+
+    public TouchControlsNowPlayingUiModel(boolean visible, String logoUrl, String channelBadge,
+            String channelName, String programTitle, String programMeta, String nextProgram,
+            boolean nextProgramVisible, String posterUrl, String remainingText, int progress,
+            boolean progressVisible, String endTimeText, String streamInfo) {
+        this.streamInfo = streamInfo == null ? "" : streamInfo;
         this.visible = visible;
         this.logoUrl = logoUrl == null ? "" : logoUrl;
         this.channelBadge = channelBadge == null ? "" : channelBadge;

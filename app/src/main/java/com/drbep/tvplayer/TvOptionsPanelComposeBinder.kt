@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,7 +57,9 @@ object TvOptionsPanelComposeBinder {
 @Composable
 private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
-    val panelWidth = if (compact) Modifier.fillMaxWidth(0.94f) else Modifier.fillMaxWidth(0.44f)
+    val expandedTracks = model.rows?.any { it.wrapLabel } == true
+    val panelWidth = if (compact) Modifier.fillMaxWidth(0.94f)
+        else Modifier.fillMaxWidth(if (expandedTracks) 0.78f else 0.44f)
     val firstRowRequester = rememberTvInitialFocusRequester(!model.rows.isNullOrEmpty(), model)
     Box(
         modifier = Modifier
@@ -121,14 +124,15 @@ private fun TvOptionsRow(row: TvOptionsPanelRowUiModel, index: Int, compact: Boo
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (compact) 52.dp else 58.dp)
+            .then(if (row.wrapLabel) Modifier.heightIn(min = if (compact) 64.dp else 72.dp)
+                else Modifier.height(if (compact) 52.dp else 58.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(background)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(row.onClick != null)
             .clickable(enabled = row.onClick != null) { row.onClick?.run() }
-            .padding(horizontal = if (compact) 12.dp else 16.dp),
+            .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (row.wrapLabel) 10.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -154,13 +158,13 @@ private fun TvOptionsRow(row: TvOptionsPanelRowUiModel, index: Int, compact: Boo
         }
         Spacer(modifier = Modifier.width(if (compact) 12.dp else 14.dp))
         BasicText(
-            text = row.label,
+            text = if (row.wrapLabel) row.label.replaceFirst(" · ", "\n") else row.label,
             modifier = Modifier.weight(1f),
             style = TextStyle(color = titleColor, fontSize = if (compact) 15.sp else 17.sp, fontWeight = FontWeight.Bold),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            maxLines = if (row.wrapLabel) Int.MAX_VALUE else 1,
+            overflow = if (row.wrapLabel) TextOverflow.Clip else TextOverflow.Ellipsis
         )
-        BasicText(
+        if (!row.wrapLabel) BasicText(
             text = "OK",
             style = TextStyle(color = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         )

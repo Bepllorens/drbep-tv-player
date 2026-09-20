@@ -77,7 +77,7 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(if (compact) 1f else 0.82f)
+                .fillMaxWidth(if (compact) 1f else 0.94f)
                 .fillMaxHeight(0.94f)
                 .clip(RoundedCornerShape(if (compact) 18.dp else 24.dp))
                 .background(OfflineTvTheme.Colors.panelGlass)
@@ -85,8 +85,10 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
                 .padding(if (compact) 14.dp else 20.dp)
         ) {
             VodTitle(model, compact)
-            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             VodHeader(model, posterBinder, compact, firstActionRequester)
+            // Keep the poster, synopsis and progress outside focus-driven scrolling.
+            // Only the supplementary actions scroll on smaller TV viewports.
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
             if (model.secondaryActions.isNotEmpty()) {
                 SectionTitle(model.secondaryTitle, compact)
                 if (model.hint.isNotEmpty()) {
@@ -146,7 +148,7 @@ private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinde
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         AndroidView(
             modifier = Modifier
-                .size(width = if (compact) 112.dp else 160.dp, height = if (compact) 168.dp else 240.dp)
+                .size(width = if (compact) 112.dp else 140.dp, height = if (compact) 168.dp else 210.dp)
                 .clip(RoundedCornerShape(if (compact) 12.dp else 16.dp))
                 .background(OfflineTvTheme.Colors.backdrop),
             factory = { context ->
@@ -226,7 +228,7 @@ private fun SectionTitle(title: String, compact: Boolean) {
     if (title.isEmpty()) return
     BasicText(
         text = title,
-        modifier = Modifier.padding(top = if (compact) 16.dp else 22.dp, bottom = if (compact) 8.dp else 10.dp),
+        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
         style = TextStyle(color = Color.White, fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Bold)
     )
 }
@@ -271,7 +273,7 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focu
                     if (compact) 1f else 0.32f
                 }
             )
-            .height(if (action.primary) if (compact) 48.dp else 54.dp else if (compact) 42.dp else 48.dp)
+            .height(if (action.primary) 48.dp else 52.dp)
             .clip(RoundedCornerShape(if (action.primary) 12.dp else 10.dp))
             .background(fill)
             .border(1.dp, stroke, RoundedCornerShape(if (action.primary) 12.dp else 10.dp))
@@ -284,9 +286,9 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focu
     ) {
         BasicText(
             text = actionLabel,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            style = TextStyle(color = textColor, fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Bold)
+            style = TextStyle(color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         )
     }
 }

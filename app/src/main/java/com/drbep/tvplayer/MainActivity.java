@@ -416,6 +416,8 @@ public class MainActivity extends FragmentActivity {
     private boolean dynamicPrimeVodLoading = false;
     private boolean dynamicSkyshowtimeVodLoaded = false;
     private boolean dynamicSkyshowtimeVodLoading = false;
+    private final DisneyVodLoadState disneyVodLoadState = new DisneyVodLoadState();
+    private long loadingOverlayGeneration;
     private final List<ChannelFilter> filters = new ArrayList<>();
     private final Map<String, String> epgNowByChannelId = new HashMap<>();
     private final Map<String, EpgRepository.EpgProgramPair> epgProgramPairByChannelId = new HashMap<>();
@@ -3033,6 +3035,7 @@ public class MainActivity extends FragmentActivity {
         dynamicDaznVodLoaded = false;
 		dynamicPrimeVodLoaded = false;
 		dynamicSkyshowtimeVodLoaded = false;
+        disneyVodLoadState.reset();
         invalidateVodDerivedCaches();
         channelOverlayCoordinator.applyLoadedChannels(result, keepChannelId);
         syncOverlayStateFromCoordinator();
@@ -3143,6 +3146,7 @@ public class MainActivity extends FragmentActivity {
         dynamicDaznVodLoaded = false;
 		dynamicPrimeVodLoaded = false;
 		dynamicSkyshowtimeVodLoaded = false;
+        disneyVodLoadState.reset();
         invalidateVodDerivedCaches();
         uiHandler.removeCallbacks(progressiveEpgRunnable);
         long coordinatorStartMs = System.currentTimeMillis();
@@ -3332,6 +3336,14 @@ public class MainActivity extends FragmentActivity {
     private void playChannelItemInternal(ChannelItem ch, boolean autoPlay, long resumePositionMs) {
         endedVodId = "";
         if (vodEndDialog != null) { vodEndDialog.dismiss(); vodEndDialog = null; }
+        if (isDisneyplusItem(ch) && !allowsDisneyplusVod()) {
+            showStatus("Disney+ no está habilitado para este usuario");
+            return;
+        }
+        if (isDynamicSeriesGroup(ch)) {
+            showVodInfoDialog(ch);
+            return;
+        }
         if (!isActivityReadyForUiWork()) {
             Log.w(TAG, "Ignoring playback request because activity is no longer active channel=" + (ch == null ? "" : ch.id));
             return;
@@ -5827,42 +5839,20 @@ public class MainActivity extends FragmentActivity {
         if (channel == null) {
             return;
         }
-        // Home/history can hold the old snapshot item even after the provider
-        // catalog has been enriched. Resolve its metadata before opening the card.
-        if (refreshMetadata && channel.vodDescription.trim().isEmpty()
-                && "Prime Video".equals(channel.platformName) && catalogRepository != null) {
-            ChannelItem latest = findChannelItemById(channel.id);
-            if (latest != null && !latest.vodDescription.trim().isEmpty()) {
-                showVodInfoDialog(latest, onBack, false);
-                return;
-            }
-            if (!dynamicPrimeVodLoaded && !dynamicPrimeVodLoading) {
-                loadDynamicPrimeVodCatalog(() -> {
-                    ChannelItem refreshed = findChannelItemById(channel.id);
-                    showVodInfoDialog(refreshed != null && !refreshed.vodDescription.trim().isEmpty()
-                            ? refreshed : channel, onBack, false);
-                });
-                return;
-            }
-        }
-        vodPlaybackReturn = onBack;
-        if (channel.playUrl.startsWith("sky-series:")) {
-            List<ChannelItem> episodes = new ArrayList<>();
-            String seriesId = channel.playUrl.substring("sky-series:".length());
-            for (ChannelItem item : allChannels) {
-                if (item != null && "SkyShowtime".equals(item.platformName) && seriesId.equals(item.vodSeriesId)) episodes.add(item);
-            }
-            episodes.sort(java.util.Comparator.comparingInt((ChannelItem item) -> item.vodSeason)
-                    .thenComparingInt(item -> item.vodEpisode).thenComparing(item -> item.id));
-            showPagedVodLibraryList(channel.name, episodes, onBack, 0);
-            return;
-        }
         if (isPrimeSeriesGroup(channel)) {
             showPrimeSeriesEpisodes(channel, onBack);
             return;
         }
+        if (isDisneyplusItem(channel) && !allowsDisneyplusVod()) {
+            showStatus("Disney+ no está habilitado para este usuario");
+            return;
+        }
         if (isProtectedItem(channel) && isProtectedContentLocked()) {
             ensureParentalAccessForItem(channel, () -> showVodInfoDialog(channel, onBack));
+            return;
+        }
+        if (isDynamicSeriesGroup(channel)) {
+            showDynamicSeriesEpisodes(channel, onBack);
             return;
         }
         rememberCurrentVodPosition();
@@ -5986,32 +5976,55 @@ public class MainActivity extends FragmentActivity {
         handleModalShown();
     }
 
-    private boolean isPrimeSeriesGroup(ChannelItem item) {
-        return item != null
-                && item.playUrl != null
-                && item.playUrl.startsWith("prime-series:");
+    static boolean isDisneyplusItem(ChannelItem item) {
+        return item != null && ((item.id != null && item.id.startsWith("disneyplus:"))
+                || (item.vodFilterKey != null && item.vodFilterKey.startsWith("vod:disneyplus:")));
     }
 
-    private void showPrimeSeriesEpisodes(ChannelItem series, Runnable onBack) {
+    private boolean allowsDisneyplusVod() {
+        return currentOfflinePermissions != null && currentOfflinePermissions.allowsDisneyplusVod();
+    }
+
+    static boolean isDynamicSeriesGroup(ChannelItem item) {
+        return item != null
+                && item.playUrl != null
+                && (item.playUrl.startsWith("prime-series:") || item.playUrl.startsWith("disneyplus-series:"));
+    }
+
+    private void showDynamicSeriesEpisodes(ChannelItem series, Runnable onBack) {
         if (catalogRepository == null || series == null) {
             return;
         }
-        String assetId = series.playUrl.substring("prime-series:".length()).trim();
+        boolean disney = series.playUrl.startsWith("disneyplus-series:");
+        if (disney && !allowsDisneyplusVod()) return;
+        long request = disney ? disneyVodLoadState.begin(false) : 0L;
+        OfflinePermissions requestedPermissions = currentOfflinePermissions;
+        String requestedToken = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+        CatalogRepository repository = catalogRepository;
+        String assetId = series.playUrl.substring((disney ? "disneyplus-series:" : "prime-series:").length()).trim();
         showLoading(getString(R.string.tools_section_vod), series.name, "Cargando temporadas y episodios");
+        long overlayGeneration = loadingOverlayGeneration;
         interactiveExecutor.execute(() -> {
             List<ChannelItem> episodes = new ArrayList<>();
             Exception failure = null;
             try {
-                episodes.addAll(catalogRepository.fetchPrimeSeriesEpisodes(assetId));
+                episodes.addAll(disney ? repository.fetchDisneyplusSeriesEpisodes(assetId) : repository.fetchPrimeSeriesEpisodes(assetId));
             } catch (Exception e) {
                 failure = e;
-                Log.w(TAG, "Prime series episodes request failed series=" + series.name, e);
+                Log.w(TAG, "VOD series episodes request failed", e);
             }
             Exception finalFailure = failure;
             postUiIfAlive(() -> {
-                hideStartupLoading();
+                if (disney) {
+                    if (!finishDisneyLoad(disneyVodLoadState, request, false, false,
+                            overlayGeneration, loadingOverlayGeneration, this::hideStartupLoading)) return;
+                    if (!canApplyDisneyResult(requestedPermissions, currentOfflinePermissions,
+                            requestedToken, catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken())) return;
+                } else {
+                    hideStartupLoading();
+                }
                 if (finalFailure != null) {
-                    showStatus("No se pudieron cargar los episodios de Prime Video");
+                    showStatus("No se pudieron cargar los episodios de " + (disney ? "Disney+" : "Prime Video"));
                     if (onBack != null) {
                         onBack.run();
                     }
@@ -8358,6 +8371,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showStartupLoading(String step, String detail) {
+        loadingOverlayGeneration++;
         overlayUiController.showStartupLoading(step, detail);
     }
 
@@ -8366,6 +8380,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showLoading(String title, String step, String detail) {
+        loadingOverlayGeneration++;
         overlayUiController.showLoading(title, step, detail);
     }
 
@@ -8374,6 +8389,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void hideStartupLoading() {
+        loadingOverlayGeneration++;
         overlayUiController.hideStartupLoading();
     }
 
@@ -11944,6 +11960,8 @@ public class MainActivity extends FragmentActivity {
 				&& !dynamicSkyshowtimeVodLoaded
 				&& !dynamicSkyshowtimeVodLoading) {
 			loadDynamicSkyshowtimeVodCatalog(openSelectedPlatform);
+        } else if (platformFilter == VodVisualPlatformFilter.DISNEYPLUS) {
+            loadDynamicDisneyplusVodCatalog(openSelectedPlatform);
         } else {
             openSelectedPlatform.run();
         }
@@ -13362,7 +13380,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean shouldHideProtectedItem(ChannelItem item) {
-        return isProtectedContentLocked() && isProtectedItem(item);
+        return (isDisneyplusItem(item) && !allowsDisneyplusVod())
+                || (isProtectedContentLocked() && isProtectedItem(item));
     }
 
     private void ensureParentalAccessForItem(ChannelItem item, Runnable onAllowed) {
@@ -18042,6 +18061,59 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    static boolean canApplyDisneyResult(OfflinePermissions requested, OfflinePermissions current,
+                                        String requestedToken, String currentToken) {
+        return requested != null && requested == current && current.allowsDisneyplusVod()
+                && java.util.Objects.equals(requestedToken, currentToken);
+    }
+
+    static boolean finishDisneyLoad(DisneyVodLoadState state, long request, boolean catalog, boolean accepted,
+                                    long requestedOverlay, long currentOverlay, Runnable hideOverlay) {
+        if (requestedOverlay == currentOverlay) hideOverlay.run();
+        return state.finish(request, catalog, accepted);
+    }
+
+    private void loadDynamicDisneyplusVodCatalog(Runnable onReady) {
+        if (catalogRepository == null || !allowsDisneyplusVod() || disneyVodLoadState.catalogLoading) return;
+        if (disneyVodLoadState.catalogLoaded) {
+            if (onReady != null) onReady.run();
+            return;
+        }
+        long request = disneyVodLoadState.begin(true);
+        OfflinePermissions requestedPermissions = currentOfflinePermissions;
+        String requestedToken = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken();
+        CatalogRepository repository = catalogRepository;
+        showLoading(getString(R.string.tools_section_vod), "Actualizando Disney+", "Cargando películas y series");
+        long overlayGeneration = loadingOverlayGeneration;
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> loaded = new ArrayList<>();
+            Exception failure = null;
+            try {
+                loaded.addAll(repository.fetchDisneyplusVodCatalog());
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "dynamic Disney+ VOD request failed", e);
+            }
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                boolean accepted = canApplyDisneyResult(requestedPermissions, currentOfflinePermissions,
+                        requestedToken, catalogSnapshotStore == null ? "" : catalogSnapshotStore.getAccessToken());
+                if (!finishDisneyLoad(disneyVodLoadState, request, true, accepted && finalFailure == null,
+                        overlayGeneration, loadingOverlayGeneration, this::hideStartupLoading)) return;
+                if (!accepted) return;
+                if (finalFailure == null) {
+                    allChannels.removeIf(MainActivity::isDisneyplusItem);
+                    allChannels.addAll(loaded);
+                    invalidateVodDerivedCaches();
+                    if (loaded.isEmpty()) showStatus("Disney+ no tiene contenido disponible ahora mismo");
+                } else {
+                    showStatus("Disney+ no disponible; vuelve a intentarlo en unos segundos");
+                }
+                if (onReady != null) onReady.run();
+            });
+        });
+    }
+
     private void loadDynamicSkyshowtimeVodCatalog(Runnable onReady) {
         if (catalogRepository == null) {
             if (onReady != null) {
@@ -18631,6 +18703,7 @@ public class MainActivity extends FragmentActivity {
         DAZN("DAZN"),
         PRIME("Prime Video"),
         SKYSHOWTIME("SkyShowtime"),
+        DISNEYPLUS("Disney+"),
         OTHER("Otros");
 
         final String label;
@@ -18814,7 +18887,7 @@ public class MainActivity extends FragmentActivity {
         return true;
     }
 
-    private boolean matchesVodVisualPlatform(ChannelItem item, VodVisualPlatformFilter platformFilter) {
+    static boolean matchesVodVisualPlatform(ChannelItem item, VodVisualPlatformFilter platformFilter) {
         if (platformFilter == VodVisualPlatformFilter.ALL) {
             return true;
         }
@@ -18850,7 +18923,11 @@ public class MainActivity extends FragmentActivity {
         if (platformFilter == VodVisualPlatformFilter.SKYSHOWTIME) {
             return isSkyshowtime;
         }
-        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime && !isSkyshowtime;
+        boolean isDisneyplus = isDisneyplusItem(item);
+        if (platformFilter == VodVisualPlatformFilter.DISNEYPLUS) {
+            return isDisneyplus;
+        }
+        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime && !isSkyshowtime && !isDisneyplus;
     }
 
     private boolean matchesVodVisualStatus(ChannelItem item, VodVisualStatusFilter statusFilter) {

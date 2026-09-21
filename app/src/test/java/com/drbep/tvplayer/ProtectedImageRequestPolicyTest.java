@@ -7,6 +7,15 @@ import org.junit.Test;
 
 public class ProtectedImageRequestPolicyTest {
     @Test
+    public void authenticatesDisneyPostersOnlyOnTrustedOrigin() {
+        String path = "/api/vod/private/disneyplus/poster?kind=movie&id=test&revision=test";
+        assertTrue(ProtectedImageRequestPolicy.requiresDeviceAuth("https://example.test" + path, "https://example.test/play"));
+        assertFalse(ProtectedImageRequestPolicy.requiresDeviceAuth("https://other.test" + path, "https://example.test"));
+        assertFalse(ProtectedImageRequestPolicy.requiresDeviceAuth("https://example.test:444" + path, "https://example.test"));
+        assertFalse(ProtectedImageRequestPolicy.requiresDeviceAuth("https://example.test/api/vod/private/disneyplus/poster-elsewhere", "https://example.test"));
+    }
+
+    @Test
     public void authenticatesPlexPostersOnlyOnTrustedOrigin() {
         assertTrue(ProtectedImageRequestPolicy.requiresDeviceAuth(
                 "https://iptv.bepllorens.com/api/vod/plex/image/472733",

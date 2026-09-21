@@ -1030,6 +1030,19 @@ final class CatalogRepository {
         }
     }
 
+    private DisneyVodCatalog disneyCatalog() {
+        return new DisneyVodCatalog(vodApiBaseUrl(), path -> httpClient.getJsonObject(
+                vodApiBaseUrl() + path, 10000, 45000, authenticatedVodHeaders(), "cargando Disney+"));
+    }
+
+    List<ChannelItem> fetchDisneyplusVodCatalog() throws Exception {
+        return disneyCatalog().catalog();
+    }
+
+    List<ChannelItem> fetchDisneyplusSeriesEpisodes(String id) throws Exception {
+        return disneyCatalog().episodes(id);
+    }
+
     List<ChannelItem> fetchSkyshowtimeVodCatalog() throws Exception {
         List<ChannelItem> parsed = new ArrayList<>();
         String revision = "";
@@ -1807,7 +1820,7 @@ final class CatalogRepository {
         return key == null || key.trim().isEmpty() || "all".equals(key.trim());
     }
 
-    private static OfflinePermissions parseOfflinePermissions(JSONObject rawPayload) {
+    static OfflinePermissions parseOfflinePermissions(JSONObject rawPayload) {
         OfflinePermissions permissions = new OfflinePermissions();
         if (rawPayload == null) {
             return permissions;
@@ -1817,17 +1830,9 @@ final class CatalogRepository {
             return permissions;
         }
         permissions.liveEnabled = payload.optBoolean("live", true);
-        permissions.vodEnabled = payload.optBoolean("vod", false);
-        permissions.tivifyGeneralEnabled = payload.optBoolean("tivify_general", false);
-        permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", false);
-        permissions.runtimeEnabled = payload.optBoolean("runtime", false);
-        permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", false);
-        permissions.plexVodEnabled = payload.optBoolean("plex_vod", false);
-        permissions.primeVodEnabled = payload.optBoolean("prime_vod", false);
-        permissions.daznVodEnabled = payload.optBoolean("dazn_vod", false);
-        Set<String> vodGroups = parseStringArray(payload.optJSONArray("groups"));
         permissions.hboVodEnabled = payload.optBoolean("hbomax_vod", vodGroups.contains("hbo max vod"));
         permissions.skyVodEnabled = payload.optBoolean("skyshowtime_vod", vodGroups.contains("skyshowtime vod"));
+        permissions.disneyplusVodEnabled = payload.optBoolean("vod", false) && payload.optBoolean("disneyplus_vod", false);
         permissions.privateVodPermissionsExplicit = payload.has("hbomax_vod") && payload.has("skyshowtime_vod");
         permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
         permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
@@ -2173,6 +2178,7 @@ final class OfflinePermissions implements Serializable {
     boolean plexVodEnabled = true;
     boolean primeVodEnabled = true;
     boolean daznVodEnabled = true;
+    boolean disneyplusVodEnabled = false;
     boolean canViewRecordings = true;
     boolean canScheduleRecordings = true;
     boolean canDeleteRecordings = false;
@@ -2227,6 +2233,10 @@ final class OfflinePermissions implements Serializable {
 
     boolean allowsDaznVod() {
         return vodEnabled && daznVodEnabled;
+    }
+
+    boolean allowsDisneyplusVod() {
+        return vodEnabled && disneyplusVodEnabled;
     }
 
     boolean hasParentalRules() {

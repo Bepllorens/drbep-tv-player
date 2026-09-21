@@ -12,6 +12,14 @@ import org.junit.Test;
 
 public class CatalogRepositoryTest {
     @Test
+    public void disneyRequiresExplicitPermissionAndVodAccess() throws Exception {
+        assertFalse(CatalogRepository.parseOfflinePermissions(new org.json.JSONObject("{}" )).allowsDisneyplusVod());
+        assertFalse(CatalogRepository.parseOfflinePermissions(new org.json.JSONObject("{\"permissions\":{\"vod\":true}}" )).allowsDisneyplusVod());
+        assertFalse(CatalogRepository.parseOfflinePermissions(new org.json.JSONObject("{\"permissions\":{\"vod\":false,\"disneyplus_vod\":true}}" )).allowsDisneyplusVod());
+        assertTrue(CatalogRepository.parseOfflinePermissions(new org.json.JSONObject("{\"permissions\":{\"vod\":true,\"disneyplus_vod\":true}}" )).allowsDisneyplusVod());
+    }
+
+    @Test
     public void channelArtworkKeepsPlatformAndGroupLogosSeparate() {
         ChannelItem item = liveChannel();
         item.platformLogoUrl = "https://example.test/platform.png";

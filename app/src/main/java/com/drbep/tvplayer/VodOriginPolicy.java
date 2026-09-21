@@ -14,6 +14,7 @@ final class VodOriginPolicy {
             case "PLEX": return permissions.allowsPlexVod();
             case "PRIME": return permissions.allowsPrimeVod();
             case "DAZN": return permissions.allowsDaznVod();
+            case "DISNEYPLUS": return permissions.allowsDisneyplusVod();
             default: return false;
         }
     }

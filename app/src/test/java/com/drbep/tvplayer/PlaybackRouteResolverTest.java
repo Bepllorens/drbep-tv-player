@@ -13,6 +13,21 @@ public class PlaybackRouteResolverTest {
     private final PlaybackRouteResolver resolver = new PlaybackRouteResolver("https://iptv.example.com");
 
     @Test
+    public void disneyHlsKeepsNativeWidevineWithoutCompatibilityFallback() {
+        String play = "https://iptv.example.com/api/vod/private/disneyplus/play/00000000-0000-4000-8000-000000000001/master.m3u8";
+        String license = "https://iptv.example.com/api/vod/private/disneyplus/license/00000000-0000-4000-8000-000000000001";
+        PlayerController.PlaybackRequest request = new PlayerController.PlaybackRequest(
+                "disneyplus:00000000-0000-4000-8000-000000000001", "Movie", "Disney+",
+                play, "", PlaybackModeStore.MODE_AUTO, "widevine", license, true, "");
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(request, false, null);
+        assertEquals(play, decision.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_M3U8, decision.mimeType);
+        assertEquals("widevine", decision.drmType);
+        assertFalse(decision.useFallback);
+        assertFalse(decision.allowCompatibilityFallback);
+    }
+
+    @Test
     public void dashUrlInAutoUsesDirectRouteInStandalone() {
         PlaybackRouteResolver.Decision decision = resolver.buildDecision(
                 request("42", "https://origin.example.com/live/channel.mpd", "", PlaybackModeStore.MODE_AUTO, false, ""),

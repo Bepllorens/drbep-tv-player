@@ -59,6 +59,16 @@ final class NetworkClients {
                 .build();
     }
 
+    static Request disneyMediaRequest(Request request) {
+        String host = request.url().host();
+        if (!host.equals("media.dssott.com") && !host.endsWith(".media.dssott.com")) return request;
+        Request.Builder clean = request.newBuilder().removeHeader("Authorization").removeHeader("Cookie");
+        for (String name : request.headers().names()) {
+            if (name.regionMatches(true, 0, "X-DRBEP-", 0, 8)) clean.removeHeader(name);
+        }
+        return clean.build();
+    }
+
     static final class PlaybackCallFactory implements Call.Factory {
         private final AtomicInteger readTimeoutMs;
         private final int connectTimeoutMs;
@@ -78,7 +88,10 @@ final class NetworkClients {
                     ? Math.min(connectTimeoutMs, PROTECTED_HOST_CONNECT_TIMEOUT_MS)
                     : connectTimeoutMs;
             return NetworkClients.withTimeouts(effectiveConnectTimeoutMs, readTimeoutMs.get())
-                    .newCall(request);
+                    .newBuilder()
+                    .addNetworkInterceptor(chain -> chain.proceed(disneyMediaRequest(chain.request())))
+                    .build()
+                    .newCall(disneyMediaRequest(request));
         }
     }
 }

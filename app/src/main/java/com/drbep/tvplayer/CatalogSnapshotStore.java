@@ -108,7 +108,7 @@ final class CatalogSnapshotStore {
     // Bump whenever a release learns a new catalog collection. Otherwise an APK
     // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
     // produced by an older parser (for example, before Plex VOD existed).
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 9;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 10;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -1988,7 +1988,7 @@ final class CatalogSnapshotStore {
         return a.equals(b);
     }
 
-    private void writeOfflinePermissions(DataOutputStream out, OfflinePermissions permissions) throws IOException {
+    static void writeOfflinePermissions(DataOutputStream out, OfflinePermissions permissions) throws IOException {
         OfflinePermissions p = permissions == null ? new OfflinePermissions() : permissions;
         out.writeBoolean(p.liveEnabled);
         out.writeBoolean(p.vodEnabled);
@@ -1998,6 +1998,7 @@ final class CatalogSnapshotStore {
         out.writeBoolean(p.plexVodEnabled);
         out.writeBoolean(p.primeVodEnabled);
         out.writeBoolean(p.daznVodEnabled);
+        out.writeBoolean(p.disneyplusVodEnabled);
         out.writeBoolean(p.canViewRecordings);
         out.writeBoolean(p.canScheduleRecordings);
         out.writeBoolean(p.canDeleteRecordings);
@@ -2011,7 +2012,7 @@ final class CatalogSnapshotStore {
         writeStringSet(out, p.protectedGroupNames);
     }
 
-    private OfflinePermissions readOfflinePermissions(DataInputStream in, int formatVersion) throws IOException {
+    static OfflinePermissions readOfflinePermissions(DataInputStream in, int formatVersion) throws IOException {
         OfflinePermissions p = new OfflinePermissions();
         p.liveEnabled = in.readBoolean();
         p.vodEnabled = in.readBoolean();
@@ -2022,6 +2023,9 @@ final class CatalogSnapshotStore {
             p.plexVodEnabled = in.readBoolean();
             p.primeVodEnabled = in.readBoolean();
             p.daznVodEnabled = in.readBoolean();
+        }
+        if (formatVersion >= 10) {
+            p.disneyplusVodEnabled = in.readBoolean();
         }
         p.canViewRecordings = in.readBoolean();
         p.canScheduleRecordings = in.readBoolean();
@@ -2225,7 +2229,7 @@ final class CatalogSnapshotStore {
         return channel;
     }
 
-    private void writeStringSet(DataOutputStream out, Set<String> values) throws IOException {
+    private static void writeStringSet(DataOutputStream out, Set<String> values) throws IOException {
         if (values == null) {
             out.writeInt(0);
             return;
@@ -2236,7 +2240,7 @@ final class CatalogSnapshotStore {
         }
     }
 
-    private void readStringSet(DataInputStream in, Set<String> target) throws IOException {
+    private static void readStringSet(DataInputStream in, Set<String> target) throws IOException {
         int count = in.readInt();
         if (count < 0 || count > MAX_BINARY_CACHE_ITEMS) {
             throw new IOException("numero de elementos invalido=" + count);

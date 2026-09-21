@@ -22,4 +22,10 @@ public class VodOriginPolicyTest {
         assertFalse(VodOriginPolicy.allowed(p, "PRIME")); assertFalse(VodOriginPolicy.allowed(p, "DAZN")); assertFalse(VodOriginPolicy.allowed(p, "PLEX"));
         assertFalse(VodOriginPolicy.allowed(p, "OTHER"));
     }
+    @Test public void disneyplusRequiresItsOwnPermission() {
+        OfflinePermissions p = new OfflinePermissions(); p.vodEnabled = true;
+        assertFalse(VodOriginPolicy.allowed(p, "DISNEYPLUS"));
+        p.disneyplusVodEnabled = true;
+        assertTrue(VodOriginPolicy.allowed(p, "DISNEYPLUS"));
+    }
 }

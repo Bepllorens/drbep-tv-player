@@ -6039,6 +6039,46 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private boolean isPrimeSeriesGroup(ChannelItem item) {
+        return item != null
+                && item.playUrl != null
+                && item.playUrl.startsWith("prime-series:");
+    }
+
+    private void showPrimeSeriesEpisodes(ChannelItem series, Runnable onBack) {
+        if (catalogRepository == null || series == null) {
+            return;
+        }
+        String assetId = series.playUrl.substring("prime-series:".length()).trim();
+        showLoading(getString(R.string.tools_section_vod), series.name, "Cargando temporadas y episodios");
+        interactiveExecutor.execute(() -> {
+            List<ChannelItem> episodes = new ArrayList<>();
+            Exception failure = null;
+            try {
+                episodes.addAll(catalogRepository.fetchPrimeSeriesEpisodes(assetId));
+            } catch (Exception e) {
+                failure = e;
+                Log.w(TAG, "Prime series episodes request failed series=" + series.name, e);
+            }
+            Exception finalFailure = failure;
+            postUiIfAlive(() -> {
+                hideStartupLoading();
+                if (finalFailure != null) {
+                    showStatus("No se pudieron cargar los episodios de Prime Video");
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                    return;
+                }
+                episodes.sort((left, right) -> {
+                    int byOrder = Integer.compare(left == null ? 0 : left.originalOrder, right == null ? 0 : right.originalOrder);
+                    return byOrder != 0 ? byOrder : displayName(left).compareToIgnoreCase(displayName(right));
+                });
+                showPagedVodLibraryList(series.name, episodes, onBack, 0);
+            });
+        });
+    }
+
     private String buildVodProgressLabel(ChannelItem channel, long resumeMs) {
         String progress = getString(R.string.vod_resume_meta, formatDurationShort(resumeMs));
         if (channel != null && channel.vodDurationSeconds > 0L) {

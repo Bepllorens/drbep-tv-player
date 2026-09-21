@@ -1830,10 +1830,19 @@ final class CatalogRepository {
             return permissions;
         }
         permissions.liveEnabled = payload.optBoolean("live", true);
+        permissions.vodEnabled = payload.optBoolean("vod", false);
+        permissions.tivifyGeneralEnabled = payload.optBoolean("tivify_general", false);
+        permissions.tivifyAdultEnabled = payload.optBoolean("tivify_adult", false);
+        permissions.runtimeEnabled = payload.optBoolean("runtime", false);
+        permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", false);
+        permissions.plexVodEnabled = payload.optBoolean("plex_vod", false);
+        permissions.primeVodEnabled = payload.optBoolean("prime_vod", false);
+        permissions.daznVodEnabled = payload.optBoolean("dazn_vod", false);
+        Set<String> vodGroups = parseStringArray(payload.optJSONArray("groups"));
         permissions.hboVodEnabled = payload.optBoolean("hbomax_vod", vodGroups.contains("hbo max vod"));
         permissions.skyVodEnabled = payload.optBoolean("skyshowtime_vod", vodGroups.contains("skyshowtime vod"));
-        permissions.disneyplusVodEnabled = payload.optBoolean("vod", false) && payload.optBoolean("disneyplus_vod", false);
         permissions.privateVodPermissionsExplicit = payload.has("hbomax_vod") && payload.has("skyshowtime_vod");
+        permissions.disneyplusVodEnabled = payload.optBoolean("vod", false) && payload.optBoolean("disneyplus_vod", false);
         permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
         permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
         permissions.canDeleteRecordings = payload.optBoolean("recordings_delete", false);
@@ -2216,7 +2225,7 @@ final class OfflinePermissions implements Serializable {
     boolean hasVodCatalogAccess() {
         return allowsTivifyVod() || allowsTivifyAdultVod() || allowsRuntimeVod()
                 || allowsMovistarVod() || allowsPlexVod() || allowsPrimeVod()
-                || allowsDaznVod() || allowsHboVod() || allowsSkyVod();
+                || allowsDaznVod() || allowsHboVod() || allowsSkyVod() || allowsDisneyplusVod();
     }
 
     boolean allowsMovistarVod() {

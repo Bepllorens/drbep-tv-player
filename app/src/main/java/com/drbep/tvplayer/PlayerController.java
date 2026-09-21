@@ -101,6 +101,12 @@ final class PlayerController {
         if (!key.isEmpty()) prefs.edit().putString(key, value).apply();
     }
 
+    private String trackIdentity(Tracks.Group group, int index) {
+        Format format = group.getTrackFormat(index);
+        return VodTrackPreference.identified(trackIdentity(format),
+                group.getMediaTrackGroup().id, format.id);
+    }
+
     private void restoreVodTracks(Tracks tracks) {
         // DASH periods and manifest refreshes can replace TrackGroups without a
         // new MediaItem. Rebind semantic preferences on every tracks change.
@@ -115,7 +121,7 @@ final class PlayerController {
         for (Tracks.Group group : tracks.getGroups()) {
             for (int i = 0; i < group.length; i++) {
                 if (!group.isTrackSupported(i)) continue;
-                String identity = trackIdentity(group.getTrackFormat(i));
+                String identity = trackIdentity(group, i);
                 if (group.getType() == C.TRACK_TYPE_AUDIO) {
                     int score = VodTrackPreference.matchScore(audio, identity);
                     if (score > audioScore) {
@@ -3016,6 +3022,14 @@ final class PlayerController {
                 audioNumber++;
             }
         }
+        List<String> labels = new ArrayList<>();
+        for (AudioTrackOption option : options) labels.add(option.label);
+        for (int i = 0; i < options.size(); i++) {
+            AudioTrackOption option = options.get(i);
+            options.set(i, new AudioTrackOption(option.groupIndex, option.trackIndex,
+                    TrackDisplayPolicy.variantLabel(labels, i), option.language,
+                    option.selected, option.supported));
+        }
         return options;
     }
 
@@ -3065,7 +3079,7 @@ final class PlayerController {
             return false;
         }
         audioLanguageChosenForItem = true;
-        rememberVodTrack("audio", trackIdentity(group.getTrackFormat(option.trackIndex)));
+        rememberVodTrack("audio", trackIdentity(group, option.trackIndex));
         if (group.isTrackSelected(option.trackIndex)) {
             return true;
         }
@@ -3187,7 +3201,7 @@ final class PlayerController {
         }
         textTrackMode = "manual";
         rememberVodTrack("mode", textTrackMode);
-        rememberVodTrack("text", trackIdentity(group.getTrackFormat(option.trackIndex)));
+        rememberVodTrack("text", trackIdentity(group, option.trackIndex));
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)

@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 581
-        versionName "2.0.581-beta-license-network-recovery"
+        versionCode 582
+        versionName "2.0.582-beta-audio-track-identity"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

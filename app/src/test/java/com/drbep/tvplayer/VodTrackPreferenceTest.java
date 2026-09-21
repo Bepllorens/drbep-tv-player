@@ -2,6 +2,39 @@ package com.drbep.tvplayer;
 import org.junit.Test;
 import static org.junit.Assert.*;
 public class VodTrackPreferenceTest {
+    @Test public void identicalAudioMetadataRetainsChosenProviderVariant() {
+        String chosen = VodTrackPreference.identified(id(2,128000,0), "audio-3", "rep-3");
+        for (int i = 0; i < 4; i++) {
+            String other = VodTrackPreference.identified(id(2,128000,0), "audio-" + i, "rep-" + i);
+            if (i != 3) assertTrue(VodTrackPreference.matchScore(chosen, chosen)
+                    > VodTrackPreference.matchScore(chosen, other));
+        }
+        assertEquals("es-es", VodTrackPreference.language(chosen));
+    }
+
+    @Test public void changedGroupIdStillPrefersSameRepresentation() {
+        String saved = VodTrackPreference.identified(id(2,128000,0), "old", "B");
+        String chosen = VodTrackPreference.identified(id(2,128000,0), "new", "B");
+        String wrong = VodTrackPreference.identified(id(2,128000,0), "new", "A");
+        assertTrue(VodTrackPreference.matchScore(saved, chosen) > VodTrackPreference.matchScore(saved, wrong));
+    }
+
+    @Test public void legacyPreferencesAndChangedIdsRemainCompatible() {
+        String old = id(2,128000,0);
+        String modern = VodTrackPreference.identified(old, "group", "id");
+        assertEquals(1000, VodTrackPreference.matchScore(old, modern));
+        assertEquals(1000, VodTrackPreference.matchScore(modern,
+                VodTrackPreference.identified(old, "different", "different")));
+        assertEquals(0, VodTrackPreference.matchScore("v2:999:bad", modern));
+        assertEquals(0, VodTrackPreference.matchScore(modern, VodTrackPreference.identified(
+                VodTrackPreference.identity("en-US", "", "audio/aac", "",2,128000,0,0), "group", "id")));
+    }
+
+    @Test public void missingIdsNeverInventExactMatches() {
+        String saved = VodTrackPreference.identified(id(2,128000,0), null, null);
+        assertEquals(1000, VodTrackPreference.matchScore(saved, saved));
+        assertEquals(0, VodTrackPreference.matchScore("invalid", "invalid"));
+    }
     @Test public void distinguishesTechnicalVariantsAndForcedText() {
         assertNotEquals(id(2,128000,0),id(6,128000,0));
         assertNotEquals(id(2,128000,0),id(2,64000,0));

@@ -5,6 +5,23 @@ import java.util.Locale;
 final class TrackDisplayPolicy {
     private TrackDisplayPolicy() {}
 
+    static String variantLabel(java.util.List<String> labels, int index) {
+        String base = withoutNumber(labels.get(index));
+        int total = 0, ordinal = 0;
+        for (int i = 0; i < labels.size(); i++) {
+            if (base.equals(withoutNumber(labels.get(i)))) {
+                total++;
+                if (i <= index) ordinal++;
+            }
+        }
+        return total > 1 ? base + " · Variante " + ordinal + "/" + total : labels.get(index);
+    }
+
+    private static String withoutNumber(String label) {
+        int suffix = label.lastIndexOf(" · Pista ");
+        return suffix < 0 ? label : label.substring(0, suffix);
+    }
+
     static String subtitle(String name, boolean forced) {
         return forced && !name.toLowerCase(Locale.ROOT).contains("forzad")
                 ? name + " · Forzados" : name;

@@ -14,7 +14,8 @@ public class DisneyVodCatalogTest {
 
     private JSONObject row(String id, String kind) throws Exception {
         JSONObject row = new JSONObject().put("id", id).put("kind", kind).put("title", "Title")
-                .put("description", "Synopsis").put("duration_seconds", 1234).put("season", 2).put("episode", 3);
+                .put("description", "Synopsis").put("duration_seconds", 1234).put("season", 2).put("episode", 3)
+                .put("air_date", "2026-09-20").put("series_id", SHOW).put("series_title", "Show");
         if (!kind.equals("series")) {
             row.put("play_url", "/api/vod/private/disneyplus/play/" + id + "/master.m3u8")
                     .put("license_url", "/api/vod/private/disneyplus/license/" + id);
@@ -42,6 +43,11 @@ public class DisneyVodCatalogTest {
         assertEquals("widevine", items.get(0).drmScheme);
         assertEquals("Synopsis", items.get(0).vodDescription);
         assertEquals(1234L, items.get(0).vodDurationSeconds);
+        assertEquals("2026-09-20", items.get(0).vodReleaseDate);
+        assertEquals(SHOW, items.get(0).vodSeriesId);
+        assertEquals("Show", items.get(0).vodSeriesTitle);
+        assertEquals(2, items.get(0).vodSeason);
+        assertEquals(3, items.get(0).vodEpisode);
         assertEquals("disneyplus-series:" + SHOW, items.get(1).playUrl);
         assertEquals("vod:disneyplus:series", items.get(1).vodFilterKey);
     }

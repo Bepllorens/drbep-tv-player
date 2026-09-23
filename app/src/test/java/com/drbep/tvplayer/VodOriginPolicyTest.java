@@ -3,6 +3,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class VodOriginPolicyTest {
+    @Test public void appleRequiresOwnPermissionAndBaseVod() {
+        OfflinePermissions p = new OfflinePermissions(); p.vodEnabled = true;
+        p.hboVodEnabled = p.disneyplusVodEnabled = true;
+        assertFalse(VodOriginPolicy.allowed(p, "APPLETV"));
+        p.appleTVVodEnabled = true;
+        assertTrue(VodOriginPolicy.allowed(p, "APPLETV"));
+        p.vodEnabled = false;
+        assertFalse(VodOriginPolicy.allowed(p, "APPLETV"));
+    }
     @Test public void globalDenialWinsOverProviderFlags() {
         OfflinePermissions p = new OfflinePermissions();
         p.skyVodEnabled = p.hboVodEnabled = true;

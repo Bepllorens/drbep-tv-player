@@ -68,10 +68,16 @@ final class DisneyVodCatalog {
                 String license = series ? "" : internalUrl(row.getString("license_url"));
                 String poster = row.optString("poster", "");
                 int order = items.size() + 1;
-                items.add(new ChannelItem("disneyplus:" + id, title, "", poster.isEmpty() ? "" : internalUrl(poster),
+                ChannelItem item = new ChannelItem("disneyplus:" + id, title, "", poster.isEmpty() ? "" : internalUrl(poster),
                         "Disney+", play, "", order, order, true, false, 0, "Disney+", new ArrayList<>(),
                         series ? "" : "widevine", license, kind.equals("movie") ? "vod:disneyplus:movies" : "vod:disneyplus:series",
-                        !series, row.optString("description", ""), "", Math.max(0L, row.optLong("duration_seconds", 0L))));
+                        !series, row.optString("description", ""), "", Math.max(0L, row.optLong("duration_seconds", 0L)));
+                item.vodReleaseDate = row.optString("air_date", "");
+                item.vodSeriesId = row.optString("series_id", "");
+                item.vodSeriesTitle = row.optString("series_title", "");
+                item.vodSeason = Math.max(0, row.optInt("season", 0));
+                item.vodEpisode = Math.max(0, row.optInt("episode", 0));
+                items.add(item);
             }
             after = page.optString("next", "");
             if (!after.isEmpty() && (!UUID.matcher(after).matches() || rows.length() == 0 || !cursors.add(after))) {

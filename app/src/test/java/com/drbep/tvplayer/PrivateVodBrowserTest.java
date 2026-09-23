@@ -37,12 +37,13 @@ public class PrivateVodBrowserTest {
                 throw new IllegalStateException("HTTP 503");
             }, executor);
             browser.open(() -> {});
+            assertEquals("Loading replaces the page without dismissing to TV", 0, host.dismisses);
             Runnable completion = host.ui.poll(3, TimeUnit.SECONDS);
             assertNotNull(completion);
             browser.close();
             completion.run();
             assertEquals(1, host.displays);
-            assertTrue(host.dismisses >= 2);
+            assertEquals(1, host.dismisses);
         } finally { executor.shutdownNow(); }
     }
 

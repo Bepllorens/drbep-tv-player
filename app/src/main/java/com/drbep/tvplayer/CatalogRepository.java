@@ -1309,15 +1309,33 @@ final class CatalogRepository {
     }
 
     com.bumptech.glide.load.model.GlideUrl privateVodPoster(String query) {
+        return privateVodPoster("hbomax", query);
+    }
+    com.bumptech.glide.load.model.GlideUrl privateVodPoster(String provider, String query) {
+        if (!"hbomax".equals(provider) && !"appletv".equals(provider) && !"netflix".equals(provider)) throw new IllegalArgumentException("Proveedor no válido");
         com.bumptech.glide.load.model.LazyHeaders.Builder headers = new com.bumptech.glide.load.model.LazyHeaders.Builder();
         for (Map.Entry<String, String> entry : authenticatedVodHeaders().entrySet()) {
             if (!entry.getKey().equals("Accept")) headers.addHeader(entry.getKey(), entry.getValue());
         }
-        return new com.bumptech.glide.load.model.GlideUrl(vodApiBaseUrl() + "/api/vod/private/hbomax/poster?" + query, headers.build());
+        return new com.bumptech.glide.load.model.GlideUrl(vodApiBaseUrl() + "/api/vod/private/" + provider + "/poster?" + query, headers.build());
     }
 
     ChannelItem buildHbomaxVodItem(String id, String title, String kind, String posterQuery) {
         return buildHbomaxVodItem(id,title,kind,posterQuery,0L);
+    }
+
+    ChannelItem buildAppleTVVodItem(String id,String title,String kind,String posterQuery,JSONObject metadata) {
+        if(id==null||!id.matches("umc\\.cmc\\.[a-z0-9]{1,64}"))return null;
+        String base=vodApiBaseUrl();
+        String description=metadata==null?"":metadata.optString("synopsis");
+        String date=metadata==null?"":metadata.optString("air_date");
+        long duration=metadata==null?0:Math.max(0,metadata.optLong("duration_seconds"));
+        return new ChannelItem("appletv:"+id,title,"",
+            posterQuery==null||posterQuery.isEmpty()?"":base+"/api/vod/private/appletv/poster?"+posterQuery,
+            "episode".equals(kind)?"Apple TV+ Episodios":"Apple TV+ Películas",
+            base+"/api/vod/private/appletv/play/"+Uri.encode(id)+"/master.m3u8","",0,0,true,false,0,
+            "Apple TV+",new ArrayList<>(),"widevine",base+"/api/vod/private/appletv/license/"+Uri.encode(id),
+            "vod:appletv",true,description,date,duration);
     }
 
     ChannelItem buildHbomaxVodItem(String id, String title, String kind, String posterQuery, long durationSeconds) {
@@ -1370,7 +1388,11 @@ final class CatalogRepository {
     }
 
     JSONObject fetchPrivateVodMetadata(String query) throws Exception {
-        String path = "/api/vod/private/hbomax";
+        return fetchPrivateVodMetadata("hbomax", query);
+    }
+    JSONObject fetchPrivateVodMetadata(String provider, String query) throws Exception {
+        if (!"hbomax".equals(provider) && !"appletv".equals(provider) && !"netflix".equals(provider)) throw new IllegalArgumentException("Proveedor no válido");
+        String path = "/api/vod/private/" + provider;
         if (query != null && !query.isEmpty()) path += "/catalog?" + query;
         return httpClient.getJsonObject(vodApiBaseUrl() + path, 10000, 15000,
                 authenticatedVodHeaders(), "catálogo privado");
@@ -1843,6 +1865,8 @@ final class CatalogRepository {
         permissions.skyVodEnabled = payload.optBoolean("skyshowtime_vod", vodGroups.contains("skyshowtime vod"));
         permissions.privateVodPermissionsExplicit = payload.has("hbomax_vod") && payload.has("skyshowtime_vod");
         permissions.disneyplusVodEnabled = payload.optBoolean("vod", false) && payload.optBoolean("disneyplus_vod", false);
+        permissions.appleTVVodEnabled = payload.optBoolean("vod", false) && payload.optBoolean("appletv_vod", false);
+        permissions.netflixVodEnabled = payload.optBoolean("vod", false) && payload.optBoolean("netflix_vod", false);
         permissions.canViewRecordings = payload.optBoolean("recordings_view", true);
         permissions.canScheduleRecordings = payload.optBoolean("recordings_schedule", true);
         permissions.canDeleteRecordings = payload.optBoolean("recordings_delete", false);
@@ -2188,6 +2212,8 @@ final class OfflinePermissions implements Serializable {
     boolean primeVodEnabled = true;
     boolean daznVodEnabled = true;
     boolean disneyplusVodEnabled = false;
+    boolean appleTVVodEnabled = false;
+    boolean netflixVodEnabled = false;
     boolean canViewRecordings = true;
     boolean canScheduleRecordings = true;
     boolean canDeleteRecordings = false;
@@ -2225,7 +2251,7 @@ final class OfflinePermissions implements Serializable {
     boolean hasVodCatalogAccess() {
         return allowsTivifyVod() || allowsTivifyAdultVod() || allowsRuntimeVod()
                 || allowsMovistarVod() || allowsPlexVod() || allowsPrimeVod()
-                || allowsDaznVod() || allowsHboVod() || allowsSkyVod() || allowsDisneyplusVod();
+                || allowsDaznVod() || allowsHboVod() || allowsSkyVod() || allowsDisneyplusVod() || allowsAppleTVVod() || allowsNetflixVod();
     }
 
     boolean allowsMovistarVod() {
@@ -2247,6 +2273,8 @@ final class OfflinePermissions implements Serializable {
     boolean allowsDisneyplusVod() {
         return vodEnabled && disneyplusVodEnabled;
     }
+    boolean allowsAppleTVVod() { return vodEnabled && appleTVVodEnabled; }
+    boolean allowsNetflixVod() { return vodEnabled && netflixVodEnabled; }
 
     boolean hasParentalRules() {
         return protectAdultVod

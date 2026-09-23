@@ -2281,6 +2281,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void showSubtitles() { showTextTrackDialog(null); }
+            @Override public void showVideoQuality() { showVodVideoQualityDialog(); }
 
             @Override
             public void openTimelineGuide() {
@@ -5821,9 +5822,10 @@ public class MainActivity extends FragmentActivity {
     private void showAboutDialog() {
         showTvMessagePanel(
                 getString(R.string.title_about_app, BuildConfig.VERSION_NAME),
-                getString(R.string.message_about_app),
+                getString(R.string.message_about_app) + "\n\nMetadatos complementarios: TMDB (themoviedb.org).\nThis product uses the TMDB API but is not endorsed or certified by TMDB.",
                 java.util.Collections.singletonList(new TvMessageActionUiModel(getString(R.string.dialog_close), false, null)),
-                null
+                null,
+                image -> image.setImageResource(R.drawable.tmdb_official_logo)
         );
     }
 
@@ -11179,6 +11181,23 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void showVodVideoQualityDialog() {
+        if(playerController==null)return;
+        List<String> labels=new ArrayList<>();List<Runnable> actions=new ArrayList<>();
+        labels.add("Adaptar frecuencia al VOD: " + (playerController.isVodFrameRateMatchingEnabled() ? "Activado" : "Desactivado"));
+        actions.add(() -> playerController.toggleVodFrameRateMatching());
+        labels.add((playerController.isVodQualityAutomatic()?"✓ ":"")+"Automática · según conexión y búfer");
+        actions.add(()->playerController.selectVodVideoQuality(null));
+        for(PlayerController.VideoQualityOption option:playerController.vodVideoQualities()) {
+            labels.add((!playerController.isVodQualityAutomatic()&&option.selected?"✓ ":"")+option.label());
+            actions.add(()->playerController.selectVodVideoQuality(option));
+        }
+        String active=playerController.getVodStreamInfo();
+        showTvOptionsDialog("Calidad de vídeo", "En reproducción: "+(active.isEmpty()?"Obteniendo información":active)
+                +"\nEl ajuste de frecuencia puede provocar un breve negro. HDR/Dolby Vision indican el formato de la pista. La calidad manual es para este título.",
+                labels,actions,null,null);
+    }
+
     private void showPlaybackDiagnosticsFromHud() {
         ChannelItem currentChannel = getCurrentPlaybackChannelItem();
         if (currentChannel != null) {
@@ -11475,10 +11494,29 @@ public class MainActivity extends FragmentActivity {
 
 
     private void showPrivateVodBrowser(Runnable onBack) {
+        showPrivateVodBrowser("hbomax", onBack);
+    }
+    private void showPrivateVodBrowser(String provider, Runnable onBack) {
+        final JSONObject[] selectedMetadata = {null};
+        final boolean appleTV = "appletv".equals(provider);
+        final boolean netflix = "netflix".equals(provider);
+        if (netflix && (currentOfflinePermissions == null || !currentOfflinePermissions.allowsNetflixVod())) return;
+        if (appleTV && (currentOfflinePermissions == null || !currentOfflinePermissions.allowsAppleTVVod())) return;
+        final String providerName = netflix ? "Netflix" : appleTV ? "Apple TV+" : "HBO Max";
         if (catalogRepository == null) return;
         if (privateVodBrowser != null) privateVodBrowser.close();
         privateVodBrowser = new PrivateVodBrowser(new PrivateVodBrowser.Host() {
             private Dialog ownedDialog;
+            private void replaceDialog(Dialog next) {
+                Dialog previous = ownedDialog;
+                ownedDialog = next;
+                // The replacement is already visible: obsolete dismiss callbacks
+                // must not restore TV or steal focus from the new catalog page.
+                if (previous != null && previous != next) {
+                    previous.setOnDismissListener(null);
+                    previous.dismiss();
+                }
+            }
             public void dismiss() {
                 if (ownedDialog != null && ownedDialog.isShowing()) {
                     beginModalTransition(null);
@@ -11488,28 +11526,25 @@ public class MainActivity extends FragmentActivity {
                 ownedDialog = null;
             }
             public void show(String title, String message, List<String> labels, List<Runnable> actions, Runnable back) {
-                dismiss();
-                ownedDialog = showTvOptionsDialog(title, message, labels, actions, back, null);
+                replaceDialog(showTvOptionsDialog(title, message, labels, actions, back, null));
             }
             public void search(String value, java.util.function.Consumer<String> submit, Runnable back) {
-                dismiss();
-                ownedDialog = showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar en HBO Max", "Busca en el catálogo del servidor",
+                replaceDialog(showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar en " + providerName, "Busca en el catálogo del servidor",
                         "Buscar", "Cancelar", "", java.util.Collections.singletonList(
                         new TvTextInputFieldUiModel("Título", value, false, false)),
-                        values -> submit.accept(values.isEmpty() ? "" : values.get(0)), back, null));
+                        values -> submit.accept(values.isEmpty() ? "" : values.get(0)), back, null)));
             }
             public void cards(String title, String message, List<PrivateVodBrowser.Card> cards, List<String> labels, List<Runnable> actions, Runnable back) {
-                dismiss();
                 prepareModalSurface();
                 final Dialog[] holder = new Dialog[1];
                 ComposeView view = new ComposeView(MainActivity.this);
                 attachDialogViewTreeOwners(view);
                 PrivateVodCardsBinder.bind(view, title, message, cards, labels, actions,
-                        action -> dismissModalForNextAction(holder[0], action),
+                        Runnable::run,
                         (image, query) -> {
                             if (query.equals(image.getTag())) return;
                             image.setTag(query);
-                            Glide.with(image).load(catalogRepository.privateVodPoster(query))
+                            Glide.with(image).load(catalogRepository.privateVodPoster(provider, query))
                                     .override(192, 300).fitCenter().diskCacheStrategy(DiskCacheStrategy.NONE)
                                     .skipMemoryCache(true).placeholder(new android.graphics.drawable.ColorDrawable(0xFF223247))
                                     .error(new android.graphics.drawable.ColorDrawable(0xFF223247)).into(image);
@@ -11519,13 +11554,28 @@ public class MainActivity extends FragmentActivity {
                     if (back != null) postUiIfAlive(back);
                     finishModalTransitionAfterDelay();
                 }, MainActivity.this::handleModalDismissed);
-                ownedDialog = holder[0];
+                replaceDialog(holder[0]);
                 handleModalShown();
             }
-            public void remember(JSONObject metadata) { hboHistory().remember(metadata); saveHboHistory(); }
-            public String progress(String id) { return hboHistory().badge(id); }
+            public void remember(JSONObject metadata) { selectedMetadata[0]=metadata; if (!appleTV && !netflix) { hboHistory().remember(metadata); saveHboHistory(); } }
+            public String progress(String id) {
+                if(netflix)return "";
+                if(!appleTV)return hboHistory().badge(id);
+                long position=getVodResumePosition("appletv:"+id);
+                return position>30000?"Continuar · "+formatDurationShort(position):"";
+            }
             public void ui(Runnable action) { postUiIfAlive(action); }
             public void play(String id, String title, String kind, String posterQuery) {
+                if (netflix) return; // Metadata-only until native playback is integrated.
+                if (appleTV) {
+                    if(currentOfflinePermissions==null||!currentOfflinePermissions.allowsAppleTVVod())return;
+                    PrivateVodBrowser browser=privateVodBrowser;
+                    if(browser!=null)browser.close();
+                    vodPlaybackReturn=()->{if(browser!=null)browser.restore();else showPrivateVodBrowser("appletv",onBack);};
+                    ChannelItem item=catalogRepository.buildAppleTVVodItem(id,title,kind,posterQuery,selectedMetadata[0]);
+                    if(item!=null){rememberVodResumeItem(item);playVodItem(item,true);}
+                    return;
+                }
                 if (privateVodBrowser != null) privateVodBrowser.close();
                 vodPlaybackReturn = null;
                 hboPosterRevision=Uri.parse("https://local/?"+posterQuery).getQueryParameter("revision");
@@ -11537,7 +11587,7 @@ public class MainActivity extends FragmentActivity {
                 if (item == null) return;
                 playVodItem(item, true);
             }
-        }, catalogRepository::fetchPrivateVodMetadata, interactiveExecutor);
+        }, query -> catalogRepository.fetchPrivateVodMetadata(provider, query), interactiveExecutor, providerName, !netflix);
         privateVodBrowser.open(onBack);
     }
 
@@ -11973,8 +12023,16 @@ public class MainActivity extends FragmentActivity {
             showPrivateVodBrowser(() -> showVodPlatformFilterDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack));
             return;
         }
+        if (platformFilter == VodVisualPlatformFilter.APPLETV) {
+            showPrivateVodBrowser("appletv", () -> showVodPlatformFilterDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack));
+            return;
+        }
         if (platformFilter == VodVisualPlatformFilter.PLEX) {
             showPlexVodBrowser(() -> showVodPlatformFilterDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack));
+            return;
+        }
+        if (platformFilter == VodVisualPlatformFilter.NETFLIX) {
+            showPrivateVodBrowser("netflix", () -> showVodPlatformFilterDialog(typeFilter, platformFilter, statusFilter, sortFilter, query, onBack));
             return;
         }
         Runnable openSelectedPlatform = () -> {
@@ -13421,6 +13479,7 @@ public class MainActivity extends FragmentActivity {
 
     private boolean shouldHideProtectedItem(ChannelItem item) {
         return (isDisneyplusItem(item) && !allowsDisneyplusVod())
+                || (item!=null&&item.id.startsWith("appletv:")&&(currentOfflinePermissions==null||!currentOfflinePermissions.allowsAppleTVVod()))
                 || (isProtectedContentLocked() && isProtectedItem(item));
     }
 
@@ -16724,14 +16783,13 @@ public class MainActivity extends FragmentActivity {
 
     private void showModalBackdrop() {
         uiHandler.removeCallbacks(hideOverlayRunnable);
-        if (!isOverlayVisible()) {
-            updateOverlayPanel();
-            updateOverlaySearchState();
-            channelOverlayCoordinator.showOverlay(channelOverlay, uiHandler, hideOverlayRunnable, 0L);
-        }
+        // The opaque modalVideoCover is the backdrop; never expose live channel navigation.
+        hideOverlay();
     }
 
     private void hidePlaybackBehindModal() {
+        View cover = findViewById(R.id.modalVideoCover);
+        if (cover != null) cover.setVisibility(View.VISIBLE);
         if (playbackHiddenBehindModal) {
             return;
         }
@@ -16745,6 +16803,8 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void restorePlaybackAfterModal() {
+        View cover = findViewById(R.id.modalVideoCover);
+        if (cover != null) cover.setVisibility(View.GONE);
         if (!playbackHiddenBehindModal) {
             return;
         }
@@ -16757,7 +16817,9 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private int modalTransitionGeneration;
     private void beginModalTransition(Runnable nextAction) {
+        modalTransitionGeneration++;
         modalTransitionInProgress = true;
         modalReturnAction = nextAction;
     }
@@ -16773,7 +16835,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void finishModalTransitionAfterDelay() {
-        postUiDelayedIfAlive(this::finishModalTransitionWithoutChild, 250L);
+        final int generation = modalTransitionGeneration;
+        postUiDelayedIfAlive(() -> {
+            if (generation == modalTransitionGeneration) finishModalTransitionWithoutChild();
+        }, 250L);
     }
 
     private void dismissModalForNextAction(Dialog dialog, Runnable nextAction) {
@@ -16790,6 +16855,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void handleModalShown() {
+        modalTransitionGeneration++;
         modalTransitionInProgress = false;
     }
 
@@ -18744,6 +18810,8 @@ public class MainActivity extends FragmentActivity {
         PRIME("Prime Video"),
         SKYSHOWTIME("SkyShowtime"),
         DISNEYPLUS("Disney+"),
+        APPLETV("Apple TV+"),
+        NETFLIX("Netflix"),
         OTHER("Otros");
 
         final String label;
@@ -18941,6 +19009,12 @@ public class MainActivity extends FragmentActivity {
         boolean isPrime = filterKey.contains("prime") || platform.contains("prime");
         boolean isSkyshowtime = filterKey.contains("skyshowtime") || platform.contains("skyshowtime");
         boolean isHbo = filterKey.contains("hbomax") || platform.contains("hbo");
+        boolean isApple = filterKey.contains("appletv") || platform.contains("apple tv")
+                || platform.contains("appletv") || (item.id != null && item.id.startsWith("appletv:"));
+        boolean isNetflix = filterKey.contains("netflix") || platform.contains("netflix")
+                || (item.id != null && item.id.startsWith("netflix:"));
+        if (platformFilter == VodVisualPlatformFilter.APPLETV) return isApple;
+        if (platformFilter == VodVisualPlatformFilter.NETFLIX) return isNetflix;
         if (platformFilter == VodVisualPlatformFilter.HBO) return isHbo;
         if (platformFilter == VodVisualPlatformFilter.MOVISTAR) {
             return isMovistar;
@@ -18967,7 +19041,8 @@ public class MainActivity extends FragmentActivity {
         if (platformFilter == VodVisualPlatformFilter.DISNEYPLUS) {
             return isDisneyplus;
         }
-        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime && !isSkyshowtime && !isDisneyplus;
+        return !isMovistar && !isTivify && !isRuntime && !isPlex && !isDazn && !isPrime && !isSkyshowtime && !isDisneyplus
+                && !isHbo && !isApple && !isNetflix;
     }
 
     private boolean matchesVodVisualStatus(ChannelItem item, VodVisualStatusFilter statusFilter) {
@@ -22419,7 +22494,7 @@ public class MainActivity extends FragmentActivity {
                 }
             } else {
                 Glide.with(getApplicationContext())
-                        .load(trimmedLogoUrl)
+                        .load(authenticatedPosterModel(trimmedLogoUrl))
                         .fitCenter()
                         .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                         .preload(dp(widthDp), dp(heightDp));
@@ -22468,7 +22543,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         Glide.with(imageView.getContext())
-                .load(trimmedLogoUrl)
+                .load(authenticatedPosterModel(trimmedLogoUrl))
                 .fitCenter()
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .override(Math.max(1, dp(widthDp)), Math.max(1, dp(heightDp)))

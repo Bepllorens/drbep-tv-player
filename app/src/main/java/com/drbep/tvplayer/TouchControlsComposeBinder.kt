@@ -456,7 +456,7 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
     }
 }
 
-private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, OTHER }
+private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, OTHER }
 
 private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
     if (item.iconHint.equals("platform", ignoreCase = true)) return ModernActionIconKind.PLATFORM
@@ -464,6 +464,7 @@ private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
     return when {
         "audio" in value -> ModernActionIconKind.AUDIO
         "subt" in value -> ModernActionIconKind.SUBTITLES
+        "calidad" in value -> ModernActionIconKind.QUALITY
         value == "tv" || "canal" in value -> ModernActionIconKind.CHANNELS
         "plataforma" in value -> ModernActionIconKind.PLATFORM
         "guía" in value || "guia" in value -> ModernActionIconKind.GUIDE
@@ -544,6 +545,13 @@ private fun ModernActionIcon(item: ZapActionItem, focused: Boolean, artworkBinde
                             drawLine(iconColor, Offset(w * .22f, h * y), Offset(w * .43f, h * y), strokeWidth, StrokeCap.Round)
                             drawLine(iconColor, Offset(w * .55f, h * y), Offset(w * .78f, h * y), strokeWidth, StrokeCap.Round)
                         }
+                    }
+                    ModernActionIconKind.QUALITY -> {
+                        drawRoundRect(iconColor, Offset(w * .08f, h * .17f), Size(w * .84f, h * .58f), CornerRadius(w * .07f), style = stroke)
+                        drawLine(iconColor, Offset(w * .30f, h * .89f), Offset(w * .70f, h * .89f), strokeWidth, StrokeCap.Round)
+                        drawLine(iconColor, Offset(w * .50f, h * .76f), Offset(w * .50f, h * .88f), strokeWidth, StrokeCap.Round)
+                        for ((i, height) in listOf(.17f, .28f, .40f).withIndex())
+                            drawLine(iconColor, Offset(w * (.30f + i * .20f), h * .63f), Offset(w * (.30f + i * .20f), h * (.63f - height)), strokeWidth, StrokeCap.Round)
                     }
                     ModernActionIconKind.CHANNELS -> {
                         drawRoundRect(iconColor, Offset(w * .09f, h * .18f), Size(w * .82f, h * .64f), CornerRadius(w * .09f), style = stroke)

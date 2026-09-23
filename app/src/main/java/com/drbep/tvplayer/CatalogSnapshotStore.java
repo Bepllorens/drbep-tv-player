@@ -108,7 +108,7 @@ final class CatalogSnapshotStore {
     // Bump whenever a release learns a new catalog collection. Otherwise an APK
     // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
     // produced by an older parser (for example, before Plex VOD existed).
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 10;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 13;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -1999,6 +1999,11 @@ final class CatalogSnapshotStore {
         out.writeBoolean(p.primeVodEnabled);
         out.writeBoolean(p.daznVodEnabled);
         out.writeBoolean(p.disneyplusVodEnabled);
+        out.writeBoolean(p.appleTVVodEnabled);
+        out.writeBoolean(p.hboVodEnabled);
+        out.writeBoolean(p.skyVodEnabled);
+        out.writeBoolean(p.privateVodPermissionsExplicit);
+        out.writeBoolean(p.netflixVodEnabled);
         out.writeBoolean(p.canViewRecordings);
         out.writeBoolean(p.canScheduleRecordings);
         out.writeBoolean(p.canDeleteRecordings);
@@ -2027,6 +2032,15 @@ final class CatalogSnapshotStore {
         if (formatVersion >= 10) {
             p.disneyplusVodEnabled = in.readBoolean();
         }
+        if (formatVersion >= 11) {
+            p.appleTVVodEnabled = in.readBoolean();
+        }
+        if (formatVersion >= 12) {
+            p.hboVodEnabled = in.readBoolean();
+            p.skyVodEnabled = in.readBoolean();
+            p.privateVodPermissionsExplicit = in.readBoolean();
+        }
+        if (formatVersion >= 13) p.netflixVodEnabled = in.readBoolean();
         p.canViewRecordings = in.readBoolean();
         p.canScheduleRecordings = in.readBoolean();
         p.canDeleteRecordings = in.readBoolean();

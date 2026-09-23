@@ -40,6 +40,7 @@ final class TouchControlsUiFactory {
         void togglePlayback();
         void showAudioTracks();
         void showSubtitles();
+        default void showVideoQuality() {}
     }
 
     private TouchControlsUiFactory() {
@@ -239,6 +240,9 @@ final class TouchControlsUiFactory {
             actions.add(new ZapActionItem(host.text(R.string.subtitle_track_title), true, false, false, () -> {
                 host.keepVisible();
                 host.showSubtitles();
+            }));
+            actions.add(new ZapActionItem("Calidad", true, false, false, () -> {
+                host.keepVisible();host.showVideoQuality();
             }));
         }
         return new TouchControlsBarUiModel(

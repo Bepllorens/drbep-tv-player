@@ -13,6 +13,7 @@ final class ProtectedImageRequestPolicy {
         if (image == null || image.getPath() == null
                 || (!image.getPath().startsWith(PLEX_IMAGE_PATH)
                 && !image.getPath().equals("/api/vod/private/hbomax/poster")
+                && !image.getPath().equals("/api/vod/private/appletv/poster")
                 && !image.getPath().equals("/api/vod/private/disneyplus/poster"))) {
             return false;
         }

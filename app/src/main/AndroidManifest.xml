@@ -23,11 +23,11 @@
         android:banner="@drawable/drbep_launcher_banner"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="${appFullBackupContent}"
-        android:icon="@mipmap/drbep_launcher"
+        android:icon="@drawable/drbep_app_icon"
         android:label="@string/app_name"
         android:logo="@drawable/drbep_launcher_banner"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:roundIcon="@mipmap/drbep_launcher"
+        android:roundIcon="@drawable/drbep_app_icon"
         android:supportsRtl="true"
         android:usesCleartextTraffic="${appUsesCleartextTraffic}"
         android:theme="@style/Theme.DrbepTvPlayer">
@@ -37,15 +37,22 @@
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:exported="true"
             android:banner="@drawable/drbep_launcher_banner"
-            android:icon="@mipmap/drbep_launcher"
+            android:icon="@drawable/drbep_app_icon"
             android:label="@string/app_name"
             android:logo="@drawable/drbep_launcher_banner"
-            android:supportsPictureInPicture="true">
+            android:supportsPictureInPicture="true" />
+
+        <activity-alias
+            android:name=".MobileLauncher"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/drbep_app_icon">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
         <receiver
             android:name=".ReminderActionReceiver"
@@ -53,12 +60,14 @@
 
         <activity
             android:name=".TvLauncherActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:supportsPictureInPicture="true"
             android:exported="true"
             android:banner="@drawable/drbep_launcher_banner"
-            android:icon="@mipmap/drbep_launcher"
+            android:icon="@drawable/drbep_app_icon"
             android:label="@string/app_name"
             android:logo="@drawable/drbep_launcher_banner"
-            android:roundIcon="@mipmap/drbep_launcher">
+            android:roundIcon="@drawable/drbep_app_icon">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

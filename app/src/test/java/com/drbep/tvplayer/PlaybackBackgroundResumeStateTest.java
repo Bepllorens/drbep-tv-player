@@ -7,6 +7,17 @@ import org.junit.Test;
 
 public class PlaybackBackgroundResumeStateTest {
     @Test
+    public void bufferingWithPlayRequestedResumesButExplicitPauseDoesNot() {
+        PlaybackBackgroundResumeState state = new PlaybackBackgroundResumeState();
+        // Caller passes playWhenReady, not isPlaying (false during buffering).
+        state.onHostPaused(true);
+        assertTrue(state.consumeResumeRequest(true));
+        state.onExplicitPauseRequested();
+        state.onPlayWhenReadyChanged(false, true, false);
+        state.onHostPaused(false);
+        assertFalse(state.consumeResumeRequest(true));
+    }
+    @Test
     public void resumesOnlyWhenPlaybackWasActiveOnPause() {
         PlaybackBackgroundResumeState state = new PlaybackBackgroundResumeState();
         state.onHostPaused(true);

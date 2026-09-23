@@ -428,6 +428,14 @@ final class PlayerController {
     }
 
     private final Context context;
+    private final VodDisplayRate vodDisplayRate;
+    private boolean displayRateHostPaused;
+    private boolean vodAudioOutputRecoveryAttempted;
+    boolean isVodFrameRateMatchingEnabled() { return prefs.getBoolean("vod_match_frame_rate_safe", false); }
+    void toggleVodFrameRateMatching() {
+        prefs.edit().putBoolean("vod_match_frame_rate_safe", !isVodFrameRateMatchingEnabled()).apply();
+        updateSelectedPlaybackFormats();
+    }
     private final PlayerView playerView;
     private final VLCVideoLayout vlcVideoLayout;
     private final String baseUrl;
@@ -464,6 +472,86 @@ final class PlayerController {
     private boolean movistarIsmFastZapOffsetPending;
     private boolean usingVideoCompatibilityCap;
     private int lastVideoWidth;
+    private String manualVodVideoKey = "";
+
+    static final class VideoQualityOption {
+        final androidx.media3.common.TrackGroup group;
+        final int index;
+        final Format format;
+        final boolean selected;
+        VideoQualityOption(Tracks.Group group,int index) {
+            this.group=group.getMediaTrackGroup();this.index=index;
+            this.format=group.getTrackFormat(index);this.selected=group.isTrackSelected(index);
+        }
+        String label(){return VodVideoQuality.label(format);}
+    }
+
+    boolean isVodQualityAutomatic(){return manualVodVideoKey.isEmpty();}
+
+    java.util.List<VideoQualityOption> vodVideoQualities() {
+        java.util.List<VideoQualityOption> choices=new java.util.ArrayList<>();
+        if(player==null||currentRequest==null||!currentRequest.vod||isVlcDirectPlayActive())return choices;
+        java.util.Set<String> seen=new java.util.HashSet<>();
+        for(Tracks.Group group:player.getCurrentTracks().getGroups()) {
+            if(group.getType()!=C.TRACK_TYPE_VIDEO)continue;
+            for(int i=0;i<group.length;i++) {
+                Format format=group.getTrackFormat(i);
+                if(group.isTrackSupported(i)&&supportsVideoDisplay(format)&&seen.add(VodVideoQuality.key(format)))
+                    choices.add(new VideoQualityOption(group,i));
+            }
+        }
+        choices.sort((a,b)->{
+            int pixels=Long.compare((long)b.format.width*b.format.height,(long)a.format.width*a.format.height);
+            return pixels!=0?pixels:Integer.compare(b.format.bitrate,a.format.bitrate);
+        });
+        return choices;
+    }
+
+    private boolean supportsVideoDisplay(Format format) {
+        String hdr=PlaybackFormatBadges.video(format);
+        if(hdr.isEmpty())return true;
+        if(android.os.Build.VERSION.SDK_INT<24)return false;
+        android.view.WindowManager manager=(android.view.WindowManager)context.getSystemService(Context.WINDOW_SERVICE);
+        if(manager==null)return false;
+        int expected=hdr.contains("DOLBY VISION")?1:hdr.contains("HLG")?3:2;
+        for(int type:manager.getDefaultDisplay().getHdrCapabilities().getSupportedHdrTypes())
+            if(type==expected||(expected==2&&type==4))return true;
+        return false;
+    }
+
+    void selectVodVideoQuality(@Nullable VideoQualityOption option) {
+        if(player==null||currentRequest==null||!currentRequest.vod)return;
+        if(option==null) {
+            manualVodVideoKey="";
+            applyVideoTrackPolicy(currentRequest,currentPlaybackDecision);
+            return;
+        }
+        // Reject stale dialog choices after a media item or manifest changed.
+        for(VideoQualityOption available:vodVideoQualities()) {
+            if(available.group.equals(option.group)&&available.index==option.index) {
+                manualVodVideoKey=VodVideoQuality.key(available.format);
+                trackSelector.setParameters(trackSelector.buildUponParameters()
+                    .setForceHighestSupportedBitrate(false).setForceLowestBitrate(false)
+                    .clearVideoSizeConstraints().setMaxVideoBitrate(Integer.MAX_VALUE)
+                    .setOverrideForType(new androidx.media3.common.TrackSelectionOverride(available.group,available.index)));
+                return;
+            }
+        }
+        selectVodVideoQuality(null);
+    }
+
+    private void restoreVodVideoQuality(Tracks tracks) {
+        if(manualVodVideoKey.isEmpty()||tracks.isEmpty())return;
+        for(VideoQualityOption option:vodVideoQualities()) {
+            if(manualVodVideoKey.equals(VodVideoQuality.key(option.format))) {
+                androidx.media3.common.TrackSelectionOverride override=trackSelector.getParameters().overrides.get(option.group);
+                if(override==null||!override.trackIndices.equals(java.util.Collections.singletonList(option.index)))
+                    selectVodVideoQuality(option);
+                return;
+            }
+        }
+        selectVodVideoQuality(null);
+    }
     private int lastVideoHeight;
     private String lastVideoCodec;
     private int lastVideoBitrate;
@@ -514,6 +602,7 @@ final class PlayerController {
 
     PlayerController(Context context, PlayerView playerView, VLCVideoLayout vlcVideoLayout, String baseUrl, ExecutorService ioExecutor, Handler uiHandler, Host host) {
         this.context = context;
+        this.vodDisplayRate = new VodDisplayRate(context);
         this.playerView = playerView;
         this.vlcVideoLayout = vlcVideoLayout;
         this.baseUrl = baseUrl;
@@ -613,8 +702,8 @@ final class PlayerController {
                                 Runtime.getRuntime().maxMemory(), multiViewPlayback))
                         .setPrioritizeTimeOverSizeThresholds(false)
                         .build())
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)
-                        .setDrmSessionManagerProvider(createDrmSessionManagerProvider()))
+                .setMediaSourceFactory(AppleNativePlayback.wrap(new DefaultMediaSourceFactory(dataSourceFactory)
+                        .setDrmSessionManagerProvider(createDrmSessionManagerProvider()),dataSourceFactory))
                 .setSeekBackIncrementMs(TIMESHIFT_SEEK_STEP_MS)
                 .setSeekForwardIncrementMs(TIMESHIFT_SEEK_STEP_MS)
                 .build();
@@ -623,6 +712,12 @@ final class PlayerController {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                 .build(), shouldHandleSystemAudioFocus(multiViewPlayback));
         player.setHandleAudioBecomingNoisy(!multiViewPlayback);
+        player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
+            @Override public void onVideoInputFormatChanged(EventTime time,Format format,
+                    androidx.media3.exoplayer.DecoderReuseEvaluation reuse) {
+                updateSelectedPlaybackFormats();maybeShowHdrBadge();
+            }
+        });
         if (shouldRegisterSystemMediaControls(multiViewPlayback)) {
             mediaSession = new MediaSession.Builder(context, player)
                     .setId("drbep-offline-playback")
@@ -653,6 +748,7 @@ final class PlayerController {
                         + " streamInfo=" + describeStreamInfo(currentStreamInfo)
                     + " errorCode=" + PlaybackException.getErrorCodeName(error.errorCode)
                         + " message=" + safeLogValue(error.getMessage()), error);
+                if (recoverVodAudioOutput(error)) return;
                 if (deferRecoveryUntilNetworkReturns(request, error)
                         || tryAutoRecovery(request, decision, error)) {
                     return;
@@ -749,6 +845,7 @@ final class PlayerController {
                         pendingAutoRecoveryReason = "";
                     }
                 } else if (playbackState == Player.STATE_ENDED) {
+                    vodDisplayRate.restore();
                     transitionPlaybackPhase("ended");
                     uiHandler.removeCallbacks(playbackProgressWatchdogRunnable);
                     Log.w(TAG, "playbackEnded channel=" + describeRequest(currentRequest)
@@ -824,6 +921,7 @@ final class PlayerController {
 
             @Override
             public void onTracksChanged(@NonNull Tracks tracks) {
+                restoreVodVideoQuality(tracks);
                 restoreVodTracks(tracks);
                 selectDefaultSpanishAudio(tracks);
                 selectForcedTextTrack(tracks);
@@ -1137,6 +1235,9 @@ final class PlayerController {
                 lastVideoFrameRate = videoFormat.frameRate;
             }
             lastVideoCodec = firstNonEmpty(videoFormat.codecs, formatMimeLabel(videoFormat.sampleMimeType), lastVideoCodec);
+            if (!displayRateHostPaused) vodDisplayRate.update(currentRequest != null && currentRequest.vod
+                    && player.getPlaybackState() != Player.STATE_ENDED
+                    && !host.isMultiViewPlayback() && isVodFrameRateMatchingEnabled(), videoFormat.frameRate);
         }
         Tracks tracks = player.getCurrentTracks();
         for (Tracks.Group group : tracks.getGroups()) {
@@ -2015,11 +2116,38 @@ final class PlayerController {
         }
     }
 
+    private boolean recoverVodAudioOutput(PlaybackException error) {
+        if (player == null || currentRequest == null || !currentRequest.vod
+                || vodAudioOutputRecoveryAttempted
+                || (error.errorCode != PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
+                && error.errorCode != PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED)) return false;
+        vodAudioOutputRecoveryAttempted = true;
+        final ExoPlayer failedPlayer = player;
+        final PlaybackRequest failedRequest = currentRequest;
+        final long position = Math.max(0, player.getCurrentPosition());
+        final boolean play = player.getPlayWhenReady();
+        vodDisplayRate.restore();
+        prefs.edit().putBoolean("vod_match_frame_rate_safe", false).apply();
+        host.showStatus("Recuperando salida de audio…");
+        uiHandler.postDelayed(() -> {
+            if (player != failedPlayer || currentRequest != failedRequest) return;
+            // Reuse the same media item and track selector: no default language reset.
+            player.seekTo(position);
+            player.prepare();
+            player.setPlayWhenReady(play);
+        }, 1000L);
+        return true;
+    }
+
     void onHostPaused() {
-        backgroundResumeState.onHostPaused(isPlaying());
+        displayRateHostPaused = true;
+        // A transient Activity pause must not renegotiate HDMI or lose autoplay while buffering.
+        backgroundResumeState.onHostPaused(player != null && player.getPlayWhenReady());
     }
 
     void resumeAfterHostResume() {
+        displayRateHostPaused = false;
+        updateSelectedPlaybackFormats();
         boolean hasPlayableItem = isVlcDirectPlayActive()
                 || player != null && player.getMediaItemCount() > 0;
         if (backgroundResumeState.consumeResumeRequest(hasPlayableItem)) {
@@ -2236,6 +2364,7 @@ final class PlayerController {
         }
 
         currentRequest = null;
+        vodDisplayRate.restore();
         currentStreamInfo = null;
         beginPlaybackAttempt(null, "playRecording");
         currentRecordingUrl = recordingUrl;
@@ -2332,6 +2461,7 @@ final class PlayerController {
     }
 
     void stopForSourceSwitch() {
+        vodDisplayRate.restore();
         suspendedForMultiView = false;
         resetPlaybackProgressWatchdog(true);
         uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
@@ -2343,6 +2473,7 @@ final class PlayerController {
     }
 
     void release() {
+        vodDisplayRate.restore();
         resetPlaybackProgressWatchdog(true);
         uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
         uiHandler.removeCallbacks(networkRecoveryRunnable);
@@ -2505,6 +2636,7 @@ final class PlayerController {
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
         PlaybackRequest previousRequest = currentRequest;
         if (!isSameChannel(request, previousRequest)) {
+            manualVodVideoKey = "";
             audioLanguageChosenForItem = false;
             trackSelector.setParameters(trackSelector.buildUponParameters()
                     .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
@@ -2518,6 +2650,10 @@ final class PlayerController {
             prepareAdaptiveQualityForChannel(request);
         }
         currentRequest = request;
+        if (!isSameChannel(request, previousRequest)) vodAudioOutputRecoveryAttempted = false;
+        if (player != null) player.setVideoChangeFrameRateStrategy(request != null && request.vod
+                ? C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF : C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS);
+        if (request == null || !request.vod) vodDisplayRate.restore();
         if (!isSameChannel(request, previousRequest)) {
             String defaultMode = prefs.getString(PREF_TEXT_TRACK_MODE, "off");
             if ("manual".equals(defaultMode)) defaultMode = "forced";
@@ -2765,9 +2901,12 @@ final class PlayerController {
             return;
         }
         boolean capForCompatibility = usingVideoCompatibilityCap;
-        String qualityMode = host.playbackQualityMode();
+        String qualityMode = request != null && request.vod ? PlaybackQualityPolicy.AUTO : host.playbackQualityMode();
         boolean multiView = host.isMultiViewPlayback();
-        int[] limits = videoQualityLimits(capForCompatibility);
+        int[] limits = request != null && request.vod && !multiView
+                ? new int[]{PlaybackQualityPolicy.maxWidth(qualityMode,capForCompatibility,false),
+                    PlaybackQualityPolicy.maxHeight(qualityMode,capForCompatibility,false),Integer.MAX_VALUE}
+                : videoQualityLimits(capForCompatibility);
         int maxBitrate = limits[2];
         int maxWidth = limits[0];
         int maxHeight = limits[1];
@@ -2781,6 +2920,7 @@ final class PlayerController {
         DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .setForceHighestSupportedBitrate(PlaybackQualityPolicy.forceHighestBitrate(qualityMode))
+                .setForceLowestBitrate(false)
                 .setMaxVideoBitrate(maxBitrate);
         if (maxWidth != Integer.MAX_VALUE || maxHeight != Integer.MAX_VALUE) {
             builder.setMaxVideoSize(maxWidth, maxHeight);
@@ -3124,7 +3264,9 @@ final class PlayerController {
             player = null;
             initialize();
             textTrackMode = textMode;
-            audioLanguageChosenForItem = false;
+            // This rebuild is itself an audio choice, not a new title. Re-running
+            // default selection here can recreate HLS renderers in a loop.
+            audioLanguageChosenForItem = true;
             trackSelector.setParameters(parameters);
             Log.i(TAG, "VOD audio switch: recreated renderer at positionMs=" + positionMs);
             player.setMediaItem(item, positionMs);
@@ -3318,7 +3460,8 @@ final class PlayerController {
         Format format = player.getVideoFormat();
         if (format == null) return "";
         return VodStreamInfo.label(format.width, format.height, format.sampleMimeType,
-                format.codecs, PlaybackFormatBadges.video(format), format.bitrate);
+                format.codecs, PlaybackFormatBadges.video(format), format.bitrate)
+                + " · " + vodDisplayRate.label(format.frameRate);
     }
 
     private void maybeShowHdrBadge() {

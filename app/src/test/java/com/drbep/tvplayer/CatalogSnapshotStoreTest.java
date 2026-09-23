@@ -20,14 +20,24 @@ public class CatalogSnapshotStoreTest {
         OfflinePermissions original = new OfflinePermissions();
         original.vodEnabled = true;
         original.disneyplusVodEnabled = true;
+        original.appleTVVodEnabled = true;
+        original.netflixVodEnabled = true;
+        original.hboVodEnabled = true;
+        original.skyVodEnabled = true;
+        original.privateVodPermissionsExplicit = true;
         original.canScheduleRecordings = true;
         original.allowedPlatformIds.add(42);
         original.protectedFilterKeys.add("vod:adult");
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         CatalogSnapshotStore.writeOfflinePermissions(new DataOutputStream(bytes), original);
         DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes.toByteArray()));
-        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 10);
+        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 13);
+        assertTrue(restored.allowsNetflixVod());
         assertTrue(restored.allowsDisneyplusVod());
+        assertTrue(restored.allowsAppleTVVod());
+        assertTrue(restored.allowsHboVod());
+        assertTrue(restored.allowsSkyVod());
+        assertTrue(restored.privateVodPermissionsExplicit);
         assertEquals(original.canScheduleRecordings, restored.canScheduleRecordings);
         assertEquals(original.allowedPlatformIds, restored.allowedPlatformIds);
         assertEquals(original.protectedFilterKeys, restored.protectedFilterKeys);
@@ -44,6 +54,32 @@ public class CatalogSnapshotStoreTest {
         OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 9);
         assertTrue(restored.vodEnabled);
         assertFalse(restored.allowsDisneyplusVod());
+        assertTrue(restored.canScheduleRecordings);
+        assertEquals(-1, input.read());
+    }
+
+    @Test public void versionTwelveNeverGrantsNetflixOrShiftsRecordingFlags() throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream output = new DataOutputStream(bytes);
+        for (int i = 0; i < 17; i++) output.writeBoolean(true);
+        for (int i = 0; i < 4; i++) output.writeInt(0);
+        DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes.toByteArray()));
+        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 12);
+        assertFalse(restored.allowsNetflixVod());
+        assertTrue(restored.allowsAppleTVVod());
+        assertTrue(restored.canScheduleRecordings);
+        assertEquals(-1, input.read());
+    }
+
+    @Test public void versionTenKeepsDisneyButNeverGrantsApple() throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream output = new DataOutputStream(bytes);
+        for (int i = 0; i < 13; i++) output.writeBoolean(true);
+        for (int i = 0; i < 4; i++) output.writeInt(0);
+        DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes.toByteArray()));
+        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 10);
+        assertTrue(restored.allowsDisneyplusVod());
+        assertFalse(restored.allowsAppleTVVod());
         assertTrue(restored.canScheduleRecordings);
         assertEquals(-1, input.read());
     }

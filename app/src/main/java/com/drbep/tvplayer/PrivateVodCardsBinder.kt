@@ -52,16 +52,20 @@ internal object PrivateVodCardsBinder {
                     horizontalArrangement=Arrangement.spacedBy(12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     items(cards, key={it.posterQuery}) { card ->
                         FocusTile(Modifier.fillMaxWidth().then(if(card.preferredFocus) Modifier.focusRequester(first) else Modifier), { perform.accept(card.action) }) {
-                            Row(Modifier.padding(10.dp).height(150.dp), horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                            Row(Modifier.padding(10.dp).height(if(card.details.isNotBlank()) 190.dp else 150.dp), horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 AndroidView(factory={ context -> ImageView(context).apply { scaleType=ImageView.ScaleType.FIT_CENTER } },
                                     modifier=Modifier.width(96.dp).fillMaxHeight(),
                                     update={ image.accept(it, card.posterQuery) },
                                     onRelease={ Glide.with(it).clear(it) })
                                 Column(Modifier.weight(1f)) {
-                                    BasicText(card.title, style=TextStyle(color=Color.White, fontSize=16.sp, fontWeight=FontWeight.Bold), maxLines=2, overflow=TextOverflow.Ellipsis)
+                                    BasicText(card.title, style=TextStyle(color=Color.White, fontSize=16.sp, fontWeight=FontWeight.Bold), maxLines=if(card.details.isNotBlank()) 3 else 2, overflow=TextOverflow.Ellipsis)
                                     Spacer(Modifier.height(8.dp))
+                                    if(card.details.isNotBlank()) {
+                                        BasicText(card.details, style=TextStyle(color=Color(0xFFB8CADA), fontSize=12.sp), maxLines=2, overflow=TextOverflow.Ellipsis)
+                                        Spacer(Modifier.height(6.dp))
+                                    }
                                     if(card.synopsis.isNotBlank()) BasicText(card.synopsis,
-                                        style=TextStyle(color=Color(0xFFD2DDE8), fontSize=13.sp), maxLines=5, overflow=TextOverflow.Ellipsis)
+                                        style=TextStyle(color=Color(0xFFD2DDE8), fontSize=13.sp), maxLines=if(card.details.isNotBlank()) 4 else 5, overflow=TextOverflow.Ellipsis)
                                 }
                             }
                         }

@@ -26,6 +26,7 @@ final class PrivateVodBrowser {
     static final class Card {
         boolean preferredFocus;
         final String title, synopsis, posterQuery;
+        String details = "";
         final Runnable action;
         Card(String title, String synopsis, String posterQuery, Runnable action) {
             this.title = title; this.synopsis = synopsis; this.posterQuery = posterQuery; this.action = action;
@@ -33,6 +34,8 @@ final class PrivateVodBrowser {
     }
     interface Source { JSONObject get(String query) throws Exception; }
     private final Host host;
+    private final String providerName;
+    private final boolean allowPlayback;
     private final Source source;
     private final ExecutorService executor;
     private Future<?> pending;
@@ -44,14 +47,19 @@ final class PrivateVodBrowser {
     private String selectedPoster = "";
     void restore() { if (playbackReturn != null) playbackReturn.run(); else home(); }
     PrivateVodBrowser(Host host, Source source, ExecutorService executor) {
-        this.host = host; this.source = source; this.executor = executor;
+        this(host, source, executor, "HBO Max", true);
     }
-    void close() { generation++; if (pending != null) pending.cancel(true); pending = null; host.dismiss(); }
+    PrivateVodBrowser(Host host, Source source, ExecutorService executor, String providerName, boolean allowPlayback) {
+        this.host = host; this.source = source; this.executor = executor;
+        this.providerName = providerName; this.allowPlayback = allowPlayback;
+    }
+    private void cancelPending() { generation++; if (pending != null) pending.cancel(true); pending = null; }
+    void close() { cancelPending(); host.dismiss(); }
     void open(Runnable back) {
         exit = () -> { close(); if (back != null) back.run(); };
-        load("HBO Max", "", descriptor -> {
+        load(providerName, "", descriptor -> {
             revision = descriptor.optString("revision");
-            playbackEnabled = descriptor.optBoolean("playback_enabled");
+            playbackEnabled = allowPlayback && descriptor.optBoolean("playback_enabled");
             if (!revision.matches("[a-f0-9]{32}") || !descriptor.optBoolean("metadata_preview")) {
                 error("Respuesta de catálogo no válida."); return;
             }
@@ -62,7 +70,7 @@ final class PrivateVodBrowser {
         page("movie", "", "Películas", "", new ArrayList<>(), exit);
     }
     private void load(String title, String query, Consumer<JSONObject> ready, Runnable back) {
-        close(); final int request = generation;
+        cancelPending(); final int request = generation;
         Runnable cancel = () -> { close(); back.run(); };
         host.show(title, "Cargando una página…", Arrays.asList("Cancelar"), Arrays.asList(cancel), cancel);
         pending = executor.submit(() -> {
@@ -73,16 +81,16 @@ final class PrivateVodBrowser {
                 final String message = e.getMessage() == null ? "" : e.getMessage();
                 host.ui(() -> {
                     if (request != generation) return;
-                    error(message.contains("HTTP 409") ? "El catálogo ha cambiado. Vuelve a abrir HBO Max."
+                    error(message.contains("HTTP 409") ? "El catálogo ha cambiado. Vuelve a abrir " + providerName + "."
                             : message.contains("HTTP 404") || message.contains("HTTP 403")
-                            ? "El acceso a HBO Max no está habilitado para este usuario."
+                            ? "El acceso a " + providerName + " no está habilitado para este usuario."
                             : "No se pudo consultar el catálogo. Inténtalo de nuevo más tarde.");
                 });
             }
         });
     }
     private void error(String message) {
-        host.show("HBO Max", message, Arrays.asList("Volver"), Arrays.asList(exit), exit);
+        host.show(providerName, message, Arrays.asList("Volver"), Arrays.asList(exit), exit);
     }
     private static String enc(String value) { return android.net.Uri.encode(value); }
     private void page(String kind, String series, String title, String query, List<String> previous, Runnable parent) {
@@ -134,29 +142,49 @@ final class PrivateVodBrowser {
                 if (row == null || row.optString("id").isEmpty()) continue;
                 String name = row.optString("title", "Sin título");
                 if (kind.equals("episode")) name = "T"+row.optInt("season")+" · E"+row.optInt("episode")+" — "+name;
+                final boolean netflix = providerName.equals("Netflix");
+                if (netflix) name = NetflixVodPresentation.title(kind, row.optString("title"), row.optInt("season"), row.optInt("episode"));
+                final String facts = netflix ? NetflixVodPresentation.discovery(row.optString("added_at"), System.currentTimeMillis()) + NetflixVodPresentation.facts(kind, title,
+                        row.optInt("episodes"), row.optString("air_date"), row.optInt("release_year"), row.optLong("duration_seconds")) : "";
                 int actionIndex = actions.size();
                 final String itemId = row.optString("id");
                 final String poster = "revision="+enc(revision)+"&kind="+kind+"&id="+enc(itemId);
+                final boolean upcoming = providerName.equals("Apple TV+") && !kind.equals("series")
+                        && AppleVodAvailability.upcoming(row.optString("air_date"));
                 if (kind.equals("series")) {
-                    actions.add(() -> page("episode", itemId, row.optString("title", "Serie"), "", new ArrayList<>(), current));
+                    Runnable returnToSeries = netflix ? () -> { selectedPoster = poster; current.run(); } : current;
+                    actions.add(() -> page("episode", itemId, row.optString("title", "Serie"), "", new ArrayList<>(), returnToSeries));
+                } else if (upcoming) {
+                    final String upcomingTitle = name;
+                    actions.add(() -> host.show(upcomingTitle, "Próximamente · Estreno: " + row.optString("air_date")
+                            + "\nEste título todavía no está disponible para reproducir.",
+                            Arrays.asList("Volver al catálogo"), Arrays.asList(current), current));
                 } else if (playbackEnabled) {
                     final String itemTitle = name;
                     final JSONObject metadata = row;
+                    JSONObject synopsis = synopses == null ? null : synopses.optJSONObject(itemId);
+                    try { metadata.put("synopsis",synopsis==null?"":synopsis.optString("text")); } catch(Exception ignored) {}
                     try { metadata.put("kind",kind).put("series_id",series).put("series_title",kind.equals("episode")?title:""); } catch(Exception ignored) {}
                     actions.add(() -> { playbackReturn = current; selectedPoster = poster; host.remember(metadata); host.play(itemId, itemTitle, kind, poster); });
                 } else {
                     final String itemTitle = name;
                     JSONObject synopsis = synopses == null ? null : synopses.optJSONObject(itemId);
-                    final String text = (kind.equals("episode") ? title+"\n" : "")
-                            + row.optString("air_date") + " · " + row.optLong("duration_seconds")/60 + " min\n\n"
+                    final String text = netflix ? facts + "\n\n"
+                            + NetflixVodPresentation.synopsis(synopsis == null ? "" : synopsis.optString("text"))
+                            + "\n\nSolo consulta. Reproducción aún no habilitada." : (kind.equals("episode") ? title+"\n" : "")
+                            + contentDate(row) + " · " + row.optLong("duration_seconds")/60 + " min\n\n"
                             + (synopsis == null ? "Sin sinopsis disponible." : synopsis.optString("text", "Sin sinopsis disponible."))
                             + "\n\nSolo consulta. Reproducción aún no habilitada.";
-                    actions.add(() -> host.show(itemTitle, text, Arrays.asList("Volver al catálogo"), Arrays.asList(current), current));
+                    Runnable returnToCard = netflix ? () -> { selectedPoster = poster; current.run(); } : current;
+                    actions.add(() -> host.show(itemTitle, text, Arrays.asList("Volver al catálogo"), Arrays.asList(returnToCard), returnToCard));
                 }
                 Runnable itemAction = actions.remove(actionIndex);
                 JSONObject summary = synopses == null ? null : synopses.optJSONObject(itemId);
                 String badge=host.progress(itemId);
-                cards.add(new Card(name, (badge.isEmpty()?"":badge+"\n")+(summary == null ? "" : summary.optString("text")), poster, itemAction));
+                String summaryText = summary == null ? "" : summary.optString("text");
+                cards.add(new Card(name, (badge.isEmpty()?"":badge+"\n")+(netflix ? NetflixVodPresentation.synopsis(summaryText) : summaryText), poster, itemAction));
+                if (netflix) cards.get(cards.size()-1).details = facts;
+                if (upcoming) cards.get(cards.size()-1).details = "Próximamente · " + row.optString("air_date");
                 cards.get(cards.size()-1).preferredFocus = poster.equals(selectedPoster);
             }
             String next = result.optString("next");
@@ -168,8 +196,14 @@ final class PrivateVodBrowser {
                 List<String> prior = new ArrayList<>(previous); prior.remove(prior.size()-1);
                 labels.add("Página anterior"); actions.add(() -> page(kind, series, title, query, prior, parent, season));
             }
-            host.cards("HBO Max · " + title, (kind.equals("episode") ? seasonLabel(season) + " · " : "") + "Página " + (previous.size()+1) + " · " + items.length()
+            host.cards(providerName + " · " + title, (kind.equals("episode") ? seasonLabel(season) + " · " : "") + "Página " + (previous.size()+1) + " · " + items.length()
                     + " elementos" + (playbackEnabled ? "" : " · Solo consulta"), cards, labels, actions, parent);
         }, parent);
+    }
+    static String contentDate(JSONObject row) {
+        String date = row.optString("air_date");
+        if (!date.isEmpty()) return date;
+        int year = row.optInt("release_year");
+        return year > 0 && year <= 9999 ? "Año: " + year : "Fecha no disponible";
     }
 }

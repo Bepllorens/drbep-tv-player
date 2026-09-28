@@ -7,13 +7,13 @@ import android.view.WindowManager;
 import java.util.Locale;
 
 /** Window-scoped preference: no system settings, resolution changes or frame interpolation. */
-final class VodDisplayRate {
+public final class VodDisplayRate {
     private final Activity activity;
     private Integer savedMode;
     private float savedRate;
     private float attemptedFps;
 
-    VodDisplayRate(Context context) { activity = context instanceof Activity ? (Activity) context : null; }
+    public VodDisplayRate(Context context) { activity = context instanceof Activity ? (Activity) context : null; }
 
     void update(boolean enabled, float fps) {
         if (!enabled) { restore(); return; }
@@ -47,7 +47,7 @@ final class VodDisplayRate {
         savedMode = null;
     }
 
-    String label(float fps) {
+    public String label(float fps) {
         String source = fps > 0 && Float.isFinite(fps) ? String.format(Locale.getDefault(), "%.3f fps", fps) : "fps no informados";
         if (activity == null) return source;
         float hz = activity.getWindowManager().getDefaultDisplay().getRefreshRate();

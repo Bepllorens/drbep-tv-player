@@ -13,6 +13,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -117,7 +120,9 @@ private fun ClassicTouchControlsBar(model: TouchControlsBarUiModel, artworkBinde
                 )
             )
         }
-        if (model.expanded) BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        if (model.expanded && model.actions.any { it.iconHint == "vod_languages" }) {
+            CompactVodActionStrip(model, artworkBinder, compact)
+        } else if (model.expanded) BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val actionCount = model.actions.size.coerceAtLeast(1)
             val firstEnabledIndex = model.actions.indexOfFirst { it.enabled }
             val focusedIndex = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
@@ -396,6 +401,10 @@ private fun ModernContextHeader(model: TouchControlsBarUiModel) {
 @Composable
 private fun ModernActionStrip(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
+    if (model.actions.any { it.iconHint == "vod_languages" }) {
+        CompactVodActionStrip(model, artworkBinder, compact)
+        return
+    }
     val scrollState = rememberScrollState()
     val focusedIndex = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
     val density = LocalDensity.current
@@ -429,20 +438,60 @@ private fun ModernActionStrip(model: TouchControlsBarUiModel, artworkBinder: Tou
     }
 }
 
+/** Keeps the action indices unchanged so D-pad and touch invoke the same callbacks. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CompactVodActionStrip(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?, compact: Boolean) {
+    val focusedIndex = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
+    val requester = rememberTvInitialFocusRequester(model.actions.any { it.enabled }, model.actions.size, model.contextSubtitle, focusedIndex)
+    val transportStart = model.actions.indexOfFirst { modernActionIconKind(it) == ModernActionIconKind.REWIND }
+    val grouped = transportStart >= 0 && transportStart + 2 < model.actions.size &&
+        modernActionIconKind(model.actions[transportStart + 1]) == ModernActionIconKind.PLAY_PAUSE &&
+        modernActionIconKind(model.actions[transportStart + 2]) == ModernActionIconKind.FORWARD
+    Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val normalCount = model.actions.size - if (grouped) 3 else 0
+        val groupCount = normalCount + if (grouped) 1 else 0
+        val gap = 8.dp
+        val units = normalCount + if (grouped) 1.8f else 0f
+        val available = maxWidth - gap * (groupCount - 1).coerceAtLeast(0) - if (grouped) 8.dp else 0.dp
+        val chipWidth = if (compact) 82.dp else (available / units.coerceAtLeast(1f)).coerceIn(64.dp, 100.dp)
+        // Narrow touch screens wrap; TV keeps every control in one fixed row.
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(gap)) {
+            model.actions.forEachIndexed { index, item ->
+                if (grouped && index == transportStart) {
+                    Row(Modifier.background(OfflineTvTheme.Colors.chip.copy(alpha = .8f), RoundedCornerShape(18.dp)).padding(horizontal = 4.dp)) {
+                        for (offset in 0..2) {
+                            val actionIndex = index + offset
+                            ModernActionChip(model.actions[actionIndex], actionIndex == focusedIndex,
+                                if (actionIndex == focusedIndex) requester else null, compact, artworkBinder,
+                                (chipWidth * .6f).coerceAtLeast(48.dp), true)
+                        }
+                    }
+                } else if (!grouped || index !in transportStart..transportStart + 2) {
+                    ModernActionChip(item, index == focusedIndex, if (index == focusedIndex) requester else null,
+                        compact, artworkBinder, chipWidth)
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequester: FocusRequester?, compact: Boolean, artworkBinder: TouchControlsArtworkBinder?) {
+private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequester: FocusRequester?, compact: Boolean, artworkBinder: TouchControlsArtworkBinder?, chipWidth: Dp = if (compact) 82.dp else 100.dp, grouped: Boolean = false) {
     val surface = when {
         focused -> OfflineTvTheme.Colors.focus
         item.selected -> OfflineTvTheme.Colors.card
-        else -> OfflineTvTheme.Colors.chip.copy(alpha = 0.8f)
+        else -> if (grouped) Color.Transparent else OfflineTvTheme.Colors.chip.copy(alpha = 0.8f)
     }
     Column(
         modifier = Modifier
-            .width(if (compact) 82.dp else 100.dp)
+            .width(chipWidth)
             .alpha(if (item.enabled) 1f else .42f)
             .background(surface, RoundedCornerShape(18.dp))
-            .border(1.dp, if (focused) Color.White else OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.33f), RoundedCornerShape(18.dp))
+            .border(1.dp, if (focused) Color.White else if (grouped) Color.Transparent else OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.33f), RoundedCornerShape(18.dp))
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvButtonSemantics(item.enabled, item.label, item.selected)
             .combinedClickable(enabled = item.enabled, onClick = { item.onClick?.run() }, onLongClick = item.onLongClick?.let { { it.run() } })
@@ -451,7 +500,7 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
     ) {
         ModernActionIcon(item = item, focused = focused, artworkBinder = artworkBinder)
         Spacer(Modifier.height(2.dp))
-        BasicText(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        BasicText(if (grouped && modernActionIconKind(item) == ModernActionIconKind.PLAY_PAUSE) "⏯" else item.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
             style = TextStyle(color = if (focused) OfflineTvTheme.Colors.focusInk else Color.White, fontSize = if (compact) 9.sp else 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center))
     }
 }
@@ -459,6 +508,7 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
 private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, OTHER }
 
 private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
+    if (item.iconHint == "vod_languages") return ModernActionIconKind.AUDIO
     if (item.iconHint.equals("platform", ignoreCase = true)) return ModernActionIconKind.PLATFORM
     val value = item.label.lowercase()
     return when {

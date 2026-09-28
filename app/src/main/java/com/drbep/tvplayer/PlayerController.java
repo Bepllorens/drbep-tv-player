@@ -1271,6 +1271,11 @@ final class PlayerController {
             return;
         }
         lastPlaybackQualityKey = key;
+        if (currentRequest != null && currentRequest.channelId != null && currentRequest.channelId.startsWith("hbomax:")) {
+            Log.w(TAG, "HBO native video=" + diagnostics.videoWidth + "x" + diagnostics.videoHeight
+                    + " codec=" + diagnostics.videoCodec + " bitrate=" + diagnostics.videoBitrate
+                    + " drm=" + diagnostics.drmType + " firstFrame=" + diagnostics.firstFrameRendered);
+        }
         host.onPlaybackQualityChanged(diagnostics);
     }
 
@@ -2268,7 +2273,7 @@ final class PlayerController {
             }
 
             String resolvedDrmType = safeLower(info.drmType);
-            boolean requiresReplay = "widevine".equals(resolvedDrmType)
+            boolean requiresReplay = "widevine".equals(resolvedDrmType) || "playready".equals(resolvedDrmType)
                     || "clearkey".equals(resolvedDrmType)
                     || info.encrypted;
             StreamInfo resolved = info;
@@ -2777,15 +2782,18 @@ final class PlayerController {
         if (decision.mimeType != null && !decision.mimeType.trim().isEmpty()) {
             builder.setMimeType(decision.mimeType);
         }
-        if ("widevine".equals(decision.drmType)) {
+        if ("widevine".equals(decision.drmType) || "playready".equals(decision.drmType)) {
             String licenseUrl = resolveWidevineLicenseUrl(request);
             if (isSecureDrmReference(licenseUrl)) {
                 licenseUrl = streamInfo != null && streamInfo.licenseUrl != null && !streamInfo.licenseUrl.trim().isEmpty()
                         ? streamInfo.licenseUrl
                         : baseUrl + "/api/widevine/" + request.channelId;
             }
-            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+            builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder("playready".equals(decision.drmType) ? C.PLAYREADY_UUID : C.WIDEVINE_UUID)
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
+                    .setForceDefaultLicenseUri("playready".equals(decision.drmType))
+                    .setLicenseRequestHeaders(PrimeLicenseContext.headers(baseUrl, licenseUrl,
+                            buildPlaybackRequestHeaders()))
                     .build());
         } else if ("clearkey".equals(decision.drmType)) {
             String resolvedLocalClearKeyLicense = streamInfo != null
@@ -3631,7 +3639,7 @@ final class PlayerController {
             return null;
         }
         String drmType = safeLower(request.drmScheme);
-        if (!"clearkey".equals(drmType) && !"widevine".equals(drmType)) {
+        if (!"clearkey".equals(drmType) && !"widevine".equals(drmType) && !"playready".equals(drmType)) {
             return null;
         }
         if (isSecureDrmReference(request.drmLicenseUrl)) {
@@ -3666,7 +3674,7 @@ final class PlayerController {
             return false;
         }
         String drmType = safeLower(request.drmScheme);
-        if (!"clearkey".equals(drmType) && !"widevine".equals(drmType)) {
+        if (!"clearkey".equals(drmType) && !"widevine".equals(drmType) && !"playready".equals(drmType)) {
             return false;
         }
         return !isBlank(request.drmLicenseUrl) || !isBlank(request.playbackProfile);
@@ -4268,7 +4276,7 @@ final class PlayerController {
             if (MimeTypes.APPLICATION_SS.equals(decision.mimeType)) {
                 return "Directo Smooth";
             }
-            if ("widevine".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
+            if ("widevine".equals(decision.drmType) || "playready".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
                 return "Directo DRM";
             }
         }
@@ -4278,7 +4286,7 @@ final class PlayerController {
         if (isBackendVideoRoute(decision)) {
             return context.getString(R.string.diagnostics_route_server_hls);
         }
-        if ("widevine".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
+        if ("widevine".equals(decision.drmType) || "playready".equals(decision.drmType) || "clearkey".equals(decision.drmType)) {
             return context.getString(R.string.diagnostics_route_proxy_drm);
         }
         if (decision.targetUrl != null && decision.targetUrl.contains("?nodrm=1")) {

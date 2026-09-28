@@ -32,6 +32,10 @@
         android:usesCleartextTraffic="${appUsesCleartextTraffic}"
         android:theme="@style/Theme.DrbepTvPlayer">
 
+        <activity android:name=".netflix.NetflixPlaybackActivity"
+            android:exported="false"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" />
+
         <activity
             android:name=".MainActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"

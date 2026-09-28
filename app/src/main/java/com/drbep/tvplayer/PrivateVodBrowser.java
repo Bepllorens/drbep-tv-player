@@ -36,6 +36,7 @@ final class PrivateVodBrowser {
     private final Host host;
     private final String providerName;
     private final boolean allowPlayback;
+    private final boolean nativePlayback;
     private final Source source;
     private final ExecutorService executor;
     private Future<?> pending;
@@ -50,8 +51,11 @@ final class PrivateVodBrowser {
         this(host, source, executor, "HBO Max", true);
     }
     PrivateVodBrowser(Host host, Source source, ExecutorService executor, String providerName, boolean allowPlayback) {
+        this(host, source, executor, providerName, allowPlayback, false);
+    }
+    PrivateVodBrowser(Host host, Source source, ExecutorService executor, String providerName, boolean allowPlayback, boolean nativePlayback) {
         this.host = host; this.source = source; this.executor = executor;
-        this.providerName = providerName; this.allowPlayback = allowPlayback;
+        this.providerName = providerName; this.allowPlayback = allowPlayback; this.nativePlayback = nativePlayback;
     }
     private void cancelPending() { generation++; if (pending != null) pending.cancel(true); pending = null; }
     void close() { cancelPending(); host.dismiss(); }
@@ -59,7 +63,7 @@ final class PrivateVodBrowser {
         exit = () -> { close(); if (back != null) back.run(); };
         load(providerName, "", descriptor -> {
             revision = descriptor.optString("revision");
-            playbackEnabled = allowPlayback && descriptor.optBoolean("playback_enabled");
+            playbackEnabled = allowPlayback && (nativePlayback || descriptor.optBoolean("playback_enabled"));
             if (!revision.matches("[a-f0-9]{32}") || !descriptor.optBoolean("metadata_preview")) {
                 error("Respuesta de catálogo no válida."); return;
             }

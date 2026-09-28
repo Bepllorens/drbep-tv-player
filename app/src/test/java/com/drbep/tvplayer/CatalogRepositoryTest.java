@@ -12,6 +12,23 @@ import org.junit.Test;
 
 public class CatalogRepositoryTest {
     @Test
+    public void hboUsesNativeWidevineAndMigratesSavedItems() {
+        CatalogRepository repository = new CatalogRepository("https://fire.tvbep.com", null, true);
+        ChannelItem item = repository.buildHbomaxVodItem("asset-1", "Movie", "movie", "revision=r&id=asset-1", 120);
+        assertEquals("widevine", item.drmScheme);
+        assertEquals("https://fire.tvbep.com/api/vod/private/hbomax/native/asset-1/manifest.mpd", item.playUrl);
+        assertEquals("https://fire.tvbep.com/api/vod/private/hbomax/native/asset-1/license", item.drmLicenseUrl);
+        ChannelItem old = new ChannelItem(item.id,item.name,"",item.logoUrl,item.group,"https://fire.tvbep.com/api/vod/hbomax/manifest/asset-1","",0,0,true,false,0,"HBO Max",new ArrayList<>(),"clearkey","https://fire.tvbep.com/api/vod/hbomax/clearkey/asset-1","vod:hbomax",true,"","",120);
+        ChannelItem migrated = repository.withNativeHbomaxPlayback(old);
+        assertEquals(item.playUrl, migrated.playUrl);
+        assertEquals("widevine", migrated.drmScheme);
+        assertEquals(old.id, migrated.id);
+        assertEquals(old.logoUrl, migrated.logoUrl);
+        assertEquals(120, migrated.vodDurationSeconds);
+        assertTrue(repository.buildHbomaxVodItem("../invalid", "", "movie", "") == null);
+    }
+
+    @Test
     public void disneyRequiresExplicitPermissionAndVodAccess() throws Exception {
         assertFalse(CatalogRepository.parseOfflinePermissions(new org.json.JSONObject("{}" )).allowsDisneyplusVod());
         assertFalse(CatalogRepository.parseOfflinePermissions(new org.json.JSONObject("{\"permissions\":{\"vod\":true}}" )).allowsDisneyplusVod());

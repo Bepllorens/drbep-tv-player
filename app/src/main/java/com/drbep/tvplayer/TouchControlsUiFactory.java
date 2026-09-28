@@ -40,6 +40,7 @@ final class TouchControlsUiFactory {
         void togglePlayback();
         void showAudioTracks();
         void showSubtitles();
+        void showLanguages();
         default void showVideoQuality() {}
     }
 
@@ -233,14 +234,10 @@ final class TouchControlsUiFactory {
             ));
         }
         if (vod) {
-            actions.add(new ZapActionItem(host.text(R.string.audio_track_title), true, false, false, () -> {
+            actions.add(new ZapActionItem("Idiomas", true, false, false, "vod_languages", "", () -> {
                 host.keepVisible();
-                host.showAudioTracks();
-            }));
-            actions.add(new ZapActionItem(host.text(R.string.subtitle_track_title), true, false, false, () -> {
-                host.keepVisible();
-                host.showSubtitles();
-            }));
+                host.showLanguages();
+            }, null));
             actions.add(new ZapActionItem("Calidad", true, false, false, () -> {
                 host.keepVisible();host.showVideoQuality();
             }));

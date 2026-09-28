@@ -191,7 +191,7 @@ final class PlaybackRouteResolver {
             );
         }
 
-        if ("widevine".equals(drmType) || "clearkey".equals(drmType)) {
+        if ("widevine".equals(drmType) || "playready".equals(drmType) || "clearkey".equals(drmType)) {
             String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
             if ("server_live".equals(safeLower(request.playbackProfile))) {
                 if ("smooth".equals(streamType) || looksSmooth) {

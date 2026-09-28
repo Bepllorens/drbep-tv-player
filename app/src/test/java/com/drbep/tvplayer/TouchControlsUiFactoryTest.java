@@ -46,11 +46,10 @@ public class TouchControlsUiFactoryTest {
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
 
-        assertLabels(model, "TV", "Biblioteca VOD", "Ficha VOD", "Rebobinar", "Pausa", "Avanzar", "Audio", "Subtitulos", "Calidad");
+        assertLabels(model, "TV", "Biblioteca VOD", "Ficha VOD", "Rebobinar", "Pausa", "Avanzar", "Idiomas", "Calidad");
         click(model, "TV");
-        click(model, "Audio");
-        click(model, "Subtitulos");
-        assertEquals("keep,liveTv,keep,audio,keep,subtitles", String.join(",", host.events));
+        click(model, "Idiomas");
+        assertEquals("keep,liveTv,keep,languages", String.join(",", host.events));
         assertFalse(hasLabel(model, "U7D"));
         assertFalse(hasLabel(model, "Info"));
         assertFalse(hasLabel(model, "Anterior"));
@@ -250,6 +249,7 @@ public class TouchControlsUiFactoryTest {
 
     private static final class FakeHost implements TouchControlsUiFactory.Host {
         @Override public void showAudioTracks() { events.add("audio"); }
+        @Override public void showLanguages() { events.add("languages"); }
         @Override public void showSubtitles() { events.add("subtitles"); }
         boolean vodAllowed = true;
         @Override public boolean canOpenVod() { return vodAllowed; }

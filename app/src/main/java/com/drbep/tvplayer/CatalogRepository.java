@@ -1338,15 +1338,24 @@ final class CatalogRepository {
             "vod:appletv",true,description,date,duration);
     }
 
+
+    ChannelItem withNativeHbomaxPlayback(ChannelItem item) {
+        if (item == null || !item.id.startsWith("hbomax:")) return item;
+        String posterQuery = "";
+        try { posterQuery = java.net.URI.create(item.logoUrl).getRawQuery(); } catch (IllegalArgumentException ignored) { }
+        return buildHbomaxVodItem(item.id.substring("hbomax:".length()), item.name,
+                item.group.contains("Episodios") ? "episode" : "movie", posterQuery, item.vodDurationSeconds);
+    }
     ChannelItem buildHbomaxVodItem(String id, String title, String kind, String posterQuery, long durationSeconds) {
         String safeId = id == null ? "" : id.trim();
-        if (safeId.isEmpty()) {
+        if (!safeId.matches("[A-Za-z0-9_-]{1,128}")) {
             return null;
         }
         String base = vodApiBaseUrl();
-        String encodedId = Uri.encode(safeId);
-        String playUrl = base + "/api/vod/hbomax/manifest/" + encodedId;
-        String licenseUrl = base + "/api/vod/hbomax/clearkey/" + encodedId;
+        String encodedId = safeId;
+        String profileQuery = HboNativeCapabilities.query();
+        String playUrl = base + "/api/vod/private/hbomax/native/" + encodedId + "/manifest.mpd" + profileQuery;
+        String licenseUrl = base + "/api/vod/private/hbomax/native/" + encodedId + "/license" + profileQuery;
         String logo = (posterQuery == null || posterQuery.isEmpty())
                 ? ""
                 : base + "/api/vod/private/hbomax/poster?" + posterQuery;
@@ -1367,7 +1376,7 @@ final class CatalogRepository {
                 0,
                 "HBO Max",
                 new ArrayList<>(),
-                "clearkey",
+                HboNativeCapabilities.drmScheme(),
                 licenseUrl,
                 "vod:hbomax",
                 true,

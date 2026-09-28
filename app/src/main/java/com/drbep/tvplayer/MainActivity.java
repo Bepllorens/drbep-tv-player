@@ -134,6 +134,8 @@ public class MainActivity extends FragmentActivity {
     private static final int OFFLINE_EPG_VISIBLE_BATCH_LIMIT = 48;
     private static final int OFFLINE_EPG_COMPACT_BATCH_LIMIT = 12;
     private static final int REQUEST_VOICE_SEARCH = 7041;
+    private static final int REQUEST_NETFLIX_PLAYBACK = 7042;
+    private boolean netflixReturnToHome;
     private static final long PLAYBACK_HEARTBEAT_INTERVAL_MS = 30L * 1000L;
     private static final long REMOTE_COMMAND_POLL_INTERVAL_MS = 15L * 1000L;
     private static final long PLAYBACK_ROUTE_LEARN_STABILITY_MS = 30L * 1000L;
@@ -1101,6 +1103,18 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_NETFLIX_PLAYBACK) {
+            if (resultCode == RESULT_OK && data != null && data.getBooleanExtra("return_to_tv", false)) {
+                if (privateVodBrowser != null) privateVodBrowser.close();
+                postUiIfAlive(this::returnToLiveTv);
+            } else if (netflixReturnToHome) {
+                postUiIfAlive(() -> showStartupHubDialog(null));
+            } else if (privateVodBrowser != null) {
+                postUiIfAlive(() -> privateVodBrowser.restore());
+            }
+            netflixReturnToHome=false;
+            return;
+        }
         if (requestCode != REQUEST_VOICE_SEARCH || resultCode != RESULT_OK || data == null) {
             return;
         }
@@ -2281,6 +2295,11 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void showSubtitles() { showTextTrackDialog(null); }
+            @Override public void showLanguages() {
+                showTvOptionsDialog("Idiomas", null,
+                        java.util.Arrays.asList(getString(R.string.audio_track_title), getString(R.string.subtitle_track_title)),
+                        java.util.Arrays.asList(() -> showAudioTrackDialog(), () -> showTextTrackDialog(null)), null, null);
+            }
             @Override public void showVideoQuality() { showVodVideoQualityDialog(); }
 
             @Override
@@ -3334,7 +3353,9 @@ public class MainActivity extends FragmentActivity {
         startFromBeginning.run();
     }
 
-    private void playChannelItemInternal(ChannelItem ch, boolean autoPlay, long resumePositionMs) {
+    private void playChannelItemInternal(ChannelItem requestedChannel, boolean autoPlay, long resumePositionMs) {
+        HboNativeCapabilities.configureDisplay(this);
+        final ChannelItem ch = catalogRepository == null ? requestedChannel : catalogRepository.withNativeHbomaxPlayback(requestedChannel);
         endedVodId = "";
         if (vodEndDialog != null) { vodEndDialog.dismiss(); vodEndDialog = null; }
         if (isDisneyplusItem(ch) && !allowsDisneyplusVod()) {
@@ -11566,7 +11587,29 @@ public class MainActivity extends FragmentActivity {
             }
             public void ui(Runnable action) { postUiIfAlive(action); }
             public void play(String id, String title, String kind, String posterQuery) {
-                if (netflix) return; // Metadata-only until native playback is integrated.
+                if (netflix) {
+                    if (currentOfflinePermissions == null || !currentOfflinePermissions.allowsNetflixVod()) return;
+                    long netflixId;
+                    try { netflixId = Long.parseLong(id); } catch (NumberFormatException invalid) { return; }
+                    if (netflixId <= 0) return;
+                    if (playerController != null) playerController.stopForSourceSwitch();
+                    Intent playback = new Intent(MainActivity.this, com.drbep.tvplayer.netflix.NetflixPlaybackActivity.class);
+                    playback.putExtra("manifest_title", netflixId).putExtra("title", title)
+                            .putExtra("poster_base", catalogRepository.vodApiBaseUrl())
+                            .putExtra("poster_query", posterQuery);
+                    JSONObject metadata = selectedMetadata[0];
+                    if (metadata != null && id.equals(metadata.optString("id"))) {
+                        playback.putExtra("vod_facts", NetflixVodPresentation.facts(kind,
+                                metadata.optString("series_title"), metadata.optInt("episodes"),
+                                metadata.optString("air_date"), metadata.optInt("release_year"),
+                                metadata.optLong("duration_seconds")));
+                        playback.putExtra("vod_synopsis", NetflixVodPresentation.synopsis(metadata.optString("synopsis")));
+                    }
+                    if (privateVodBrowser != null) privateVodBrowser.close();
+                    netflixReturnToHome=false;
+                    startActivityForResult(playback, REQUEST_NETFLIX_PLAYBACK);
+                    return;
+                }
                 if (appleTV) {
                     if(currentOfflinePermissions==null||!currentOfflinePermissions.allowsAppleTVVod())return;
                     PrivateVodBrowser browser=privateVodBrowser;
@@ -11587,7 +11630,7 @@ public class MainActivity extends FragmentActivity {
                 if (item == null) return;
                 playVodItem(item, true);
             }
-        }, query -> catalogRepository.fetchPrivateVodMetadata(provider, query), interactiveExecutor, providerName, !netflix);
+        }, query -> catalogRepository.fetchPrivateVodMetadata(provider, query), interactiveExecutor, providerName, true, netflix);
         privateVodBrowser.open(onBack);
     }
 
@@ -17582,6 +17625,25 @@ public class MainActivity extends FragmentActivity {
                     0f,
                     open.apply(() -> tuneChannelById(current.id))
             ));
+        }
+        if (currentOfflinePermissions != null && currentOfflinePermissions.allowsNetflixVod()) {
+            for (JSONObject entry : com.drbep.tvplayer.netflix.NetflixContinueStore.list(this)) {
+                long position=entry.optLong("position"), duration=entry.optLong("duration");
+                String title=entry.optString("title","Netflix");
+                String query=entry.optString("poster_query");
+                String poster=query.isEmpty()?"":catalogRepository.vodApiBaseUrl()+"/api/vod/private/netflix/poster?"+query;
+                continueCards.add(new StartupHomeHubUiModel.ContinueCard(title,
+                        getString(R.string.startup_home_vod_progress,formatDurationShort(position)),
+                        poster,title,true,duration>0?Math.min(1f,(float)position/duration):0f,
+                        open.apply(() -> {
+                            if(currentOfflinePermissions==null || !currentOfflinePermissions.allowsNetflixVod())return;
+                            if(playerController!=null)playerController.stopForSourceSwitch();
+                            Intent playback=com.drbep.tvplayer.netflix.NetflixContinueStore.playbackIntent(this,entry);
+                            playback.putExtra("poster_base",catalogRepository.vodApiBaseUrl());
+                            netflixReturnToHome=true;
+                            startActivityForResult(playback,REQUEST_NETFLIX_PLAYBACK);
+                        })));
+            }
         }
         List<ChannelItem> continueVods = state == null ? buildVodContinueItems() : state.continueVods;
         for (ChannelItem vod : continueVods) {

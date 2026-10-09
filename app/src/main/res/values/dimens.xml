@@ -16,7 +16,7 @@
     <dimen name="quick_search_width">280dp</dimen>
     <dimen name="quick_search_margin_top">82dp</dimen>
     <dimen name="quick_search_query_text_size">18sp</dimen>
-    <dimen name="channel_overlay_width">420dp</dimen>
+    <dimen name="channel_overlay_width">300dp</dimen>
     <dimen name="channel_overlay_padding">10dp</dimen>
     <dimen name="section_title_text_size">18sp</dimen>
     <dimen name="overlay_title_text_size">13sp</dimen>

@@ -61,15 +61,15 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
             .fillMaxWidth()
             .fillMaxHeight()
             .tvPanelBackHandler(model.onBack)
-            .background(OfflineTvTheme.Colors.guideBackdrop),
+            .background(OfflineTvTheme.Menu.scrim),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 0.94f else 0.52f)
                 .fillMaxHeight(if (compact) 0.82f else 0.76f)
-                .clip(RoundedCornerShape(if (compact) 22.dp else 28.dp))
-                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(OfflineTvTheme.Menu.background)
                 .padding(if (compact) 16.dp else 22.dp)
         ) {
             BasicText(
@@ -83,8 +83,8 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.8f))
+                    .clip(OfflineTvTheme.Menu.shape)
+                    .background(OfflineTvTheme.Menu.row)
                     .padding(if (compact) 12.dp else 16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
@@ -99,7 +99,7 @@ private fun TvMessagePanel(model: TvMessagePanelUiModel) {
                         } },
                         onRelease = { image -> com.bumptech.glide.Glide.with(image).clear(image) },
                         modifier = Modifier.size(if (compact) 88.dp else 120.dp, if (compact) 132.dp else 180.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(OfflineTvTheme.Menu.shape)
                     )
                 }
                 BasicText(
@@ -137,13 +137,13 @@ private fun TvMessageActionButton(action: TvMessageActionUiModel, compact: Boole
     val background = when {
         focused -> OfflineTvTheme.Colors.focus
         action.destructive -> OfflineTvTheme.Colors.destructive
-        else -> OfflineTvTheme.Colors.chip
+        else -> OfflineTvTheme.Menu.row
     }
     val textColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
     Box(
         modifier = modifier
             .height(if (compact) 46.dp else 50.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(background)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }

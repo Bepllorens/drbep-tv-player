@@ -167,7 +167,6 @@ final class PlayerController {
     private static final int PLAYBACK_READ_TIMEOUT_MS = 30_000;
     private static final int VOD_PLAYBACK_READ_TIMEOUT_MS = 60_000;
     private static final long MOVISTAR_ISM_FAST_ZAP_LIVE_OFFSET_MS = 12_000L;
-    private static final long TIMESHIFT_MAX_BACK_MS = 2L * 60L * 60L * 1000L;
     private static final long TIMESHIFT_SEEK_STEP_MS = 30_000L;
     private static volatile boolean playbackCrashHandlerInstalled;
     private static volatile Thread.UncaughtExceptionHandler previousUncaughtExceptionHandler;
@@ -212,6 +211,8 @@ final class PlayerController {
 
         void onFirstVideoFrameRendered(String channelId);
 
+        default void onU7dReplayStalled(long localPositionMs) { }
+
         default boolean onU7dReplayWindowExpired(long localPositionMs) {
             return false;
         }
@@ -230,6 +231,15 @@ final class PlayerController {
     }
 
     static final class PlaybackRequest {
+        Map<String,String> playlistStreamHeaders = java.util.Collections.emptyMap();
+        Map<String,String> playlistLicenseHeaders = java.util.Collections.emptyMap();
+        String playlistMimeType = "";
+        PlaybackRequest withPlaylistHeaders(Map<String,String> stream, Map<String,String> license, String mime) {
+            playlistStreamHeaders = stream == null ? java.util.Collections.emptyMap() : new HashMap<>(stream);
+            playlistLicenseHeaders = license == null ? java.util.Collections.emptyMap() : new HashMap<>(license);
+            playlistMimeType = mime == null ? "" : mime;
+            return this;
+        }
         final String channelId;
         final String channelName;
         final String platformName;
@@ -469,6 +479,104 @@ final class PlayerController {
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
     private boolean forceLiveEdgeOnNextReady;
+    private LiveDvrAnchor lastLiveAnchor, pendingLiveAnchor;
+    private static final String HLS_DVR_TEST_BASE = "";
+    private long hlsDvrStart, hlsDvrEnd, hlsDvrLive, hlsDvrUpdated, hlsDvrAnchor, hlsDvrTarget;
+    private boolean hlsDvrLoading;
+    private long hlsDvrPreview=-1;
+    private boolean hlsDvrPreviewPlay;
+    private final Runnable hlsDvrCommit=()->{
+        if(!usesHlsDvr()||hlsDvrPreview<0)return;
+        refreshHlsDvr(true,hlsDvrPreview,hlsDvrPreviewPlay);
+    };
+    private void queueHlsDvrSeek(long target,boolean play){
+        hlsDvrPreview=target==0?0:Math.max(hlsDvrWindowStart(),Math.min(hlsDvrWindowLive(),target));
+        hlsDvrPreviewPlay=play;
+        uiHandler.removeCallbacks(hlsDvrCommit);uiHandler.postDelayed(hlsDvrCommit,450);
+    }
+    private long hlsDvrChecked;
+    private boolean usesHlsDvr() {
+        return currentRequest!=null && !currentRequest.vod && currentPlaybackDecision!=null
+            && safeLower(currentRequest.platformName).contains("movistar hls")
+            && currentPlaybackDecision.targetUrl.contains("/drm/direct/");
+    }
+    private String hlsDvrUrl() { return (HLS_DVR_TEST_BASE.isEmpty()?baseUrl:HLS_DVR_TEST_BASE)+"/drm/direct/"+currentRequest.channelId; }
+    private long hlsDvrWindowStart(){return hlsDvrStart+Math.max(0,SystemClock.elapsedRealtime()-hlsDvrUpdated);}
+    private long hlsDvrWindowLive(){return hlsDvrLive+Math.max(0,SystemClock.elapsedRealtime()-hlsDvrUpdated);}
+    private void refreshHlsDvr(boolean seek,long target,boolean play) {
+        if(!usesHlsDvr())return;
+        if(hlsDvrLoading){if(seek){uiHandler.removeCallbacks(hlsDvrCommit);uiHandler.postDelayed(hlsDvrCommit,100);}return;}
+        long now=SystemClock.elapsedRealtime();if(!seek&&now-hlsDvrChecked<30000)return;
+        hlsDvrChecked=now;hlsDvrLoading=true;
+        final int generation=playbackAttemptGeneration.get();final PlaybackRequest request=currentRequest;
+        final String url=hlsDvrUrl()+"?dvr_window=1"+(seek?"&dvr_start_ms="+Math.max(0,target):"");
+        final Map<String,String> headers=new java.util.HashMap<>(buildPlaybackRequestHeaders());
+        ioExecutor.execute(()->{
+            JSONObject result=null;
+            try{HttpClient.Response response=httpClient.get(appendOfflineAccessToken(url),5000,12000,headers);if(response.isSuccessful())result=httpClient.parseObject(response.body,"ventana HLS");}catch(Exception ignored){}
+            final JSONObject data=result;
+            uiHandler.post(()->{
+                if(generation!=playbackAttemptGeneration.get()||currentRequest!=request)return;
+                hlsDvrLoading=false;
+                if(seek&&target!=hlsDvrPreview){uiHandler.removeCallbacks(hlsDvrCommit);uiHandler.post(hlsDvrCommit);return;}
+                if(data==null){if(seek){hlsDvrPreview=-1;}if(seek)host.showStatus("No se pudo cargar la ventana HLS. Inténtalo de nuevo.");return;}
+                long start=data.optLong("start_ms"),end=data.optLong("end_ms"),live=data.optLong("live_ms"),selected=data.optLong("selected_ms");
+                if(start<=0||end<=start||live<start||live>end||selected<start||selected>live)return;
+                hlsDvrStart=start;hlsDvrEnd=end;hlsDvrLive=live;hlsDvrUpdated=SystemClock.elapsedRealtime();
+                if(hlsDvrAnchor==0)hlsDvrAnchor=live-Math.max(0,player.getCurrentPosition());
+                if(seek){
+                    hlsDvrPreview=-1;hlsDvrTarget=selected;hlsDvrAnchor=selected;lastLiveAnchor=null;pendingLiveAnchor=null;
+                    forceLiveEdgeOnNextReady=false;uiHandler.removeCallbacks(forceLiveEdgeRunnable);
+                    int next=beginPlaybackAttempt(request,"hlsDvrSeek");
+                    playChannelInternal(request,play,false,currentStreamInfo,0L,next);
+                    host.showStatus(target==0?context.getString(R.string.timeshift_status_live):formatTimeshiftOffset(live-selected));
+                }
+            });
+        });
+    }
+
+    private boolean applyingLiveAnchor;
+    private final java.util.ArrayDeque<String> recoveryEvents=new java.util.ArrayDeque<>();
+    private final Runnable liveAnchorTick=new Runnable(){public void run(){
+        if(usesHlsDvr())refreshHlsDvr(false,0,false);
+        rememberLiveAnchor();
+        if(player!=null)uiHandler.postDelayed(this,1000L);
+    }};
+    java.util.List<String> recentRecoveryEvents(){return new java.util.ArrayList<>(recoveryEvents);}
+    private void recoveryEvent(String stage,String detail){
+        String safe=safeLogValue(detail).replaceAll("https?://[^\\s]+","[URL]");
+        if(safe.length()>700)safe=safe.substring(0,700);
+        recoveryEvents.addLast(new java.text.SimpleDateFormat("HH:mm:ss",Locale.getDefault()).format(new java.util.Date())+" · "+stage+" · "+safe);
+        while(recoveryEvents.size()>16)recoveryEvents.removeFirst();
+    }
+    private void rememberLiveAnchor(){
+        if(player==null||hlsDvrPreview>=0||pendingLiveAnchor!=null||applyingLiveAnchor||player.getPlaybackState()!=Player.STATE_READY)return;
+        TimeshiftWindow w=getTimeshiftWindow();if(w==null)return;
+        lastLiveAnchor=new LiveDvrAnchor(currentRequest.channelId,liveWindowStartMs(),w.currentMs,w.endMs,SystemClock.elapsedRealtime(),!player.getPlayWhenReady());
+    }
+    private long liveWindowStartMs(){
+        if(usesHlsDvr()&&hlsDvrStart>0)return hlsDvrWindowStart();
+        if(player==null||player.getCurrentTimeline().isEmpty())return -1;
+        Timeline.Window w=new Timeline.Window();player.getCurrentTimeline().getWindow(player.getCurrentMediaItemIndex(),w);
+        return w.windowStartTimeMs==C.TIME_UNSET?-1:w.windowStartTimeMs;
+    }
+    private void preserveLiveAnchor(){
+        if(pendingLiveAnchor!=null)return;
+        rememberLiveAnchor();
+        if(currentRequest!=null&&!currentRequest.vod&&lastLiveAnchor!=null&&lastLiveAnchor.channelId.equals(currentRequest.channelId)&&lastLiveAnchor.shouldRestore())pendingLiveAnchor=lastLiveAnchor;
+    }
+    private boolean restoreLiveAnchor(){
+        if(pendingLiveAnchor==null||player==null||!isTimeshiftAvailable())return false;
+        TimeshiftWindow w=getTimeshiftWindow();if(w==null)return false;
+        LiveDvrAnchor.Resolution r=pendingLiveAnchor.resolve(currentRequest.channelId,liveWindowStartMs(),w.endMs,SystemClock.elapsedRealtime());
+        if(r==null){pendingLiveAnchor=null;return false;}
+        pendingLiveAnchor=null;forceLiveEdgeOnNextReady=false;movistarIsmFastZapOffsetPending=false;uiHandler.removeCallbacks(forceLiveEdgeRunnable);
+        applyingLiveAnchor=true;
+        try{player.seekTo(r.positionMs);player.setPlayWhenReady(!r.paused);}finally{applyingLiveAnchor=false;}
+        if(r.expired)host.showStatus("Ese punto ya no está disponible. Se conserva el momento más antiguo de la emisión.");
+        recoveryEvent("Posición recuperada",r.expired?"Ajustada al inicio de la ventana":"Se conserva el punto de reproducción");rememberLiveAnchor();return true;
+    }
+
     private boolean movistarIsmFastZapOffsetPending;
     private boolean usingVideoCompatibilityCap;
     private int lastVideoWidth;
@@ -562,6 +670,7 @@ final class PlayerController {
     private String pendingAutoRecoveryReason;
     private boolean firstFrameRenderedForCurrentItem;
     private boolean startupPreviewAttached;
+    private boolean homePreviewMode;
     private long currentPrepareStartedMs;
     private long currentReadyElapsedMs;
     private long currentBufferingStartedMs;
@@ -571,6 +680,7 @@ final class PlayerController {
     private long currentBufferingTotalMs;
     private final Runnable firstFrameRecoveryRunnable;
     private final Runnable playbackProgressWatchdogRunnable;
+    private boolean playbackProgressWatchdogScheduled;
     private final Runnable adaptiveQualityStabilityRunnable;
     private final AdaptivePlaybackQualityPolicy.State adaptiveQualityState = new AdaptivePlaybackQualityPolicy.State();
     private String adaptiveQualityChannelId = "";
@@ -720,7 +830,8 @@ final class PlayerController {
         });
         if (shouldRegisterSystemMediaControls(multiViewPlayback)) {
             mediaSession = new MediaSession.Builder(context, player)
-                    .setId("drbep-offline-playback")
+                    // MainActivity and TvLauncherActivity may briefly coexist.
+                    .setId("drbep-offline-playback-" + java.util.UUID.randomUUID())
                     .build();
         }
         playerView.setPlayer(player);
@@ -748,9 +859,13 @@ final class PlayerController {
                         + " streamInfo=" + describeStreamInfo(currentStreamInfo)
                     + " errorCode=" + PlaybackException.getErrorCodeName(error.errorCode)
                         + " message=" + safeLogValue(error.getMessage()), error);
-                if (recoverVodAudioOutput(error)) return;
+                lastErrorSummary=describePlaybackError(error);
+                recoveryEvent("Error detectado",lastErrorSummary);
+                preserveLiveAnchor();
+                if (recoverVodAudioOutput(error)) {recoveryEvent("Reintento","Salida de audio");return;}
                 if (deferRecoveryUntilNetworkReturns(request, error)
                         || tryAutoRecovery(request, decision, error)) {
+                    recoveryEvent("Reintento",lastPlaybackPhase);
                     return;
                 }
 
@@ -764,6 +879,7 @@ final class PlayerController {
 
             @Override
             public void onTimelineChanged(@NonNull Timeline timeline, int reason) {
+                if(restoreLiveAnchor())return;
                 // The rolling HLS window duration is known before STATE_READY. Move to
                 // the safe live offset here so the first rendered frame is already final.
                 applyMovistarIsmFastZapOffsetIfNeeded();
@@ -781,10 +897,6 @@ final class PlayerController {
                 if (playbackState == Player.STATE_BUFFERING) {
                     currentBufferingIsRebuffer = firstFrameRenderedForCurrentItem;
                     transitionPlaybackPhase(currentBufferingIsRebuffer ? "rebuffering" : "buffering");
-                    if (currentBufferingIsRebuffer) {
-                        currentBufferingCount++;
-                        recordAdaptiveQualityInstability("rebuffer");
-                    }
                     currentBufferingStartedMs = SystemClock.elapsedRealtime();
                     Log.w(TAG, "playbackBufferingStart channel=" + describeRequest(currentRequest)
                             + " count=" + currentBufferingCount
@@ -793,11 +905,14 @@ final class PlayerController {
                             + " compactTouch=" + host.isCompactTouchDeviceMode()
                             + playbackBufferDebugSuffix());
                 }
-                boolean recoveredFromRebuffer = currentBufferingStartedMs > 0L && currentBufferingIsRebuffer;
+                boolean recoveredFromRebuffer = false;
                 if (playbackState != Player.STATE_BUFFERING && currentBufferingStartedMs > 0L) {
                     long bufferingMs = Math.max(0L, SystemClock.elapsedRealtime() - currentBufferingStartedMs);
-                    if (currentBufferingIsRebuffer) {
+                    recoveredFromRebuffer = currentBufferingIsRebuffer && PlaybackProgressPolicy.isMeasuredRebuffer(bufferingMs);
+                    if (recoveredFromRebuffer) {
+                        currentBufferingCount++;
                         currentBufferingTotalMs += bufferingMs;
+                        recordAdaptiveQualityInstability("rebuffer");
                     }
                     currentBufferingStartedMs = 0L;
                     currentBufferingIsRebuffer = false;
@@ -812,7 +927,8 @@ final class PlayerController {
                 if (playbackState == Player.STATE_READY) {
                     boolean recoveredFromStall = pendingStallRecovery;
                     pendingStallRecovery = false;
-                    if (currentReadyElapsedMs < 0L) {
+                    boolean firstReady = currentReadyElapsedMs < 0L;
+                    if (firstReady) {
                         currentReadyElapsedMs = elapsedMs;
                     }
                     transitionPlaybackPhase(firstFrameRenderedForCurrentItem ? "playing" : "ready_waiting_first_frame");
@@ -822,6 +938,8 @@ final class PlayerController {
                             + " bufferTotalMs=" + currentBufferingTotalMs
                             + " compactTouch=" + host.isCompactTouchDeviceMode());
                     updateSelectedPlaybackFormats();
+                    restoreLiveAnchor();
+                    uiHandler.removeCallbacks(liveAnchorTick);uiHandler.post(liveAnchorTick);
                     applyMovistarIsmFastZapOffsetIfNeeded();
                     if (forceLiveEdgeOnNextReady && isTimeshiftAvailable()) {
                         player.seekToDefaultPosition();
@@ -833,7 +951,10 @@ final class PlayerController {
                     }
                     host.hideError();
                     maybeShowHdrBadge();
-                    host.onPlaybackReady(currentRequest, getPlaybackDiagnostics(), recoveredFromRebuffer || recoveredFromStall);
+                    if(firstReady&&!recoveryEvents.isEmpty())recoveryEvent("Reproducción preparada",lastPlaybackPhase);
+                    if (firstReady || recoveredFromRebuffer || recoveredFromStall) {
+                        host.onPlaybackReady(currentRequest, getPlaybackDiagnostics(), recoveredFromRebuffer || recoveredFromStall);
+                    }
                     scheduleAdaptiveQualityStabilityCheck();
                     schedulePlaybackProgressWatchdog();
                     if (shouldRecoverWhenReadyHasNoFirstFrame(currentRequest, currentPlaybackDecision)) {
@@ -848,6 +969,7 @@ final class PlayerController {
                     vodDisplayRate.restore();
                     transitionPlaybackPhase("ended");
                     uiHandler.removeCallbacks(playbackProgressWatchdogRunnable);
+                    playbackProgressWatchdogScheduled = false;
                     Log.w(TAG, "playbackEnded channel=" + describeRequest(currentRequest)
                             + playbackBufferDebugSuffix());
                     host.onPlaybackEnded(currentRequest, getPlaybackDiagnostics());
@@ -868,6 +990,7 @@ final class PlayerController {
                 if (player == null || player.getPlaybackState() != Player.STATE_READY) {
                     return;
                 }
+                rememberLiveAnchor();
                 transitionPlaybackPhase(playWhenReady && firstFrameRenderedForCurrentItem ? "playing" : "paused");
                 Log.w(TAG, "playWhenReady changed=" + playWhenReady
                         + " reason=" + reason
@@ -1056,6 +1179,19 @@ final class PlayerController {
 
     private boolean isVlcDirectPlayActive() {
         return vlcDirectPlayController != null && vlcDirectPlayController.isActive();
+    }
+
+    void setHomePreviewMode(boolean enabled) {
+        if (homePreviewMode == enabled) return;
+        homePreviewMode = enabled;
+        refreshVideoTrackPolicy();
+    }
+
+    void stopHomePreviewPlayback() {
+        if (!homePreviewMode || player == null) return;
+        player.stop();
+        player.clearMediaItems();
+        if (diagnosticAllocator != null) diagnosticAllocator.trim();
     }
 
     boolean attachStartupPreview(PlayerView previewView) {
@@ -1339,6 +1475,7 @@ final class PlayerController {
         );
         PlaybackNetworkRecoveryCoordinator.Snapshot network = networkRecovery.snapshot();
         if (outcome.action == PlaybackNetworkRecoveryCoordinator.Action.WAIT_FOR_NETWORK) {
+            rememberLiveAnchor();
             uiHandler.removeCallbacks(networkRecoveryRunnable);
             transitionPlaybackPhase("waiting_network");
             host.showStatus(context.getString(R.string.status_playback_waiting_network));
@@ -1380,6 +1517,7 @@ final class PlayerController {
         if (!networkRecovery.beginScheduledRecovery(request != null && host.isChannelCurrent(request.channelId))) {
             return;
         }
+        preserveLiveAnchor();
         long resumePositionMs = request.vod ? getCurrentPlaybackPosition() : 0L;
         int generation = beginPlaybackAttempt(request, "networkRestore");
         transitionPlaybackPhase("recovering_network");
@@ -1579,6 +1717,11 @@ final class PlayerController {
         if (request == null || decision == null) {
             return false;
         }
+        if ("u7d_proxy".equals(safeLower(request.playbackProfile))) {
+            // Archive errors must use the same bounded, position-preserving path as freezes.
+            host.onU7dReplayStalled(getU7dBufferedPlaybackPosition());
+            return true;
+        }
         if (isDashManifestStale(error)) {
             String recoveryKey = routeAttemptKey(decision) + "|dash-manifest-stale";
             if (attemptedRecoveryRoutes.contains(recoveryKey)) {
@@ -1619,9 +1762,15 @@ final class PlayerController {
                     R.string.status_playback_repair_reason_route,
                     formatPlaybackModeLabel(decision.playbackMode)
             ));
-            player.seekToDefaultPosition();
-            player.prepare();
-            player.play();
+            preserveLiveAnchor();
+            if (pendingLiveAnchor != null) {
+                // Reload the manifest before resolving the absolute programme time.
+                // The timeline that raised BEHIND_LIVE_WINDOW can already be stale.
+                playChannelInternal(request, !pendingLiveAnchor.paused, usingPlaybackFallback, currentStreamInfo, 0L);
+            } else {
+                player.seekToDefaultPosition();
+                player.prepare();
+            }
             return true;
         }
         if (!attemptedCodecPlayerRecreation && isMediaCodecRendererError(error)) {
@@ -1726,6 +1875,7 @@ final class PlayerController {
                 mediaSession.release();
                 mediaSession = null;
             }
+            uiHandler.removeCallbacks(liveAnchorTick);
             player.release();
             player = null;
             initialize();
@@ -1792,6 +1942,8 @@ final class PlayerController {
             PlaybackRequest request,
             PlaybackRouteResolver.Decision failedDecision
     ) {
+        if (request == null || !VlcFallbackPolicy.allowsUnprotectedEngine(request.drmScheme, request.playbackProfile)
+                || (failedDecision != null && failedDecision.drmType != null && !failedDecision.drmType.isEmpty())) return null;
         if (failedDecision != null && VlcFallbackPolicy.isPublicHttpsTarget(failedDecision.targetUrl)) {
             return failedDecision;
         }
@@ -1808,15 +1960,17 @@ final class PlayerController {
     }
 
     private void schedulePlaybackProgressWatchdog() {
-        uiHandler.removeCallbacks(playbackProgressWatchdogRunnable);
-        if (currentRequest != null && !currentRequest.vod && host.isCompactTouchDeviceMode()) {
+        if (!playbackProgressWatchdogScheduled && currentRequest != null && !currentRequest.vod
+                && player != null && player.getPlaybackState() != Player.STATE_IDLE
+                && player.getPlaybackState() != Player.STATE_ENDED) {
+            playbackProgressWatchdogScheduled = true;
             uiHandler.postDelayed(playbackProgressWatchdogRunnable, PlaybackProgressPolicy.CHECK_INTERVAL_MS);
         }
     }
 
     private void resetPlaybackProgressBaseline() {
         long nowMs = SystemClock.elapsedRealtime();
-        lastObservedPlaybackPositionMs = player == null ? -1L : player.getCurrentPosition();
+        lastObservedPlaybackPositionMs = player == null ? -1L : watchdogPlaybackPosition(player);
         lastPlaybackProgressAtMs = nowMs;
         stablePlaybackStartedAtMs = nowMs;
         stallReportedForCurrentFreeze = false;
@@ -1824,6 +1978,7 @@ final class PlayerController {
 
     private void resetPlaybackProgressWatchdog(boolean resetRecoveryBudget) {
         uiHandler.removeCallbacks(playbackProgressWatchdogRunnable);
+        playbackProgressWatchdogScheduled = false;
         lastObservedPlaybackPositionMs = -1L;
         lastPlaybackProgressAtMs = 0L;
         stablePlaybackStartedAtMs = 0L;
@@ -1835,10 +1990,24 @@ final class PlayerController {
         }
     }
 
+    private long watchdogPlaybackPosition(ExoPlayer activePlayer) {
+        Timeline timeline = activePlayer.getCurrentTimeline();
+        long positionMs = activePlayer.getCurrentPosition();
+        if (timeline.isEmpty()) return positionMs;
+        Timeline.Window window = timeline.getWindow(activePlayer.getCurrentMediaItemIndex(), new Timeline.Window());
+        // A live window slides while playback advances; its local position can stay constant.
+        long originMs = window.windowStartTimeMs != C.TIME_UNSET
+                ? window.windowStartTimeMs : window.getPositionInFirstPeriodMs();
+        return PlaybackProgressPolicy.timelinePosition(originMs, positionMs);
+    }
+
     private void checkLivePlaybackProgress() {
+        playbackProgressWatchdogScheduled = false;
         PlaybackRequest request = currentRequest;
         ExoPlayer activePlayer = player;
-        if (activePlayer == null || request == null || isVlcDirectPlayActive()) {
+        if (activePlayer == null || request == null || isVlcDirectPlayActive()
+                || activePlayer.getPlaybackState() == Player.STATE_IDLE
+                || activePlayer.getPlaybackState() == Player.STATE_ENDED) {
             resetPlaybackProgressWatchdog(false);
             return;
         }
@@ -1847,7 +2016,8 @@ final class PlayerController {
             schedulePlaybackProgressWatchdog();
             return;
         }
-        boolean shouldWatch = PlaybackProgressPolicy.shouldWatch(
+        boolean replay = "u7d_proxy".equals(safeLower(request.playbackProfile));
+        boolean shouldWatch = (replay && activePlayer.getPlayWhenReady()) || PlaybackProgressPolicy.shouldWatch(
                 host.isCompactTouchDeviceMode(),
                 request.vod,
                 firstFrameRenderedForCurrentItem,
@@ -1856,7 +2026,7 @@ final class PlayerController {
         );
         long nowMs = SystemClock.elapsedRealtime();
         if (!shouldWatch) {
-            lastObservedPlaybackPositionMs = activePlayer.getCurrentPosition();
+            lastObservedPlaybackPositionMs = watchdogPlaybackPosition(activePlayer);
             lastPlaybackProgressAtMs = nowMs;
             stablePlaybackStartedAtMs = nowMs;
             stallReportedForCurrentFreeze = false;
@@ -1864,7 +2034,7 @@ final class PlayerController {
             return;
         }
 
-        long positionMs = activePlayer.getCurrentPosition();
+        long positionMs = watchdogPlaybackPosition(activePlayer);
         if (PlaybackProgressPolicy.hasAdvanced(lastObservedPlaybackPositionMs, positionMs)) {
             lastObservedPlaybackPositionMs = positionMs;
             lastPlaybackProgressAtMs = nowMs;
@@ -1879,6 +2049,15 @@ final class PlayerController {
         }
 
         long stalledForMs = Math.max(0L, nowMs - lastPlaybackProgressAtMs);
+        if (replay) {
+            if (!stallReportedForCurrentFreeze && stalledForMs >= U7dContinuityPolicy.freezeTimeout(firstFrameRenderedForCurrentItem)) {
+                stallReportedForCurrentFreeze = true;
+                transitionPlaybackPhase("recovering_u7d");
+                host.onU7dReplayStalled(getU7dBufferedPlaybackPosition());
+            }
+            schedulePlaybackProgressWatchdog();
+            return; // Never apply the live-edge restart to a programme archive.
+        }
         if (!stallReportedForCurrentFreeze && stalledForMs >= PlaybackProgressPolicy.STALL_THRESHOLD_MS) {
             stallReportedForCurrentFreeze = true;
             stablePlaybackStartedAtMs = 0L;
@@ -1911,10 +2090,11 @@ final class PlayerController {
                     formatPlaybackModeLabel(currentPlaybackDecision == null ? request.playbackMode : currentPlaybackDecision.playbackMode)
             ));
             firstFrameRenderedForCurrentItem = false;
+            preserveLiveAnchor();
             activePlayer.stop();
-            activePlayer.seekToDefaultPosition();
+            if(pendingLiveAnchor==null)activePlayer.seekToDefaultPosition();
             activePlayer.prepare();
-            activePlayer.play();
+            activePlayer.setPlayWhenReady(pendingLiveAnchor==null||!pendingLiveAnchor.paused);
         }
         schedulePlaybackProgressWatchdog();
     }
@@ -2011,7 +2191,7 @@ final class PlayerController {
                 request.directPlayback,
                 request.vod,
                 request.playbackProfile
-        );
+        ).withPlaylistHeaders(request.playlistStreamHeaders, request.playlistLicenseHeaders, request.playlistMimeType);
     }
 
     private String routeAttemptKey(PlaybackRouteResolver.Decision decision) {
@@ -2417,6 +2597,15 @@ final class PlayerController {
                 && safeLower(currentRequest.playUrl).contains("transport=buffered_hls");
     }
 
+    long[] getU7dAvailableWindow() {
+        if (!isBufferedU7dReplay() || !player.isCurrentMediaItemSeekable()) return null;
+        Timeline timeline = player.getCurrentTimeline();
+        if (timeline.isEmpty() || player.getDuration() <= 6000L) return null;
+        Timeline.Window window = timeline.getWindow(player.getCurrentMediaItemIndex(), new Timeline.Window());
+        long start = Math.max(0L, window.getPositionInFirstPeriodMs());
+        return new long[] {start + 1000L, start + player.getDuration() - 3000L};
+    }
+
     boolean trySeekU7dWithinAvailableWindow(long localTargetMs) {
         if (!isBufferedU7dReplay() || !player.isCurrentMediaItemSeekable()) return false;
         Timeline timeline = player.getCurrentTimeline();
@@ -2465,6 +2654,10 @@ final class PlayerController {
         }
     }
 
+    void pauseForU7dPrompt() {
+        if (player != null) player.pause();
+    }
+
     void stopForSourceSwitch() {
         vodDisplayRate.restore();
         suspendedForMultiView = false;
@@ -2491,6 +2684,7 @@ final class PlayerController {
                 mediaSession.release();
                 mediaSession = null;
             }
+            uiHandler.removeCallbacks(liveAnchorTick);
             player.release();
             player = null;
         }
@@ -2544,12 +2738,15 @@ final class PlayerController {
     }
 
     boolean resumeTimeshiftLive() {
+        if(usesHlsDvr()&&hlsDvrStart>0){queueHlsDvrSeek(0,true);return true;}
         if (!isTimeshiftAvailable() || player == null) {
             host.showStatus(context.getString(R.string.timeshift_status_unavailable));
             return false;
         }
+        pendingLiveAnchor=null;lastLiveAnchor=null;
         player.seekToDefaultPosition();
         player.play();
+        rememberLiveAnchor();
         host.showStatus(context.getString(R.string.timeshift_status_live));
         return true;
     }
@@ -2575,6 +2772,7 @@ final class PlayerController {
             long currentMs = Math.max(0L, Math.min(durationMs, vlcDirectPlayController.getTime()));
             return new PlaybackSeekState(0L, durationMs, currentMs, formatPlaybackProgressLabel(currentMs, durationMs), false);
         }
+        if(usesHlsDvr()&&hlsDvrStart>0){TimeshiftWindow w=getTimeshiftWindow();return new PlaybackSeekState(w.startMs,w.endMs,w.currentMs,getTimeshiftStatusLabel(),true);}
         if (player == null || !player.isCurrentMediaItemSeekable()) {
             return null;
         }
@@ -2596,7 +2794,10 @@ final class PlayerController {
         return new PlaybackSeekState(0L, durationMs, currentMs, formatPlaybackProgressLabel(currentMs, durationMs), false);
     }
 
+    long liveProgrammeTimeMs(long positionMs){long start=liveWindowStartMs();return start>0?start+positionMs:-1;}
+
     boolean seekTimeshiftTo(long targetPositionMs) {
+        if(usesHlsDvr()&&hlsDvrStart>0){queueHlsDvrSeek(hlsDvrWindowStart()+Math.max(0,targetPositionMs),player.getPlayWhenReady());return true;}
         PlaybackSeekState state = getPlaybackSeekState();
         if (state == null) {
             host.showStatus(context.getString(R.string.timeshift_status_unavailable));
@@ -2613,8 +2814,12 @@ final class PlayerController {
             host.showStatus(context.getString(R.string.timeshift_status_unavailable));
             return false;
         }
+        pendingLiveAnchor=null;
+        boolean wasPlaying=!state.liveCapable || player.getPlayWhenReady();
+        if(state.liveCapable){forceLiveEdgeOnNextReady=false;movistarIsmFastZapOffsetPending=false;uiHandler.removeCallbacks(forceLiveEdgeRunnable);}
         player.seekTo(target);
-        player.play();
+        player.setPlayWhenReady(wasPlaying);
+        rememberLiveAnchor();
         host.showStatus(state.liveCapable ? formatTimeshiftOffset(state.endMs - target) : formatPlaybackProgressLabel(target, state.endMs));
         return true;
     }
@@ -2639,6 +2844,8 @@ final class PlayerController {
         }
 
         uiHandler.removeCallbacks(forceLiveEdgeRunnable);
+        if(isSameChannel(request,currentRequest))preserveLiveAnchor();
+        else {lastLiveAnchor=null;pendingLiveAnchor=null;}
         PlaybackRequest previousRequest = currentRequest;
         if (!isSameChannel(request, previousRequest)) {
             manualVodVideoKey = "";
@@ -2686,11 +2893,11 @@ final class PlayerController {
         lastHdrBadgeChannelId = null;
         uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
         PlaybackRouteResolver.Decision decision = buildPlaybackDecision(request, useFallback, streamInfo);
-        forceLiveEdgeOnNextReady = request != null
+        forceLiveEdgeOnNextReady = pendingLiveAnchor==null && request != null
                 && LiveEdgeStartPolicy.shouldForce(request.platformName, request.vod,
                         "u7d_proxy".equals(safeLower(request.playbackProfile)),
                         resumePositionMs, isMovistarIsmHlsDecision(decision));
-        movistarIsmFastZapOffsetPending = request != null
+        movistarIsmFastZapOffsetPending = pendingLiveAnchor==null && request != null
                 && !request.vod
                 && resumePositionMs <= 0L
                 && isMovistarIsmHlsDecision(decision);
@@ -2700,7 +2907,10 @@ final class PlayerController {
                 && isSameChannel(request, previousRequest)
                 && decision != null
                 && decision.isEquivalentTo(currentPlaybackDecision)
-                && player.getPlaybackState() != Player.STATE_IDLE) {
+                && pendingLiveAnchor==null
+                && player.getPlaybackState() != Player.STATE_IDLE
+                && player.getPlaybackState() != Player.STATE_ENDED
+                && player.getPlayerError()==null) {
             Log.i(TAG, "skip duplicate live prepare channel=" + describeRequest(request)
                     + " decision=" + describeDecision(decision)
                     + " streamInfo=" + describeStreamInfo(streamInfo));
@@ -2739,7 +2949,18 @@ final class PlayerController {
         updatePlaybackRequestHeaders();
         applyVideoTrackPolicy(request, decision);
 
-        String mediaTargetUrl = appendOfflineAccessToken(decision.targetUrl);
+        String routeTarget=decision.targetUrl;
+        if(usesHlsDvr()) {
+            routeTarget=hlsDvrUrl();
+            if(pendingLiveAnchor!=null&&hlsDvrStart>0){
+                TimeshiftWindow window=getTimeshiftWindow();
+                LiveDvrAnchor.Resolution restored=pendingLiveAnchor.resolve(currentRequest.channelId,hlsDvrWindowStart(),window.endMs,SystemClock.elapsedRealtime());
+                if(restored!=null){hlsDvrTarget=hlsDvrWindowStart()+restored.positionMs;hlsDvrAnchor=hlsDvrTarget;autoPlay=!restored.paused;}
+                pendingLiveAnchor=null;
+            }
+            if(hlsDvrTarget>0)routeTarget+="?dvr_start_ms="+hlsDvrTarget;
+        }
+        String mediaTargetUrl = appendOfflineAccessToken(routeTarget);
         MediaItem.Builder builder = new MediaItem.Builder()
                 .setUri(mediaTargetUrl)
                 .setMediaId(safeString(request.channelId))
@@ -2779,7 +3000,9 @@ final class PlayerController {
                     .setMaxPlaybackSpeed(1.02f)
                     .build());
         }
-        if (decision.mimeType != null && !decision.mimeType.trim().isEmpty()) {
+        if (request.channelId.startsWith("m3u:") && !request.playlistMimeType.isEmpty()) {
+            builder.setMimeType(request.playlistMimeType);
+        } else if (decision.mimeType != null && !decision.mimeType.trim().isEmpty()) {
             builder.setMimeType(decision.mimeType);
         }
         if ("widevine".equals(decision.drmType) || "playready".equals(decision.drmType)) {
@@ -2792,7 +3015,9 @@ final class PlayerController {
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder("playready".equals(decision.drmType) ? C.PLAYREADY_UUID : C.WIDEVINE_UUID)
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .setForceDefaultLicenseUri("playready".equals(decision.drmType))
-                    .setLicenseRequestHeaders(PrimeLicenseContext.headers(baseUrl, licenseUrl,
+                    // HBO supplies different PlayReady init data for audio and video.
+                    .setMultiSession("playready".equals(decision.drmType))
+                    .setLicenseRequestHeaders(request.channelId.startsWith("m3u:") ? request.playlistLicenseHeaders : PrimeLicenseContext.headers(baseUrl, licenseUrl,
                             buildPlaybackRequestHeaders()))
                     .build());
         } else if ("clearkey".equals(decision.drmType)) {
@@ -2818,6 +3043,7 @@ final class PlayerController {
                         : baseUrl + "/api/clearkey/" + request.channelId;
             }
             builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                    .setLicenseRequestHeaders(request.channelId.startsWith("m3u:") ? request.playlistLicenseHeaders : java.util.Collections.emptyMap())
                     .setLicenseUri(appendOfflineAccessToken(licenseUrl))
                     .build());
         }
@@ -2837,7 +3063,7 @@ final class PlayerController {
         if (!autoPlay) {
             backgroundResumeState.onExplicitPauseRequested();
         }
-        player.setPlayWhenReady(autoPlay);
+        player.setPlayWhenReady(autoPlay && (pendingLiveAnchor == null || !pendingLiveAnchor.paused));
 
     }
 
@@ -2859,6 +3085,8 @@ final class PlayerController {
     }
 
     private int beginPlaybackAttempt(PlaybackRequest request, String origin) {
+        if(origin.startsWith("playChannel")){hlsDvrPreview=-1;uiHandler.removeCallbacks(hlsDvrCommit);lastLiveAnchor=null;pendingLiveAnchor=null;hlsDvrStart=0;hlsDvrEnd=0;hlsDvrAnchor=0;hlsDvrTarget=0;hlsDvrChecked=0;hlsDvrLoading=false;}
+        hlsDvrLoading=false;hlsDvrChecked=0;
         int generation = playbackAttemptGeneration.incrementAndGet();
         String initialPhase = "playChannelAfterResolvingStreamInfo".equals(origin) ? "resolving_stream_info" : "starting";
         String nextChannelId = request == null || request.channelId == null ? "" : request.channelId.trim();
@@ -2948,9 +3176,10 @@ final class PlayerController {
     private int[] videoQualityLimits(boolean compatibilityCap) {
         if (host.isMultiViewPlayback()) return MultiViewQualityPolicy.limits(host.multiViewQualityRole());
         String mode = host.playbackQualityMode();
-        return new int[]{PlaybackQualityPolicy.maxWidth(mode, compatibilityCap, false),
+        return HomePreviewQualityPolicy.limits(homePreviewMode,
+                PlaybackQualityPolicy.maxWidth(mode, compatibilityCap, false),
                 PlaybackQualityPolicy.maxHeight(mode, compatibilityCap, false),
-                PlaybackQualityPolicy.maxBitrate(mode, false)};
+                PlaybackQualityPolicy.maxBitrate(mode, false));
     }
 
     private int lastMultiViewQualityRole = -1;
@@ -3268,6 +3497,7 @@ final class PlayerController {
             // while preserving the media item, position, selected tracks and pause state.
             playerView.setPlayer(null);
             if (mediaSession != null) { mediaSession.release(); mediaSession = null; }
+            uiHandler.removeCallbacks(liveAnchorTick);
             player.release();
             player = null;
             initialize();
@@ -3490,18 +3720,15 @@ final class PlayerController {
             host.showStatus(context.getString(R.string.timeshift_status_unavailable));
             return false;
         }
-        long target = Math.max(window.startMs, Math.min(window.endMs, player.getCurrentPosition() + deltaMs));
-        player.seekTo(target);
-        player.play();
-        host.showStatus(formatTimeshiftOffset(window.endMs - target));
-        return true;
+        long target = Math.max(window.startMs, Math.min(window.endMs, window.currentMs + deltaMs));
+        return seekTimeshiftTo(target);
     }
 
     private boolean isTimeshiftAvailable() {
-        return player != null
-                && currentRequest != null
-                && safeLower(currentRequest.platformName).contains("movistar")
-                && player.isCurrentMediaItemSeekable();
+        if(player!=null&&usesHlsDvr()&&hlsDvrStart>0)return true;
+        return player != null && currentRequest != null && !currentRequest.vod && !isBufferedU7dReplay()
+                && player.isCurrentMediaItemLive() && player.isCurrentMediaItemSeekable()
+                && player.getDuration() != C.TIME_UNSET && player.getDuration() > 0L;
     }
 
     private String playbackBufferDebugSuffix() {
@@ -3519,6 +3746,10 @@ final class PlayerController {
                 + " durationMs=" + durationMs
                 + " liveOffsetMs=" + liveOffsetMs
                 + " loading=" + player.isLoading()
+                + " playWhenReady=" + player.getPlayWhenReady()
+                + " playing=" + player.isPlaying()
+                + " speed=" + player.getPlaybackParameters().speed
+                + " suppression=" + player.getPlaybackSuppressionReason()
                 + " allocated=" + (diagnosticAllocator == null ? -1 : diagnosticAllocator.getTotalBytesAllocated())
                 + " audio=" + decoderProgress(player.getAudioDecoderCounters())
                 + " video=" + decoderProgress(player.getVideoDecoderCounters());
@@ -3599,6 +3830,11 @@ final class PlayerController {
     }
 
     private TimeshiftWindow getTimeshiftWindow() {
+        if(usesHlsDvr()&&hlsDvrStart>0&&player!=null){
+            long start=hlsDvrWindowStart(),end=hlsDvrWindowLive();
+            long pos=hlsDvrPreview>=0?(hlsDvrPreview==0?end:hlsDvrPreview):hlsDvrAnchor+Math.max(0,player.getCurrentPosition());
+            return new TimeshiftWindow(0,Math.max(1,end-start),Math.max(0,Math.min(end-start,pos-start)));
+        }
         if (!isTimeshiftAvailable() || player == null) {
             return null;
         }
@@ -3617,7 +3853,7 @@ final class PlayerController {
             }
         }
         long endMs = liveEdgeMs;
-        long startMs = Math.max(0L, endMs - TIMESHIFT_MAX_BACK_MS);
+        long startMs = 0L;
         long currentMs = Math.max(startMs, Math.min(endMs, player.getCurrentPosition()));
         return new TimeshiftWindow(startMs, endMs, currentMs);
     }
@@ -3662,6 +3898,11 @@ final class PlayerController {
         } else if (playUrlLower.contains(".m3u8")) {
             info.type = "hls";
         }
+        if (request.channelId.startsWith("m3u:")) {
+            if ("application/dash+xml".equals(request.playlistMimeType)) info.type = "dash";
+            else if ("application/x-mpegURL".equals(request.playlistMimeType)) info.type = "hls";
+            else if ("application/vnd.ms-sstr+xml".equals(request.playlistMimeType)) info.type = "smooth";
+        }
         if (isBlank(info.type)) {
             return null;
         }
@@ -3685,6 +3926,7 @@ final class PlayerController {
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {
+        if (channelId != null && channelId.startsWith("m3u:")) return null;
         try {
             HttpClient.Response response = httpClient.get(baseUrl + "/api/stream/" + channelId, 5000, 20000, buildPlaybackRequestHeaders());
             if (!response.isSuccessful()) {
@@ -4123,6 +4365,7 @@ final class PlayerController {
     }
 
     private String appendOfflineAccessToken(String url) {
+        if (currentRequest != null && currentRequest.channelId.startsWith("m3u:")) return url;
         if (url == null || url.trim().isEmpty() || catalogSnapshotStore == null) {
             return url;
         }
@@ -4193,6 +4436,7 @@ final class PlayerController {
     }
 
     private Map<String, String> buildPlaybackRequestHeaders() {
+        if (currentRequest != null && currentRequest.channelId.startsWith("m3u:")) return new HashMap<>(currentRequest.playlistStreamHeaders);
         Map<String, String> headers = new HashMap<>();
         headers.put("Accept", "*/*");
         // Fire TV 4K devices expose a secure hardware video path and HDCP 2.2.

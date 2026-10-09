@@ -32,6 +32,14 @@ final class NativeMslSession implements AutoCloseable {
         this.drm = drm;
         this.provisioner = provisioner;
         sessionId = drm.openSession();
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            try {
+                android.util.Log.w("DRBEPNativeCDM", "native_session_security="
+                        + drm.getSecurityLevel(sessionId));
+            } catch (RuntimeException unavailable) {
+                android.util.Log.w("DRBEPNativeCDM", "native_session_security_unavailable=true");
+            }
+        }
         try {
             crypto = drm.getCryptoSession(sessionId, "AES/CBC/NoPadding", "HmacSHA256");
         } catch (RuntimeException failure) {

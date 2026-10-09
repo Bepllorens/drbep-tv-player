@@ -4,6 +4,15 @@ final class PlaybackRouteLearningPolicy {
     private PlaybackRouteLearningPolicy() {
     }
 
+    // Successful playback refreshes this date; unused workarounds get retried
+    // after two weeks so a provider repair is not masked indefinitely.
+    static final long LEARNED_ROUTE_TTL_MS = 14L * 24L * 60L * 60L * 1000L;
+
+    static boolean isExpired(long learnedAtMs, long nowMs) {
+        return learnedAtMs <= 0L || learnedAtMs > nowMs
+                || nowMs - learnedAtMs >= LEARNED_ROUTE_TTL_MS;
+    }
+
     static String effectiveMode(String requestedMode, String routeLabel, boolean usingFallback) {
         if (usingFallback) {
             return PlaybackModeStore.MODE_COMPAT;

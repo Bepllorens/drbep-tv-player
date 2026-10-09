@@ -97,7 +97,7 @@ private fun TimelineHeaderAction(action: TimelineHeaderUiModel.TimelineHeaderAct
         text = action.label,
         modifier = Modifier
             .alpha(if (focused) 1f else 0.9f)
-            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(action.onClick != null, action.label)
             .onPreviewKeyEvent { event ->

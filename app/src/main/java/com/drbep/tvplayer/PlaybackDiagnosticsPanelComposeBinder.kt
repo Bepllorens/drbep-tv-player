@@ -59,15 +59,15 @@ private fun PlaybackDiagnosticsPanel(model: PlaybackDiagnosticsPanelUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(OfflineTvTheme.Colors.overlayScrim),
+            .background(OfflineTvTheme.Menu.scrim),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 0.95f else 0.68f)
                 .fillMaxHeight(if (compact) 0.86f else 0.80f)
-                .clip(RoundedCornerShape(if (compact) 22.dp else 30.dp))
-                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(OfflineTvTheme.Menu.background)
                 .padding(if (compact) 16.dp else 24.dp)
         ) {
             BasicText(
@@ -90,8 +90,8 @@ private fun PlaybackDiagnosticsPanel(model: PlaybackDiagnosticsPanelUiModel) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(OfflineTvTheme.Colors.card)
+                        .clip(OfflineTvTheme.Menu.shape)
+                        .background(OfflineTvTheme.Menu.row)
                         .padding(horizontal = 14.dp, vertical = 11.dp)
                 ) {
                     BasicText(
@@ -156,8 +156,8 @@ private fun DiagnosticsSection(section: String, rows: List<PlaybackDiagnosticsRo
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.8f))
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(OfflineTvTheme.Menu.row)
             .padding(if (compact) 12.dp else 15.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)
     ) {
@@ -207,8 +207,8 @@ private fun DiagnosticsNotes(notes: List<String>, compact: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f))
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(OfflineTvTheme.Menu.row)
             .padding(if (compact) 12.dp else 15.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)
     ) {
@@ -229,13 +229,13 @@ private fun DiagnosticsActionButton(action: TvMessageActionUiModel, compact: Boo
     val background = when {
         focused -> OfflineTvTheme.Colors.focus
         action.destructive -> OfflineTvTheme.Colors.destructive
-        else -> OfflineTvTheme.Colors.chip
+        else -> OfflineTvTheme.Menu.row
     }
     val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
     Box(
         modifier = modifier
             .height(if (compact) 44.dp else 48.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(background)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }

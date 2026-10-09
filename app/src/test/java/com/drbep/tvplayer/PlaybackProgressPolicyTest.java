@@ -7,13 +7,20 @@ import org.junit.Test;
 
 public class PlaybackProgressPolicyTest {
     @Test
-    public void watchesOnlyLiveCompactPlaybackThatShouldBeAdvancing() {
+    public void watchesLivePlaybackAcrossTvAndTouchEvenDuringBuffering() {
         assertTrue(PlaybackProgressPolicy.shouldWatch(true, false, true, true, true));
-        assertFalse(PlaybackProgressPolicy.shouldWatch(false, false, true, true, true));
+        assertTrue(PlaybackProgressPolicy.shouldWatch(false, false, true, true, true));
         assertFalse(PlaybackProgressPolicy.shouldWatch(true, true, true, true, true));
         assertFalse(PlaybackProgressPolicy.shouldWatch(true, false, false, true, true));
         assertFalse(PlaybackProgressPolicy.shouldWatch(true, false, true, false, true));
-        assertFalse(PlaybackProgressPolicy.shouldWatch(true, false, true, true, false));
+        assertTrue(PlaybackProgressPolicy.shouldWatch(false, false, true, true, false));
+    }
+
+    @Test
+    public void ignoresMillisecondStateOscillationsAsRecoveries() {
+        assertFalse(PlaybackProgressPolicy.isMeasuredRebuffer(10L));
+        assertFalse(PlaybackProgressPolicy.isMeasuredRebuffer(249L));
+        assertTrue(PlaybackProgressPolicy.isMeasuredRebuffer(250L));
     }
 
     @Test
@@ -22,6 +29,15 @@ public class PlaybackProgressPolicyTest {
         assertTrue(PlaybackProgressPolicy.hasAdvanced(10_000L, 10_300L));
         assertTrue(PlaybackProgressPolicy.hasAdvanced(10_000L, 5_000L));
         assertFalse(PlaybackProgressPolicy.hasAdvanced(10_000L, 10_100L));
+    }
+
+    @Test
+    public void slidingLiveWindowDoesNotLookLikeFrozenPlayback() {
+        long before = PlaybackProgressPolicy.timelinePosition(100_000L, 4_800L);
+        long playing = PlaybackProgressPolicy.timelinePosition(104_000L, 4_800L);
+        long frozen = PlaybackProgressPolicy.timelinePosition(104_000L, 800L);
+        assertTrue(PlaybackProgressPolicy.hasAdvanced(before, playing));
+        assertFalse(PlaybackProgressPolicy.hasAdvanced(before, frozen));
     }
 
     @Test

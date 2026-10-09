@@ -64,7 +64,7 @@ private fun RecordingsSurface(model: RecordingsSurfaceUiModel, posterBinder: Rec
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.backdrop)
+            .background(OfflineTvTheme.Menu.background)
             .padding(dimensionResource(id = R.dimen.recordings_panel_padding))
     ) {
         model.panel?.let { RecordingsHeader(it, compact) }
@@ -165,7 +165,7 @@ private fun RecordingRow(item: RecordingListRowUiModel, posterBinder: RecordingP
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(if (item.selected) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.chip, RoundedCornerShape(14.dp))
+            .background(if (item.selected) OfflineTvTheme.Colors.focus else OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             .tvButtonSemantics(item.onClick != null)
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(if (compact) 8.dp else 10.dp),
@@ -184,24 +184,24 @@ private fun RecordingRow(item: RecordingListRowUiModel, posterBinder: RecordingP
         Column(modifier = Modifier.weight(1f)) {
             BasicText(
                 text = item.title,
-                style = TextStyle(color = Color.White, fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = if (item.selected) OfflineTvTheme.Colors.focusInk else Color.White, fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Bold)
             )
             Spacer(modifier = Modifier.height(if (compact) 4.dp else 6.dp))
             BasicText(
                 text = item.meta,
-                style = TextStyle(color = argb(item.metaColor), fontSize = if (compact) 11.sp else 12.sp)
+                style = TextStyle(color = if (item.selected) OfflineTvTheme.Colors.focusInk else argb(item.metaColor), fontSize = if (compact) 11.sp else 12.sp)
             )
         }
         Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
         Box(
             modifier = Modifier
-                .background(argb(item.statusBadgeColor), RoundedCornerShape(12.dp))
+                .background(Color.Transparent)
                 .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
             contentAlignment = Alignment.Center
         ) {
             BasicText(
                 text = item.statusLabel,
-                style = TextStyle(color = OfflineTvTheme.Colors.accentGold, fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = if (item.selected) OfflineTvTheme.Colors.focusInk else ContentStatusColors.label(item.statusLabel), fontSize = if (compact) 10.sp else 11.sp, fontWeight = FontWeight.Bold)
             )
         }
     }
@@ -223,14 +223,14 @@ private fun RecordingChip(
     val activeFocus = visuallyFocused || focused
     val background = when {
         activeFocus -> OfflineTvTheme.Colors.focus
-        selected -> OfflineTvTheme.Colors.chipSelected
-        else -> OfflineTvTheme.Colors.chip
+        selected -> OfflineTvTheme.Menu.selected
+        else -> OfflineTvTheme.Menu.row
     }
     val textColor = if (activeFocus) OfflineTvTheme.Colors.focusInk else Color.White
     Box(
         modifier = modifier
             .height(if (compact) 36.dp else 40.dp)
-            .background(background, RoundedCornerShape(14.dp))
+            .background(background, OfflineTvTheme.Menu.shape)
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
             .focusable()

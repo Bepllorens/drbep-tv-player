@@ -42,6 +42,8 @@ final class TouchControlsUiFactory {
         void showSubtitles();
         void showLanguages();
         default void showVideoQuality() {}
+        default boolean supportsLiveDvr() { return false; }
+        default void showLiveJump() {}
     }
 
     private TouchControlsUiFactory() {
@@ -107,6 +109,9 @@ final class TouchControlsUiFactory {
                     }
                 }
         ));
+        if (!vod && !u7dReplay && host.supportsLiveDvr()) {
+            actions.add(new ZapActionItem("Volver a…", true, false, false, host::showLiveJump));
+        }
         if (!vod && host.supportsU7d(current)) {
             actions.add(new ZapActionItem(
                     host.text(R.string.touch_button_u7d),

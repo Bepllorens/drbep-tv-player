@@ -27,11 +27,17 @@ public class CatalogSnapshotStoreTest {
         original.privateVodPermissionsExplicit = true;
         original.canScheduleRecordings = true;
         original.allowedPlatformIds.add(42);
+        original.liveAccessMetadataKnown = true;
+        original.admin = true;
+        original.allowedLiveGroups.add("deportes");
         original.protectedFilterKeys.add("vod:adult");
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         CatalogSnapshotStore.writeOfflinePermissions(new DataOutputStream(bytes), original);
         DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes.toByteArray()));
-        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 13);
+        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 14);
+        assertTrue(restored.liveAccessMetadataKnown);
+        assertTrue(restored.admin);
+        assertEquals(original.allowedLiveGroups, restored.allowedLiveGroups);
         assertTrue(restored.allowsNetflixVod());
         assertTrue(restored.allowsDisneyplusVod());
         assertTrue(restored.allowsAppleTVVod());

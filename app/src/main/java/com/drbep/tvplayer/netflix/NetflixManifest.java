@@ -18,6 +18,18 @@ import javax.net.ssl.HttpsURLConnection;
 final class NetflixManifest {
     static void request(NetflixPlaybackActivity activity, NativeMslSession session,
             JSONObject masterToken, String identity, long viewableId) throws Exception {
+        boolean uhd = activity.getIntent().getBooleanExtra("uhd", false);
+        try {
+            requestProfile(activity, session, masterToken, identity, viewableId, uhd);
+        } catch (NetflixTracks.Unavailable unavailable) {
+            if (!uhd || activity.isFinishing()) throw unavailable;
+            // One lower-profile retry. Account authentication and DRM remain unchanged.
+            Log.w("DRBEPNativeCDM", "netflix_uhd_unavailable_retry_hd=true " + unavailable.diagnostic);
+            requestProfile(activity, session, masterToken, identity, viewableId, false);
+        }
+    }
+    private static void requestProfile(NetflixPlaybackActivity activity, NativeMslSession session,
+            JSONObject masterToken, String identity, long viewableId, boolean requestUhd) throws Exception {
         if (viewableId <= 0) throw new IllegalArgumentException("Missing title id");
         Map<String, String> cookies = SessionVault.load(activity, identity);
         byte[] body = null;
@@ -40,7 +52,7 @@ final class NetflixManifest {
                     .put("isNonMember", false).put("isUIAutoPlay", false)
                     .put("isBranching", false).put("showAllSubDubTracks", true)
                     .put("imageSubtitleHeight", 720);
-            if (activity.getIntent().getBooleanExtra("uhd", false)) {
+            if (requestUhd) {
                 boolean capable = false;
                 for (android.media.MediaCodecInfo codec : new android.media.MediaCodecList(
                         android.media.MediaCodecList.ALL_CODECS).getCodecInfos()) {
@@ -61,12 +73,12 @@ final class NetflixManifest {
                 }
                 android.view.Display display = activity.getWindowManager().getDefaultDisplay();
                 android.view.Display.Mode mode = display.getMode();
-                Log.i("DRBEPNativeCDM", "display_active=" + mode.getPhysicalWidth() + "x" + mode.getPhysicalHeight());
+                Log.w("DRBEPNativeCDM", "display_active=" + mode.getPhysicalWidth() + "x" + mode.getPhysicalHeight());
                 for (android.view.Display.Mode supported : display.getSupportedModes())
                     Log.i("DRBEPNativeCDM", "display_supported=" + supported.getPhysicalWidth() + "x" + supported.getPhysicalHeight());
                 int connected = session.connectedHdcpLevel();
                 int maximum = session.maxHdcpLevel();
-                Log.i("DRBEPNativeCDM", "hdcp_connected=" + connected + " hdcp_max=" + maximum);
+                Log.w("DRBEPNativeCDM", "hdcp_connected=" + connected + " hdcp_max=" + maximum);
                 if (!capable) throw new IllegalStateException("No secure Main10 UHD decoder");
                 profiles = new JSONArray();
                 for (String level : new String[] {"30", "31", "40", "41", "50", "51"})

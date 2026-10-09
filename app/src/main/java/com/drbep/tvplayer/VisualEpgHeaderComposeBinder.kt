@@ -86,8 +86,8 @@ private fun VisualEpgHeaderChip(action: VisualEpgHeaderUiModel.VisualEpgHeaderAc
     androidx.compose.foundation.text.BasicText(
         text = action.label,
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.chip)
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Menu.row)
             .clickable(enabled = action.onClick != null) { action.onClick?.run() }
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->

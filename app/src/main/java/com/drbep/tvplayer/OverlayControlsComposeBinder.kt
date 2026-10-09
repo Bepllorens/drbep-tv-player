@@ -57,7 +57,7 @@ private fun OverlayControlsCard(model: OverlayControlsUiModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OfflineTvTheme.Colors.panelSoft, RoundedCornerShape(OfflineTvTheme.Radius.panel))
+            .background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape)
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         BasicText(
@@ -125,7 +125,7 @@ private fun OverlaySearchField(model: OverlayControlsUiModel, compact: Boolean) 
         modifier = Modifier
             .fillMaxWidth()
             .height(if (compact) 38.dp else 42.dp)
-            .background(OfflineTvTheme.Colors.card, RoundedCornerShape(OfflineTvTheme.Radius.chip))
+            .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             .padding(horizontal = 10.dp, vertical = if (compact) 8.dp else 9.dp),
         contentAlignment = Alignment.CenterStart
     ) {

@@ -60,7 +60,7 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel, artworkBinder: To
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(Color(0xB3000000))
+            .background(OfflineTvTheme.Menu.scrim)
             .tvPanelBackHandler(model.onClose)
             .clickable(enabled = model.onClose != null) { model.onClose?.run() }
             .padding(horizontal = if (compact) 14.dp else 42.dp, vertical = if (compact) 16.dp else 32.dp),
@@ -69,9 +69,9 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel, artworkBinder: To
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 1f else 0.78f)
-                .clip(RoundedCornerShape(if (compact) 24.dp else 30.dp))
+                .clip(OfflineTvTheme.Menu.shape)
                 .background(
-                    Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f)))
+                    OfflineTvTheme.Menu.background
                 )
                 .clickable(enabled = false) {}
                 .padding(if (compact) 16.dp else 22.dp)
@@ -128,13 +128,13 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel, artworkBinder: To
 
 @Composable
 private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean, artworkBinder: TouchControlsArtworkBinder?) {
-    val background = if (row.selected) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip
+    val background = if (row.selected) OfflineTvTheme.Colors.focus else OfflineTvTheme.Menu.row
     val titleColor = if (row.selected) OfflineTvTheme.Colors.backdropAccent else Color.White
     val subtitleColor = if (row.selected) OfflineTvTheme.Colors.backdropAccent else OfflineTvTheme.Colors.textSoft
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(background)
             .tvButtonSemantics(row.onClick != null)
             .clickable(enabled = row.onClick != null) { row.onClick?.run() }
@@ -186,8 +186,8 @@ private fun TouchFilterLogo(
     Box(
         modifier = Modifier
             .size(size)
-            .clip(RoundedCornerShape(12.dp))
-            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.55f)),
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(OfflineTvTheme.Menu.row),
         contentAlignment = Alignment.Center
     ) {
         if (row.logoUrl.isNotBlank() && artworkBinder != null) {
@@ -226,7 +226,7 @@ private fun TouchFilterChip(text: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
-            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+            .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         style = TextStyle(
             color = OfflineTvTheme.Colors.textSoft,

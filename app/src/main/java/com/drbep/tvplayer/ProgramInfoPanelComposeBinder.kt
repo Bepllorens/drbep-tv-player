@@ -62,15 +62,15 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.guideBackdrop),
+            .background(OfflineTvTheme.Menu.scrim),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 0.94f else 0.58f)
                 .fillMaxHeight(if (compact) 0.86f else 0.78f)
-                .clip(RoundedCornerShape(if (compact) 22.dp else 30.dp))
-                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(OfflineTvTheme.Menu.background)
                 .padding(if (compact) 16.dp else 22.dp)
         ) {
             BasicText(
@@ -84,8 +84,8 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(OfflineTvTheme.Colors.surfaceDeep.copy(alpha = 0.8f))
+                    .clip(OfflineTvTheme.Menu.shape)
+                    .background(OfflineTvTheme.Menu.row)
                     .padding(if (compact) 12.dp else 16.dp),
                 verticalAlignment = Alignment.Top
             ) {
@@ -93,7 +93,7 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
                     AndroidView(
                         modifier = Modifier
                             .size(width = if (compact) 112.dp else 168.dp, height = if (compact) 154.dp else 226.dp)
-                            .clip(RoundedCornerShape(16.dp)),
+                            .clip(OfflineTvTheme.Menu.shape),
                         factory = { context ->
                             FrameLayout(context).apply {
                                 setBackgroundColor(OfflineTvTheme.surfaceDeepArgb())
@@ -163,13 +163,13 @@ private fun ProgramInfoActionButton(action: TvMessageActionUiModel, compact: Boo
     val background = when {
         focused -> OfflineTvTheme.Colors.focus
         action.destructive -> OfflineTvTheme.Colors.destructive
-        else -> OfflineTvTheme.Colors.chip
+        else -> OfflineTvTheme.Menu.row
     }
     val textColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
     Box(
         modifier = modifier
             .height(if (compact) 46.dp else 50.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(background)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }

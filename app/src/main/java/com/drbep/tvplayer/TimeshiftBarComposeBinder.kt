@@ -65,7 +65,7 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(panelColor, RoundedCornerShape(OfflineTvTheme.Radius.bar))
+            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(panelColor, panelColor.copy(alpha = 0.55f), Color.Transparent)))
             .border(
                 width = if (model.focused) 2.dp else 0.dp,
                 color = if (model.focused) focusColor else Color.Transparent,
@@ -83,6 +83,12 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
                 modifier = Modifier.weight(1f),
                 style = TextStyle(color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             )
+            if (model.onJumpClick != null) {
+                BasicText("Volver a…", modifier = Modifier
+                    .tvButtonSemantics(true, "Volver a una hora de la emisión")
+                    .clickable { model.onJumpClick?.run() }.padding(8.dp),
+                    style = TextStyle(color = Color.White, fontSize = 12.sp))
+            }
             if (model.liveVisible) {
                 BasicText(
                     text = stringResource(R.string.timeshift_live_button),
@@ -93,6 +99,21 @@ private fun TimeshiftBar(model: TimeshiftBarUiModel) {
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                     style = TextStyle(color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 )
+            }
+        }
+        if (model.availableLabel.isNotBlank()) {
+            BasicText(model.availableLabel, style = TextStyle(color = textColor, fontSize = 11.sp))
+            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(3.dp)) {
+                val left = size.width * model.availableStart / 1000f
+                val right = size.width * model.availableEnd / 1000f
+                drawRect(Color.White.copy(alpha = 0.7f), androidx.compose.ui.geometry.Offset(left, 0f),
+                    androidx.compose.ui.geometry.Size((right - left).coerceAtLeast(1f), size.height))
+            }
+        }
+        if (model.windowStartLabel.isNotBlank()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                BasicText(model.windowStartLabel, style = TextStyle(color = textColor, fontSize = 11.sp))
+                BasicText(model.windowEndLabel, style = TextStyle(color = textColor, fontSize = 11.sp))
             }
         }
         Spacer(modifier = Modifier.height(4.dp))

@@ -4,7 +4,7 @@
     <dimen name="zap_banner_width">1260dp</dimen>
     <dimen name="quick_search_width">340dp</dimen>
     <dimen name="quick_search_margin_top">98dp</dimen>
-    <dimen name="channel_overlay_width">520dp</dimen>
+    <dimen name="channel_overlay_width">320dp</dimen>
     <dimen name="recordings_panel_width">560dp</dimen>
     <dimen name="recordings_panel_padding">18dp</dimen>
     <dimen name="dialog_list_max_height">620dp</dimen>

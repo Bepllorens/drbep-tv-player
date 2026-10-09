@@ -20,6 +20,45 @@ public final class StartupHomeHubUiModel {
     public final Runnable onSearch;
     public final Runnable onSettings;
     public final Runnable onBack;
+    public Discovery discovery;
+    public ContinueCard currentLive;
+    public boolean livePlaybackError;
+    public final List<ContinueCard> homeChannels = new ArrayList<>();
+    public Runnable onSavedArchive;
+    public Runnable onLiveGuide, onLiveRecord, onLiveStartOver, onLiveHistory;
+    public String liveGroupTitle = "";
+
+    public static final class Discovery {
+        public final List<Provider> providers = new ArrayList<>();
+        public final List<Provider> liveProviders = new ArrayList<>();
+        public final java.util.Map<String, Integer> scrollPositions = new java.util.HashMap<>();
+        public java.util.function.BiFunction<String, String, Page> page;
+        public String section = "Inicio";
+        public String selectedLiveChannel = "";
+        public final java.util.Map<String, String> selectedLiveChannels = new java.util.HashMap<>();
+        public String liveQuery = "";
+        public String homeFocusedChannel = "";
+        public Runnable cancelLiveOrder;
+        public String librarySelectedId = "";
+        public Runnable dismissLibraryActions;
+        public Runnable refreshHome;
+        public java.util.function.Consumer<String> selectLiveProvider;
+        public java.util.function.BiConsumer<String, java.util.List<String>> saveChannelOrder;
+        public java.util.function.Consumer<java.util.List<String>> saveLiveOrder;
+        public boolean restoreLiveFocus = false;
+        public final java.util.Map<String, String> selectedProviders = new java.util.HashMap<>();
+    }
+    public static final class Provider {
+        public final String key, title, logo;
+        public Provider(String key, String title, String logo) {
+            this.key=key; this.title=title; this.logo=safe(logo);
+        }
+    }
+    public static final class Page {
+        public String heading = "", description = "", actionLabel = "Explorar catálogo";
+        public final List<ContinueCard> cards = new ArrayList<>();
+        public Runnable browse;
+    }
 
     public StartupHomeHubUiModel(
             String brand,
@@ -78,6 +117,12 @@ public final class StartupHomeHubUiModel {
         public final String imageLabel;
         public final boolean poster;
         public final boolean livePreview;
+        public String channelId = "", description = "", schedule = "", nextProgram = "";
+        public String libraryId = "", facts = "";
+        public Runnable onResume, onStartOver, onRemove, onEpisodes;
+        public String kind = "";
+        public String providerKey = "";
+        public int releaseDateKey;
         public final float progress;
         public final Runnable onClick;
 
@@ -97,6 +142,11 @@ public final class StartupHomeHubUiModel {
         }
     }
 
+    public static List<ContinueCard> continueGroup(List<ContinueCard> cards, boolean live) {
+        List<ContinueCard> result=new ArrayList<>();
+        if(cards!=null)for(ContinueCard card:cards)if(card!=null&&card.livePreview==live)result.add(card);
+        return result;
+    }
     public static final class Shortcut {
         public final String icon;
         public final String title;

@@ -96,7 +96,10 @@ final class NetflixPlaybackControls {
     private void render(){
         NetflixTracks.Choice c=tracks.video.get(video);
         androidx.media3.common.VideoSize size=player.getVideoSize();
-        String stream=size.width>0?size.width+"×"+size.height+" · HEVC":"Preparando vídeo";
+        androidx.media3.common.Format actualFormat=player.getVideoFormat();
+        String mime=actualFormat==null?"":actualFormat.sampleMimeType;
+        String codec="video/hevc".equals(mime)?"HEVC":"video/avc".equals(mime)?"H.264":"Vídeo";
+        String stream=size.width>0?size.width+"×"+size.height+" · "+codec:"Preparando vídeo";
         stream+=" · Perfil "+NetflixTracks.bitrateLabel(c.bitrate);
         androidx.media3.common.Format format=player.getVideoFormat();
         float reported=format==null?-1:format.frameRate;
@@ -192,8 +195,8 @@ final class NetflixPlaybackControls {
     }
     private void apply(){selection.select(video,audio,subtitle);render();keepVisible();}
     void back(){if(dialog!=null)return;if(hud.getVisibility()==View.VISIBLE){hide();return;}
-        options("Salir de la reproducción",null,Arrays.asList("Volver al catálogo","Volver a TV","Continuar viendo"),
-            Arrays.asList(()->activity.exitPlayback(false),()->activity.exitPlayback(true),this::show),false);}
+        options("Salir de la reproducción",null,Arrays.asList("Volver al catálogo","Volver a TV","Continuar viendo","Renovar vinculación de Netflix"),
+            Arrays.asList(()->activity.exitPlayback(false),()->activity.exitPlayback(true),this::show,()->activity.renewLink()),false);}
     boolean key(KeyEvent event){
         if(dialog!=null || disposed)return false;
         int key=event.getKeyCode();boolean down=event.getAction()==KeyEvent.ACTION_DOWN;

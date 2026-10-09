@@ -70,7 +70,7 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.overlayScrim)
+            .background(OfflineTvTheme.Menu.scrim)
             .tvPanelBackHandler(model.onBack)
             .padding(horizontal = if (compact) 12.dp else 56.dp, vertical = if (compact) 18.dp else 24.dp),
         contentAlignment = Alignment.Center
@@ -79,9 +79,9 @@ private fun VodDetailPanel(model: VodDetailPanelUiModel, posterBinder: VodPoster
             modifier = Modifier
                 .fillMaxWidth(if (compact) 1f else 0.94f)
                 .fillMaxHeight(0.94f)
-                .clip(RoundedCornerShape(if (compact) 18.dp else 24.dp))
-                .background(OfflineTvTheme.Colors.panelGlass)
-                .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(if (compact) 18.dp else 24.dp))
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(OfflineTvTheme.Menu.background)
+
                 .padding(if (compact) 14.dp else 20.dp)
         ) {
             VodTitle(model, compact)
@@ -149,8 +149,8 @@ private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinde
         AndroidView(
             modifier = Modifier
                 .size(width = if (compact) 112.dp else 140.dp, height = if (compact) 168.dp else 210.dp)
-                .clip(RoundedCornerShape(if (compact) 12.dp else 16.dp))
-                .background(OfflineTvTheme.Colors.backdrop),
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(OfflineTvTheme.Menu.background),
             factory = { context ->
                 FrameLayout(context).apply {
                     addView(
@@ -174,9 +174,9 @@ private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinde
             if (model.progressLabel.isNotEmpty()) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(OfflineTvTheme.Menu.shape)
                         .background(Color(0xFF2F3A25))
-                        .border(1.dp, OfflineTvTheme.Colors.focus, RoundedCornerShape(10.dp))
+                        .border(1.dp, OfflineTvTheme.Colors.focus, OfflineTvTheme.Menu.shape)
                         .padding(horizontal = 12.dp, vertical = 9.dp)
                 ) {
                     BasicText(
@@ -192,8 +192,8 @@ private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinde
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF121B26))
+                        .clip(OfflineTvTheme.Menu.shape)
+                        .background(Color.Transparent)
                         .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 10.dp else 14.dp)
                 ) {
                     BasicText(
@@ -253,8 +253,8 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focu
         focused -> OfflineTvTheme.Colors.focus
         liveAction -> OfflineTvTheme.Colors.statusLive
         startOverAction -> Color(0xFFF4F5F7)
-        action.primary -> OfflineTvTheme.Colors.chipSelected
-        else -> OfflineTvTheme.Colors.chip
+        action.primary -> OfflineTvTheme.Menu.selected
+        else -> OfflineTvTheme.Menu.row
     }
     val textColor = if (focused || startOverAction) OfflineTvTheme.Colors.backdropAccent else Color.White
     val stroke = when {
@@ -262,7 +262,7 @@ private fun VodPanelAction(action: VodPanelActionUiModel, compact: Boolean, focu
         liveAction -> Color(0xFFFF6670)
         startOverAction -> Color.White
         action.primary -> OfflineTvTheme.Colors.focus
-        else -> OfflineTvTheme.Colors.card
+        else -> OfflineTvTheme.Menu.row
     }
     Box(
         modifier = Modifier

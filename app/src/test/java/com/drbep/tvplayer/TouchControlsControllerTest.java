@@ -7,6 +7,16 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public class TouchControlsControllerTest {
+    @Test public void customizedDelayAndAutomaticResetReachScheduler() {
+        FakeScheduler scheduler = new FakeScheduler(); FakeHost host = new FakeHost();
+        host.touchDeviceMode = true;
+        TouchControlsController controller = new TouchControlsController(scheduler, host, 3000L, 3500L);
+        controller.setAutoHideDurationMs(12000L); controller.showTouchControlsTemporarily();
+        assertEquals(12000L, scheduler.lastDelayMs);
+        controller.resetAutoHideDurations(3000L,3500L); controller.showTouchControlsTemporarily();
+        assertEquals(3000L, scheduler.lastDelayMs);
+    }
+
     @Test
     public void showTouchControlsSchedulesAutoHideOnTouchDevices() {
         FakeScheduler scheduler = new FakeScheduler();

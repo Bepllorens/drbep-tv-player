@@ -30,7 +30,7 @@ object VodOriginPickerComposeBinder {
         view.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         view.setContent {
             val first = rememberTvInitialFocusRequester(origins.isNotEmpty(), origins)
-            Column(Modifier.fillMaxSize().background(OfflineTvTheme.Colors.backdrop).padding(32.dp)) {
+            Column(Modifier.fillMaxSize().background(OfflineTvTheme.Menu.background).padding(32.dp)) {
                 BasicText("Origen", style = TextStyle(Color.White, 28.sp, fontWeight = FontWeight.Bold))
                 Spacer(Modifier.height(8.dp))
                 BasicText("Tus plataformas · Atrás para volver", style = TextStyle(OfflineTvTheme.Colors.textSoft, 14.sp))
@@ -38,8 +38,8 @@ object VodOriginPickerComposeBinder {
                 LazyVerticalGrid(columns = GridCells.Adaptive(180.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     itemsIndexed(origins, key = { _, item -> item.title }) { index, item ->
                         var focused by remember { mutableStateOf(false) }
-                        Column(Modifier.height(128.dp).clip(RoundedCornerShape(16.dp))
-                            .background(if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip)
+                        Column(Modifier.height(128.dp).clip(OfflineTvTheme.Menu.shape)
+                            .background(if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Menu.row)
                             .then(if(index == 0) Modifier.focusRequester(first) else Modifier)
                             .onFocusChanged { focused = it.isFocused }
                             .tvButtonSemantics(true, item.title)

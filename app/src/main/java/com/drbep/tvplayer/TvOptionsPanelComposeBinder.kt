@@ -49,7 +49,7 @@ object TvOptionsPanelComposeBinder {
         if (composeView == null) return
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         composeView.setContent {
-            TvOptionsPanel(model)
+            PlaylistImportIndicator.Surface { TvOptionsPanel(model) }
         }
     }
 }
@@ -59,23 +59,21 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val expandedTracks = model.rows?.any { it.wrapLabel } == true
     val panelWidth = if (compact) Modifier.fillMaxWidth(0.94f)
-        else Modifier.fillMaxWidth(if (expandedTracks) 0.78f else 0.44f)
+        else if (expandedTracks) Modifier.fillMaxWidth(0.72f) else Modifier.width((360f * OfflineTvTheme.menuWidthScale()).dp)
     val firstRowRequester = rememberTvInitialFocusRequester(!model.rows.isNullOrEmpty(), model)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
             .tvPanelBackHandler(model.onBack)
-            .background(OfflineTvTheme.Colors.guideBackdrop),
-        contentAlignment = Alignment.Center
+            .background(OfflineTvTheme.Menu.scrim),
+        contentAlignment = Alignment.CenterStart
     ) {
         Column(
-            modifier = panelWidth
-                .clip(RoundedCornerShape(if (compact) 22.dp else 28.dp))
+            modifier = panelWidth.fillMaxHeight()
+                .clip(OfflineTvTheme.Menu.shape)
                 .background(
-                    Brush.verticalGradient(
-                        listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
-                    )
+                    OfflineTvTheme.Menu.background
                 )
                 .padding(if (compact) 16.dp else 22.dp)
         ) {
@@ -102,8 +100,8 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (compact) 330.dp else 430.dp),
-                verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 itemsIndexed(model.rows ?: emptyList()) { index, row ->
                     TvOptionsRow(row, index, compact, if (index == 0) firstRowRequester else null)
@@ -118,15 +116,15 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
 @Composable
 private fun TvOptionsRow(row: TvOptionsPanelRowUiModel, index: Int, compact: Boolean, focusRequester: FocusRequester?) {
     var focused by remember { mutableStateOf(false) }
-    val background = if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip
+    val background = if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Menu.row
     val titleColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
     val indexColor = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (row.wrapLabel) Modifier.heightIn(min = if (compact) 64.dp else 72.dp)
-                else Modifier.height(if (compact) 52.dp else 58.dp))
-            .clip(RoundedCornerShape(16.dp))
+                else Modifier.height(if (compact) 48.dp else 50.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(background)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
@@ -138,8 +136,8 @@ private fun TvOptionsRow(row: TvOptionsPanelRowUiModel, index: Int, compact: Boo
         Box(
             modifier = Modifier
                 .size(if (compact) 30.dp else 34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (focused) Color(0xCCFFFFFF) else OfflineTvTheme.Colors.card),
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(if (focused) Color(0xCCFFFFFF) else OfflineTvTheme.Menu.row),
             contentAlignment = Alignment.Center
         ) {
             if (row.bindArtwork != null) {
@@ -178,8 +176,8 @@ private fun TvOptionsBackButton(label: String, onBack: Runnable?, compact: Boole
         modifier = Modifier
             .fillMaxWidth()
             .height(if (compact) 44.dp else 48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Menu.row)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(onBack != null)
             .clickable(enabled = onBack != null) { onBack?.run() },

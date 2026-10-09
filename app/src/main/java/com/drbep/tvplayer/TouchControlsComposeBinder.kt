@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -85,6 +87,10 @@ object TouchControlsComposeBinder {
 
 @Composable
 private fun TouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
+    if (LocalConfiguration.current.screenWidthDp >= 600) {
+        MinimalTvControlsBar(model, artworkBinder)
+        return
+    }
     if (model.modernStyle) {
         ModernTouchControlsBar(model, artworkBinder)
         return
@@ -98,7 +104,7 @@ private fun ClassicTouchControlsBar(model: TouchControlsBarUiModel, artworkBinde
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(22.dp))
+            .background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape)
             .padding(horizontal = 8.dp, vertical = 7.dp)
     ) {
         if (model.nowPlaying.visible) {
@@ -191,7 +197,7 @@ private fun ModernTouchControlsBar(model: TouchControlsBarUiModel, artworkBinder
                 ),
                 RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             )
-            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.33f), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .border(1.dp, OfflineTvTheme.Menu.selected.copy(alpha = 0.33f), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
             .padding(horizontal = if (compact) 12.dp else 20.dp, vertical = if (compact) 10.dp else 14.dp)
     ) {
         if (model.nowPlaying.visible) {
@@ -212,7 +218,7 @@ private fun ModernTouchControlsBar(model: TouchControlsBarUiModel, artworkBinder
 }
 
 @Composable
-private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: TimeshiftBarUiModel?, artworkBinder: TouchControlsArtworkBinder?) {
+private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: TimeshiftBarUiModel?, artworkBinder: TouchControlsArtworkBinder?, minimal: Boolean = false, header: Boolean = true, timeline: Boolean = true) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     var timeshiftDragging by remember { mutableStateOf(false) }
     var displayedTimeshiftProgress by remember { mutableIntStateOf(timeshift?.progress ?: 0) }
@@ -225,9 +231,10 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
         }
     }
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TouchChannelLogo(model, artworkBinder, compact)
-        Spacer(Modifier.width(if (compact) 10.dp else 16.dp))
+        if(header) TouchChannelLogo(model, artworkBinder, compact)
+        if(header) Spacer(Modifier.width(if (compact) 10.dp else 16.dp))
         Column(modifier = Modifier.weight(1f)) {
+            if(header) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (model.channelBadge.isNotBlank()) {
                     ModernBadge(model.channelBadge)
@@ -247,9 +254,9 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
             Spacer(Modifier.height(3.dp))
             BasicText(
                 text = model.programTitle,
-                maxLines = 2,
+                maxLines = if (minimal) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
-                style = TextStyle(color = Color.White, fontSize = if (compact) 17.sp else 22.sp, fontWeight = FontWeight.Black)
+                style = TextStyle(color = Color.White, fontSize = if (minimal) 18.sp else if (compact) 17.sp else 22.sp, fontWeight = FontWeight.Black)
             )
             if (model.programMeta.isNotBlank()) {
                 Spacer(Modifier.height(3.dp))
@@ -261,15 +268,16 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                 BasicText(model.nextProgram, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = OfflineTvTheme.Colors.focus, fontSize = 11.sp, fontWeight = FontWeight.Bold))
             }
-            if (model.streamInfo.isNotBlank()) {
+            if (!minimal && model.streamInfo.isNotBlank()) {
                 Spacer(Modifier.height(3.dp))
                 BasicText(model.streamInfo, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp))
             }
-            if (model.progressVisible || timeshift != null) {
+            }
+            if (timeline && (model.progressVisible || timeshift != null)) {
                 Spacer(Modifier.height(8.dp))
                 val timeshiftFocused = timeshift?.focused == true
-                if (timeshift != null) {
+                if (timeshift != null && !minimal) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         BasicText(displayedTimeshiftLabel, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = TextStyle(color = if (timeshiftFocused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.textSoft,
@@ -277,11 +285,17 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                         if (timeshift.liveVisible) {
                             BasicText(
                                 text = stringResource(R.string.timeshift_live_button),
-                                modifier = Modifier.background(OfflineTvTheme.Colors.card, RoundedCornerShape(99.dp))
+                                modifier = Modifier.background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
                                     .clickable(enabled = timeshift.onLiveClick != null) { timeshift.onLiveClick?.run() }
                                     .padding(horizontal = 9.dp, vertical = 3.dp),
                                 style = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
                             )
+                        }
+                    }
+                    if (timeshift.windowStartLabel.isNotBlank()) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            BasicText(timeshift.windowStartLabel, style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 10.sp))
+                            BasicText(timeshift.windowEndLabel, style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 10.sp))
                         }
                     }
                     Spacer(Modifier.height(4.dp))
@@ -292,17 +306,17 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(if (timeshift != null) 32.dp else 5.dp)
+                            .height(if (timeshift != null) { if (minimal) 16.dp else 32.dp } else 5.dp)
                             .background(
-                                if (timeshiftFocused) OfflineTvTheme.Colors.focus.copy(alpha = 0.18f) else Color.Transparent,
-                                RoundedCornerShape(8.dp)
+                                if (timeshiftFocused && !minimal) OfflineTvTheme.Colors.focus.copy(alpha = 0.18f) else Color.Transparent,
+                                OfflineTvTheme.Menu.shape
                             )
                             .border(
-                                width = if (timeshiftFocused) 2.dp else 0.dp,
-                                color = if (timeshiftFocused) OfflineTvTheme.Colors.focus else Color.Transparent,
-                                shape = RoundedCornerShape(8.dp)
+                                width = if (timeshiftFocused && !minimal) 2.dp else 0.dp,
+                                color = if (timeshiftFocused && !minimal) OfflineTvTheme.Colors.focus else Color.Transparent,
+                                shape = OfflineTvTheme.Menu.shape
                             )
-                            .padding(horizontal = if (timeshiftFocused) 9.dp else 0.dp)
+                            .padding(horizontal = if (timeshiftFocused && !minimal) 9.dp else 0.dp)
                             .then(
                                 if (timeshift?.seekCommitHandler != null) {
                                     Modifier
@@ -351,18 +365,58 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                             ),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        Box(Modifier.fillMaxWidth().height(5.dp).background(OfflineTvTheme.Colors.card.copy(alpha = 0.33f), RoundedCornerShape(99.dp)))
+                        Box(Modifier.fillMaxWidth().height(5.dp).background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape))
+                        if (timeshift != null && timeshift.availableStart >= 0) {
+                            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(9.dp)) {
+                                val left = size.width * timeshift.availableStart / 1000f
+                                val right = size.width * timeshift.availableEnd / 1000f
+                                drawRect(Color.White.copy(alpha = 0.7f), androidx.compose.ui.geometry.Offset(left, 0f),
+                                    androidx.compose.ui.geometry.Size((right - left).coerceAtLeast(1f), size.height))
+                            }
+                        }
                         Box(Modifier.fillMaxWidth(integratedProgress).height(5.dp)
-                            .background(Brush.horizontalGradient(listOf(OfflineTvTheme.Colors.accentCyan, OfflineTvTheme.Colors.accentSecondary)), RoundedCornerShape(99.dp)))
+                            .background(Brush.horizontalGradient(listOf(OfflineTvTheme.Colors.accentCyan, OfflineTvTheme.Colors.accentSecondary)), OfflineTvTheme.Menu.shape))
+                        if (minimal && timeshift != null) androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                            val radius = 6.dp.toPx()
+                            val x = (size.width * integratedProgress).coerceIn(radius, size.width-radius)
+                            val y = size.height/2
+                            val color = Color(0xFFFF9A3C).copy(alpha=if(timeshiftFocused) 1f else .65f)
+                            drawCircle(Color(0xFF101821),radius+1.dp.toPx(),androidx.compose.ui.geometry.Offset(x,y))
+                            drawCircle(color,2.dp.toPx(),androidx.compose.ui.geometry.Offset(x,y))
+                            for (angle in listOf(-55f,125f)) drawArc(color,angle,110f,false,
+                                topLeft=androidx.compose.ui.geometry.Offset(x-radius,y-radius),
+                                size=androidx.compose.ui.geometry.Size(radius*2,radius*2),
+                                style=androidx.compose.ui.graphics.drawscope.Stroke((if(timeshiftFocused) 2.dp else 1.dp).toPx()))
+                        }
                     }
-                    if (model.endTimeText.isNotBlank()) {
+                    if (!minimal && model.endTimeText.isNotBlank()) {
                         Spacer(Modifier.width(10.dp))
                         BasicText(model.endTimeText, style = TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold))
                     }
                 }
+                if (minimal) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            if (timeshift != null) BasicText(displayedTimeshiftLabel, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = TextStyle(if (timeshiftFocused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.textSoft, 10.sp, FontWeight.Bold))
+                            if (!timeshift?.windowStartLabel.isNullOrBlank()) BasicText(timeshift!!.windowStartLabel,
+                                style = TextStyle(OfflineTvTheme.Colors.textSoft, 9.sp))
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (timeshift?.liveVisible == true) BasicText(stringResource(R.string.timeshift_live_button),
+                                Modifier.clickable(enabled = timeshift.onLiveClick != null) { timeshift.onLiveClick?.run() },
+                                style = TextStyle(Color.White, 10.sp, FontWeight.Bold))
+                            BasicText(timeshift?.windowEndLabel?.takeIf { it.isNotBlank() } ?: model.endTimeText,
+                                style = TextStyle(OfflineTvTheme.Colors.textSoft, 9.sp))
+                        }
+                    }
+                }
+                if (timeshift != null && timeshift.availableLabel.isNotBlank()) {
+                    BasicText(timeshift.availableLabel, style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 10.sp))
+                }
             }
         }
-        if (!compact && model.posterUrl.isNotBlank() && artworkBinder != null) {
+        if (header && !minimal && !compact && model.posterUrl.isNotBlank() && artworkBinder != null) {
             Spacer(Modifier.width(16.dp))
             TouchProgramPoster(model, artworkBinder)
         }
@@ -373,7 +427,7 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
 private fun ModernBadge(text: String) {
     BasicText(
         text = text.uppercase(), maxLines = 1,
-        modifier = Modifier.background(OfflineTvTheme.Colors.card, RoundedCornerShape(7.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape).padding(horizontal = 8.dp, vertical = 4.dp),
         style = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
     )
 }
@@ -461,7 +515,7 @@ private fun CompactVodActionStrip(model: TouchControlsBarUiModel, artworkBinder:
                 verticalArrangement = Arrangement.spacedBy(gap)) {
             model.actions.forEachIndexed { index, item ->
                 if (grouped && index == transportStart) {
-                    Row(Modifier.background(OfflineTvTheme.Colors.chip.copy(alpha = .8f), RoundedCornerShape(18.dp)).padding(horizontal = 4.dp)) {
+                    Row(Modifier.background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape).padding(horizontal = 4.dp)) {
                         for (offset in 0..2) {
                             val actionIndex = index + offset
                             ModernActionChip(model.actions[actionIndex], actionIndex == focusedIndex,
@@ -483,15 +537,15 @@ private fun CompactVodActionStrip(model: TouchControlsBarUiModel, artworkBinder:
 private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequester: FocusRequester?, compact: Boolean, artworkBinder: TouchControlsArtworkBinder?, chipWidth: Dp = if (compact) 82.dp else 100.dp, grouped: Boolean = false) {
     val surface = when {
         focused -> OfflineTvTheme.Colors.focus
-        item.selected -> OfflineTvTheme.Colors.card
-        else -> if (grouped) Color.Transparent else OfflineTvTheme.Colors.chip.copy(alpha = 0.8f)
+        item.selected -> OfflineTvTheme.Menu.row
+        else -> if (grouped) Color.Transparent else OfflineTvTheme.Menu.row
     }
     Column(
         modifier = Modifier
             .width(chipWidth)
             .alpha(if (item.enabled) 1f else .42f)
-            .background(surface, RoundedCornerShape(18.dp))
-            .border(1.dp, if (focused) Color.White else if (grouped) Color.Transparent else OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.33f), RoundedCornerShape(18.dp))
+            .background(surface, OfflineTvTheme.Menu.shape)
+            .border(1.dp, if (focused) Color.White else if (grouped) Color.Transparent else OfflineTvTheme.Menu.selected.copy(alpha = 0.33f), OfflineTvTheme.Menu.shape)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvButtonSemantics(item.enabled, item.label, item.selected)
             .combinedClickable(enabled = item.enabled, onClick = { item.onClick?.run() }, onLongClick = item.onLongClick?.let { { it.run() } })
@@ -508,6 +562,7 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
 private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, OTHER }
 
 private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
+    if(item.iconHint == "u7d") return ModernActionIconKind.U7D
     if (item.iconHint == "vod_languages") return ModernActionIconKind.AUDIO
     if (item.iconHint.equals("platform", ignoreCase = true)) return ModernActionIconKind.PLATFORM
     val value = item.label.lowercase()
@@ -523,7 +578,7 @@ private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
         "anterior" in value -> ModernActionIconKind.PREVIOUS
         "info" in value || "ficha" in value -> ModernActionIconKind.INFO
         "grab" in value -> ModernActionIconKind.RECORD
-        "rebob" in value || "-30" in value || "−30" in value -> ModernActionIconKind.REWIND
+        "volver a" in value || "rebob" in value || "-30" in value || "−30" in value -> ModernActionIconKind.REWIND
         "pausa" in value || "reanudar" in value || "play" in value -> ModernActionIconKind.PLAY_PAUSE
         "avanz" in value || "+30" in value -> ModernActionIconKind.FORWARD
         else -> ModernActionIconKind.OTHER
@@ -704,8 +759,8 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 2.dp)
-            .background(OfflineTvTheme.Colors.panelSoft, RoundedCornerShape(18.dp))
-            .border(1.dp, OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
+            .background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape)
+
             .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 7.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -796,13 +851,13 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                         modifier = Modifier
                             .weight(1f)
                             .height(4.dp)
-                            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+                            .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(model.progress.coerceIn(0, 100) / 100f)
                                 .height(4.dp)
-                                .background(OfflineTvTheme.Colors.accentSecondary, RoundedCornerShape(999.dp))
+                                .background(OfflineTvTheme.Colors.accentSecondary, OfflineTvTheme.Menu.shape)
                         )
                     }
                     if (model.endTimeText.isNotBlank()) {
@@ -865,7 +920,7 @@ private fun TouchProgramPoster(model: TouchControlsNowPlayingUiModel, artworkBin
         modifier = Modifier
             .width(60.dp)
             .height(54.dp)
-            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(12.dp)),
+            .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape),
         factory = { context ->
             AppCompatImageView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
@@ -888,7 +943,7 @@ private fun TouchMiniChip(text: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
-            .background(OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.2f), RoundedCornerShape(999.dp))
+            .background(OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.2f), OfflineTvTheme.Menu.shape)
             .padding(horizontal = 7.dp, vertical = 3.dp),
         style = TextStyle(
             color = OfflineTvTheme.Colors.textPrimary,
@@ -903,7 +958,7 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
     Row(
         modifier = Modifier
             .padding(horizontal = 4.dp, vertical = 2.dp)
-            .background(OfflineTvTheme.Colors.panelSoft, RoundedCornerShape(16.dp))
+            .background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape)
             .clickable(enabled = model.onContextClick != null) { model.onContextClick?.run() }
             .tvButtonSemantics(
                 model.onContextClick != null,
@@ -944,7 +999,7 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .background(OfflineTvTheme.Colors.chipSelected, RoundedCornerShape(999.dp))
+                    .background(OfflineTvTheme.Menu.selected, OfflineTvTheme.Menu.shape)
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 style = TextStyle(
                     color = Color.White,
@@ -969,10 +1024,10 @@ private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier,
             .background(
                 color = when {
                     focused -> OfflineTvTheme.Colors.focus
-                    item.selected -> OfflineTvTheme.Colors.chipSelected
-                    else -> OfflineTvTheme.Colors.chip
+                    item.selected -> OfflineTvTheme.Menu.selected
+                    else -> OfflineTvTheme.Menu.row
                 },
-                shape = RoundedCornerShape(18.dp)
+                shape = OfflineTvTheme.Menu.shape
             )
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvButtonSemantics(item.enabled, item.label, item.selected)
@@ -989,4 +1044,56 @@ private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier,
             textAlign = TextAlign.Center
         )
     )
+}
+
+/** TV presentation only: callbacks, order, and focus indices remain owned by the controller. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
+    val selected = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
+    val requester = rememberTvInitialFocusRequester(model.expanded && !model.archiveFocused && model.integratedTimeshift?.focused != true && model.actions.any { it.enabled }, model.actions.size, selected)
+    val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    LaunchedEffect(selected, model.expanded) {
+        val step = with(density) { 48.dp.roundToPx() }
+        scroll.animateScrollTo((selected * step - step * 4).coerceIn(0, scroll.maxValue))
+    }
+    val archiveLayout = model.expanded && model.archiveEntries.isNotEmpty()
+    Column(Modifier.fillMaxWidth()
+        .then(if(archiveLayout) Modifier.height((LocalConfiguration.current.screenHeightDp - 28).dp) else Modifier)
+        .background(if(archiveLayout) Brush.verticalGradient(0f to Color(0xD4090E16), .24f to Color.Transparent, .48f to Color.Transparent, .72f to Color(0xCD090E16), 1f to Color(0xF5090E16))
+            else Brush.verticalGradient(listOf(Color.Transparent, Color(0xDC090E16), Color(0xF5090E16))))
+        .padding(horizontal = 24.dp, vertical = 6.dp)) {
+        if (model.nowPlaying.visible) ModernNowPlaying(model.nowPlaying, model.integratedTimeshift, artworkBinder, minimal = true, timeline = !model.expanded)
+        else if (model.contextTitle.isNotBlank()) ModernContextHeader(model)
+        if(archiveLayout) Spacer(Modifier.weight(1f))
+        if (model.expanded) {
+            if(model.archiveEntries.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                BasicText("Catchup · ${model.nowPlaying.channelName}", style=TextStyle(Color.White,12.sp,FontWeight.Bold))
+                Spacer(Modifier.height(4.dp))
+                U7dEmissionStrip(model.archiveEntries,model.archiveFocused,model.archiveIndex)
+            }
+            ModernNowPlaying(model.nowPlaying, model.integratedTimeshift, artworkBinder, minimal = true, header = false)
+            if(model.integratedTimeshift==null && model.archiveEntries.isNotEmpty()) BasicText(
+                "Progreso del programa · retroceso no disponible en esta emisión",style=TextStyle(OfflineTvTheme.Colors.textSoft,10.sp))
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth().horizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
+                model.actions.forEachIndexed { index, item ->
+                    val focused = index == selected && !model.archiveFocused && model.integratedTimeshift?.focused != true
+                    Box(Modifier.size(40.dp).alpha(if (item.enabled) 1f else .35f)
+                        .background(if (focused) Color.White else Color.Transparent, OfflineTvTheme.Menu.shape)
+                        .border(1.dp, if (focused) Color.White else Color.Transparent, OfflineTvTheme.Menu.shape)
+                        .then(if (focused) Modifier.focusRequester(requester) else Modifier)
+                        .tvButtonSemantics(item.enabled, item.label, item.selected)
+                        .combinedClickable(enabled = item.enabled, onClick = { item.onClick?.run() }, onLongClick = item.onLongClick?.let { { it.run() } }),
+                        contentAlignment = Alignment.Center) {
+                        Box(Modifier.scale(.8f)) { ModernActionIcon(item, focused, artworkBinder) }
+                    }
+                }
+            }
+            BasicText(model.actions.getOrNull(selected)?.label.orEmpty(), Modifier.fillMaxWidth().height(20.dp).padding(top = 3.dp),
+                style = TextStyle(Color.White, 12.sp, FontWeight.Medium, textAlign = TextAlign.Center), maxLines = 1)
+        }
+    }
 }

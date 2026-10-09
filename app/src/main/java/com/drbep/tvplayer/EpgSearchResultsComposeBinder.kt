@@ -49,7 +49,7 @@ private fun EpgSearchResultsPanel(model: EpgSearchResultListUiModel, imageBinder
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
+            .background(OfflineTvTheme.Menu.background)
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp
@@ -91,7 +91,7 @@ private fun EpgSearchRow(item: EpgSearchResultRowUiModel, imageBinder: EpgSearch
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(OfflineTvTheme.Colors.chip, RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             .tvButtonSemantics(item.onClick != null)
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(if (compact) 10.dp else 12.dp),
@@ -115,7 +115,7 @@ private fun EpgSearchRow(item: EpgSearchResultRowUiModel, imageBinder: EpgSearch
         Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
         Box(
             modifier = Modifier
-                .background(Color(item.badgeColor), RoundedCornerShape(12.dp))
+                .background(Color(item.badgeColor), OfflineTvTheme.Menu.shape)
                 .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
             contentAlignment = Alignment.Center
         ) {

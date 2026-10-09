@@ -61,13 +61,13 @@ private fun TimelineGuidePanel(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.guideBackdrop)
+            .background(OfflineTvTheme.Menu.scrim)
             .padding(20.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(OfflineTvTheme.Colors.guidePanel)
+                .background(OfflineTvTheme.Menu.background)
                 .padding(12.dp)
         ) {
             if (model.header != null) {

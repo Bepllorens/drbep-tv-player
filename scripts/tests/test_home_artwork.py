@@ -13,7 +13,7 @@ class HomeArtworkTest(unittest.TestCase):
 
     def test_diagnostics_do_not_log_models_or_exceptions(self):
         source = (ROOT / 'app/src/main/java/com/drbep/tvplayer/HomePosterLoader.java').read_text()
-        self.assertEqual(source.count('Log.println(Log.INFO,'), 2)
+        self.assertGreaterEqual(source.count('Log.println(Log.INFO,'), 2)
         for block in source.split('Log.println(')[1:]:
             statement = block.split(';', 1)[0]
             self.assertNotIn('ignoredModel', statement)

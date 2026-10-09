@@ -126,6 +126,10 @@ final class VodVisualUiFactory {
             addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter, query), host, RESULT_SECTION_LIMIT);
         } else if (host.defaultFilter(typeFilter, platformFilter, statusFilter, sortFilter)) {
             addSection(sections, host.text(R.string.vod_library_continue), host.continueItems(), host, DEFAULT_SECTION_LIMIT);
+            List<ChannelItem> newest = new ArrayList<>(host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter));
+            newest.removeIf(item -> item == null || ((item.vodReleaseDate == null || item.vodReleaseDate.isEmpty()) && (item.vodYear == null || item.vodYear.isEmpty())));
+            newest.sort((a,b) -> releaseDate(b).compareTo(releaseDate(a)));
+            addSection(sections, "Más recientes", newest, host, 24);
             addSection(sections, "Películas", host.filteredItems(MainActivity.VodVisualTypeFilter.MOVIES, platformFilter, statusFilter, sortFilter), host, DEFAULT_SECTION_LIMIT);
             addSection(sections, "Series", host.filteredItems(MainActivity.VodVisualTypeFilter.SERIES, platformFilter, statusFilter, sortFilter), host, DEFAULT_SECTION_LIMIT);
             if (sections.isEmpty()) addSection(sections, "Catálogo", host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter), host, DEFAULT_SECTION_LIMIT);
@@ -133,6 +137,10 @@ final class VodVisualUiFactory {
             addSection(sections, host.text(R.string.vod_visual_results), host.filteredItems(typeFilter, platformFilter, statusFilter, sortFilter), host, RESULT_SECTION_LIMIT);
         }
         return sections;
+    }
+
+    private static String releaseDate(ChannelItem item) {
+        return item.vodReleaseDate != null && !item.vodReleaseDate.isEmpty() ? item.vodReleaseDate : item.vodYear;
     }
 
     private static void addSection(List<VodVisualSectionUiModel> sections, String title, List<ChannelItem> items, Host host, int limit) {
@@ -156,6 +164,7 @@ final class VodVisualUiFactory {
                     () -> host.openInfo(item),
                     () -> host.openActions(item)
             ));
+            mapped.get(mapped.size()-1).description = host.protectedMeta(item, item.vodDescription);
         }
         if (!mapped.isEmpty()) {
             boolean limited = items.size() > mapped.size();

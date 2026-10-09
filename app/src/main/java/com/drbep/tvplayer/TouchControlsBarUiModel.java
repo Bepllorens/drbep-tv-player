@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class TouchControlsBarUiModel {
+    public boolean archiveFocused;
+    public int archiveIndex;
+    public final List<U7dCatalogEntry> archiveEntries;
     public final String contextTitle;
     public final String contextSubtitle;
     public final Runnable onContextClick;
@@ -73,6 +76,13 @@ public final class TouchControlsBarUiModel {
             boolean modernStyle,
             TimeshiftBarUiModel integratedTimeshift
     ) {
+        this(contextTitle,contextSubtitle,onContextClick,actions,focusedActionIndex,nowPlaying,expanded,modernStyle,integratedTimeshift,new ArrayList<>());
+    }
+
+    public TouchControlsBarUiModel(String contextTitle,String contextSubtitle,Runnable onContextClick,List<ZapActionItem> actions,
+            int focusedActionIndex,TouchControlsNowPlayingUiModel nowPlaying,boolean expanded,boolean modernStyle,
+            TimeshiftBarUiModel integratedTimeshift,List<U7dCatalogEntry> archiveEntries) {
+        this.archiveEntries=archiveEntries;
         this.contextTitle = contextTitle == null ? "" : contextTitle;
         this.contextSubtitle = contextSubtitle == null ? "" : contextSubtitle;
         this.onContextClick = onContextClick;

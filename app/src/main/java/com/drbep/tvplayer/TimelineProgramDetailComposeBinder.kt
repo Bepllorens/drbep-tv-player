@@ -47,7 +47,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OfflineTvTheme.Colors.panelGlass)
+            .background(OfflineTvTheme.Menu.background)
             .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact) 7.dp else 10.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -55,7 +55,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
             AndroidView(
                 modifier = Modifier
                     .size(width = if (compact) 62.dp else 84.dp, height = if (compact) 88.dp else 118.dp)
-                    .clip(RoundedCornerShape(10.dp)),
+                    .clip(OfflineTvTheme.Menu.shape),
                 factory = { context ->
                     FrameLayout(context).apply {
                         setBackgroundColor(OfflineTvTheme.surfaceDeepArgb())
@@ -94,8 +94,8 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
                     Spacer(modifier = Modifier.size(8.dp))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(OfflineTvTheme.Colors.chipSelected)
+                            .clip(OfflineTvTheme.Menu.shape)
+                            .background(OfflineTvTheme.Menu.selected)
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         androidx.compose.foundation.text.BasicText(
@@ -126,8 +126,8 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
             if (model.actionHint.isNotEmpty()) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(OfflineTvTheme.Colors.card.copy(alpha = 0.33f))
+                        .clip(OfflineTvTheme.Menu.shape)
+                        .background(OfflineTvTheme.Menu.row)
                         .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     androidx.compose.foundation.text.BasicText(

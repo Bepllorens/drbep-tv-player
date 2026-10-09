@@ -53,8 +53,8 @@ private fun VodDetailHeader(model: VodDetailHeaderUiModel, posterBinder: VodPost
         AndroidView(
             modifier = Modifier
                 .size(width = if (compact) 112.dp else 150.dp, height = if (compact) 154.dp else 202.dp)
-                .clip(RoundedCornerShape(if (compact) 10.dp else 14.dp))
-                .background(OfflineTvTheme.Colors.backdrop),
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(OfflineTvTheme.Menu.background),
             factory = { context ->
                 FrameLayout(context).apply {
                     addView(
@@ -104,9 +104,9 @@ private fun VodDetailHeader(model: VodDetailHeaderUiModel, posterBinder: VodPost
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(OfflineTvTheme.Menu.shape)
                         .background(Color(0xFF2F3A25))
-                        .border(1.dp, OfflineTvTheme.Colors.focus, RoundedCornerShape(8.dp))
+                        .border(1.dp, OfflineTvTheme.Colors.focus, OfflineTvTheme.Menu.shape)
                         .padding(horizontal = 12.dp, vertical = if (compact) 9.dp else 10.dp)
                 ) {
                     BasicText(

@@ -65,7 +65,7 @@ private fun GlobalSearchPanel(model: GlobalSearchListUiModel, imageBinder: Globa
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
+            .background(OfflineTvTheme.Menu.background)
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp
@@ -109,9 +109,9 @@ private fun GlobalSearchField(model: GlobalSearchListUiModel, compact: Boolean) 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(OfflineTvTheme.Colors.panelGlass)
-            .border(2.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(OfflineTvTheme.Menu.background)
+
             .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 11.dp else 14.dp)
     ) {
         if (value.isEmpty()) {
@@ -136,13 +136,13 @@ private fun GlobalSearchField(model: GlobalSearchListUiModel, compact: Boolean) 
 
 @Composable
 private fun FilterChip(filter: GlobalSearchFilterUiModel, compact: Boolean) {
-    val fill = if (filter.selected) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.chip
-    val stroke = if (filter.selected) OfflineTvTheme.Colors.accentCyan else OfflineTvTheme.Colors.card
+    val fill = if (filter.selected) OfflineTvTheme.Menu.selected else OfflineTvTheme.Menu.row
+    val stroke = if (filter.selected) OfflineTvTheme.Colors.accentCyan else OfflineTvTheme.Menu.row
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(fill)
-            .border(1.dp, stroke, RoundedCornerShape(999.dp))
+            .border(1.dp, stroke, OfflineTvTheme.Menu.shape)
             .tvButtonSemantics(filter.onClick != null)
             .clickable(enabled = filter.onClick != null) { filter.onClick?.run() }
             .padding(horizontal = if (compact) 12.dp else 15.dp, vertical = if (compact) 8.dp else 9.dp)
@@ -173,7 +173,7 @@ private fun GlobalSearchRow(item: GlobalSearchRowUiModel, imageBinder: GlobalSea
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(OfflineTvTheme.Colors.surfaceDeep, RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             .tvButtonSemantics(item.onClick != null)
             .combinedClickable(
                 enabled = item.onClick != null,
@@ -202,7 +202,7 @@ private fun GlobalSearchRow(item: GlobalSearchRowUiModel, imageBinder: GlobalSea
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
             Box(
                 modifier = Modifier
-                    .background(OfflineTvTheme.Colors.chip, RoundedCornerShape(12.dp))
+                    .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
                     .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
                 contentAlignment = Alignment.Center
             ) {

@@ -3,6 +3,7 @@ package com.drbep.tvplayer;
 import java.util.List;
 
 public final class VodVisualPanelUiModel {
+    public Runnable onBack;
     public final String title;
     public final String subtitle;
     public final String help;

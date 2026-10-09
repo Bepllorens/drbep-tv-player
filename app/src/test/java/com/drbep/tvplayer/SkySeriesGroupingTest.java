@@ -20,4 +20,14 @@ public class SkySeriesGroupingTest {
         ChannelItem unknown = episode("1", "", "");
         assertSame(unknown, MainActivity.groupSkySeries(Collections.singletonList(unknown)).get(0));
     }
+    @Test public void groupedSeriesOpensOnlyItsEpisodesInSeasonOrder() {
+        ChannelItem second = episode("2", "a", ""); second.vodSeason = 1; second.vodEpisode = 2;
+        ChannelItem first = episode("1", "a", ""); first.vodSeason = 1; first.vodEpisode = 1;
+        ChannelItem next = episode("3", "a", ""); next.vodSeason = 2; next.vodEpisode = 1;
+        ChannelItem other = episode("4", "b", "");
+        ChannelItem series = MainActivity.groupSkySeries(Arrays.asList(second, first, next)).get(0);
+        assertTrue(MainActivity.isDynamicSeriesGroup(series));
+        assertEquals(Arrays.asList(first, second, next), MainActivity.skySeriesEpisodes(series, Arrays.asList(next, other, second, first, series)));
+        assertTrue(MainActivity.skySeriesEpisodes(first, Arrays.asList(first)).isEmpty());
+    }
 }

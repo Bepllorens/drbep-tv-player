@@ -53,6 +53,21 @@ object QuickChannelListComposeBinder {
     @JvmStatic
     fun bind(composeView: ComposeView?, model: QuickChannelListUiModel, imageBinder: QuickChannelImageBinder) {
         if (composeView == null) return
+        if (model.items.isNotEmpty() && model.items.all { it.vod }) {
+            val originals = linkedMapOf<VodVisualItemUiModel, QuickChannelRowUiModel>()
+            model.items.forEach { row ->
+                originals[VodVisualItemUiModel(row.title, row.meta, "", row.logoUrl, row.onClick, null)] = row
+            }
+            val actions = model.actions.map { VodVisualActionUiModel(it.label, it.selected,
+                if (it.enabled) it.onClick else null) }
+            val carousel = VodVisualPanelUiModel(model.title, model.subtitle, "", "Sin títulos",
+                actions, listOf(VodVisualSectionUiModel("Títulos", "", originals.keys.toList())))
+            carousel.onBack = model.onBack
+            VodVisualPanelComposeBinder.bind(composeView, carousel) { image, item ->
+                originals[item]?.let { imageBinder.bind(image, it) }
+            }
+            return
+        }
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         composeView.setContent {
             QuickChannelPanel(model, imageBinder)
@@ -72,7 +87,7 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.backdrop)
+            .background(OfflineTvTheme.Menu.background)
             .tvPanelBackHandler(model.onBack)
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
@@ -125,9 +140,9 @@ private fun QuickChannelActionChip(action: ZapActionItem, focusRequester: FocusR
     val enabled = action.enabled && action.onClick != null
     val background = when {
         focused -> OfflineTvTheme.Colors.focus
-        action.selected || action.highlighted -> OfflineTvTheme.Colors.chipSelected
-        enabled -> OfflineTvTheme.Colors.chip
-        else -> OfflineTvTheme.Colors.surfaceDeep
+        action.selected || action.highlighted -> OfflineTvTheme.Menu.selected
+        enabled -> OfflineTvTheme.Menu.row
+        else -> OfflineTvTheme.Menu.row
     }
     val textColor = when {
         focused -> OfflineTvTheme.Colors.focusInk
@@ -136,7 +151,7 @@ private fun QuickChannelActionChip(action: ZapActionItem, focusRequester: FocusR
     }
     Box(
         modifier = Modifier
-            .background(background, RoundedCornerShape(if (compact) 16.dp else 18.dp))
+            .background(background, OfflineTvTheme.Menu.shape)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(enabled)
@@ -188,11 +203,11 @@ private fun QuickChannelRow(
     downEdgeRequester: FocusRequester?
 ) {
     var focused by remember(item.channelId) { mutableStateOf(false) }
-    val shape = RoundedCornerShape(14.dp)
-    val rowBackground = if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.surfaceDeep
+    val shape = OfflineTvTheme.Menu.shape
+    val rowBackground = if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Menu.row
     val titleColor = if (focused) OfflineTvTheme.Colors.focusInk else Color.White
-    val metaColor = if (focused) OfflineTvTheme.Colors.chip else OfflineTvTheme.Colors.textSoft
-    val badgeBackground = if (focused) Color(0xCCFFFFFF) else OfflineTvTheme.Colors.card
+    val metaColor = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.textSoft
+    val badgeBackground = if (focused) Color(0xCCFFFFFF) else OfflineTvTheme.Menu.row
     val badgeTextColor = if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan
     Row(
         modifier = Modifier
@@ -235,7 +250,7 @@ private fun QuickChannelRow(
                     .height(if (compact) 34.dp else 38.dp)
                     .background(
                         if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.accentCyan,
-                        RoundedCornerShape(4.dp)
+                        OfflineTvTheme.Menu.shape
                     )
             )
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
@@ -257,7 +272,7 @@ private fun QuickChannelRow(
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
             Box(
                 modifier = Modifier
-                    .background(badgeBackground, RoundedCornerShape(12.dp))
+                    .background(badgeBackground, OfflineTvTheme.Menu.shape)
                     .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
                 contentAlignment = Alignment.Center
             ) {

@@ -60,6 +60,10 @@ final class RecentChannelsStore {
         }
     }
 
+    void removeIf(java.util.function.Predicate<RecentChannelItem> predicate) {
+        if (items.removeIf(predicate)) save();
+    }
+
     void add(String channelId, String channelName) {
         if (channelId == null || channelId.trim().isEmpty() || channelName == null || channelName.trim().isEmpty()) {
             return;

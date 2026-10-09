@@ -21,6 +21,9 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
@@ -46,72 +49,34 @@ object StartupLoadingComposeBinder {
 @Composable
 private fun StartupLoadingPanel(model: StartupLoadingUiModel) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
-    val pulse by rememberInfiniteTransition(label = "startupPulse").animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 950, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "startupPulseAlpha"
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x9A000000))
-            .padding(if (compact) 18.dp else 36.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .widthIn(max = if (compact) 420.dp else 560.dp)
-                .fillMaxWidth(if (compact) 0.92f else 0.46f)
-                .background(
-                    Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.94f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))),
-                    RoundedCornerShape(if (compact) 22.dp else 28.dp)
-                )
-                .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(if (compact) 22.dp else 28.dp))
-                .padding(if (compact) 18.dp else 24.dp)
-        ) {
-            BasicText(
-                text = model.title,
-                style = TextStyle(
-                    color = Color.White,
-                    fontSize = if (compact) 21.sp else 26.sp,
-                    fontWeight = FontWeight.Black
-                )
-            )
-            Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
-            BasicText(
-                text = model.step,
-                style = TextStyle(
-                    color = OfflineTvTheme.Colors.accentCyan,
-                    fontSize = if (compact) 14.sp else 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            BasicText(
-                text = model.detail,
-                style = TextStyle(
-                    color = OfflineTvTheme.Colors.textSoft,
-                    fontSize = if (compact) 12.sp else 14.sp
-                )
-            )
-            Spacer(modifier = Modifier.height(if (compact) 14.dp else 18.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.42f)
-                        .height(4.dp)
-                        .alpha(pulse)
-                        .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(999.dp))
-                )
+    val motion by rememberInfiniteTransition(label = "startupMotion").animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "startupSweep")
+    Box(Modifier.fillMaxSize().background(OfflineTvTheme.Menu.background)
+        .padding(if (compact) 24.dp else 56.dp), contentAlignment = Alignment.CenterStart) {
+        androidx.compose.foundation.layout.Row(
+            Modifier.widthIn(max = 640.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(R.drawable.drbep_menu_logo), "DRBEP TV",
+                Modifier.size(if (compact) 76.dp else 112.dp).graphicsLayer { alpha = 0.72f + motion * 0.28f })
+            Spacer(Modifier.width(if (compact) 20.dp else 32.dp))
+            Column(Modifier.weight(1f)) {
+                BasicText(model.title, style = TextStyle(Color.White, if (compact) 24.sp else 30.sp, FontWeight.Bold))
+                Spacer(Modifier.height(16.dp))
+                BasicText(model.step, style = TextStyle(OfflineTvTheme.Colors.accentCyan, if (compact) 14.sp else 17.sp, FontWeight.Medium))
+                Spacer(Modifier.height(8.dp))
+                BasicText(model.detail, style = TextStyle(OfflineTvTheme.Colors.textSoft, if (compact) 12.sp else 14.sp))
+                Spacer(Modifier.height(22.dp))
+                // Indeterminate animation: startup stages do not provide a real percentage.
+                androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(3.dp)) {
+                    drawLine(Color.White.copy(alpha = 0.12f), androidx.compose.ui.geometry.Offset(0f, size.height / 2),
+                        androidx.compose.ui.geometry.Offset(size.width, size.height / 2), strokeWidth = size.height)
+                    val start = motion * size.width * 0.72f
+                    drawLine(Color(0xFF8CD9F8), androidx.compose.ui.geometry.Offset(start, size.height / 2),
+                        androidx.compose.ui.geometry.Offset(start + size.width * 0.28f, size.height / 2), strokeWidth = size.height)
+                }
             }
         }
     }

@@ -11,13 +11,17 @@ final class VlcFallbackPolicy {
     }
 
     static boolean shouldUseVlc(PlayerController.PlaybackRequest request) {
-        if (request == null) {
+        if (request == null || !allowsUnprotectedEngine(request.drmScheme, request.playbackProfile)) {
             return false;
         }
         if (request.vod && request.directPlayback && PLEX_AVI_PROFILE.equals(request.playbackProfile)) {
             return true;
         }
         return false;
+    }
+
+    static boolean allowsUnprotectedEngine(String drm, String profile) {
+        return (drm == null || drm.trim().isEmpty()) && !"u7d_proxy".equalsIgnoreCase(profile);
     }
 
     static boolean shouldRetryUnsupportedAudioWithVlc(int errorCode, String message, boolean alreadyAttempted) {

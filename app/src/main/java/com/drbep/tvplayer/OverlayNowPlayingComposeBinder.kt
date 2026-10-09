@@ -46,18 +46,14 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.linearGradient(listOf(OfflineTvTheme.Colors.card.copy(alpha = 0.9f), OfflineTvTheme.Colors.panelGlass)),
-                RoundedCornerShape(22.dp)
-            )
-            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(22.dp))
+.background(Color.Transparent)
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             BasicText(
                 text = "VIENDO AHORA",
                 style = TextStyle(
-                    color = OfflineTvTheme.Colors.accentGold,
+                    color = Color(0xFF9BAFC1),
                     fontSize = if (compact) 9.sp else 10.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -68,7 +64,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .wrapContentWidth()
-                        .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
+                        .background(Color.Transparent)
                         .padding(start = 3.dp, end = 8.dp, top = 3.dp, bottom = 3.dp)
                 ) {
                     if (model.contextLogoUrl.isNotBlank()) {
@@ -94,7 +90,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .size(if (compact) 17.dp else 19.dp)
-                                .background(Color(model.contextAccentColor), RoundedCornerShape(999.dp))
+                                .background(Color(model.contextAccentColor), OfflineTvTheme.Menu.shape)
                         ) {
                             BasicText(
                                 text = model.contextInitials,
@@ -147,7 +143,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
                 ),
                 modifier = Modifier
                     .wrapContentWidth()
-                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .background(Color.Transparent)
                     .padding(horizontal = 7.dp, vertical = 3.dp)
             )
         }

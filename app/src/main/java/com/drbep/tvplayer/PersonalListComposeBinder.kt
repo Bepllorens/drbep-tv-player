@@ -86,14 +86,14 @@ private fun PersonalListPanel(
         modifier = Modifier
             .fillMaxSize()
             .tvPanelBackHandler(onClose)
-            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.8f))
+            .background(OfflineTvTheme.Menu.scrim)
             .padding(if (compact) 14.dp else 36.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 1f else 0.72f)
-                .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(if (compact) 18.dp else 24.dp))
+                .background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape)
                 .padding(if (compact) 14.dp else 22.dp)
         ) {
             BasicText(
@@ -133,12 +133,12 @@ private fun PersonalListPanelButton(label: String, primary: Boolean, modifier: M
     Box(
         modifier = modifier
             .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(
                 when {
                     focused -> OfflineTvTheme.Colors.focus
                     primary -> OfflineTvTheme.Colors.accentCyan
-                    else -> OfflineTvTheme.Colors.chip
+                    else -> OfflineTvTheme.Menu.row
                 }
             )
             .onFocusChanged { focused = it.isFocused }
@@ -177,8 +177,8 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.chip)
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Menu.row)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(item.onClick != null)
@@ -193,7 +193,7 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
         Box(
             modifier = Modifier
                 .size(if (compact) 40.dp else 46.dp)
-                .background(if (focused) Color(0xFFFFFFFF) else OfflineTvTheme.Colors.card, RoundedCornerShape(12.dp)),
+                .background(if (focused) Color(0xFFFFFFFF) else OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape),
             contentAlignment = Alignment.Center
         ) {
             BasicText(
@@ -227,7 +227,7 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 10.dp))
             Box(
                 modifier = Modifier
-                    .background(if (focused) Color(0xFFFFFFFF) else OfflineTvTheme.Colors.chip, RoundedCornerShape(12.dp))
+                    .background(if (focused) Color(0xFFFFFFFF) else OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
                     .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
                 contentAlignment = Alignment.Center
             ) {

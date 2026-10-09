@@ -138,6 +138,18 @@ final class ChannelOverlayCoordinator {
         }
     }
 
+    boolean selectHomeLiveCategory(String homeKey, String channelId) {
+        if (homeKey == null) return false;
+        String key = homeKey.startsWith("live:") ? "platform:" + homeKey.substring(5)
+                : homeKey.startsWith("group:") ? "custom-group:" + homeKey.substring(6) : "";
+        if (findFilterIndexByKey(key) < 0) return false;
+        selectedFilterKey = key;
+        favoritesOnly = false;
+        searchQuery = "";
+        rebuildVisibleChannels(channelId, channelId);
+        return true;
+    }
+
     boolean selectNaturalFilterForChannel(ChannelItem item) {
         String naturalFilterKey = findNaturalFilterKey(item);
         if (naturalFilterKey == null) {

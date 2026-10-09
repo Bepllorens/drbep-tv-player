@@ -5,6 +5,10 @@ import org.json.*;
 
 /** Playable choices from the current account's manifest; never invents unavailable tracks. */
 final class NetflixTracks {
+    static final class Unavailable extends IllegalArgumentException {
+        final String diagnostic;
+        Unavailable(String diagnostic) { super("No playable video"); this.diagnostic = diagnostic; }
+    }
     static final class Choice {
         final String url, label, language;
         final int width, height;
@@ -65,9 +69,51 @@ final class NetflixTracks {
         choices.subtitles.sort(Comparator.<Choice,Boolean>comparing(c->c.forced)
                 .thenComparingInt(c->c.language.equals("es-ES")?0:c.language.equals("es")?1:2)
                 .thenComparing(c->c.label));
-        if(choices.video.isEmpty()) throw new IllegalArgumentException("No playable video");
+        if(choices.video.isEmpty()) throw new Unavailable(availabilityDiagnostic(root));
         return choices;
     }
+    // Only counts and fixed field-presence flags: never log URLs, tokens or provider messages.
+    static String availabilityDiagnostic(JSONObject root) {
+        JSONArray tracks = root.optJSONArray("videoTracks");
+        int streams = 0, validUrls = 0, dimensions = 0;
+        if (tracks != null) for (int i = 0; i < tracks.length(); i++) {
+            JSONObject track = tracks.optJSONObject(i);
+            JSONArray entries = track == null ? null : track.optJSONArray("streams");
+            if (entries == null) continue;
+            for (int j = 0; j < entries.length(); j++) {
+                JSONObject entry = entries.optJSONObject(j);
+                if (entry == null) continue;
+                streams++;
+                if (NetflixMediaUrls.findUrl(entry.opt("urls"), 0) != null) validUrls++;
+                if (entry.optInt("resW") > 0 && entry.optInt("resH") > 0) dimensions++;
+            }
+        }
+        return "tracks=" + (tracks == null ? -1 : tracks.length()) + " streams=" + streams
+                + " acceptedUrls=" + validUrls + " dimensions=" + dimensions
+                + " errorField=" + (root.has("error") || root.has("errors")) + safeErrorCode(root);
+    }
+
+    private static String safeErrorCode(JSONObject root) {
+        JSONObject error = root.optJSONObject("error");
+        if (error == null) return "";
+        StringBuilder result = new StringBuilder();
+        for (String field : new String[]{"code", "errorcode", "errorCode", "status", "statusCode", "displayCode", "reportingCode", "errorExternalCode", "errorNccpCode", "errorReasonCode", "errorSubCode"}) {
+            Object value = error.opt(field);
+            if (value instanceof Number) result.append(" ").append(field).append("=").append(((Number)value).longValue());
+            else if (value instanceof String && ((String)value).matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,47}"))
+                result.append(" ").append(field).append("=").append((String)value);
+        }
+        if (error.opt("isPolicyError") instanceof Boolean)
+            result.append(" policyError=").append(error.optBoolean("isPolicyError"));
+        String description = error.toString().toLowerCase(Locale.ROOT);
+        java.util.regex.Matcher playApi = java.util.regex.Pattern.compile("(?<![a-z0-9])playapi-[0-9]{1,6}(?![0-9])").matcher(description);
+        if (playApi.find()) result.append(" playApi=").append(playApi.group());
+        for (String category : new String[]{"hdcp", "profile", "auth", "device", "security", "unsupported", "expired", "region"}) {
+            if (description.contains(category)) result.append(" mentions_").append(category).append("=true");
+        }
+        return result.toString();
+    }
+
     static String subtitleSchema(Object value) {
         if (!(value instanceof JSONObject)) return "invalid";
         JSONObject root=(JSONObject)value;

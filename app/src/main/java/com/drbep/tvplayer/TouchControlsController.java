@@ -39,8 +39,8 @@ final class TouchControlsController {
 
     private final Scheduler scheduler;
     private final Host host;
-    private final long touchControlsHideMs;
-    private final long tvTimeshiftHudHideMs;
+    private long touchControlsHideMs;
+    private long tvTimeshiftHudHideMs;
     private boolean tvTimeshiftHudVisible;
 
     private final Runnable hideTouchControlsRunnable;
@@ -60,6 +60,15 @@ final class TouchControlsController {
             tvTimeshiftHudVisible = false;
             host.updateTimeshiftBar();
         };
+    }
+
+    void resetAutoHideDurations(long controlsMs, long timeshiftMs) {
+        touchControlsHideMs = controlsMs; tvTimeshiftHudHideMs = timeshiftMs;
+    }
+
+    void setAutoHideDurationMs(long delayMs) {
+        touchControlsHideMs = Math.max(3000L, Math.min(12000L, delayMs));
+        tvTimeshiftHudHideMs = touchControlsHideMs;
     }
 
     boolean isTvTimeshiftHudVisible() {

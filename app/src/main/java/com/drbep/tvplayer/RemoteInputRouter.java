@@ -11,6 +11,8 @@ final class RemoteInputRouter {
         boolean isMultiViewVisible();
 
         boolean isOverlayVisible();
+        default boolean toggleChannelGuide(){return false;}
+        default boolean closeChannelGuide(){return false;}
 
         boolean isZapBannerVisible();
 
@@ -94,7 +96,7 @@ final class RemoteInputRouter {
 
         void activateZapBannerSelection();
 
-        void finishActivity();
+        void returnToHome();
 
         void moveQuickSearchSelection(int delta);
 
@@ -346,6 +348,7 @@ final class RemoteInputRouter {
             host.hideRecordingsPanel();
             return true;
         }
+        if(host.closeChannelGuide())return true;
         if (host.isOverlayVisible()) {
             host.hideOverlay();
             return true;
@@ -366,7 +369,7 @@ final class RemoteInputRouter {
             host.hideZapBanner();
             return true;
         }
-        host.finishActivity();
+        host.returnToHome();
         return true;
     }
 
@@ -514,6 +517,7 @@ final class RemoteInputRouter {
             return true;
         }
         if (host.isOverlayVisible()) {
+            if(host.toggleChannelGuide())return true;
             host.cycleFilter(1);
             return true;
         }

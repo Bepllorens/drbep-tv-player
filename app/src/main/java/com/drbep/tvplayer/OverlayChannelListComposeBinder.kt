@@ -134,15 +134,14 @@ private fun OverlayChannelList(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(OfflineTvTheme.Colors.panelSoft, RoundedCornerShape(18.dp))
-            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
+            .background(Color.Transparent)
             .padding(if (compact) 8.dp else 10.dp)
     ) {
         if (model.listTitle.isNotBlank()) {
             BasicText(
                 text = model.listTitle.uppercase(),
                 style = TextStyle(
-                    color = OfflineTvTheme.Colors.accentGold,
+                    color = Color(0xFF9BAFC1),
                     fontSize = if (compact) 9.sp else 10.sp,
                     fontWeight = FontWeight.Bold
                 ),
@@ -201,7 +200,7 @@ private fun OverlayEmptyMessage(message: String, compact: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = if (compact) 14.dp else 20.dp, bottom = 14.dp)
-            .background(OfflineTvTheme.Colors.surfaceDeep, RoundedCornerShape(16.dp))
+            .background(Color.Transparent)
             .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 18.dp else 22.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -222,7 +221,7 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 6.dp)
-            .background(OfflineTvTheme.Colors.surfaceDeep, RoundedCornerShape(16.dp))
+            .background(Color.Transparent)
             .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 8.dp else 10.dp)
     ) {
         BasicText(
@@ -244,7 +243,7 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
                 modifier = Modifier
                     .weight(1f)
                     .height(if (compact) 42.dp else 46.dp)
-                    .background(OfflineTvTheme.Colors.card, RoundedCornerShape(14.dp))
+                    .background(Color.Transparent)
                     .tvButtonSemantics(model.onNextFilterClick != null, "Filtro ${model.filterLabel}")
                     .clickable(enabled = model.onNextFilterClick != null) { model.onNextFilterClick?.run() }
                     .padding(horizontal = 10.dp),
@@ -271,7 +270,7 @@ private fun FilterNavButton(label: String, accessibilityLabel: String, action: R
         modifier = Modifier
             .width(if (compact) 48.dp else 54.dp)
             .height(if (compact) 42.dp else 46.dp)
-            .background(OfflineTvTheme.Colors.chipSelected, RoundedCornerShape(14.dp))
+            .background(Color.Transparent)
             .tvButtonSemantics(action != null, accessibilityLabel)
             .clickable(enabled = action != null) { action?.run() },
         contentAlignment = Alignment.Center
@@ -294,8 +293,8 @@ private fun OverlayChannelRow(
     imageBinder: OverlayChannelImageBinder,
     compact: Boolean
 ) {
-    val shape = RoundedCornerShape(14.dp)
-    val bg = if (selected) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep
+    val shape = OfflineTvTheme.Menu.shape
+    val bg = if (selected) Color.White else Color.Transparent
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -311,13 +310,6 @@ private fun OverlayChannelRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(
-                    if (selected) {
-                        Modifier.border(2.dp, OfflineTvTheme.Colors.accentGold, shape)
-                    } else {
-                        Modifier
-                    }
-                )
                 .background(bg, shape)
                 .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 7.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -327,7 +319,7 @@ private fun OverlayChannelRow(
                     modifier = Modifier
                         .width(if (compact) 3.dp else 4.dp)
                         .height(if (compact) 32.dp else 36.dp)
-                        .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(4.dp))
+                        .background(OfflineTvTheme.Colors.accentCyan, OfflineTvTheme.Menu.shape)
                 )
                 Spacer(modifier = Modifier.width(if (compact) 6.dp else 8.dp))
             }
@@ -341,7 +333,8 @@ private fun OverlayChannelRow(
                 ) {
                     BasicText(
                         text = highlightQuery(item.name, item.query),
-                        style = TextStyle(color = Color.White, fontSize = if (compact) 14.sp else 15.sp, fontWeight = FontWeight.Bold),
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        style = TextStyle(color = if (selected) Color(0xFF0D1520) else Color.White, fontSize = if (compact) 14.sp else 15.sp, fontWeight = FontWeight.SemiBold),
                         modifier = Modifier.weight(1f)
                     )
                     if (item.badgeVisible) {
@@ -351,7 +344,7 @@ private fun OverlayChannelRow(
                         Box(
                             modifier = Modifier
                                 .size(if (compact) 30.dp else 34.dp)
-                                .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                .background(Color.Transparent)
                                 .tvButtonSemantics(
                                     item.onFavoriteClick != null,
                                     if (item.favorite) "Quitar ${item.name} de favoritos" else "Añadir ${item.name} a favoritos",
@@ -370,7 +363,8 @@ private fun OverlayChannelRow(
                 Spacer(modifier = Modifier.height(3.dp))
                 BasicText(
                     text = highlightQuery(item.meta, item.query),
-                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp)
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    style = TextStyle(color = if (selected) Color(0xFF526170) else Color(0xFF9BAFC1), fontSize = if (compact) 10.sp else 11.sp)
                 )
             }
         }
@@ -389,7 +383,7 @@ private fun OverlayChannelLogo(item: OverlayChannelRowUiModel, imageBinder: Over
             .height(height),
         factory = { context ->
             FrameLayout(context).apply {
-                background = ContextCompat.getDrawable(context, R.drawable.channel_logo_plate_bg)
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 setPadding(padding, padding, padding, padding)
                 addView(
                     AppCompatImageView(context).apply {
@@ -436,7 +430,7 @@ private data class OverlayChannelLogoBindingKey(
 private fun Chip(text: String, textColor: Color, compact: Boolean) {
     Box(
         modifier = Modifier
-            .background(OfflineTvTheme.Colors.card.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+            .background(Color.Transparent)
             .padding(horizontal = if (compact) 7.dp else 8.dp, vertical = if (compact) 4.dp else 5.dp),
         contentAlignment = Alignment.Center
     ) {

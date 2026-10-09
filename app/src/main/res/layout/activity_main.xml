@@ -92,6 +92,13 @@
         android:focusable="false"
         android:visibility="gone" />
 
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/liveChannelGuide"
+        android:layout_width="300dp"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:focusable="false" />
+
     <LinearLayout
         android:id="@+id/channelOverlay"
         android:layout_width="@dimen/channel_overlay_width"
@@ -375,4 +382,11 @@
                 android:textStyle="bold" />
         </LinearLayout>
     </FrameLayout>
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/playlistImportProgress"
+        android:layout_width="360dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="12dp"
+        android:focusable="false" />
 </FrameLayout>

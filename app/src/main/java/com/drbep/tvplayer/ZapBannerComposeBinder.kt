@@ -62,8 +62,8 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder, mobile
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(24.dp))
-            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
+            .background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape)
+
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Row(
@@ -80,7 +80,7 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder, mobile
                     ChipText(
                         text = model.channelBadge,
                         textColor = OfflineTvTheme.Colors.textSoft,
-                        background = OfflineTvTheme.Colors.card.copy(alpha = 0.6f),
+                        background = OfflineTvTheme.Menu.row,
                         modifier = Modifier.wrapContentWidth()
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -96,7 +96,7 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder, mobile
                         ChipText(
                             text = model.qualityText,
                             textColor = OfflineTvTheme.Colors.accentCyan,
-                            background = OfflineTvTheme.Colors.card.copy(alpha = 0.6f),
+                            background = OfflineTvTheme.Menu.row,
                             modifier = Modifier.wrapContentWidth()
                         )
                     }
@@ -141,14 +141,14 @@ private fun ZapBanner(model: ZapBannerUiModel, logoBinder: ZapLogoBinder, mobile
                 modifier = Modifier
                     .weight(1f)
                     .height(5.dp)
-                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.33f), RoundedCornerShape(999.dp))
+                    .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             ) {
                 if (model.progressVisible) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(model.progress.coerceIn(0, 100) / 100f)
                             .height(5.dp)
-                            .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(999.dp))
+                            .background(OfflineTvTheme.Colors.accentCyan, OfflineTvTheme.Menu.shape)
                     )
                 }
             }
@@ -244,7 +244,7 @@ private fun ChipText(
 ) {
     Box(
         modifier = modifier
-            .background(background, RoundedCornerShape(16.dp))
+            .background(background, OfflineTvTheme.Menu.shape)
             .padding(horizontal = 7.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -257,8 +257,8 @@ private fun ChipText(
 
 @Composable
 private fun ZapActionChip(item: ZapActionItem, compact: Boolean, modifier: Modifier = Modifier) {
-    val background = if (item.selected) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.card.copy(alpha = 0.6f)
-    val stroke = if (item.selected) OfflineTvTheme.Colors.accentCyan else OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f)
+    val background = if (item.selected) OfflineTvTheme.Menu.selected else OfflineTvTheme.Menu.row
+    val stroke = if (item.selected) OfflineTvTheme.Colors.accentCyan else OfflineTvTheme.Menu.selected.copy(alpha = 0.4f)
     val textColor = if (item.highlighted) Color(0xFFFFE08A) else Color.White
     val fontSize = when {
         compact && item.label.length >= 9 -> 8.sp
@@ -272,8 +272,8 @@ private fun ZapActionChip(item: ZapActionItem, compact: Boolean, modifier: Modif
         modifier = modifier
             .height(if (compact) 30.dp else 32.dp)
             .alpha(if (item.enabled) 1f else 0.45f)
-            .background(background, RoundedCornerShape(16.dp))
-            .border(1.dp, stroke, RoundedCornerShape(16.dp))
+            .background(background, OfflineTvTheme.Menu.shape)
+            .border(1.dp, stroke, OfflineTvTheme.Menu.shape)
             .tvButtonSemantics(item.enabled, item.label, item.selected)
             .clickable(enabled = item.enabled) { item.onClick?.run() },
         contentAlignment = Alignment.Center

@@ -234,6 +234,7 @@ final class CatalogRepository {
         long normalizeMs = System.currentTimeMillis() - startMs;
         long permissionsStartMs = System.currentTimeMillis();
         OfflinePermissions offlinePermissions = parseOfflinePermissions(rawPayload);
+        resolveExplicitLiveGroupNames(rawPayload, offlinePermissions);
         long permissionsMs = System.currentTimeMillis() - permissionsStartMs;
         JSONArray channelsArray = payload.optJSONArray("channels");
         if (channelsArray == null) {
@@ -1851,6 +1852,42 @@ final class CatalogRepository {
         return key == null || key.trim().isEmpty() || "all".equals(key.trim());
     }
 
+    private void resolveExplicitLiveGroupNames(JSONObject raw, OfflinePermissions permissions) {
+        // Older snapshots omit group names for administrators; resolve IDs using
+        // the authenticated group directory, never by guessing catalog labels.
+        if (!standaloneMode || raw == null || !permissions.admin || !permissions.allowedLiveGroups.isEmpty()) return;
+        JSONObject grants = raw.optJSONObject("permissions");
+        JSONArray ids = grants == null ? null : grants.optJSONArray("group_ids");
+        if (ids == null || ids.length() == 0) return;
+        java.util.Set<Integer> allowedIds = new java.util.HashSet<>();
+        for (int i = 0; i < ids.length(); i++) if (ids.optInt(i) > 0) allowedIds.add(ids.optInt(i));
+        String origin = vodApiBaseUrl();
+        // The existing management directory lives on the canonical API host;
+        // the Fire host only exposes playback routes. Both require the same
+        // authenticated account. Never send these credentials to arbitrary hosts.
+        String directoryOrigin = PublicBackendUrlPolicy.groupDirectoryOrigin(origin);
+        String directoryJson = snapshotStore == null ? "" : snapshotStore.getLiveGroupDirectory(directoryOrigin);
+        try {
+            HttpClient.Response response = httpClient.get(directoryOrigin + "/api/groups", 4000, 5000, authenticatedVodHeaders());
+            if (response.code == 200) {
+                new JSONArray(response.body);
+                directoryJson = response.body;
+                if (snapshotStore != null) snapshotStore.saveLiveGroupDirectory(directoryOrigin, directoryJson);
+            } else Log.w(TAG, "home explicit groups directory status=" + response.code);
+        } catch (Exception unavailable) { Log.w(TAG, "home explicit groups directory unavailable; using cached names"); }
+        try {
+            JSONArray directory = new JSONArray(directoryJson);
+            for (int i = 0; i < directory.length(); i++) {
+                JSONObject group = directory.optJSONObject(i);
+                if (group != null && allowedIds.contains(group.optInt("id"))) {
+                    String name = safeLower(group.optString("name"));
+                    if (!name.isEmpty()) permissions.allowedLiveGroups.add(name);
+                }
+            }
+            Log.i(TAG, "home explicit groups resolved=" + permissions.allowedLiveGroups.size());
+        } catch (Exception unavailable) { Log.w(TAG, "home explicit groups unresolved; no inferred group grants"); }
+    }
+
     static OfflinePermissions parseOfflinePermissions(JSONObject rawPayload) {
         OfflinePermissions permissions = new OfflinePermissions();
         if (rawPayload == null) {
@@ -1860,6 +1897,9 @@ final class CatalogRepository {
         if (payload == null) {
             return permissions;
         }
+        permissions.liveAccessMetadataKnown = true;
+        permissions.admin = payload.optBoolean("admin", false);
+        permissions.allowedLiveGroups.addAll(parseStringArray(payload.optJSONArray("groups")));
         permissions.liveEnabled = payload.optBoolean("live", true);
         permissions.vodEnabled = payload.optBoolean("vod", false);
         permissions.tivifyGeneralEnabled = payload.optBoolean("tivify_general", false);
@@ -2005,6 +2045,10 @@ final class ChannelItem implements Serializable {
     final String vodDescription;
     final String vodYear;
     final long vodDurationSeconds;
+    Map<String,String> playlistStreamHeaders;
+    Map<String,String> playlistLicenseHeaders;
+    String playlistMimeType = "";
+    String playlistPlaybackError = "";
     String vodReleaseDate = "";
     String vodSeriesId = "";
     String vodSeriesTitle = "";
@@ -2208,6 +2252,9 @@ final class StartupFilterConfig {
 final class OfflinePermissions implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    boolean liveAccessMetadataKnown = false;
+    boolean admin = false;
+    final Set<String> allowedLiveGroups = new HashSet<>();
     boolean liveEnabled = true;
     boolean vodEnabled = false;
     boolean tivifyGeneralEnabled = false;

@@ -62,10 +62,10 @@ final class NetflixPlayer {
                 p.setVideoFrameMetadataListener((presentationUs, releaseNs, format, mediaFormat) -> frameRate.record(presentationUs));
                 activity.stopPlayback = () -> { p.pause(); done.countDown(); };
                 p.addListener(new Player.Listener() {
-                    public void onRenderedFirstFrame() { Log.i("DRBEPNativeCDM", "media3_first_frame=true"); }
-                    public void onVideoSizeChanged(VideoSize size) { Log.i("DRBEPNativeCDM", "media3_video=" + size.width + "x" + size.height); }
+                    public void onRenderedFirstFrame() { Log.w("DRBEPNativeCDM", "media3_first_frame=true"); }
+                    public void onVideoSizeChanged(VideoSize size) { Log.w("DRBEPNativeCDM", "media3_video=" + size.width + "x" + size.height); }
                     public void onPlayerError(PlaybackException e) {
-                        Log.i("DRBEPNativeCDM", "media3_error=" + e.errorCode);
+                        Log.w("DRBEPNativeCDM", "media3_error=" + e.errorCode);
                         Throwable cause = e.getCause();
                         for (int n=0; cause != null && n<5; n++, cause=cause.getCause())
                             Log.i("DRBEPNativeCDM", "media3_error_type=" + cause.getClass().getSimpleName());
@@ -81,6 +81,8 @@ final class NetflixPlayer {
                         if(activity.isFinishing() || activity.isDestroyed() || done.getCount()==0)return;
                         if(p.getPlaybackState()==Player.STATE_READY && p.getCurrentPosition()>30000)
                             NetflixContinueStore.save(activity,activity.getIntent(),p.getCurrentPosition(),p.getDuration());
+                        Log.println(Log.INFO, "DRBEPNativeCDM", "native_progress_ms=" + p.getCurrentPosition()
+                                + " playing=" + p.isPlaying() + " video=" + p.getVideoSize().width + "x" + p.getVideoSize().height);
                         view.postDelayed(this,10000);
                     }
                 },10000);

@@ -8,6 +8,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object OfflineTvTheme {
+    private var menuScale by mutableStateOf(1f)
+    @JvmStatic fun setMenuWidthPercent(percent: Int) { menuScale = if (percent in listOf(85, 100, 115)) percent / 100f else 1f }
+    @JvmStatic fun menuWidthScale(): Float = menuScale
     const val PALETTE_AURORA = "aurora"
     const val PALETTE_GRAPHITE = "graphite"
     const val PALETTE_EMERALD = "emerald"
@@ -34,21 +37,21 @@ object OfflineTvTheme {
 
     private val aurora = Palette(
         id = PALETTE_AURORA,
-        backdrop = Color(0xFF090B16),
-        backdropAccent = Color(0xFF171128),
-        surfaceDeep = Color(0xFF1A1730),
-        panelGlass = Color(0xE6171128),
-        panelSoft = Color(0xB3251D45),
-        card = Color(0xFF3A2857),
-        chip = Color(0xFF251D45),
-        chipSelected = Color(0xFF7940FF),
-        focus = Color(0xFFA889FF),
-        focusInk = Color(0xFF171128),
+        backdrop = Color(0xFF0D1520),
+        backdropAccent = Color(0xFF101C29),
+        surfaceDeep = Color(0xCC101C29),
+        panelGlass = Color(0xD90D1520),
+        panelSoft = Color(0x99101C29),
+        card = Color(0x66203747),
+        chip = Color(0x40203747),
+        chipSelected = Color(0xFF486375),
+        focus = Color(0xFFFFFFFF),
+        focusInk = Color(0xFF101C29),
         accentCyan = Color(0xFF66DFF5),
-        accentSecondary = Color(0xFF9C6BFF),
-        accentGold = Color(0xFFE1C474),
-        textSoft = Color(0xFFB9B3CA),
-        textMuted = Color(0xFFACA8C0),
+        accentSecondary = Color(0xFF8CD9F8),
+        accentGold = Color(0xFFB8C7D5),
+        textSoft = Color(0xFFB8C7D5),
+        textMuted = Color(0xFF9BAFC1),
     )
 
     private val graphite = Palette(
@@ -166,7 +169,7 @@ object OfflineTvTheme {
         val chipSelected get() = activePalette.chipSelected
         val focus get() = activePalette.focus
         val focusInk get() = activePalette.focusInk
-        val focusSurface get() = activePalette.card
+        val focusSurface get() = Color.White.copy(alpha = 0.22f)
         val accentCyan get() = activePalette.accentCyan
         val accentSecondary get() = activePalette.accentSecondary
         val accentGold get() = activePalette.accentGold
@@ -182,12 +185,25 @@ object OfflineTvTheme {
         val destructive = Color(0xFF643040)
         val guideBackdrop get() = activePalette.backdrop.copy(alpha = 0.85f)
         val guidePanel get() = activePalette.backdropAccent.copy(alpha = 0.95f)
-        val guideChannel get() = activePalette.chip
-        val guideTrack get() = activePalette.backdrop
-        val guideProgram get() = activePalette.card
-        val guideProgramEmpty get() = activePalette.surfaceDeep
-        val guideProgramLive = Color(0xFF276B49)
-        val guideProgramScheduled = Color(0xFF6E4A16)
+        val guideChannel get() = Color.Transparent
+        val guideTrack get() = Color.Transparent
+        val guideProgram get() = Color.White.copy(alpha = 0.06f)
+        val guideProgramEmpty get() = Color.Transparent
+        val guideProgramLive = Color(0x24276B49)
+        val guideProgramScheduled = Color(0x306E4A16)
+    }
+
+    object Menu {
+        // Readable text area with an open, transparent edge over the playing video.
+        val background get() = CachedMenuFade.horizontal(
+            0f to Colors.backdrop.copy(alpha = 0.96f),
+            0.6f to Colors.backdrop.copy(alpha = 0.90f),
+            0.9f to Colors.backdrop.copy(alpha = 0.62f),
+            1f to Color.Transparent)
+        val scrim = Color.Transparent
+        val row = Color.Transparent
+        val selected = Color.White.copy(alpha = 0.12f)
+        val shape = androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
     }
 
     object Radius {

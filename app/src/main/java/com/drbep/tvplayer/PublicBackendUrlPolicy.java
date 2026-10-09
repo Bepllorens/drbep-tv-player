@@ -11,6 +11,13 @@ final class PublicBackendUrlPolicy {
     private PublicBackendUrlPolicy() {
     }
 
+    static String groupDirectoryOrigin(String value) {
+        String origin = value == null ? "" : value.trim();
+        while (origin.endsWith("/")) origin = origin.substring(0, origin.length() - 1);
+        if (PUBLIC_PRIMARY_HTTPS.equalsIgnoreCase(origin) || PUBLIC_EMERGENCY_HTTPS.equalsIgnoreCase(origin)) return LEGACY_HTTPS;
+        return origin;
+    }
+
     static String rebaseLegacyUrl(String value, String publicBaseUrl) {
         String url = value == null ? "" : value.trim();
         String base = publicBaseUrl == null ? "" : publicBaseUrl.trim();

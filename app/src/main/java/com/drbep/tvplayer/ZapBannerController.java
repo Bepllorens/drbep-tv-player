@@ -19,7 +19,9 @@ import java.util.List;
  */
 final class ZapBannerController {
 
-    private static final long AUTO_HIDE_MS = 5500L;
+    private long autoHideMs = 5500L;
+
+    void setAutoHideDurationMs(long delayMs) { autoHideMs = Math.max(3000L, Math.min(12000L, delayMs)); }
 
     interface Host {
         String string(int resId);
@@ -131,7 +133,7 @@ final class ZapBannerController {
 
     private void scheduleAutoHide() {
         uiHandler.removeCallbacks(hideRunnable);
-        uiHandler.postDelayed(hideRunnable, AUTO_HIDE_MS);
+        uiHandler.postDelayed(hideRunnable, autoHideMs);
     }
 
     private void updateActionButtons(ChannelItem channelItem) {

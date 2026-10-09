@@ -8,6 +8,25 @@ import android.view.KeyEvent;
 import org.junit.Test;
 
 public class RemoteInputRouterTest {
+    @Test public void rightShowsGuideAndBackClosesItBeforeChannels() {
+        FakeHost host = new FakeHost(); host.overlayVisible=true; host.guideEnabled=true;
+        RemoteInputRouter router=new RemoteInputRouter(host,450L);
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT,0,0));
+        assertEquals("guide:open",host.lastAction);
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_BACK,0,0));
+        assertEquals("guide:close",host.lastAction);
+        assertTrue(host.overlayVisible);
+    }
+
+    @Test
+    public void backFromVodReturnsHomeAfterClosingControls() {
+        FakeHost host = new FakeHost();
+        host.vodPlayback = true;
+        RemoteInputRouter router = new RemoteInputRouter(host, 450L);
+        assertTrue(router.dispatchKey(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0, 0));
+        assertEquals("home", host.lastAction);
+    }
+
     @Test
     public void lettersOpenQuickSearchWhenRecordingsPanelIsClosed() {
         FakeHost host = new FakeHost();
@@ -324,7 +343,15 @@ public class RemoteInputRouterTest {
         boolean recordingsVisible;
         boolean quickSearchVisible;
         boolean multiViewVisible;
-        boolean overlayVisible;
+        boolean overlayVisible, guideEnabled, guideVisible;
+        @Override public boolean toggleChannelGuide(){
+            if(!guideEnabled)return false;guideVisible=!guideVisible;
+            lastAction=guideVisible?"guide:open":"guide:close";return true;
+        }
+        @Override public boolean closeChannelGuide(){
+            if(!guideVisible)return false;guideVisible=false;lastAction="guide:close";return true;
+        }
+
         boolean tvTimeshiftHudActive;
         boolean resumeTimeshiftLive;
         boolean seekTimeshiftBack;
@@ -579,8 +606,8 @@ public class RemoteInputRouterTest {
         }
 
         @Override
-        public void finishActivity() {
-            lastAction = "finish";
+        public void returnToHome() {
+            lastAction = "home";
         }
 
         @Override

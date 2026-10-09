@@ -205,7 +205,9 @@ final class NativeLogin {
                     + " effect=" + (effect != null) + " member=" + member
                     + " cookies_changed=" + !deviceNetflixId.equals(cookies.get("NetflixId")));
             if (member && !deviceNetflixId.equals(cookies.get("NetflixId"))) {
+                if (activity.isFinishing() || activity.isDestroyed()) return;
                 SessionVault.save(activity, identity, cookies);
+                activity.accountLinkConfirmed = true;
                 Log.i(TAG, "login_account_confirmed=true session_saved=true");
                 activity.showLogin("Cuenta Netflix vinculada.\n\nSesión guardada en este dispositivo."
                         + "\nPreparando reproducción…");

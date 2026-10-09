@@ -154,7 +154,14 @@ final class MslHandshake {
             JSONObject masterToken = keyResponse.getJSONObject("mastertoken");
             MslMessages.selfTest(session, masterToken);
             long titleId = activity.getIntent().getLongExtra("manifest_title", 0);
-            if (login) transportProbe(session, masterToken, identity, true, activity);
+            if (login) {
+                transportProbe(session, masterToken, identity, true, activity);
+                if (!activity.accountLinkConfirmed) {
+                    if (!activity.isFinishing() && !activity.isDestroyed())
+                        activity.showError("Vinculación sin completar. Si había una sesión anterior, se ha conservado. Puedes reintentar o volver a TV.");
+                    return;
+                }
+            }
             if (titleId > 0 && !activity.isFinishing()) NetflixManifest.request(activity, session, masterToken, identity, titleId);
         } finally {
             java.util.Arrays.fill(body, (byte) 0);

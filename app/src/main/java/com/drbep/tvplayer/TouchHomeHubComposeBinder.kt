@@ -42,7 +42,7 @@ private fun TouchHomeHub(model: TouchHomeHubUiModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OfflineTvTheme.Colors.panelGlass, RoundedCornerShape(18.dp))
+            .background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape)
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         BasicText(
@@ -55,9 +55,9 @@ private fun TouchHomeHub(model: TouchHomeHubUiModel) {
             style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 11.sp else 12.sp)
         )
         Spacer(modifier = Modifier.height(10.dp))
-        TouchHomeSection(model.libraryTitle, OfflineTvTheme.Colors.card.copy(alpha = 0.8f), OfflineTvTheme.Colors.textSoft, OfflineTvTheme.Colors.card, OfflineTvTheme.Colors.chipSelected, model.libraryActions, compact)
+        TouchHomeSection(model.libraryTitle, OfflineTvTheme.Menu.row, OfflineTvTheme.Colors.textSoft, OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.selected, model.libraryActions, compact)
         Spacer(modifier = Modifier.height(8.dp))
-        TouchHomeSection(model.accessTitle, OfflineTvTheme.Colors.chip.copy(alpha = 0.8f), OfflineTvTheme.Colors.accentGold, OfflineTvTheme.Colors.card, OfflineTvTheme.Colors.focusSurface, model.accessActions, compact)
+        TouchHomeSection(model.accessTitle, OfflineTvTheme.Menu.row, OfflineTvTheme.Colors.accentGold, OfflineTvTheme.Menu.row, OfflineTvTheme.Colors.focusSurface, model.accessActions, compact)
     }
 }
 
@@ -75,7 +75,7 @@ private fun TouchHomeSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(sectionColor, RoundedCornerShape(14.dp))
+            .background(sectionColor, OfflineTvTheme.Menu.shape)
             .padding(horizontal = 8.dp, vertical = 8.dp)
     ) {
         BasicText(

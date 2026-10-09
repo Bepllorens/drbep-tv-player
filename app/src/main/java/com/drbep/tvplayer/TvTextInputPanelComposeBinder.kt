@@ -66,14 +66,14 @@ private fun TvTextInputPanel(model: TvTextInputPanelUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .background(OfflineTvTheme.Colors.overlayScrim),
+            .background(OfflineTvTheme.Menu.scrim),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (compact) 0.94f else 0.48f)
-                .clip(RoundedCornerShape(if (compact) 22.dp else 28.dp))
-                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
+                .clip(OfflineTvTheme.Menu.shape)
+                .background(OfflineTvTheme.Menu.background)
                 .padding(if (compact) 16.dp else 22.dp)
         ) {
             BasicText(
@@ -163,8 +163,8 @@ private fun TvTextInputActionButton(label: String, destructive: Boolean, modifie
     Box(
         modifier = modifier
             .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (focused) OfflineTvTheme.Colors.focus else if (destructive) OfflineTvTheme.Colors.destructive else OfflineTvTheme.Colors.chip)
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(if (focused) OfflineTvTheme.Colors.focus else if (destructive) OfflineTvTheme.Colors.destructive else OfflineTvTheme.Menu.row)
             .then(if (requester != null) Modifier.focusRequester(requester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvButtonSemantics(true)

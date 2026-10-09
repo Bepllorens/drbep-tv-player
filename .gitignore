@@ -10,3 +10,8 @@ app/src/main/java/com/drbep/tvplayer/MainActivity.java.remote-backup
 .tmp-remote/
 __pycache__/
 *.pyc
+
+# Local device captures and packaged builds
+*.apk
+*.apk.idsig
+/device-*.png

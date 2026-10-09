@@ -38,9 +38,9 @@ private fun QuickSearchOverlay(model: QuickSearchOverlayUiModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(if (compact) 14.dp else 18.dp))
-            .background(OfflineTvTheme.Colors.panelGlass)
-            .border(1.dp, OfflineTvTheme.Colors.chipSelected.copy(alpha = 0.4f), RoundedCornerShape(if (compact) 14.dp else 18.dp))
+            .clip(OfflineTvTheme.Menu.shape)
+            .background(OfflineTvTheme.Menu.background)
+
             .padding(if (compact) 12.dp else 14.dp)
     ) {
         BasicText(

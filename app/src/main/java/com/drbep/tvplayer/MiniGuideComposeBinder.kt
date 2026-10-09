@@ -41,7 +41,7 @@ private fun MiniGuidePanel(model: MiniGuideUiModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))
+            .background(OfflineTvTheme.Menu.background)
             .padding(
                 horizontal = if (compact) 18.dp else 56.dp,
                 vertical = if (compact) 18.dp else 42.dp
@@ -83,7 +83,7 @@ private fun MiniGuideRow(item: MiniGuideProgramRowUiModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = if (compact) 6.dp else 8.dp)
-            .background(OfflineTvTheme.Colors.card, RoundedCornerShape(14.dp))
+            .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             .tvButtonSemantics(item.onClick != null)
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
             .padding(if (compact) 12.dp else 14.dp)
@@ -95,7 +95,7 @@ private fun MiniGuideRow(item: MiniGuideProgramRowUiModel) {
         Spacer(modifier = Modifier.height(if (compact) 7.dp else 8.dp))
         Box(
             modifier = Modifier
-                .background(Color(item.badgeColor), RoundedCornerShape(10.dp))
+                .background(Color(item.badgeColor), OfflineTvTheme.Menu.shape)
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             BasicText(
@@ -114,13 +114,13 @@ private fun MiniGuideRow(item: MiniGuideProgramRowUiModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
-                    .background(OfflineTvTheme.Colors.card.copy(alpha = 0.33f), RoundedCornerShape(999.dp))
+                    .background(OfflineTvTheme.Menu.row, OfflineTvTheme.Menu.shape)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth((item.progress.coerceIn(0, 100) / 100f))
                         .height(8.dp)
-                        .background(OfflineTvTheme.Colors.accentCyan, RoundedCornerShape(999.dp))
+                        .background(OfflineTvTheme.Colors.accentCyan, OfflineTvTheme.Menu.shape)
                 )
             }
         }

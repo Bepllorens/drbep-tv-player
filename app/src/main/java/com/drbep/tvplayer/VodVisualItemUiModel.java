@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 public final class VodVisualItemUiModel {
+    public String description = "";
     public final String title;
     public final String meta;
     public final String progressLabel;

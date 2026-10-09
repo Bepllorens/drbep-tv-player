@@ -250,6 +250,30 @@ public class ChannelOverlayCoordinatorTest {
         assertEquals("prime-live", visible.get(0).id);
     }
 
+    @Test public void homeSelectionReplacesPreviousFilterEvenWhenChannelIsShared() {
+        List<ChannelItem> visible = new ArrayList<>();
+        List<ChannelFilter> available = baseFilters();
+        available.add(new ChannelFilter("platform:1", "Movistar", 1, 1, ""));
+        available.add(new ChannelFilter("custom-group:general", "TDT", 2, 0, "General"));
+        ChannelOverlayCoordinator coordinator = new ChannelOverlayCoordinator(
+                visible, new ArrayList<>(), new ArrayList<>(), new HashSet<>(), null,
+                new ChannelCollectionStore(null, "collections"), new ChannelProfileStore(null, "profiles"),
+                new ParentalControlStore(null, "test-parental"));
+        coordinator.applyLoadedChannels(new CatalogLoadResult(sampleChannels(), available, "platform:1"), "ch-1");
+        assertTrue(coordinator.selectHomeLiveCategory("group:general", "ch-1"));
+        assertEquals("custom-group:general", coordinator.getSelectedFilterKey());
+        coordinator.setSearchQuery("old search");
+        coordinator.setFavoritesOnly(true);
+        assertTrue(coordinator.selectHomeLiveCategory("live:1", "ch-1"));
+        assertEquals("platform:1", coordinator.getSelectedFilterKey());
+        assertEquals("", coordinator.getSearchQuery());
+        assertEquals(false, coordinator.isFavoritesOnly());
+        assertEquals("ch-1", visible.get(coordinator.getCurrentIndex()).id);
+        assertEquals(coordinator.getCurrentIndex(), coordinator.getSelectedOverlayIndex());
+        assertEquals(false, coordinator.selectHomeLiveCategory("ALL", "ch-1"));
+        assertEquals("platform:1", coordinator.getSelectedFilterKey());
+    }
+
     private static boolean hasFilter(List<ChannelFilter> filters, String key) {
         for (ChannelFilter filter : filters) {
             if (filter != null && key.equals(filter.key)) {

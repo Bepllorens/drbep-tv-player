@@ -18,7 +18,9 @@ public final class NetflixPlaybackActivity extends androidx.activity.ComponentAc
     volatile Runnable stopPlayback;
     NetflixPlaybackControls controls;
     volatile boolean completed;
+    volatile boolean accountLinkConfirmed;
     private boolean failed;
+    private boolean tracksUnavailable;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE
@@ -29,6 +31,7 @@ public final class NetflixPlaybackActivity extends androidx.activity.ComponentAc
         showLogin("Preparando Netflix…");
         new Thread(() -> {
             try (MediaDrm drm = new MediaDrm(UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"))) {
+                Log.w(TAG, "native_security_level=" + drm.getPropertyString("securityLevel"));
                 if (!"AFTKRT".equals(android.os.Build.MODEL) || !"27925".equals(drm.getPropertyString("systemId")))
                     throw new IllegalStateException("Unsupported device");
                 String identity = getPreferences(MODE_PRIVATE).getString("native_identity", null);
@@ -41,8 +44,11 @@ public final class NetflixPlaybackActivity extends androidx.activity.ComponentAc
                     java.util.Arrays.fill(random, (byte)0);
                 }
                 boolean login;
+                boolean renewLink = getIntent().getBooleanExtra("renew_link", false);
+                getIntent().removeExtra("renew_link");
                 try { SessionVault.load(this, identity).clear(); login = false; }
                 catch (Exception missing) { login = true; }
+                login |= renewLink;
                 if (login) showLogin("Vinculando Netflix…\nPrepara tu cuenta para introducir el código que aparecerá aquí.");
                 try { byte[] check = drm.openSession(); drm.closeSession(check); }
                 catch (NotProvisionedException e) { provision(drm); }
@@ -53,8 +59,20 @@ public final class NetflixPlaybackActivity extends androidx.activity.ComponentAc
                 }
                 runOnUiThread(() -> { if (!failed && !isFinishing()) finish(); });
             } catch (Exception error) {
-                Log.i(TAG, "netflix_playback_error=" + error.getClass().getSimpleName());
-                showError("No se pudo iniciar Netflix. Puedes reintentar o volver a vincular tu cuenta.");
+                Log.w(TAG, "netflix_playback_error=" + error.getClass().getSimpleName());
+                // Report code locations only; exception messages may contain private service data.
+                StackTraceElement[] frames = error.getStackTrace();
+                for (int i = 0; i < Math.min(4, frames.length); i++) {
+                    Log.w(TAG, "netflix_error_location=" + frames[i].getClassName()
+                            + "." + frames[i].getMethodName() + ":" + frames[i].getLineNumber());
+                }
+                tracksUnavailable = error instanceof NetflixTracks.Unavailable;
+                if (tracksUnavailable) {
+                    Log.w(TAG, "netflix_tracks_unavailable " + ((NetflixTracks.Unavailable) error).diagnostic);
+                    showError("No se encontraron pistas de vídeo reproducibles para este título. Puedes reintentar o volver a TV. No se ha borrado la vinculación.");
+                } else {
+                    showError("No se pudo iniciar Netflix. Puedes reintentar o volver a vincular tu cuenta.");
+                }
             }
         }, "netflix-native-playback").start();
     }
@@ -64,6 +82,13 @@ public final class NetflixPlaybackActivity extends androidx.activity.ComponentAc
     }
     @Override public void onBackPressed() {
         if (controls != null) controls.back(); else exitPlayback(false);
+    }
+    void renewLink() {
+        android.content.Intent renewal = new android.content.Intent(getIntent()).putExtra("renew_link", true);
+        Runnable stop = stopPlayback;
+        if (stop != null) stop.run();
+        startActivity(renewal);
+        finish();
     }
     void exitPlayback(boolean toTv) {
         setResult(RESULT_OK, new android.content.Intent().putExtra("return_to_tv", toTv));
@@ -93,8 +118,10 @@ public final class NetflixPlaybackActivity extends androidx.activity.ComponentAc
             if (actions) {
                 android.widget.Button retry = new android.widget.Button(this); retry.setText("Reintentar");
                 retry.setOnClickListener(v -> { startActivity(new android.content.Intent(getIntent())); finish(); }); layout.addView(retry);
+                if (!tracksUnavailable) {
                 android.widget.Button link = new android.widget.Button(this); link.setText("Volver a vincular Netflix");
-                link.setOnClickListener(v -> { getSharedPreferences("netflix_account",0).edit().remove("session").apply(); startActivity(new android.content.Intent(getIntent())); finish(); }); layout.addView(link);
+                link.setOnClickListener(v -> renewLink()); layout.addView(link);
+                }
                 android.widget.Button tv = new android.widget.Button(this); tv.setText("Volver a TV");
                 tv.setOnClickListener(v -> exitPlayback(true)); layout.addView(tv);
                 retry.requestFocus();

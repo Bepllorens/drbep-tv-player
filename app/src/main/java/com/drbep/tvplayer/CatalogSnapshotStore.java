@@ -102,13 +102,13 @@ final class CatalogSnapshotStore {
     private static final String STARTUP_PLAYBACK_CACHE_FILE = "catalog_startup_playback.cache";
     private static final String VOD_RESUME_ITEMS_CACHE_FILE = "vod_resume_items.cache";
     private static final String EPG_CHANNEL_CACHE_FILE = "catalog_epg_channels.cache";
-    private static final int STARTUP_PARSED_CACHE_VERSION = 2;
+    private static final int STARTUP_PARSED_CACHE_VERSION = 4;
     private static final int STARTUP_PLAYBACK_CACHE_VERSION = 1;
     private static final int EPG_CHANNEL_CACHE_VERSION = 1;
     // Bump whenever a release learns a new catalog collection. Otherwise an APK
     // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
     // produced by an older parser (for example, before Plex VOD existed).
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 13;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 15;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -1111,6 +1111,14 @@ final class CatalogSnapshotStore {
         return value == null ? "" : value.trim();
     }
 
+    String getLiveGroupDirectory(String origin) {
+        return prefs.getString("live_group_directory_" + android.net.Uri.encode(origin), "");
+    }
+
+    void saveLiveGroupDirectory(String origin, String json) {
+        prefs.edit().putString("live_group_directory_" + android.net.Uri.encode(origin), json).apply();
+    }
+
     String getAccessToken() {
         String encrypted = prefs.getString(PREF_ACCESS_TOKEN_ENCRYPTED, "");
         if (encrypted != null && !encrypted.trim().isEmpty()) {
@@ -2015,6 +2023,9 @@ final class CatalogSnapshotStore {
         writeStringSet(out, p.protectedFilterKeys);
         writeStringSet(out, p.protectedChannelIds);
         writeStringSet(out, p.protectedGroupNames);
+        out.writeBoolean(p.liveAccessMetadataKnown);
+        out.writeBoolean(p.admin);
+        writeStringSet(out, p.allowedLiveGroups);
     }
 
     static OfflinePermissions readOfflinePermissions(DataInputStream in, int formatVersion) throws IOException {
@@ -2055,6 +2066,11 @@ final class CatalogSnapshotStore {
         readStringSet(in, p.protectedFilterKeys);
         readStringSet(in, p.protectedChannelIds);
         readStringSet(in, p.protectedGroupNames);
+        if (formatVersion >= 14) {
+            p.liveAccessMetadataKnown = in.readBoolean();
+            p.admin = in.readBoolean();
+            readStringSet(in, p.allowedLiveGroups);
+        }
         return p;
     }
 

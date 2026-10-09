@@ -119,7 +119,7 @@ private fun TimelineChannelCell(row: TimelineGuideRowUiModel, imageBinder: Timel
         modifier = Modifier
             .width(width)
             .height(62.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(OfflineTvTheme.Colors.guideChannel)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -163,8 +163,8 @@ private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: D
     val requester = remember { FocusRequester() }
     TvRequestFocus(requester, block.preferred, block.preferred)
     val background = when {
-        focused && block.scheduled -> OfflineTvTheme.Colors.accentGold
-        focused && block.live -> Color(0xFF49A06E)
+        focused && block.scheduled -> OfflineTvTheme.Colors.focusSurface
+        focused && block.live -> OfflineTvTheme.Colors.focusSurface
         focused -> OfflineTvTheme.Colors.focusSurface
         block.empty -> OfflineTvTheme.Colors.guideProgramEmpty
         block.scheduled -> OfflineTvTheme.Colors.guideProgramScheduled
@@ -180,9 +180,9 @@ private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: D
             .border(
                 width = if (focused) OfflineTvTheme.Control.focusBorder else 0.dp,
                 color = if (focused) OfflineTvTheme.Colors.focus else Color.Transparent,
-                shape = RoundedCornerShape(9.dp)
+                shape = OfflineTvTheme.Menu.shape
             )
-            .clip(RoundedCornerShape(9.dp))
+            .clip(OfflineTvTheme.Menu.shape)
             .background(background)
             .alpha(if (block.empty && !focused) 0.82f else 1f)
             .focusRequester(requester)

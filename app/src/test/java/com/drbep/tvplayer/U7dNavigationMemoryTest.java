@@ -3,6 +3,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class U7dNavigationMemoryTest {
+    @Test public void returnsToPreviousProgrammeWhenChangingDays() {
+        U7dNavigationMemory memory = new U7dNavigationMemory();
+        memory.save("a", "Friday", "morning");
+        memory.save("a", "Thursday", "evening");
+        memory.save("a", "Friday", "");
+        assertEquals("morning", memory.rowForDay("a", "Friday"));
+        assertEquals("evening", memory.rowForDay("a", "Thursday"));
+        assertEquals("", memory.rowForDay("b", "Friday"));
+    }
     @Test public void keepsDayAndRowSeparatelyForEachChannel() {
         U7dNavigationMemory memory = new U7dNavigationMemory();
         memory.save("a", "Friday", "23:30 programme");

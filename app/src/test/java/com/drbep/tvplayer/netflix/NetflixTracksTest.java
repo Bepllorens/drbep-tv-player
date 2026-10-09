@@ -57,4 +57,50 @@ public class NetflixTracksTest {
         assertTrue(choices.subtitles.get(3).label.endsWith(" · Forzados"));
     }
 
+    @Test public void missingVideoDoesNotSuggestAnAccountFailureOrLeakProviderData() throws Exception {
+        JSONObject response = new JSONObject().put("error", "secret-provider-detail");
+        try { NetflixTracks.parse(response); fail("expected unavailable"); }
+        catch (NetflixTracks.Unavailable error) {
+            assertEquals("tracks=-1 streams=0 acceptedUrls=0 dimensions=0 errorField=true", error.diagnostic);
+            assertFalse(error.diagnostic.contains("secret-provider-detail"));
+        }
+    }
+    @Test public void diagnosticDistinguishesRejectedUrlsFromMissingDimensions() throws Exception {
+        JSONObject value = new JSONObject().put("videoTracks",new JSONArray().put(new JSONObject()
+            .put("streams",new JSONArray().put(stream(1920,1080,1000).put("urls","https://example.org/private-token"))
+                .put(stream(0,0,1000)))));
+        try { NetflixTracks.parse(value); fail("expected unavailable"); }
+        catch (NetflixTracks.Unavailable error) {
+            assertEquals("tracks=1 streams=2 acceptedUrls=1 dimensions=1 errorField=false",error.diagnostic);
+            assertFalse(error.diagnostic.contains("private-token"));
+        }
+    }
+    @Test public void providerCodeIsBoundedAndMessagesAreExcluded() throws Exception {
+        JSONObject value = new JSONObject().put("error",new JSONObject().put("code","TEST-42")
+                .put("message","https://private.example/token-secret"));
+        try { NetflixTracks.parse(value); fail("expected unavailable"); }
+        catch(NetflixTracks.Unavailable error) {
+            assertTrue(error.diagnostic.endsWith("code=TEST-42"));
+            assertFalse(error.diagnostic.contains("private.example"));
+        }
+    }
+    @Test public void extractsOnlyPlayApiCodeFromNestedProviderError() throws Exception {
+        JSONObject value = new JSONObject().put("error", new JSONObject().put("code", "FAIL")
+            .put("detail", new JSONObject().put("message", "playapi-105 https://private.example/secret-token")));
+        String diagnostic = NetflixTracks.availabilityDiagnostic(value);
+        assertTrue(diagnostic.contains("playApi=playapi-105"));
+        assertFalse(diagnostic.contains("private.example"));
+        assertFalse(diagnostic.contains("secret-token"));
+    }
+    @Test public void reportsProviderReasonWithoutPlaybackContextOrPrivateMessages() throws Exception {
+        JSONObject value = new JSONObject().put("error", new JSONObject().put("code", "FAIL")
+            .put("errorReasonCode", 42).put("isPolicyError", true)
+            .put("playbackContextId", "private-session-id")
+            .put("errorDisplayMessage", "private-provider-message")
+            .put("errorExternalCode", "https://private.example/token"));
+        String diagnostic = NetflixTracks.availabilityDiagnostic(value);
+        assertTrue(diagnostic.contains("errorReasonCode=42"));
+        assertTrue(diagnostic.contains("policyError=true"));
+        assertFalse(diagnostic.contains("private"));
+    }
 }

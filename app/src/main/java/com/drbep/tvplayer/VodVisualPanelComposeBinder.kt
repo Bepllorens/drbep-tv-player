@@ -1,41 +1,17 @@
 package com.drbep.tvplayer
 
 import android.view.KeyEvent
-import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.ComposeView
@@ -47,258 +23,122 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
+import com.bumptech.glide.Glide
 
 object VodVisualPanelComposeBinder {
-    @JvmStatic
-    fun bind(composeView: ComposeView?, model: VodVisualPanelUiModel, imageBinder: VodVisualPosterImageBinder) {
-        if (composeView == null) return
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-        composeView.setContent {
-            VodVisualPanel(model, imageBinder)
-        }
+    // Indices and public identities only: no callbacks, Views or Activity references.
+    private val positions = object : LinkedHashMap<String, Pair<Int, String>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Int, String>>?) = size > 16
+    }
+    @JvmStatic fun bind(view: ComposeView?, model: VodVisualPanelUiModel, binder: VodVisualPosterImageBinder) {
+        view ?: return
+        val key = model.title + "|" + model.subtitle + "|" + model.actions.orEmpty().joinToString { it.label }
+        val saved = positions[key]
+        view.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        view.setContent { PlaylistImportIndicator.Surface { VodCarouselPanel(model, binder, saved) { row, item -> positions[key] = row to item } } }
     }
 }
 
+private fun artworkIdentity(item: VodVisualItemUiModel) = item.title + "|" + item.posterUrl
+
 @Composable
-private fun VodVisualPanel(model: VodVisualPanelUiModel, imageBinder: VodVisualPosterImageBinder) {
+private fun VodCarouselPanel(model: VodVisualPanelUiModel, binder: VodVisualPosterImageBinder,
+    saved: Pair<Int, String>?, rememberSelection: (Int, String) -> Unit) {
+    var restoredOnce by remember { mutableStateOf(false) }
     val compact = LocalConfiguration.current.screenWidthDp < 720
-    val firstActionRequester = rememberTvInitialFocusRequester(!model.actions.isNullOrEmpty(), model)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight()
-            .background(OfflineTvTheme.Colors.overlayScrim),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(if (compact) 0.94f else 0.96f)
-                .fillMaxHeight(if (compact) 0.94f else 0.91f)
-                .clip(RoundedCornerShape(if (compact) 20.dp else 28.dp))
-                .background(Brush.verticalGradient(listOf(OfflineTvTheme.Colors.chip.copy(alpha = 0.95f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.98f))))
-                .padding(if (compact) 14.dp else 20.dp)
-        ) {
-            BasicText(
-                text = model.title,
-                style = TextStyle(color = Color.White, fontSize = if (compact) 22.sp else 28.sp, fontWeight = FontWeight.Black),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(5.dp))
-            BasicText(
-                text = model.subtitle,
-                style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 12.sp else 14.sp),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (model.help.isNotBlank()) {
-            Spacer(modifier = Modifier.height(if (compact) 8.dp else 10.dp))
-            BasicText(
-                text = model.help,
-                style = TextStyle(color = Color(0xFFFFD887), fontSize = if (compact) 11.sp else 12.sp, fontWeight = FontWeight.Bold),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            }
-            Spacer(modifier = Modifier.height(if (compact) 10.dp else 12.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)) {
-                items((model.actions ?: emptyList()).withIndex().toList()) { indexedAction ->
-                    VodVisualActionChip(indexedAction.value, compact, if (indexedAction.index == 0) firstActionRequester else null)
-                }
-            }
-            Spacer(modifier = Modifier.height(if (compact) 12.dp else 16.dp))
-            if ((model.sections ?: emptyList()).isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    BasicText(
-                        text = model.emptyLabel,
-                        style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(if (compact) 16.dp else 20.dp)
-                ) {
-                    items(model.sections ?: emptyList()) { section ->
-                        VodVisualSection(section, imageBinder, compact)
-                    }
-                }
+    val sections = model.sections.orEmpty()
+    val restoreRow = saved?.first?.coerceIn(0, (sections.size - 1).coerceAtLeast(0)) ?: 0
+    val restoreIndex = sections.getOrNull(restoreRow)?.items.orEmpty().indexOfFirst { artworkIdentity(it) == saved?.second }
+    val restore = saved != null && restoreIndex >= 0
+    var selected by remember(model) { mutableStateOf(sections.getOrNull(restoreRow)?.items?.getOrNull(restoreIndex.coerceAtLeast(0))) }
+    val firstEnabledAction = model.actions.orEmpty().indexOfFirst { it.onClick != null }
+    val firstAction = rememberTvInitialFocusRequester(!restore && firstEnabledAction >= 0, model)
+    val columnState = rememberLazyListState(if (restore) restoreRow else 0)
+    Column(Modifier.fillMaxSize().tvPanelBackHandler(model.onBack).background(OfflineTvTheme.Menu.scrim)
+        .background(OfflineTvTheme.Menu.background).padding(horizontal = 24.dp, vertical = 16.dp)) {
+        BasicText(model.title, maxLines = 1, style = TextStyle(Color.White, 24.sp, FontWeight.Bold))
+        BasicText(model.subtitle, maxLines = 1, style = TextStyle(OfflineTvTheme.Colors.textSoft, 12.sp))
+        Spacer(Modifier.height(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(model.actions.orEmpty().size) { index ->
+                val action = model.actions[index]
+                var focused by remember { mutableStateOf(false) }
+                BasicText(action.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(if (focused) OfflineTvTheme.Colors.focusInk else Color.White, 12.sp, FontWeight.Bold),
+                    modifier = Modifier.widthIn(max = 185.dp)
+                        .then(if (index == firstEnabledAction) Modifier.focusRequester(firstAction) else Modifier)
+                        .onFocusChanged { focused = it.isFocused }
+                        .background(if (focused) Color.White else Color.Transparent, RoundedCornerShape(3.dp))
+                        .tvButtonSemantics(action.onClick != null, action.label)
+                        .clickable(enabled = action.onClick != null) { action.onClick?.run() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp))
             }
         }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalFoundationApi::class)
-private fun VodVisualActionChip(action: VodVisualActionUiModel, compact: Boolean, focusRequester: FocusRequester?) {
-    var focused by remember { mutableStateOf(false) }
-    val background = if (focused) OfflineTvTheme.Colors.focus else if (action.filter) OfflineTvTheme.Colors.chipSelected else OfflineTvTheme.Colors.chip
-    val textColor = if (focused) OfflineTvTheme.Colors.backdropAccent else Color.White
-    Box(
-        modifier = Modifier
-            .height(if (compact) 38.dp else 42.dp)
-            .width(if (compact) 138.dp else 156.dp)
-            .clip(RoundedCornerShape(13.dp))
-            .background(background)
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged { focused = it.isFocused }
-            .tvButtonSemantics(action.onClick != null, action.label)
-            .combinedClickable(enabled = action.onClick != null, onClick = { action.onClick?.run() })
-            .padding(horizontal = if (compact) 10.dp else 12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        BasicText(
-            text = action.label,
-            style = TextStyle(color = textColor, fontSize = if (compact) 11.sp else 13.sp, fontWeight = FontWeight.Bold),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun VodVisualSection(section: VodVisualSectionUiModel, imageBinder: VodVisualPosterImageBinder, compact: Boolean) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        BasicText(
-            text = section.title,
-            style = TextStyle(color = Color.White, fontSize = if (compact) 16.sp else 18.sp, fontWeight = FontWeight.Black),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (section.subtitle.isNotBlank()) {
-            Spacer(modifier = Modifier.height(3.dp))
-            BasicText(
-                text = section.subtitle,
-                style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Column(Modifier.fillMaxWidth().height(if (compact) 94.dp else 104.dp).padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            BasicText(selected?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = TextStyle(Color.White, 20.sp, FontWeight.Bold))
+            BasicText(listOf(selected?.meta.orEmpty(), selected?.progressLabel.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(OfflineTvTheme.Colors.accentCyan, 12.sp))
+            BasicText(selected?.description.orEmpty(), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                style = TextStyle(OfflineTvTheme.Colors.textSoft, 12.sp))
         }
-        Spacer(modifier = Modifier.height(if (compact) 8.dp else 10.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)) {
-            items(section.items ?: emptyList()) { item ->
-                VodVisualPoster(item, imageBinder, compact)
-            }
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalFoundationApi::class)
-private fun VodVisualPoster(item: VodVisualItemUiModel, imageBinder: VodVisualPosterImageBinder, compact: Boolean) {
-    var focused by remember { mutableStateOf(false) }
-    val dense = item.compactCard
-    Column(
-        modifier = Modifier
-            .width(if (compact) 124.dp else 150.dp)
-            .height(
-                if (dense) {
-                    if (compact) 244.dp else 282.dp
-                } else {
-                    if (compact) 244.dp else 270.dp
-                }
-            )
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
-            .onFocusChanged { focused = it.isFocused }
-            .onPreviewKeyEvent {
-                if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU) {
-                    item.onMenu?.run()
-                    true
-                } else {
-                    false
-                }
-            }
-            .tvButtonSemantics(
-                item.onClick != null,
-                listOf(item.title, item.meta, item.progressLabel).filter { it.isNotBlank() }.joinToString(". ")
-            )
-            .combinedClickable(enabled = item.onClick != null, onClick = { item.onClick?.run() }, onLongClick = item.onMenu?.let { { it.run() } })
-            .padding(if (compact) 8.dp else 10.dp)
-    ) {
-        AndroidView(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(
-                    if (dense) {
-                        if (compact) 108.dp else 136.dp
-                    } else {
-                        if (compact) 120.dp else 132.dp
-                    }
-                )
-                .clip(RoundedCornerShape(12.dp)),
-            factory = { context ->
-                FrameLayout(context).apply {
-                    background = ContextCompat.getDrawable(context, R.drawable.channel_logo_plate_bg)
-                    addView(
-                        AppCompatImageView(context).apply {
-                            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                            scaleType = ImageView.ScaleType.FIT_CENTER
-                            contentDescription = null
+        if (sections.isEmpty()) BasicText(model.emptyLabel, style = TextStyle(Color.White, 16.sp))
+        LazyColumn(Modifier.weight(1f), state = columnState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(sections.size) { row ->
+                val section = sections[row]
+                Column {
+                    BasicText(section.title, maxLines = 1, style = TextStyle(Color.White, 17.sp, FontWeight.Bold))
+                    if (section.subtitle.isNotBlank()) BasicText(section.subtitle, maxLines = 1,
+                        style = TextStyle(OfflineTvTheme.Colors.textMuted, 10.sp))
+                    val rowState = rememberLazyListState(if (restore && row == restoreRow) restoreIndex else 0)
+                    LazyRow(Modifier.fillMaxWidth().focusGroup(), state = rowState,
+                        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(section.items.orEmpty().size) { index ->
+                            val item = section.items[index]
+                            val requester = remember { FocusRequester() }
+                            if (!restoredOnce && ((restore && row == restoreRow && index == restoreIndex) || (!restore && firstEnabledAction < 0 && row == 0 && index == 0))) LaunchedEffect(Unit) {
+                                withFrameNanos { }; if (runCatching { requester.requestFocus() }.isSuccess) restoredOnce = true
+                            }
+                            VodCover(item, binder, compact, requester) {
+                                selected = item; rememberSelection(row, artworkIdentity(item))
+                            }
                         }
-                    )
-                }
-            },
-            update = { frame ->
-                imageBinder.bind(frame.getChildAt(0) as ImageView, item)
-            }
-        )
-        Spacer(modifier = Modifier.height(if (dense) 6.dp else 8.dp))
-        BasicText(
-            text = item.title,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (dense) { if (compact) 36.dp else 38.dp } else { if (compact) 32.dp else 36.dp }),
-            style = TextStyle(color = Color.White, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(modifier = Modifier.height(if (dense) 3.dp else 4.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (dense) { if (compact) 36.dp else 38.dp } else { if (compact) 28.dp else 32.dp })
-        ) {
-            if (item.meta.isNotBlank()) {
-                BasicText(
-                    text = item.meta,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = TextStyle(
-                        color = OfflineTvTheme.Colors.textSoft,
-                        fontSize = if (compact) 10.sp else 11.sp,
-                        lineHeight = if (compact) 13.sp else 14.sp
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(if (dense) 4.dp else 6.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (dense) 24.dp else 28.dp),
-            contentAlignment = Alignment.TopStart
-        ) {
-            if (item.progressLabel.isNotBlank()) {
-                val badgeFill = when (item.badgeTone) {
-                    "available" -> OfflineTvTheme.Colors.statusLive
-                    "finished" -> Color(0xFF46515D)
-                    else -> Color(0xFF2C6B58)
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(badgeFill)
-                        .padding(horizontal = 8.dp, vertical = if (dense) 3.dp else 4.dp)
-                ) {
-                    BasicText(
-                        text = item.progressLabel,
-                        style = TextStyle(color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    )
+                    }
                 }
             }
         }
+        BasicText("← → Títulos   ·   ↑ ↓ Filas   ·   OK Ficha   ·   Menú Opciones", maxLines = 1,
+            style = TextStyle(OfflineTvTheme.Colors.textMuted, 10.sp), modifier = Modifier.padding(top = 5.dp))
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun VodCover(item: VodVisualItemUiModel, binder: VodVisualPosterImageBinder,
+    compact: Boolean, requester: FocusRequester, onFocus: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Column(Modifier.width(if (compact) 94.dp else 110.dp).scale(if (focused) 1.035f else 1f)
+        .focusRequester(requester).onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
+        .onPreviewKeyEvent {
+            if (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU && item.onMenu != null) {
+                if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) item.onMenu.run()
+                true
+            } else false
+        }
+        .tvButtonSemantics(item.onClick != null, "${item.title}. ${item.meta}")
+        .combinedClickable(enabled = item.onClick != null, onClick = { onFocus(); item.onClick?.run() },
+            onLongClick = item.onMenu?.let { { it.run() } }), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        AndroidView(modifier = Modifier.fillMaxWidth().height(if (compact) 132.dp else 156.dp),
+            factory = { AppCompatImageView(it).apply { scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = null } },
+            onReset = null, onRelease = { Glide.with(it).clear(it) }, update = { image ->
+                val identity = artworkIdentity(item)
+                if (image.getTag(R.id.startup_home_artwork_request) != identity) {
+                    image.setTag(R.id.startup_home_artwork_request, identity); binder.bind(image, item)
+                }
+            })
+        BasicText(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.height(34.dp),
+            style = TextStyle(if (focused) OfflineTvTheme.Colors.accentCyan else Color.White, 12.sp, FontWeight.Bold))
     }
 }

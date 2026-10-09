@@ -19,6 +19,16 @@ public final class TimeshiftBarUiModel {
     public final SeekCommitHandler seekCommitHandler;
     public final boolean focused;
     public final boolean modernStyle;
+    public String windowStartLabel = "", windowEndLabel = "";
+    public Runnable onJumpClick;
+    public int availableStart = -1, availableEnd = -1;
+    public String availableLabel = "";
+    public TimeshiftBarUiModel withAvailableWindow(int start, int end, String label) {
+        availableStart = Math.max(0, Math.min(1000, start));
+        availableEnd = Math.max(availableStart, Math.min(1000, end));
+        availableLabel = label == null ? "" : label;
+        return this;
+    }
 
     public TimeshiftBarUiModel(
             String statusLabel,
@@ -85,6 +95,11 @@ public final class TimeshiftBarUiModel {
 
     public TimeshiftBarUiModel withModernStyle(boolean modernStyle) {
         return new TimeshiftBarUiModel(statusLabel, progress, liveVisible, onLiveClick, onSeekStart, onSeekEnd,
-                previewLabelProvider, seekCommitHandler, focused, modernStyle);
+                previewLabelProvider, seekCommitHandler, focused, modernStyle).copyAvailableFrom(this);
+    }
+    private TimeshiftBarUiModel copyAvailableFrom(TimeshiftBarUiModel source) {
+        windowStartLabel=source.windowStartLabel;windowEndLabel=source.windowEndLabel;onJumpClick=source.onJumpClick;
+        availableStart = source.availableStart; availableEnd = source.availableEnd; availableLabel = source.availableLabel;
+        return this;
     }
 }

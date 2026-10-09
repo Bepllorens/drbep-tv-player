@@ -8,6 +8,18 @@ import org.junit.Test;
 
 public class PlaybackRouteLearningPolicyTest {
     @Test
+    public void learnedRoutesExpireAtTwoWeeksAndRejectInvalidDates() {
+        long learnedAt = 1_000_000L;
+        long ttl = PlaybackRouteLearningPolicy.LEARNED_ROUTE_TTL_MS;
+        assertFalse(PlaybackRouteLearningPolicy.isExpired(learnedAt, learnedAt));
+        assertFalse(PlaybackRouteLearningPolicy.isExpired(learnedAt, learnedAt + ttl - 1L));
+        assertTrue(PlaybackRouteLearningPolicy.isExpired(learnedAt, learnedAt + ttl));
+        assertTrue(PlaybackRouteLearningPolicy.isExpired(0L, learnedAt));
+        assertTrue(PlaybackRouteLearningPolicy.isExpired(learnedAt + 1L, learnedAt));
+        assertFalse(PlaybackRouteLearningPolicy.isExpired(learnedAt + ttl, learnedAt + ttl + 1L));
+    }
+
+    @Test
     public void compatibilityFallbackWinsOverRequestedDirectMode() {
         assertEquals(
                 PlaybackModeStore.MODE_COMPAT,

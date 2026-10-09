@@ -37,6 +37,7 @@ final class VlcDirectPlayController {
     private boolean active;
     private boolean firstFrameReported;
     private long pendingStartMs;
+    private long generation;
 
     VlcDirectPlayController(Context context, VLCVideoLayout videoLayout, Host host) {
         this.context = context.getApplicationContext();
@@ -58,6 +59,10 @@ final class VlcDirectPlayController {
             return;
         }
         stop();
+        if (!videoLayout.isAttachedToWindow() || videoLayout.getWindowToken() == null) {
+            host.onError("La pantalla de vídeo todavía no está disponible");
+            return;
+        }
         try {
             ensureLibVLC();
         } catch (RuntimeException | LinkageError error) {
@@ -67,10 +72,15 @@ final class VlcDirectPlayController {
         firstFrameReported = false;
         pendingStartMs = Math.max(0L, startMs);
         mediaPlayer = new MediaPlayer(libVLC);
-        mediaPlayer.setEventListener(this::onEvent);
+        final long session = generation;
+        mediaPlayer.setEventListener(event -> onEvent(event, session));
         videoLayout.setBackgroundColor(Color.BLACK);
         videoLayout.setVisibility(View.VISIBLE);
-        mediaPlayer.attachViews(videoLayout, null, false, false);
+        try {
+            mediaPlayer.attachViews(videoLayout, null, false, false);
+        } catch (RuntimeException error) {
+            stop(); host.onError("No se pudo conectar la pantalla de vídeo"); return;
+        }
         Media media = new Media(libVLC, Uri.parse(url.trim()));
         media.addOption(":network-caching=3000");
         media.addOption(":http-reconnect");
@@ -96,12 +106,12 @@ final class VlcDirectPlayController {
         }
     }
 
-    private void onEvent(MediaPlayer.Event event) {
-        if (event == null || !active) {
+    private void onEvent(MediaPlayer.Event event, long session) {
+        if (event == null || !active || session != generation) {
             return;
         }
         videoLayout.post(() -> {
-            if (!active) {
+            if (!active || session != generation) {
                 return;
             }
             switch (event.type) {
@@ -178,6 +188,7 @@ final class VlcDirectPlayController {
     }
 
     void stop() {
+        generation++;
         active = false;
         firstFrameReported = false;
         pendingStartMs = 0L;

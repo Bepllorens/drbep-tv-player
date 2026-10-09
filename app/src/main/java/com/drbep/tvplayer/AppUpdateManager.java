@@ -190,37 +190,17 @@ final class AppUpdateManager {
         }
     }
 
-    void installApk(File apkFile) {
-        if (apkFile == null || !apkFile.exists()) {
-            throw new IllegalStateException("APK descargado no encontrado");
-        }
+    void installApk(android.app.Activity activity, File apkFile, int requestCode) {
         InstallPreflight preflight = checkInstallPreflight(apkFile);
-        if (!preflight.ok) {
-            throw new IllegalStateException(preflight.message);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.getPackageManager().canRequestPackageInstalls()) {
-            Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                    .setData(Uri.parse("package:" + context.getPackageName()))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(settingsIntent);
-            return;
-        }
+        if (!preflight.ok) throw new IllegalStateException(preflight.message);
         Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", apkFile);
         Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE)
                 .setDataAndType(uri, APK_MIME)
                 .putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
                 .putExtra(Intent.EXTRA_RETURN_RESULT, true)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try {
-            context.startActivity(intent);
-        } catch (ActivityNotFoundException e) {
-            Intent fallback = new Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, APK_MIME)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            context.startActivity(fallback);
-        }
+        // Keep confirmation in the app task; cancellation returns to the existing player.
+        activity.startActivityForResult(intent, requestCode);
     }
 
     InstallPreflight checkInstallPreflight(File apkFile) {

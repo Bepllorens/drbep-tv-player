@@ -9,6 +9,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -72,18 +74,8 @@ internal fun VisualEpgSections(
             item(key = "title-$sectionIndex-${section.title}") {
                 VisualEpgSectionTitleRow(section.title, sectionIndex == 0)
             }
-            item(key = "row-$sectionIndex-${section.title}") {
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = if (LocalConfiguration.current.screenWidthDp < 600) 8.dp else 12.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp)
-                ) {
-                    itemsIndexed(section.entries ?: emptyList(), key = { index, _ -> "$sectionIndex-$index" }) { _, entry ->
-                        VisualEpgSectionCard(entry, imageBinder)
-                        Spacer(modifier = Modifier.width(if (LocalConfiguration.current.screenWidthDp < 600) 8.dp else 10.dp))
-                    }
-                }
+            itemsIndexed(section.entries ?: emptyList(), key = { index, _ -> "$sectionIndex-$index" }) { _, entry ->
+                VisualEpgSectionCard(entry, imageBinder)
             }
         }
     }
@@ -124,104 +116,32 @@ private fun VisualEpgSectionCard(entry: VisualEpgEntryUiModel, imageBinder: Visu
         model.scheduled,
         focused
     )
-    val shape = RoundedCornerShape(if (compact) 14.dp else 18.dp)
-    val borderColor = when {
-        focused -> OfflineTvTheme.Colors.accentCyan
-        effectiveModel.scheduled -> OfflineTvTheme.Colors.statusScheduled
-        else -> OfflineTvTheme.Colors.card
-    }
-    Column(
-        modifier = Modifier
-            .width(if (compact) 136.dp else 164.dp)
-            .height(if (compact) 182.dp else 208.dp)
-            .graphicsLayer {
-                scaleX = if (focused) 1.03f else 1f
-                scaleY = if (focused) 1.03f else 1f
-            }
-            .clip(shape)
-            .background(if (focused) OfflineTvTheme.Colors.focusSurface else OfflineTvTheme.Colors.surfaceDeep)
-            .border(2.dp, borderColor, shape)
-            .focusRequester(requester)
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) {
-                    entry.onFocus?.run()
-                }
-            }
-            .onPreviewKeyEvent {
-                if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU || it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_START)
-                ) {
-                    entry.onClick?.run()
-                    true
-                } else {
-                    false
-                }
-            }
-            .tvButtonSemantics(
-                entry.onClick != null,
-                listOf(effectiveModel.title, effectiveModel.timeLabel, effectiveModel.badgeLabel).filter { it.isNotBlank() }.joinToString(". "),
-                entry.preferred
-            )
-            .combinedClickable(enabled = entry.onClick != null, onClick = { entry.onClick?.run() })
-            .padding(if (compact) 6.dp else 8.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (compact) 88.dp else 104.dp)
-                .clip(RoundedCornerShape(if (compact) 10.dp else 12.dp))
-                .background(OfflineTvTheme.Colors.backdrop)
-        ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    FrameLayout(context).apply {
-                        addView(
-                            AppCompatImageView(context).apply {
-                                layoutParams = FrameLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                                scaleType = ImageView.ScaleType.FIT_CENTER
-                                contentDescription = null
-                            }
-                        )
-                    }
-                },
-                update = { frame -> imageBinder.bind(frame.getChildAt(0) as ImageView, effectiveModel) }
-            )
-            if (effectiveModel.badgeLabel.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(if (compact) 4.dp else 6.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(if (effectiveModel.scheduled) Color(0xCC8E5B16) else Color(0xCC214A72))
-                        .padding(horizontal = if (compact) 6.dp else 7.dp, vertical = if (compact) 2.dp else 3.dp)
-                ) {
-                    BasicText(
-                        text = effectiveModel.badgeLabel,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(color = Color.White, fontSize = if (compact) 9.sp else 10.sp, fontWeight = FontWeight.Bold)
-                    )
-                }
-            }
+    Row(Modifier.fillMaxWidth().height(if (compact) 84.dp else 96.dp)
+        .background(if (focused) OfflineTvTheme.Colors.focus else Color.Transparent, OfflineTvTheme.Menu.shape)
+        .focusRequester(requester)
+        .onFocusChanged { focused = it.isFocused; if (it.isFocused) entry.onFocus?.run() }
+        .onPreviewKeyEvent {
+            if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MENU || it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_START)) {
+                entry.onClick?.run(); entry.onClick != null
+            } else false
         }
-        Spacer(modifier = Modifier.height(if (compact) 6.dp else 8.dp))
-        BasicText(
-            text = effectiveModel.title,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            style = TextStyle(color = Color.White, fontSize = if (compact) 11.sp else 12.sp, fontWeight = FontWeight.Bold)
-        )
-        Spacer(modifier = Modifier.height(if (compact) 3.dp else 4.dp))
-        BasicText(
-            text = effectiveModel.timeLabel,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 9.sp else 10.sp)
-        )
+        .tvButtonSemantics(entry.onClick != null,
+            listOf(effectiveModel.title, effectiveModel.timeLabel, effectiveModel.badgeLabel).filter { it.isNotBlank() }.joinToString(". "), entry.preferred)
+        .combinedClickable(enabled = entry.onClick != null, onClick = { entry.onClick?.run() })
+        .padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        AndroidView(modifier = Modifier.size(width = if (compact) 104.dp else 128.dp, height = if (compact) 66.dp else 78.dp),
+            factory = { context -> AppCompatImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = null
+            } }, update = { image -> imageBinder.bind(image, effectiveModel) })
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            BasicText(effectiveModel.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                style = TextStyle(if (focused) OfflineTvTheme.Colors.focusInk else Color.White, 16.sp, FontWeight.Bold))
+            BasicText(effectiveModel.timeLabel, maxLines = 1,
+                style = TextStyle(if (focused) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.textSoft, 12.sp))
+            if (effectiveModel.badgeLabel.isNotBlank()) BasicText(effectiveModel.badgeLabel, maxLines = 1,
+                style = TextStyle(if (focused) OfflineTvTheme.Colors.focusInk else ContentStatusColors.label(effectiveModel.badgeLabel), 11.sp))
+        }
     }
 }

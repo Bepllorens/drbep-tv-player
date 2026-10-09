@@ -7,12 +7,21 @@ final class PlaybackProgressPolicy {
     static final long STABLE_RESET_MS = 60_000L;
     static final int MAX_RECOVERIES_WITHOUT_STABILITY = 3;
     private static final long MIN_PROGRESS_MS = 250L;
+    private static final long MIN_MEASURED_REBUFFER_MS = 250L;
 
     private PlaybackProgressPolicy() {
     }
 
     static boolean shouldWatch(boolean touchDevice, boolean vod, boolean firstFrameRendered, boolean playWhenReady, boolean ready) {
-        return touchDevice && !vod && firstFrameRendered && playWhenReady && ready;
+        return !vod && firstFrameRendered && playWhenReady;
+    }
+
+    static boolean isMeasuredRebuffer(long durationMs) {
+        return durationMs >= MIN_MEASURED_REBUFFER_MS;
+    }
+
+    static long timelinePosition(long windowOriginMs, long windowPositionMs) {
+        return windowOriginMs + windowPositionMs;
     }
 
     static boolean hasAdvanced(long previousPositionMs, long currentPositionMs) {

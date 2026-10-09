@@ -59,7 +59,9 @@ final class PrivateVodBrowser {
     }
     private void cancelPending() { generation++; if (pending != null) pending.cancel(true); pending = null; }
     void close() { cancelPending(); host.dismiss(); }
-    void open(Runnable back) {
+    void open(Runnable back) { open(back, "movie"); }
+    void open(Runnable back, String initialKind) { open(back, initialKind, "", ""); }
+    void open(Runnable back, String initialKind, String initialQuery, String initialSeries) {
         exit = () -> { close(); if (back != null) back.run(); };
         load(providerName, "", descriptor -> {
             revision = descriptor.optString("revision");
@@ -67,7 +69,10 @@ final class PrivateVodBrowser {
             if (!revision.matches("[a-f0-9]{32}") || !descriptor.optBoolean("metadata_preview")) {
                 error("Respuesta de catálogo no válida."); return;
             }
-            home();
+            if ("series".equals(initialKind) && !initialSeries.isEmpty()) page("episode", initialSeries, initialQuery.isEmpty() ? "Episodios" : initialQuery, "", new ArrayList<>(), exit);
+            else if ("series".equals(initialKind)) page("series", "", "Series", "", new ArrayList<>(), exit);
+            else if (!initialQuery.isEmpty()) page("movie", "", initialQuery, initialQuery, new ArrayList<>(), exit);
+            else home();
         }, exit);
     }
     private void home() {

@@ -8,7 +8,7 @@ import java.util.regex.*;
 public final class M3uStreamReader {
     private static final int MAX_LINE = 256 * 1024;
     private static final Pattern ATTRIBUTE = Pattern.compile("([\\w-]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s,]+))");
-    private static final Pattern EPISODE = Pattern.compile("(?i)\\bS(\\d{1,4})E(\\d{1,4})\\b");
+    static final Pattern EPISODE = Pattern.compile("(?i)\\b[ST](\\d{1,4})[\\s._-]*E(\\d{1,4})\\b");
     public interface Sink { void accept(Entry entry) throws Exception; }
     public static final class Entry {
         public String title = "", url = "", kind = "unknown", series = "";

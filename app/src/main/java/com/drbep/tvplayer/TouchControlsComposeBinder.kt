@@ -1055,8 +1055,9 @@ private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: 
     val scroll = rememberScrollState()
     val density = LocalDensity.current
     LaunchedEffect(selected, model.expanded) {
-        val step = with(density) { 48.dp.roundToPx() }
-        scroll.animateScrollTo((selected * step - step * 4).coerceIn(0, scroll.maxValue))
+        val distance = model.actions.take(selected).sumOf { if(it.iconHint == "live") 158 else 48 }
+        val offset = with(density) { (distance - 192).dp.roundToPx() }
+        scroll.animateScrollTo(offset.coerceIn(0, scroll.maxValue))
     }
     val archiveLayout = model.expanded && model.archiveEntries.isNotEmpty()
     Column(Modifier.fillMaxWidth()
@@ -1072,7 +1073,7 @@ private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: 
                 Spacer(Modifier.height(12.dp))
                 BasicText("Catchup · ${model.nowPlaying.channelName}", style=TextStyle(Color.White,12.sp,FontWeight.Bold))
                 Spacer(Modifier.height(4.dp))
-                U7dEmissionStrip(model.archiveEntries,model.archiveFocused,model.archiveIndex)
+                U7dEmissionStrip(model.archiveEntries,model.archiveFocused,model.archiveIndex,model.archiveLoadingId)
             }
             ModernNowPlaying(model.nowPlaying, model.integratedTimeshift, artworkBinder, minimal = true, header = false)
             if(model.integratedTimeshift==null && model.archiveEntries.isNotEmpty()) BasicText(
@@ -1081,14 +1082,16 @@ private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: 
             Row(Modifier.fillMaxWidth().horizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                 model.actions.forEachIndexed { index, item ->
                     val focused = index == selected && !model.archiveFocused && model.integratedTimeshift?.focused != true
-                    Box(Modifier.size(40.dp).alpha(if (item.enabled) 1f else .35f)
+                    Box((if(item.iconHint == "live") Modifier.width(150.dp).height(40.dp) else Modifier.size(40.dp)).alpha(if (item.enabled) 1f else .35f)
                         .background(if (focused) Color.White else Color.Transparent, OfflineTvTheme.Menu.shape)
                         .border(1.dp, if (focused) Color.White else Color.Transparent, OfflineTvTheme.Menu.shape)
                         .then(if (focused) Modifier.focusRequester(requester) else Modifier)
                         .tvButtonSemantics(item.enabled, item.label, item.selected)
                         .combinedClickable(enabled = item.enabled, onClick = { item.onClick?.run() }, onLongClick = item.onLongClick?.let { { it.run() } }),
                         contentAlignment = Alignment.Center) {
-                        Box(Modifier.scale(.8f)) { ModernActionIcon(item, focused, artworkBinder) }
+                        if(item.iconHint == "live") BasicText("●  " + item.label,
+                            style=TextStyle(if(focused) Color(0xFF12211C) else Color(0xFF8DE0B8),12.sp,FontWeight.Bold))
+                        else Box(Modifier.scale(.8f)) { ModernActionIcon(item, focused, artworkBinder) }
                     }
                 }
             }

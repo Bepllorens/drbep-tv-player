@@ -769,7 +769,6 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
             discovery.scrollPositions["$positionKey:offset"] = gridState.firstVisibleItemScrollOffset
         }
     }
-    val restoreFocus = remember { FocusRequester() }
     LaunchedEffect(channelRows, movingChannel) {
         movingChannel?.let { id ->
             val index = channels.indexOfFirst { it.channelId == id }
@@ -781,15 +780,20 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
         }
     }
 
-    val restore = remember { discovery.restoreLiveFocus }
-    LaunchedEffect(channels) {
-        selected?.let { selectedId = it.channelId; discovery.selectedLiveChannel = it.channelId }
-        if (restore && discovery.restoreLiveFocus && selected != null) {
-            gridState.scrollToItem(channels.indexOf(selected).coerceAtLeast(0))
+    LaunchedEffect(provider) {
+        // Explore replaces the focused home button. Give the new screen a
+        // concrete focus target instead of leaving focus on a removed node.
+        val target = selected ?: channels.getOrNull(gridState.firstVisibleItemIndex) ?: channels.firstOrNull()
+        if (target == null) {
+            withFrameNanos { }
+            runCatching { groupButtonFocus.requestFocus() }
+        } else {
+            val index = channels.indexOf(target).coerceAtLeast(0)
+            gridState.scrollToItem(index)
             withFrameNanos { }; withFrameNanos { }
-            restoreFocus.requestFocus()
-            discovery.restoreLiveFocus = false
+            channelFocus[target.channelId]?.requestFocus()
         }
+        discovery.restoreLiveFocus = false
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -865,7 +869,6 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                         val requester = channelFocus.getOrPut(channel.channelId) { FocusRequester() }
                         var focused by remember { mutableStateOf(false) }
                         Column(Modifier.fillMaxWidth().height(62.dp)
-                            .then(if (restore && channel.channelId == discovery.selectedLiveChannel) Modifier.focusRequester(restoreFocus) else Modifier)
                             .focusRequester(requester)
                             .onPreviewKeyEvent { event ->
                                 val key = event.nativeKeyEvent

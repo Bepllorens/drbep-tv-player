@@ -23,6 +23,7 @@ final class PersonalPlaylistController {
         void status(String message);
         void play(ChannelItem item);
         void movies(String source, Runnable back);
+        void series(String source, Runnable back);
     }
     private final Context context;
     private final Host host;
@@ -57,6 +58,7 @@ final class PersonalPlaylistController {
     }
     void showKind(String kind,Runnable back) {
         if (kind.equals("movie")) { host.movies("",back); return; }
+        if (kind.equals("series")) { host.series("",back); return; }
         work(() -> {
             List<String> labels=new ArrayList<>(); List<Runnable> actions=new ArrayList<>();
             try(Cursor c=db.sources()) {
@@ -119,7 +121,7 @@ final class PersonalPlaylistController {
         List<String> labels = Arrays.asList("Películas", "Series", "TV en directo", "Sin clasificar", "Actualizar lista", "Actualizar guía", "Eliminar lista");
         List<Runnable> actions = Arrays.asList(
             () -> host.movies(id, () -> source(id,name,back)),
-            () -> series(id,name,"", () -> source(id,name,back)),
+            () -> host.series(id, () -> source(id,name,back)),
             () -> page(id,name,"live",null,-1, () -> source(id,name,back)),
             () -> page(id,name,"unknown",null,-1, () -> source(id,name,back)),
             () -> refreshSource(id,false),

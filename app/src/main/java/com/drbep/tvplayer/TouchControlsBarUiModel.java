@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class TouchControlsBarUiModel {
+    public String archiveLoadingId = "";
     public boolean archiveFocused;
     public int archiveIndex;
     public final List<U7dCatalogEntry> archiveEntries;

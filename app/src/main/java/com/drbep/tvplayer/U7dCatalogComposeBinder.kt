@@ -1,6 +1,9 @@
 package com.drbep.tvplayer
 
 import android.widget.ImageView
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -201,12 +204,13 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     }
 }
 
-@Composable fun U7dEmissionStrip(entries:List<U7dCatalogEntry>, remoteFocus:Boolean=false, remoteIndex:Int=0) {
+@Composable fun U7dEmissionStrip(entries:List<U7dCatalogEntry>, remoteFocus:Boolean=false, remoteIndex:Int=0, loadingId:String="") {
     if(entries.isEmpty())return
     val now=System.currentTimeMillis()
     val selected=entries.indexOfLast { it.start<=now }.coerceAtLeast(0)
     val state=rememberLazyListState(selected)
     LaunchedEffect(remoteFocus,remoteIndex) { if(remoteFocus) state.animateScrollToItem(remoteIndex.coerceIn(0,entries.lastIndex)) }
+    LaunchedEffect(loadingId) { if(loadingId.isNotEmpty()) { val index=entries.indexOfFirst{it.id==loadingId}; if(index>=0)state.scrollToItem(index) } }
     LazyRow(state=state,horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth().height(140.dp)) {
         items(entries,key={it.id}) { e ->
             var focus by remember { mutableStateOf(false) }
@@ -214,6 +218,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                 .onFocusChanged{focus=it.isFocused}.clickable{if(e.end>System.currentTimeMillis())e.live.run() else e.play.run()}.padding(4.dp)) {
                 Box(Modifier.fillMaxWidth().height(92.dp).clip(RoundedCornerShape(7.dp))) {
                     ArchiveArtwork(e,Modifier.fillMaxSize())
+                    if(e.id==loadingId) U7dThumbnailLoadingRing()
                     if(e.start<=now && e.end>now) Box(Modifier.padding(5.dp).background(Color(0xE6297051),RoundedCornerShape(4.dp)).padding(horizontal=5.dp)) { Text("EN EMISIÓN",10,true) }
                 }
                 Text(e.title,12,true)
@@ -232,5 +237,19 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         }
         if(!e.hasProgramArtwork) BasicText(e.channel,Modifier.align(Alignment.BottomCenter).padding(5.dp),
             style=TextStyle(Color(0xFFADB9C9),10.sp),maxLines=1,overflow=TextOverflow.Ellipsis)
+    }
+}
+
+@Composable private fun U7dThumbnailLoadingRing() {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label="u7d-loading")
+    val sweep by transition.animateFloat(initialValue=12f,targetValue=360f,
+        animationSpec=androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(1500,easing=androidx.compose.animation.core.LinearEasing)),label="u7d-fill")
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.32f)),contentAlignment=Alignment.Center) {
+        Canvas(Modifier.size(42.dp).semantics { contentDescription="Cargando programa" }) {
+            drawCircle(Color.Black.copy(alpha=.45f))
+            drawArc(Color.White.copy(alpha=.24f),-90f,360f,false,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+            drawArc(Color(0xFFFFAA4C),-90f,sweep,false,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx(),cap=androidx.compose.ui.graphics.StrokeCap.Round))
+        }
     }
 }

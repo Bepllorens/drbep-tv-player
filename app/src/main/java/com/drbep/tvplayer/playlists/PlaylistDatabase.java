@@ -21,7 +21,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         return instance;
     }
     private PlaylistDatabase(Context context) {
-        super(context.getApplicationContext(), "personal-playlists.db", null, 4);
+        super(context.getApplicationContext(), "personal-playlists.db", null, 5);
         setWriteAheadLoggingEnabled(true);
     }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
@@ -35,11 +35,13 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         migrateV2(db);
         migrateV3(db);
         migrateV4(db);
+        migrateV5(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) migrateV2(db);
         if (oldVersion < 3) migrateV3(db);
         if (oldVersion < 4) migrateV4(db);
+        if (oldVersion < 5) migrateV5(db);
     }
     private void migrateV2(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE sources ADD COLUMN locator TEXT NOT NULL DEFAULT ''");
@@ -64,6 +66,22 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE movie_metadata(query TEXT PRIMARY KEY,json TEXT NOT NULL,updated INTEGER NOT NULL,release_date TEXT NOT NULL DEFAULT '',rating REAL NOT NULL DEFAULT 0,genres TEXT NOT NULL DEFAULT '')");
         db.execSQL("CREATE TABLE movie_match(source TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,identity TEXT NOT NULL,occurrence INTEGER NOT NULL,query TEXT NOT NULL,manual INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(source,identity,occurrence))");
         db.execSQL("CREATE INDEX movie_match_query ON movie_match(query)");
+    }
+    private void migrateV5(SQLiteDatabase db) {
+        // Repair previously imported Spanish T1 - E01 numbering without changing identities or URLs.
+        try (Cursor c=db.rawQuery("SELECT source,generation,identity,occurrence,title FROM entries WHERE kind='series'",null);
+             SQLiteStatement update=db.compileStatement("UPDATE entries SET season=?,episode=? WHERE source=? AND generation=? AND identity=? AND occurrence=?")) {
+            while(c.moveToNext()) {
+                java.util.regex.Matcher match=M3uStreamReader.EPISODE.matcher(c.getString(4));
+                if(!match.find())continue;
+                update.bindLong(1,Integer.parseInt(match.group(1)));update.bindLong(2,Integer.parseInt(match.group(2)));
+                update.bindString(3,c.getString(0));update.bindString(4,c.getString(1));update.bindString(5,c.getString(2));update.bindLong(6,c.getLong(3));update.executeUpdateDelete();
+            }
+        }
+        db.execSQL("CREATE TABLE series_added(source TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,series TEXT NOT NULL,added INTEGER NOT NULL,PRIMARY KEY(source,series))");
+        db.execSQL("INSERT OR IGNORE INTO series_added SELECT e.source,e.series,s.updated FROM entries e JOIN sources s ON s.id=e.source WHERE e.kind='series'");
+        db.execSQL("CREATE TABLE series_match(source TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,series TEXT NOT NULL,query TEXT NOT NULL,manual INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(source,series))");
+        db.execSQL("CREATE INDEX series_match_query ON series_match(query)");
     }
     public interface Progress {
         void check() throws Exception;
@@ -169,6 +187,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
                 insert.bindString(11,entry.attributes.getOrDefault("group-title", ""));insert.bindString(12,entry.attributes.getOrDefault("tvg-logo", ""));insert.bindString(13,entry.url);
                 insert.bindString(14,new JSONObject(entry.attributes).toString());insert.bindString(15,new JSONObject(entry.directives).toString());
                 insert.executeInsert();
+                if ("series".equals(entry.kind)) db.execSQL("INSERT OR IGNORE INTO series_added VALUES(?,?,?)",new Object[]{source,entry.series,System.currentTimeMillis()});
                 if ("movie".equals(entry.kind)) db.execSQL("INSERT OR IGNORE INTO movie_added VALUES(?,?,?,?)",new Object[]{source,identity,occurrence,System.currentTimeMillis()});
                 if (++count[0] % 500 == 0) {
                     ContentValues preview=new ContentValues();preview.put("preview",generation);
@@ -224,7 +243,16 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
     }
     private static String identity(M3uStreamReader.Entry e) throws Exception {
         // URLs frequently contain expiring tokens. Keep them out of identity.
-        String basis = e.kind + "\u0000" + e.attributes.getOrDefault("group-title", "") + "\u0000" + e.attributes.getOrDefault("tvg-id", "") + "\u0000" + e.title + "\u0000" + e.series + "\u0000" + e.season + ":" + e.episode;
+        // Preserve the pre-v5 identity across refreshes when T1 - E01 is newly recognized.
+        String identitySeries=e.series;int identitySeason=e.season,identityEpisode=e.episode;
+        if ("series".equals(e.kind)) {
+            java.util.regex.Matcher legacy=java.util.regex.Pattern.compile("(?i)\\bS(\\d{1,4})E(\\d{1,4})\\b").matcher(e.title);
+            boolean found=legacy.find();identitySeason=found?Integer.parseInt(legacy.group(1)):-1;identityEpisode=found?Integer.parseInt(legacy.group(2)):-1;
+            identitySeries=e.attributes.getOrDefault("serie-title", "").trim();
+            if(identitySeries.isEmpty())identitySeries=e.attributes.getOrDefault("tvg-serie", "").trim();
+            if(identitySeries.isEmpty())identitySeries=found?e.title.substring(0,legacy.start()).replaceFirst("[\\s-]+$", ""):e.title;
+        }
+        String basis = e.kind + "\u0000" + e.attributes.getOrDefault("group-title", "") + "\u0000" + e.attributes.getOrDefault("tvg-id", "") + "\u0000" + e.title + "\u0000" + identitySeries + "\u0000" + identitySeason + ":" + identityEpisode;
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(basis.getBytes(StandardCharsets.UTF_8));
         StringBuilder hex = new StringBuilder(64);
         for (byte b : digest) { int value=b & 255; hex.append("0123456789abcdef".charAt(value >>> 4)); hex.append("0123456789abcdef".charAt(value & 15)); }

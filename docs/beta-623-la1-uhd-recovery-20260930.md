@@ -1,0 +1,9 @@
+# La 1 UHD en el Fire Stick .190 — diagnóstico y beta 623
+
+La beta 615 mostraba más de 30 000 «recuperaciones». El registro del reproductor reveló alternancias BUFFERING→READY de 8–11 ms, con posición 0, sin datos disponibles y un desfase respecto al directo que seguía creciendo. Esas transiciones se contaban como recuperaciones aunque no había avance real.
+
+La beta 623 cuenta como rebuffer únicamente una interrupción de al menos 250 ms. El watchdog de progreso también se ejecuta en TV, no aplaza indefinidamente su comprobación con cada READY y se detiene cuando el reproductor queda IDLE o ENDED. La portada ya no puede volver a vincular la superficie de previsualización tras cerrarse su diálogo.
+
+La reproducción real de La 1 UHD sigue sin estar resuelta. En el .190, la ruta DASH local entrega un MPD fresco de 10 s y los segmentos de audio y vídeo responden HTTP 206. Los timestamps del MPD y los `tfdt` de los segmentos coinciden. Media3 recibe datos, pero la posición permanece en 0; en varias pruebas termina con `StuckPlayerException` tras 10 s. Se probaron márgenes de directo de 5 s y 10 s, resintonización al abrir a pantalla completa y un tope de 1920×1080: ninguna de esas variantes hizo avanzar la posición. Dos capturas de pantalla separadas en el tiempo fueron idénticas. Esos experimentos se retiraron de la beta 623.
+
+La beta 623 corrige el diagnóstico de salud sin afirmar reproducción recuperada. La prueba de `PlaybackProgressPolicyTest`, la compilación release y `git diff --check` pasaron desde un build limpio. Para continuar, hay que inspeccionar por qué Media3 permanece READY con 0 ms de posición pese a tener fragmentos y si la ruta de manifiesto local afecta al reloj de reproducción. El equipo también registró errores del sistema al escribir swap; no se ha probado que sean la causa.

@@ -52,4 +52,13 @@ public class DeviceWebPanelTest {
             assertFalse(panel.running());
         }
     }
+    @Test public void screenAndUiRequireSession()throws Exception {
+        AtomicInteger captures=new AtomicInteger();
+        try(DeviceWebPanel panel=new DeviceWebPanel(new DeviceWebPanel.Host(){public String status(){return "{}";}public long importPlaylist(InputStream in){return 0;}public byte[] screen(){captures.incrementAndGet();return new byte[]{1,2,3};}public String ui(){return "{\"nodes\":[]}";}},new byte[0])){
+            int port=panel.start();
+            for(String route:new String[]{"/screen","/ui"})assertTrue(request(port,"GET",route,"","",0).startsWith("HTTP/1.1 401"));assertEquals(0,captures.get());
+            String login=request(port,"POST","/session","",panel.pin(),6);String token=new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token");String auth="X-Panel-Token: "+token+"\r\n";
+            assertTrue(request(port,"GET","/screen",auth,"",0).startsWith("HTTP/1.1 200"));assertEquals(1,captures.get());assertTrue(request(port,"GET","/ui",auth,"",0).contains("nodes"));
+        }
+    }
 }

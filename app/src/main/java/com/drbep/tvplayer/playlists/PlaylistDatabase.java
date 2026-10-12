@@ -21,7 +21,10 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         return instance;
     }
     private PlaylistDatabase(Context context) {
-        super(context.getApplicationContext(), "personal-playlists.db", null, 5);
+        this(context, "personal-playlists.db");
+    }
+    private PlaylistDatabase(Context context, String name) {
+        super(context.getApplicationContext(), name, null, 7);
         setWriteAheadLoggingEnabled(true);
     }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
@@ -36,12 +39,52 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         migrateV3(db);
         migrateV4(db);
         migrateV5(db);
+        migrateV6(db);
+        migrateV7(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) migrateV2(db);
         if (oldVersion < 3) migrateV3(db);
         if (oldVersion < 4) migrateV4(db);
         if (oldVersion < 5) migrateV5(db);
+        if (oldVersion < 6) migrateV6(db);
+        if (oldVersion < 7) migrateV7(db);
+    }
+    private void migrateV7(SQLiteDatabase db) {
+        db.execSQL("ALTER TABLE sources ADD COLUMN guide_mode TEXT NOT NULL DEFAULT 'auto'");
+        db.execSQL("UPDATE sources SET guide_mode='manual' WHERE epg_url<>''");
+        db.execSQL("ALTER TABLE guide_items ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'");
+        db.execSQL("ALTER TABLE programmes ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'");
+        db.execSQL("CREATE TABLE guide_channels(feed TEXT NOT NULL REFERENCES guide_feeds(id) ON DELETE CASCADE,generation TEXT NOT NULL,channel TEXT NOT NULL,name TEXT NOT NULL,PRIMARY KEY(feed,generation,channel,name))");
+        db.execSQL("CREATE INDEX guide_channel_name ON guide_channels(feed,generation,name)");
+    }
+    public synchronized void guideMode(String source,String mode) {
+        if(!java.util.Arrays.asList("auto","manual","off").contains(mode))throw new IllegalArgumentException("Invalid guide mode");
+        ContentValues v=new ContentValues();v.put("guide_mode",mode);
+        getWritableDatabase().update("sources",v,"id=?",new String[]{source});
+    }
+    public static String guideName(String name) {return java.text.Normalizer.normalize(name==null?"":name,java.text.Normalizer.Form.NFD).replaceAll("\\p{M}","").toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+"," ").trim();}
+    public String resolveGuideChannel(String source,String explicit,String name) {
+        if(explicit!=null&&!explicit.trim().isEmpty())return explicit;
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT DISTINCT c.channel FROM guide_channels c JOIN guide_feeds f ON f.id=c.feed AND f.active=c.generation JOIN sources s ON s.feed_key=f.id WHERE s.id=? AND c.name=? LIMIT 2",new String[]{source,guideName(name)})) {
+            if(!c.moveToFirst())return "";String id=c.getString(0);return c.moveToNext()?"":id;
+        }
+    }
+    public Cursor dueGuides(long before) {
+        return getReadableDatabase().rawQuery("SELECT MIN(s.id) FROM sources s LEFT JOIN guide_feeds f ON f.url=s.epg_url WHERE s.guide_mode<>'off' AND s.epg_url<>'' AND COALESCE(f.checked,0)<? GROUP BY s.epg_url",new String[]{Long.toString(before)});
+    }
+    /** Retain eight days, including overnight programmes; never delete favourites or saves. */
+    public void maintainGuides(long now) {
+        synchronized(importLock) {
+            SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+            try {
+                db.delete("guide_items","end_ms<?",new String[]{Long.toString(now-8L*86400000)});
+                db.delete("programmes","end_ms<?",new String[]{Long.toString(now-8L*86400000)});
+                db.execSQL("DELETE FROM guide_feeds WHERE NOT EXISTS(SELECT 1 FROM sources s WHERE s.feed_key=guide_feeds.id OR s.epg_url=guide_feeds.url)");
+                db.execSQL("UPDATE guide_feeds SET count=(SELECT COUNT(*) FROM guide_items i WHERE i.feed=guide_feeds.id AND i.generation=guide_feeds.active)");
+                db.setTransactionSuccessful();
+            } finally {db.endTransaction();}
+        }
     }
     private void migrateV2(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE sources ADD COLUMN locator TEXT NOT NULL DEFAULT ''");
@@ -67,6 +110,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE movie_match(source TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,identity TEXT NOT NULL,occurrence INTEGER NOT NULL,query TEXT NOT NULL,manual INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(source,identity,occurrence))");
         db.execSQL("CREATE INDEX movie_match_query ON movie_match(query)");
     }
+    private void migrateV6(SQLiteDatabase db) { db.execSQL("ALTER TABLE preferences ADD COLUMN watched INTEGER NOT NULL DEFAULT 0"); }
     private void migrateV5(SQLiteDatabase db) {
         // Repair previously imported Spanish T1 - E01 numbering without changing identities or URLs.
         try (Cursor c=db.rawQuery("SELECT source,generation,identity,occurrence,title FROM entries WHERE kind='series'",null);
@@ -94,19 +138,22 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
             ContentValues seed=new ContentValues();seed.put("id",key);seed.put("url",url);
             db.insertWithOnConflict("guide_feeds",null,seed,SQLiteDatabase.CONFLICT_IGNORE);
             String generation=UUID.randomUUID().toString();long[] count={0},coverage={0};boolean[] complete={false};
-            try(SQLiteStatement insert=db.compileStatement("INSERT OR REPLACE INTO guide_items VALUES(?,?,?,?,?,?,?)")) {
+            try(SQLiteStatement insert=db.compileStatement("INSERT OR REPLACE INTO guide_items(feed,generation,channel,start_ms,end_ms,title,description,metadata) VALUES(?,?,?,?,?,?,?,?)")) {
                 insert.bindString(1,key);insert.bindString(2,generation);db.beginTransaction();
                 try {
                     new XmltvStreamReader().read(input,p -> {
                         progress.check();insert.bindString(3,p.channel);insert.bindLong(4,p.start);insert.bindLong(5,p.end);
-                        insert.bindString(6,p.title);insert.bindString(7,p.description);insert.executeInsert();coverage[0]=Math.max(coverage[0],p.end);
+                        insert.bindString(6,p.title);insert.bindString(7,p.description);insert.bindString(8,p.metadata());insert.executeInsert();coverage[0]=Math.max(coverage[0],p.end);
                         if(++count[0]%1000==0){db.setTransactionSuccessful();db.endTransaction();progress.update(count[0]);db.beginTransaction();}
+                    },(channel,name) -> {
+                        progress.check();ContentValues v=new ContentValues();v.put("feed",key);v.put("generation",generation);v.put("channel",channel);v.put("name",guideName(name));db.insertWithOnConflict("guide_channels",null,v,SQLiteDatabase.CONFLICT_IGNORE);
                     });
                     progress.check();if(count[0]==0)throw new IOException("Empty guide");
                     ContentValues v=new ContentValues();v.put("active",generation);v.put("coverage",coverage[0]);v.put("count",count[0]);
                     db.update("guide_feeds",v,"id=?",new String[]{key});db.setTransactionSuccessful();complete[0]=true;
                 } finally {if(db.inTransaction())db.endTransaction();}
             } finally {
+                db.delete("guide_channels",complete[0]?"feed=? AND generation<>?":"feed=? AND generation=?",new String[]{key,generation});
                 db.delete("guide_items",complete[0]?"feed=? AND generation<>?":"feed=? AND generation=?",new String[]{key,generation});
             }
             progress.update(count[0]);return count[0];
@@ -119,10 +166,10 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
     public Cursor source(String id) { return getReadableDatabase().rawQuery("SELECT * FROM sources WHERE id=?",new String[]{id}); }
     public Cursor dueSources(long before) { return getReadableDatabase().rawQuery("SELECT id,name,locator,origin FROM sources WHERE auto_refresh=1 AND (origin='server' OR locator<>'') AND updated<?",new String[]{Long.toString(before)}); }
     public Cursor browse(String id,String kind,String query,boolean favorites,boolean hidden,int offset,int limit) {
-        return getReadableDatabase().rawQuery("SELECT e.*,COALESCE(p.favorite,0) AS favorite,COALESCE(p.hidden,0) AS hidden,COALESCE(NULLIF(p.label,''),e.title) AS display_title FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation LEFT JOIN preferences p ON p.source=e.source AND p.identity=e.identity AND p.occurrence=e.occurrence WHERE e.source=? AND (?='' OR e.kind=?) AND (?='' OR instr(lower(e.title),lower(?))>0) AND (?='0' OR p.favorite=1) AND (?='1' OR COALESCE(p.hidden,0)=0) ORDER BY COALESCE(p.sort_order,0),e.position LIMIT ? OFFSET ?",new String[]{id,kind,kind,query,query,favorites?"1":"0",hidden?"1":"0",Integer.toString(Math.min(100,Math.max(1,limit))),Integer.toString(Math.max(0,offset))});
+        return getReadableDatabase().rawQuery("SELECT e.*,COALESCE(p.sort_order,0) AS sort_order,COALESCE(p.favorite,0) AS favorite,COALESCE(p.hidden,0) AS hidden,COALESCE(NULLIF(p.label,''),e.title) AS display_title FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation LEFT JOIN preferences p ON p.source=e.source AND p.identity=e.identity AND p.occurrence=e.occurrence WHERE e.source=? AND (?='' OR e.kind=?) AND (?='' OR instr(lower(e.title),lower(?))>0) AND (?='0' OR p.favorite=1) AND (?='1' OR COALESCE(p.hidden,0)=0) ORDER BY COALESCE(p.sort_order,0),e.position LIMIT ? OFFSET ?",new String[]{id,kind,kind,query,query,favorites?"1":"0",hidden?"1":"0",Integer.toString(Math.min(100,Math.max(1,limit))),Integer.toString(Math.max(0,offset))});
     }
     public Cursor preferenceState(String source,String identity,int occurrence) { return getReadableDatabase().rawQuery("SELECT label,sort_order FROM preferences WHERE source=? AND identity=? AND occurrence=?",new String[]{source,identity,Integer.toString(occurrence)}); }
-    public synchronized void setGuideUrl(String source,String url) { ContentValues v=new ContentValues();v.put("epg_url",url);v.put("feed_key","");getWritableDatabase().update("sources",v,"id=?",new String[]{source}); }
+    public synchronized void setGuideUrl(String source,String url) { ContentValues v=new ContentValues();v.put("epg_url",url);v.put("feed_key","");v.put("guide_mode",url.isEmpty()?"off":"manual");getWritableDatabase().update("sources",v,"id=?",new String[]{source}); }
     public synchronized void preference(String source,String identity,int occurrence,boolean favorite,boolean hidden,String label,int order) {
         SQLiteDatabase db=getWritableDatabase();ContentValues seed=new ContentValues();seed.put("source",source);seed.put("identity",identity);seed.put("occurrence",occurrence);
         db.insertWithOnConflict("preferences",null,seed,SQLiteDatabase.CONFLICT_IGNORE);
@@ -135,7 +182,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         db.beginTransaction();
         try {
             new XmltvStreamReader().read(input,p -> {
-                ContentValues v=new ContentValues();v.put("source",source);v.put("generation",generation);v.put("channel",p.channel);v.put("start_ms",p.start);v.put("end_ms",p.end);v.put("title",p.title);v.put("description",p.description);
+                ContentValues v=new ContentValues();v.put("source",source);v.put("generation",generation);v.put("channel",p.channel);v.put("start_ms",p.start);v.put("end_ms",p.end);v.put("title",p.title);v.put("description",p.description);v.put("metadata",p.metadata());
                 db.insertWithOnConflict("programmes",null,v,SQLiteDatabase.CONFLICT_REPLACE);
                 if(++count[0]%300==0){db.setTransactionSuccessful();db.endTransaction();db.beginTransaction();}
             });
@@ -198,8 +245,8 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
             if (result.imported == 0 || result.rejected > 0) throw new IOException("Incomplete or empty playlist; previous catalogue retained");
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Import cancelled");
             progress.check();
-            ContentValues active = new ContentValues(); active.putNull("preview");active.put("active",generation); active.put("updated",System.currentTimeMillis()); if (!result.epgUrl.isEmpty()) active.put("epg_url",result.epgUrl);
-            if(!result.epgUrl.isEmpty())db.execSQL("UPDATE sources SET feed_key='' WHERE id=? AND epg_url<>?",new Object[]{source,result.epgUrl});
+            ContentValues active = new ContentValues(); active.putNull("preview");active.put("active",generation); active.put("updated",System.currentTimeMillis()); boolean adopt;try(Cursor policy=db.rawQuery("SELECT guide_mode FROM sources WHERE id=?",new String[]{source})){adopt=policy.moveToFirst()&&"auto".equals(policy.getString(0));} if(adopt) active.put("epg_url",result.epgUrl);
+            if(adopt)db.execSQL("UPDATE sources SET feed_key='' WHERE id=? AND epg_url<>?",new Object[]{source,result.epgUrl});
             db.update("sources",active,"id=?",new String[]{source});
             db.setTransactionSuccessful();completed[0]=true;
             return result;

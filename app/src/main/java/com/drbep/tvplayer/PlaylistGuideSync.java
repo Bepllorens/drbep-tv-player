@@ -16,7 +16,7 @@ final class PlaylistGuideSync {
     }
     static synchronized String refresh(PlaylistDatabase db,String source,PlaylistDatabase.Progress progress) throws Exception {
         String url;
-        try(Cursor c=db.source(source)){if(!c.moveToFirst())throw new IOException("Missing source");url=c.getString(c.getColumnIndexOrThrow("epg_url"));}
+        try(Cursor c=db.source(source)){if(!c.moveToFirst())throw new IOException("Missing source");if("off".equals(c.getString(c.getColumnIndexOrThrow("guide_mode"))))return "Guía automática desactivada";url=c.getString(c.getColumnIndexOrThrow("epg_url"));}
         HttpUrl parsed=HttpUrl.parse(url);if(parsed==null)throw new IOException("Missing guide URL");
         String id=key(url),etag="",modified="";long checked=0,coverage=0,cachedCount=0;boolean cached=false;
         try(Cursor c=db.getReadableDatabase().rawQuery("SELECT f.etag,f.modified,f.checked,f.coverage,EXISTS(SELECT 1 FROM guide_items p WHERE p.feed=f.id AND p.generation=f.active),f.count FROM guide_feeds f WHERE f.id=?",new String[]{id})){
@@ -44,7 +44,7 @@ final class PlaylistGuideSync {
     private static String value(String s){return s==null?"":s;}
     private static void attach(PlaylistDatabase db,String source,String url,String key) {
         ContentValues v=new ContentValues();v.put("feed_key",key);
-        db.getWritableDatabase().update("sources",v,"id=? AND epg_url=?",new String[]{source,url});
+        db.getWritableDatabase().update("sources",v,"epg_url=? AND guide_mode<>'off'",new String[]{url});
     }
     static InputStream decode(InputStream input)throws IOException {
         PushbackInputStream peek=new PushbackInputStream(input,2);int a=peek.read(),b=peek.read();if(b>=0)peek.unread(b);if(a>=0)peek.unread(a);

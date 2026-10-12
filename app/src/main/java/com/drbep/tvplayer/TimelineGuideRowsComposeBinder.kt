@@ -32,6 +32,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -67,7 +73,8 @@ object TimelineGuideRowsComposeBinder {
 internal fun TimelineGuideRows(
     model: TimelineGuideRowsUiModel,
     imageBinder: TimelineGuideChannelImageBinder,
-    modifier: Modifier = Modifier.fillMaxWidth()
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    windowStart: Long = 0, windowEnd: Long = 0, labelWidth: Int = 0
 ) {
     val rows = model.rows ?: emptyList()
     val preferredIndex = rows.indexOfFirst { row ->
@@ -76,8 +83,11 @@ internal fun TimelineGuideRows(
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = (preferredIndex - 2).coerceAtLeast(0)
     )
+    var clock by remember { mutableStateOf(System.currentTimeMillis()) }
+    androidx.compose.runtime.LaunchedEffect(windowStart) { while (true) { clock = System.currentTimeMillis(); kotlinx.coroutines.delay(15000) } }
+    Box(modifier) {
     LazyColumn(
-        modifier = modifier,
+        modifier = Modifier.fillMaxWidth().graphicsLayer(),
         state = listState,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -87,6 +97,18 @@ internal fun TimelineGuideRows(
         ) { _, row ->
             TimelineGuideRow(row, imageBinder)
         }
+    }
+    if (windowEnd > windowStart) {
+        androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+            // Read the ticking clock only in drawing: keep the grid out of the restart scope.
+            val now = clock
+            if (now !in windowStart..windowEnd) return@Canvas
+            val fraction = (now-windowStart).toFloat()/(windowEnd-windowStart)
+            val x = labelWidth + (size.width-labelWidth)*fraction
+            drawLine(Color(0xFFFFC83D), androidx.compose.ui.geometry.Offset(x,0f), androidx.compose.ui.geometry.Offset(x,size.height), strokeWidth=2.dp.toPx())
+            drawCircle(Color(0xFFFFC83D),4.dp.toPx(),androidx.compose.ui.geometry.Offset(x,4.dp.toPx()))
+        }
+    }
     }
 }
 
@@ -156,35 +178,32 @@ private fun TimelineChannelCell(row: TimelineGuideRowUiModel, imageBinder: Timel
 @OptIn(ExperimentalFoundationApi::class)
 private fun TimelineGuideProgramBlock(block: TimelineGuideBlockUiModel, width: Dp) {
     var focused by remember { mutableStateOf(false) }
-    val focusScale by animateFloatAsState(
-        targetValue = if (focused) OfflineTvTheme.Control.focusScale else 1f,
-        label = "timelineProgramFocusScale"
-    )
     val requester = remember { FocusRequester() }
     TvRequestFocus(requester, block.preferred, block.preferred)
+    val genreColor = remember(block.genre) { Color(android.graphics.Color.parseColor(ProgrammePresentation.color(block.genre))) }
     val background = when {
-        focused && block.scheduled -> OfflineTvTheme.Colors.focusSurface
-        focused && block.live -> OfflineTvTheme.Colors.focusSurface
-        focused -> OfflineTvTheme.Colors.focusSurface
         block.empty -> OfflineTvTheme.Colors.guideProgramEmpty
-        block.scheduled -> OfflineTvTheme.Colors.guideProgramScheduled
-        block.live -> OfflineTvTheme.Colors.guideProgramLive
-        else -> OfflineTvTheme.Colors.guideProgram
+        block.scheduled -> genreColor.copy(alpha = 0.25f)
+        block.live -> genreColor.copy(alpha = 0.23f)
+        else -> genreColor.copy(alpha = 0.16f)
     }
     Column(
         modifier = Modifier
             .width(width)
             .height(62.dp)
             .padding(end = 2.dp)
-            .scale(focusScale)
-            .border(
-                width = if (focused) OfflineTvTheme.Control.focusBorder else 0.dp,
-                color = if (focused) OfflineTvTheme.Colors.focus else Color.Transparent,
-                shape = OfflineTvTheme.Menu.shape
-            )
-            .clip(OfflineTvTheme.Menu.shape)
-            .background(background)
-            .alpha(if (block.empty && !focused) 0.82f else 1f)
+            .drawBehind {
+                // Focus changes repaint only this cell; text and layout stay retained.
+                val radius = CornerRadius(3.dp.toPx())
+                drawRoundRect(if (focused) OfflineTvTheme.Colors.focusSurface else background, cornerRadius = radius)
+                val stroke = if (focused) OfflineTvTheme.Control.focusBorder.toPx() else 1.dp.toPx()
+                val inset = stroke / 2f
+                if (focused || !block.empty) drawRoundRect(
+                    if (focused) OfflineTvTheme.Colors.focus else genreColor.copy(alpha = 0.55f),
+                    topLeft = Offset(inset, inset),
+                    size = Size((size.width - stroke).coerceAtLeast(0f), (size.height - stroke).coerceAtLeast(0f)),
+                    cornerRadius = radius, style = Stroke(stroke))
+            }
             .focusRequester(requester)
             .onFocusChanged {
                 focused = it.isFocused

@@ -1532,6 +1532,27 @@ final class EpgRepository {
         return status.updatedAtMs + ":" + status.sizeBytes + ":" + status.expiresAtMs;
     }
 
+    // Bounded validator cache for channel metadata only; never caches playback/auth responses.
+    private final Map<String,HttpClient.Response> validatedGuides = new LinkedHashMap<>();
+    private HttpClient.Response getConditionalGuide(String url, int connect, int read, int maxBytes) throws Exception {
+        HttpClient.Response prior;
+        synchronized(validatedGuides) { prior=validatedGuides.get(url); }
+        Map<String,String> headers=new HashMap<>(buildRequestHeaders());
+        if(prior!=null) {
+            if(!prior.etag.isEmpty())headers.put("If-None-Match",prior.etag);
+            if(!prior.lastModified.isEmpty())headers.put("If-Modified-Since",prior.lastModified);
+        }
+        HttpClient.Response result=httpClient.get(url,connect,read,headers,maxBytes);
+        if(result.code==304 && prior!=null)return prior;
+        if(result.isSuccessful()&&result.body!=null&&result.body.length()<=128*1024&&(!result.etag.isEmpty()||!result.lastModified.isEmpty())) {
+            synchronized(validatedGuides) {
+                validatedGuides.put(url,result);
+                while(validatedGuides.size()>32)validatedGuides.remove(validatedGuides.keySet().iterator().next());
+            }
+        } else if(result.code!=304) { synchronized(validatedGuides) { validatedGuides.remove(url); } }
+        return result;
+    }
+
     private HttpClient.Response getRemoteEpg(String path) throws Exception {
         return getRemoteEpg(path, REMOTE_EPG_CONNECT_TIMEOUT_MS, REMOTE_EPG_READ_TIMEOUT_MS);
     }
@@ -1547,13 +1568,9 @@ final class EpgRepository {
         int safeReadTimeoutMs = Math.max(500, readTimeoutMs);
         for (String candidate : remoteEpgBaseUrlCandidates(offlinePublicOnly)) {
             try {
-                HttpClient.Response response = httpClient.get(
-                        candidate + path,
-                        safeConnectTimeoutMs,
-                        safeReadTimeoutMs,
-                        buildRequestHeaders(),
-                        MAX_REMOTE_EPG_RESPONSE_BYTES
-                );
+                HttpClient.Response response = path.startsWith("/api/epg/channel/")
+                        ? getConditionalGuide(candidate + path,safeConnectTimeoutMs,safeReadTimeoutMs,MAX_REMOTE_EPG_RESPONSE_BYTES)
+                        : httpClient.get(candidate+path,safeConnectTimeoutMs,safeReadTimeoutMs,buildRequestHeaders(),MAX_REMOTE_EPG_RESPONSE_BYTES);
                 if (response.isSuccessful()) {
                     cachedRemoteEpgBaseUrl = candidate;
                     return response;

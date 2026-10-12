@@ -62,7 +62,7 @@ public class TouchControlsUiFactoryTest {
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
 
-        assertLabels(model, "Canales", "Plataforma", "Guia", "VOD", "Anterior", "Info", "Grab", "Rebobinar", "Pausa", "Avanzar");
+        assertLabels(model, "Volver al directo", "Canales", "Plataforma", "Guia", "VOD", "Anterior", "Info", "Grab", "Rebobinar", "Pausa", "Avanzar");
         assertFalse(hasLabel(model, "Biblioteca VOD"));
         assertFalse(hasLabel(model, "Ficha VOD"));
     }

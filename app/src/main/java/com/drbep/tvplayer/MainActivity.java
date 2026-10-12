@@ -197,7 +197,7 @@ public class MainActivity extends FragmentActivity {
     private static final int FILTER_VOD = 3;
     private static final int FILTER_VOD_ADULT = 4;
     private static final int FILTER_FAVORITES = 5;
-    private static final long TIMELINE_WINDOW_MS = 12L * 60L * 60L * 1000L;
+    private static final long TIMELINE_WINDOW_MS = 3L * 60L * 60L * 1000L;
     private static final long TIMELINE_SHIFT_MS = 2L * 60L * 60L * 1000L;
     private static final int TIMELINE_MAX_RENDERED_CHANNELS = 48;
     private static final int VISUAL_EPG_MAX_ITEMS_PER_SECTION = 40;
@@ -320,6 +320,8 @@ public class MainActivity extends FragmentActivity {
     private NetworkConnectivityMonitor networkConnectivityMonitor;
     private boolean enteringPictureInPicture;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService channelLogoExecutor = Executors.newFixedThreadPool(2);
+    private final LruCache<String, Drawable> channelLogoFallbacks = new LruCache<>(64);
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService interactiveExecutor = Executors.newCachedThreadPool();
     // Telemetria y comandos remotos no deben bloquear la resolucion de una reproduccion.
@@ -1860,7 +1862,23 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private boolean homeHubCoversPlaybackControls() {
+        return startupSummaryGate.accepts(startupSummaryGate.current());
+    }
+
+    private void hideCoveredPlaybackControls() {
+        if (touchControlsBar != null) touchControlsBar.setVisibility(View.GONE);
+        if (timeshiftBarContainer != null) timeshiftBarContainer.setVisibility(View.GONE);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, false);
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TIMESHIFT, false);
+    }
+
     private void updateTimeshiftBar() {
+        // Home/TV has its own controls. Avoid rebuilding the hidden player HUD and archive strip.
+        if (homeHubCoversPlaybackControls()) {
+            hideCoveredPlaybackControls();
+            return;
+        }
         if (timeshiftBarContainer == null || timeshiftComposeView == null || playerController == null) {
             updatePlaybackStateBadge(null);
             return;
@@ -2441,6 +2459,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void refreshTouchControlsBar() {
+        if (homeHubCoversPlaybackControls()) {
+            hideCoveredPlaybackControls();
+            return;
+        }
         if (touchControlsComposeView == null) {
             return;
         }
@@ -3604,6 +3626,7 @@ public class MainActivity extends FragmentActivity {
             postUiDelayedIfAlive(this::prefetchCurrentChannelLogos, 1800L);
             postUiDelayedIfAlive(() -> loadEpgNow(false), 450L);
         }
+        postUiDelayedIfAlive(this::prefetchHomeChannelLogos, 180L);
         postUiDelayedIfAlive(this::maybeShowStartupHub, 700L);
         pullUserPreferences();
     }
@@ -4873,7 +4896,6 @@ public class MainActivity extends FragmentActivity {
         }
         final int selectedIndex = anchorIndex;
         final long selectedWindowStartMs = windowStartMs;
-        showStatus(getString(R.string.status_loading_guide));
         Log.w(TAG, "timeline guide start selectedIndex=" + selectedIndex
                 + " channel=" + (channels.get(selectedIndex) == null ? "" : channels.get(selectedIndex).id)
                 + " name=" + (channels.get(selectedIndex) == null ? "" : displayName(channels.get(selectedIndex))));
@@ -4882,66 +4904,120 @@ public class MainActivity extends FragmentActivity {
         loadTimelineGuideRowsAsync(timelineChannels, selectedChannelId, selectedWindowStartMs, "timeline", true);
     }
 
+    private final java.util.concurrent.ExecutorService timelineDownloads = java.util.concurrent.Executors.newFixedThreadPool(4);
+    private final java.util.concurrent.ExecutorService timelineCacheExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile int timelineLoadGeneration;
+    private TimelineEpgStore timelineStore;
+    private ComposeView activeTimelinePanel;
+    private int activeTimelineLabelWidth, activeTimelineStripWidth;
+
     private void loadTimelineGuideRowsAsync(List<ChannelItem> timelineChannels, String selectedChannelId, long selectedWindowStartMs, String source, boolean showWhenReady) {
-        final List<ChannelItem> channelsSnapshot = timelineChannels == null ? new ArrayList<>() : new ArrayList<>(timelineChannels);
-        final String anchorId = selectedChannelId == null ? "" : selectedChannelId;
-        Log.w(TAG, source + " enriched queued selectedChannel=" + anchorId
-                + " channels=" + channelsSnapshot.size()
-                + " showWhenReady=" + showWhenReady
-                + " activeDialog=" + (activeTimelineDialog != null && activeTimelineDialog.isShowing()));
+        final int generation = ++timelineLoadGeneration;
+        final long opened = android.os.SystemClock.elapsedRealtime();
+        final List<ChannelItem> snapshot = new ArrayList<>(timelineChannels);
+        final long windowStart = Math.abs(selectedWindowStartMs-System.currentTimeMillis())<60000L
+            ? (selectedWindowStartMs/1800000L)*1800000L-1800000L : selectedWindowStartMs;
+        if (timelineStore == null) timelineStore = new TimelineEpgStore(this);
+        // Open before network or database work. Cached rows replace placeholders in this same composition.
+        if (showWhenReady) showTimelineGuideDialog(buildFastTimelineRows(snapshot), windowStart, selectedChannelId, new ArrayList<>());
+        final Dialog target = activeTimelineDialog;
+        snapshot.sort((a,b) -> Boolean.compare(!java.util.Objects.equals(a.id,selectedChannelId), !java.util.Objects.equals(b.id,selectedChannelId)));
         interactiveExecutor.execute(() -> {
-            try {
-                List<RecordingsRepository.RecordingItem> scheduledItems = fetchScheduledRecordingsSafely(source);
-                loadTimelineGuideRowsFromSnapshot(channelsSnapshot, anchorId, selectedWindowStartMs, source, showWhenReady, scheduledItems);
-            } catch (Exception e) {
-                Log.w(TAG, source + " enriched failed", e);
-                if (showWhenReady) {
-                    postUiIfAlive(() -> showStatus(getString(R.string.status_failed_load_guide)));
-                }
+            java.util.Map<String,List<EpgRepository.EpgProgram>> cached = new java.util.LinkedHashMap<>();
+            for (ChannelItem c : snapshot) {
+                if (generation != timelineLoadGeneration || activityDestroyed) return;
+                try { cached.put(c.id,timelineStore.read(c,windowStart,windowStart+TIMELINE_WINDOW_MS)); }
+                catch(Exception e) { Log.w(TAG,"Timeline cache read failed",e); }
             }
+            postUiIfAlive(() -> {
+                if (target != activeTimelineDialog || generation != timelineLoadGeneration) return;
+                updateTimelinePrograms(cached);
+                Log.i(TAG,"Timeline local ready ms="+(android.os.SystemClock.elapsedRealtime()-opened));
+            });
+            List<ChannelItem> providerBatch=new ArrayList<>();
+            for(ChannelItem c:snapshot) if(supportsU7d(c)&&!isOrangeChannel(c)) {
+                List<EpgRepository.EpgProgram> local=cached.get(c.id);
+                if(local==null||local.isEmpty()||!timelineStore.fresh(c))providerBatch.add(c);
+            }
+            if(!providerBatch.isEmpty())submitExecutorTask(timelineDownloads,"timeline provider",()->{
+                java.util.Set<String> resolved=new java.util.HashSet<>();
+                try {
+                    java.time.LocalDate first=java.time.Instant.ofEpochMilli(windowStart).atZone(java.time.ZoneId.of("Europe/Madrid")).toLocalDate();
+                    java.time.LocalDate last=java.time.Instant.ofEpochMilli(windowStart+TIMELINE_WINDOW_MS-1).atZone(java.time.ZoneId.of("Europe/Madrid")).toLocalDate();
+                    for(java.time.LocalDate day=first;!day.isAfter(last);day=day.plusDays(1)) {
+                        if(generation!=timelineLoadGeneration)return;
+                        directMovistarGuide().day(day.toString(),providerBatch,guide->{
+                            if(generation!=timelineLoadGeneration)return;
+                            java.util.Map<String,List<EpgRepository.EpgProgram>> batch=new java.util.LinkedHashMap<>();
+                            for(ChannelItem c:providerBatch)try{
+                                JSONObject identity=guide.identity(c);if(identity==null)continue;
+                                List<EpgRepository.EpgProgram> rows=guide.programmes(c,identity);
+                                timelineStore.save(c,rows);
+                                if(!rows.isEmpty())resolved.add(c.id);
+                                batch.put(c.id,timelineStore.read(c,windowStart,windowStart+TIMELINE_WINDOW_MS));
+                            }catch(Exception e){Log.w(TAG,"Timeline provider cache failed",e);}
+                            postUiIfAlive(()->{if(target==activeTimelineDialog&&generation==timelineLoadGeneration)updateTimelinePrograms(batch);});
+                        });
+                    }
+                }catch(Exception e){Log.w(TAG,"Timeline provider unavailable; retaining cached guide",e);}
+                for(ChannelItem c:providerBatch)if(!resolved.contains(c.id))submitExecutorTask(timelineDownloads,"timeline provider fallback",()->{
+                    if(generation!=timelineLoadGeneration)return;
+                    try {
+                        List<EpgRepository.EpgProgram> rows=epgRepository.fetchChannelProgramsForChannelsDirect(java.util.Collections.singletonList(c),0).get(c.id);
+                        if(rows==null||rows.isEmpty())return;
+                        timelineStore.save(c,rows);
+                        List<EpgRepository.EpgProgram> visible=timelineStore.read(c,windowStart,windowStart+TIMELINE_WINDOW_MS);
+                        postUiIfAlive(()->{if(target==activeTimelineDialog&&generation==timelineLoadGeneration)updateTimelinePrograms(java.util.Collections.singletonMap(c.id,visible));});
+                    }catch(Exception e){Log.w(TAG,"Timeline fallback unavailable",e);}
+                });
+            });
+            for (ChannelItem c : snapshot) submitExecutorTask(timelineDownloads,"timeline channel",() -> {
+                if (generation != timelineLoadGeneration || activityDestroyed) return;
+                try {
+                    List<EpgRepository.EpgProgram> local = cached.get(c.id);
+                    if(local != null && !local.isEmpty() && timelineStore.fresh(c))return;
+                    List<EpgRepository.EpgProgram> programs;
+                    boolean past = windowStart + TIMELINE_WINDOW_MS < System.currentTimeMillis();
+                    if(supportsU7d(c)&&!isOrangeChannel(c))return;
+                    if(past) programs=epgRepository.fetchPastChannelPrograms(c,0,7);
+                    else programs=epgRepository.fetchChannelProgramsForChannelsDirect(java.util.Collections.singletonList(c),0).get(c.id);
+                    if(programs!=null&&!programs.isEmpty()) {
+                        timelineStore.save(c,programs);
+                        final List<EpgRepository.EpgProgram> result=timelineStore.read(c,windowStart,windowStart+TIMELINE_WINDOW_MS);
+                        postUiIfAlive(() -> {
+                            if (target != activeTimelineDialog || generation != timelineLoadGeneration) return;
+                            updateTimelinePrograms(java.util.Collections.singletonMap(c.id,result));
+                        });
+                    }
+                } catch(Exception e) { Log.w(TAG,"Timeline channel refresh failed",e); }
+            });
+            // Recording markers are supplemental; never delay opening the EPG for them.
+            List<RecordingsRepository.RecordingItem> scheduled=fetchScheduledRecordingsSafely(source);
+            postUiIfAlive(() -> {
+                if(target != activeTimelineDialog || generation != timelineLoadGeneration)return;
+                activeTimelineScheduledItems=scheduled;
+                activeProgramScheduledItems=new ArrayList<>(scheduled);
+                updateTimelinePrograms(java.util.Collections.emptyMap());
+            });
         });
     }
 
-    private void loadTimelineGuideRowsFromSnapshot(
-            List<ChannelItem> channelsSnapshot,
-            String anchorId,
-            long selectedWindowStartMs,
-            String source,
-            boolean showWhenReady,
-            List<RecordingsRepository.RecordingItem> scheduledItems
-    ) {
-        try {
-            Log.w(TAG, source + " full guide scan start selectedChannel=" + anchorId
-                    + " channels=" + channelsSnapshot.size());
-            java.util.Map<String, List<EpgRepository.EpgProgram>> programsByChannel =
-                    epgRepository.fetchChannelProgramsForChannelsDirect(channelsSnapshot, 18);
-            List<TimelineChannelPrograms> rows = buildTimelineRowsFromPrograms(channelsSnapshot, programsByChannel, anchorId);
-            final int selectedRowIndex = findTimelineRowIndex(rows, anchorId);
-            postUiIfAlive(() -> {
-                Log.w(TAG, source + " full guide scan ready selectedChannel=" + anchorId
-                        + " rows=" + rows.size()
-                        + " selectedRow=" + selectedRowIndex
-                        + " selectedPrograms=" + (rows.isEmpty() || rows.get(selectedRowIndex).programs == null ? 0 : rows.get(selectedRowIndex).programs.size()));
-                if (rows.isEmpty()) {
-                    return;
-                }
-                boolean canRefreshActiveDialog = activeTimelineDialog != null
-                        && activeTimelineDialog.isShowing()
-                        && activeTimelineWindowStartMs == selectedWindowStartMs;
-                if (!showWhenReady && !canRefreshActiveDialog) {
-                    return;
-                }
-                ChannelItem selectedChannel = rows.get(Math.max(0, Math.min(selectedRowIndex, rows.size() - 1))).channel;
-                if (canRefreshActiveDialog) {
-                    refreshingTimelineDialog = true;
-                    activeTimelineDialog.dismiss();
-                    refreshingTimelineDialog = false;
-                }
-                showTimelineGuideDialog(rows, selectedWindowStartMs, selectedChannel == null ? anchorId : selectedChannel.id, scheduledItems);
-            });
-        } catch (Exception e) {
-            Log.w(TAG, source + " full guide scan failed", e);
+    private void updateTimelinePrograms(java.util.Map<String,List<EpgRepository.EpgProgram>> updates) {
+        if(activeTimelinePanel==null||activeTimelineDialog==null||!activeTimelineDialog.isShowing())return;
+        List<TimelineChannelPrograms> merged=new ArrayList<>();
+        for(TimelineChannelPrograms row:activeTimelineRows) {
+            List<EpgRepository.EpgProgram> fresh=updates.get(row.channel.id);
+            merged.add(fresh==null||fresh.isEmpty()?row:new TimelineChannelPrograms(row.channel,fresh));
         }
+        activeTimelineRows=merged;
+        for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> entry:updates.entrySet())if(!entry.getValue().isEmpty()) {
+            liveGuideCache.put(entry.getKey(),entry.getValue());
+            while(liveGuideCache.size()>32)liveGuideCache.remove(liveGuideCache.keySet().iterator().next());
+        }
+        TimelineGuideRowsUiModel model=buildTimelineGuideRowsUiModel(merged,activeTimelineWindowStartMs,activeTimelineWindowStartMs+TIMELINE_WINDOW_MS,
+            activeTimelineStripWidth/(float)(TIMELINE_WINDOW_MS/60000L),activeTimelineLabelWidth,activeTimelineStripWidth,activeTimelineScheduledItems,
+            activeTimelineAnchorChannelId,true,detail -> TimelineGuidePanelComposeBinder.updateDetail(activeTimelinePanel,detail));
+        TimelineGuidePanelComposeBinder.updateRows(activeTimelinePanel,model);
     }
 
     private List<TimelineChannelPrograms> buildTimelineRowsFromPrograms(
@@ -5582,11 +5658,16 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private final java.util.concurrent.ExecutorService movistarGuideExecutor=java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile MovistarGuideRepository movistarGuide;
+    private synchronized MovistarGuideRepository directMovistarGuide(){if(movistarGuide==null)movistarGuide=new MovistarGuideRepository(getCacheDir());return movistarGuide;}
     private final java.util.concurrent.ExecutorService archiveExecutor = java.util.concurrent.Executors.newFixedThreadPool(2);
     private final java.util.concurrent.ExecutorService archiveStorageExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final java.util.concurrent.ExecutorService archivePresentationExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final java.util.Set<String> archiveErrors = new java.util.HashSet<>();
     private final U7dCatalogState archiveState = new U7dCatalogState();
+    private final java.util.Set<String> prefetchedArchiveArtwork=new java.util.HashSet<>();
+    private MovistarArtworkRepository movistarArtwork;
     private FanartRepository archiveFanart;
     private boolean archiveFanartLoading;
     private final java.util.concurrent.ExecutorService archiveFanartExecutor=java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -5632,7 +5713,7 @@ public class MainActivity extends FragmentActivity {
         if (!scope.equals(archiveScope)) {
             archiveScope=scope;
             archiveState.setFormat(prefs.getString("u7d_transport_"+android.net.Uri.encode(scope),"Auto"));
-            archiveGeneration++; archiveWindowKey="";archiveWindowLoading=false;archivePrograms.clear();archiveLoading.clear();archiveErrors.clear();
+            archiveGeneration++; pendingMovistarGuideChannels.clear(); archiveWindowKey="";archiveWindowLoading=false;archivePrograms.clear();archiveLoading.clear();archiveErrors.clear();
             archiveState.setEntries(java.util.Collections.emptyList()); archiveState.setQuery("");
             archiveState.setChannel("");archiveState.setGenre("");archiveState.setSelectedId("");
         }
@@ -5643,6 +5724,7 @@ public class MainActivity extends FragmentActivity {
         if (archiveChannels().isEmpty()) { showStatus("No hay canales con U7D disponibles para esta cuenta");return; }
         if (archiveDialog != null) { archiveDialog.dismiss();archiveDialog=null; }
         archiveState.setSavedOnly(savedOnly);
+        if(archiveState.getDay().isEmpty())archiveState.setDay(java.time.LocalDate.now().toString());
         if(initial!=null) archiveState.setChannel(initial.id);
         if(savedOnly) {archiveState.setChannel("");archiveState.setGenre("");archiveState.setQuery("");}
         ComposeView view=new ComposeView(this);attachDialogViewTreeOwners(view);prepareModalSurface();
@@ -5680,13 +5762,21 @@ public class MainActivity extends FragmentActivity {
         }
         archiveWindowKey=windowKey;archiveWindowLoading=true;archiveState.setLoading(true);
         final int windowRevision=++archiveWindowRevision;
+        final List<ChannelItem> identityChannels=new ArrayList<>(allChannels);
+        List<ChannelItem> directChannels=new ArrayList<>();for(ChannelItem c:snapshot)if(!isOrangeChannel(c))directChannels.add(c);
+        if(!directChannels.isEmpty())refreshMovistarArchiveBatch(directChannels,scope,generation);
         archiveStorageExecutor.execute(()->{
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            // Include alternate platform copies omitted by the visible-channel deduplication.
+            for(ChannelItem c:identityChannels)if(!isOrangeChannel(c) && archiveAvailability.invalidateMismatchedIdentity(scope,c))archiveStore.invalidate(scope,c.id);
             List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
             java.util.Map<String,List<EpgRepository.EpgProgram>> cached=new java.util.LinkedHashMap<>();
             for(ChannelItem c:snapshot) {
                 if(generation!=archiveGeneration || windowRevision!=archiveWindowRevision || Thread.currentThread().isInterrupted())return;
+                // Movistar has its own compact daily cache; avoid decoding the legacy full-week JSON.
+                if(!isOrangeChannel(c))continue;
                 cached.put(c.id,ArchiveWindow.filter(archiveStore.read(scope,c.id),windowDays));
-                if(cached.size()>=8) {
+                if(cached.size()>=24) {
                     java.util.Map<String,List<EpgRepository.EpgProgram>> batch=new java.util.LinkedHashMap<>(cached);cached.clear();
                     postUiIfAlive(()->{if(generation==archiveGeneration && windowRevision==archiveWindowRevision){
                         for(String id:batch.keySet())archivePrograms.put(id,batch.get(id));
@@ -5699,9 +5789,7 @@ public class MainActivity extends FragmentActivity {
                 archiveWindowLoading=false;archiveState.setLoading(false);
                 for(String id:cached.keySet())archivePrograms.put(id,cached.get(id));
                 mergeArchiveSaved(saved);publishArchiveEntries(saved);
-                List<ChannelItem> movistar=new ArrayList<>();
-                for(ChannelItem c:snapshot)if(isOrangeChannel(c))refreshArchiveChannel(c,scope,generation);else movistar.add(c);
-                if(!movistar.isEmpty())refreshMovistarArchiveBatch(movistar,scope,generation);
+                for(ChannelItem c:snapshot)if(isOrangeChannel(c))refreshArchiveChannel(c,scope,generation);
             });
         });
     }
@@ -5714,14 +5802,69 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private final java.util.Map<String,ChannelItem> pendingMovistarGuideChannels=new java.util.LinkedHashMap<>();
+    private void drainPendingMovistarGuide(String scope,int generation){
+        if(generation!=archiveGeneration||archiveLoading.contains("@movistar")||pendingMovistarGuideChannels.isEmpty())return;
+        List<ChannelItem> next=new ArrayList<>(pendingMovistarGuideChannels.values());pendingMovistarGuideChannels.clear();
+        refreshMovistarArchiveBatch(next,scope,generation);
+    }
     private void refreshMovistarArchiveBatch(List<ChannelItem> channels,String scope,int generation) {
+        final String batchKey="@movistar";
+        if(!archiveLoading.add(batchKey)){for(ChannelItem c:channels)pendingMovistarGuideChannels.put(c.id,c);return;}
+        archiveState.setStatus("Actualizando guía de Movistar…");
+        final List<String> days=new ArrayList<>(archiveWindowDays());days.sort(java.util.Collections.reverseOrder());
+        String selectedDay=archiveState.getDay();if(days.remove(selectedDay))days.add(0,selectedDay);
+        final java.util.Map<String,List<EpgRepository.EpgProgram>> aggregate=new java.util.LinkedHashMap<>();
+        for(ChannelItem c:channels)aggregate.put(c.id,new ArrayList<>(archivePrograms.getOrDefault(c.id,java.util.Collections.emptyList())));
+        movistarGuideExecutor.execute(()->{
+            boolean failed=false;int loaded=0;
+            final List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
+            for(String day:days){
+                if(generation!=archiveGeneration||Thread.currentThread().isInterrupted())return;
+                try{
+                    MovistarGuideRepository.Guide result=directMovistarGuide().day(day,channels,guide->{
+                        if(generation!=archiveGeneration)return;
+                        java.util.Map<String,List<EpgRepository.EpgProgram>> changed=new java.util.LinkedHashMap<>();
+                        for(ChannelItem c:channels){
+                            JSONObject identity=guide.identity(c);if(identity==null)continue;
+                            archiveAvailability.registerOfficial(scope,c,identity);
+                            List<EpgRepository.EpgProgram> merged=new ArrayList<>(aggregate.get(c.id));
+                            merged.removeIf(p->ArchiveWindow.day(p.startTime).equals(day));
+                            try{merged.addAll(guide.programmes(c,identity));}catch(Exception invalid){continue;}
+                            aggregate.put(c.id,merged);changed.put(c.id,merged);
+                        }
+                        if(!changed.isEmpty())postUiIfAlive(()->{if(generation==archiveGeneration){
+                            for(String id:changed.keySet())archivePrograms.put(id,windowArchive(changed.get(id)));
+                            archiveState.setLoading(false);mergeArchiveSaved(saved);publishArchiveEntries(saved);
+                        }});
+                    });
+                    if(!result.complete)failed=true;
+                    loaded++;
+                    final java.util.Map<String,List<EpgRepository.EpgProgram>> diskSnapshot=new java.util.LinkedHashMap<>(aggregate);
+                    archiveStorageExecutor.execute(()->{try{archiveStore.writeAll(scope,diskSnapshot);}catch(Exception ignored){}});
+                }catch(Exception e){failed=true;android.util.Log.w("DirectGuide","Day failed: "+e.getClass().getSimpleName());}
+            }
+            final boolean error=failed;final boolean noGuide=loaded==0;
+            postUiIfAlive(()->{
+                if(generation!=archiveGeneration)return;
+                archiveLoading.remove(batchKey);
+                if(error)archiveErrors.add(batchKey);else archiveErrors.remove(batchKey);
+                archiveState.setStatus(error?"Parte de la guía no se ha actualizado · se conserva la caché":"Guía de Movistar actualizada");
+                if(noGuide)refreshMovistarArchiveBackend(channels,scope,generation);
+                else if(!days.containsAll(archiveWindowDays()))loadArchiveCatalog(false);
+                drainPendingMovistarGuide(scope,generation);
+            });
+        });
+    }
+
+    private void refreshMovistarArchiveBackend(List<ChannelItem> channels,String scope,int generation) {
         final String batchKey="@movistar";
         if(!archiveLoading.add(batchKey))return;
         archiveState.setStatus("Actualizando parrilla Movistar…");
         // Credentials are captured for this account; a later login cannot change the request scope.
         final String url=buildMovistarU7dProgramsUrl(baseUrl,catalogSnapshotStore.getAccessToken(),catalogSnapshotStore.getDeviceId(),null);
         final java.util.Map<String,String> headers=buildAuthenticatedJsonHeaders();
-        archiveExecutor.execute(()->{
+        movistarGuideExecutor.execute(()->{
             java.util.Map<String,List<EpgRepository.EpgProgram>> results=new java.util.LinkedHashMap<>();
             boolean failed=false;
             try {
@@ -5747,6 +5890,7 @@ public class MainActivity extends FragmentActivity {
                 mergeArchiveSaved(saved);publishArchiveEntries(saved);
                 archiveState.setStatus(!archiveErrors.isEmpty()?"Sin conexión con parte del catálogo · datos guardados":
                     archiveLoading.isEmpty()?"Programación actualizada":"Actualizando otros canales…");
+                drainPendingMovistarGuide(scope,generation);
             });
         });
     }
@@ -5797,7 +5941,7 @@ public class MainActivity extends FragmentActivity {
         java.util.Set<String> emitted=new java.util.HashSet<>();
         SimpleDateFormat dayFormat=new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT);
         for(ChannelItem c:available)for(EpgRepository.EpgProgram p:snapshot.getOrDefault(c.id,java.util.Collections.emptyList())) {
-            if(generation!=archiveGeneration || Thread.currentThread().isInterrupted())return;
+            if(generation!=archiveGeneration || revision!=archivePublishRevision || Thread.currentThread().isInterrupted())return;
             long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);
             if(start<=0||end<=start)continue;
             String id=U7dCatalogStore.id(p);if(!emitted.add(id))continue;
@@ -5805,21 +5949,23 @@ public class MainActivity extends FragmentActivity {
             long now=System.currentTimeMillis();
             if(start>now || (end+7L*86400000<now && !ids.contains(id)))continue;
             String day=dayFormat.format(new Date(start));
-            String fanart=archiveFanart==null?null:archiveFanart.find(ArchiveText.repair(displayName(c)),p.tvgId,start,p.title);
+            String fanart=MovistarGuideRepository.officialImage(p.icon)?p.icon:archiveFanart==null?null:archiveFanart.find(ArchiveText.repair(displayName(c)),p.tvgId,start,p.title);
             String[] presentation=ArchiveText.sports(p.title,p.category);
             U7dCatalogEntry entry=new U7dCatalogEntry(id,c.id,ArchiveText.channel(displayName(c),archiveAvailability==null?p.channelName:archiveAvailability.officialName(availabilityScope,c,p.channelName)),presentation[0],p.category,p.description,day,start,end,ids.contains(id),
-                image->bindArchiveFanart(image,fanart,ProgramArtworkResolver.resolve(p,c)),
+                image->bindMovistarArchiveArtwork(image,c,p,fanart),
                 ()->runArchiveAction(c,()->playMovistarIsmU7dProgram(c,p)),
                 ()->runArchiveAction(c,()->tuneChannelById(c.id)),
                 ()->toggleArchiveSaved(p,end+7L*86400000));
             entry.hasProgramArtwork=fanart!=null || (!ProgramArtworkResolver.resolve(p.icon, "").isEmpty() && !p.icon.equals(c.logoUrl));
-            entry.artworkKey=fanart!=null?fanart:ProgramArtworkResolver.resolve(p,c);
+            String official=movistarArtwork==null||archiveAvailability==null?"":movistarArtwork.cached(archiveAvailability.provider(archiveScope,c),start,p.title);
+            entry.artworkKey=!official.isEmpty()?official:fanart!=null?fanart:ProgramArtworkResolver.resolve(p,c);
+            if(!official.isEmpty())entry.hasProgramArtwork=true;
             entry.subtitle=presentation[1];
             entries.add(entry);
         }
         postUiIfAlive(()->{
             if(generation==archiveGeneration && revision>archiveLastPublishedRevision) {
-                archiveLastPublishedRevision=revision;archiveState.setEntries(entries);
+                archiveLastPublishedRevision=revision;archiveState.setEntries(entries);prefetchMovistarArchiveArtwork(entries);
                 // The player model is a snapshot, unlike the catalog's Compose
                 // state. Publish newly loaded programmes to visible controls too.
                 if (isTouchControlsVisibleForRemote()) refreshTouchControlsBar();
@@ -5887,7 +6033,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<EpgRepository.EpgProgram> fetchMovistarIsmU7dPrograms(ChannelItem channel) throws Exception {
-        List<EpgRepository.EpgProgram> programs = fetchMovistarIsmU7dProgramsFromBackend(channel);
+        List<EpgRepository.EpgProgram> programs;
+        try {
+            MovistarGuideRepository.Guide guide=directMovistarGuide().day(java.time.LocalDate.now(java.time.ZoneId.of("Europe/Madrid")).toString(),java.util.Collections.singletonList(channel));
+            JSONObject identity=guide.identity(channel);
+            programs=identity==null?new ArrayList<>():guide.programmes(channel,identity);
+        }catch(Exception unavailable){programs=fetchMovistarIsmU7dProgramsFromBackend(channel);}
         if (!programs.isEmpty() || epgRepository == null) {
             return programs;
         }
@@ -6121,7 +6272,7 @@ public class MainActivity extends FragmentActivity {
         if (left == null || right == null || left.isEmpty() || right.isEmpty()) {
             return false;
         }
-        return left.equals(right) || left.contains(right) || right.contains(left);
+        return U7dChannelIdentity.matches(left, right);
     }
 
     private String normalizeU7dMatchText(String value) {
@@ -6450,7 +6601,7 @@ public class MainActivity extends FragmentActivity {
             String fanart = archiveFanart == null ? null : archiveFanart.find(displayName(channel), program.tvgId, startMs, program.title);
             currentPlaybackU7dPreviewEntry = new U7dCatalogEntry(U7dCatalogStore.id(program), channel.id, displayName(channel), programTitle,
                     program.category, program.description, java.time.Instant.ofEpochMilli(startMs).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(),
-                    startMs, endMs, false, image -> bindArchiveFanart(image, fanart, ProgramArtworkResolver.resolve(program, channel)),
+                    startMs, endMs, false, image -> bindMovistarArchiveArtwork(image,channel,program,fanart),
                     () -> playMovistarIsmU7dProgram(channel, program), () -> returnToLiveTv(), () -> {});
             currentPlaybackU7dPreviewEntry.hasProgramArtwork = fanart != null || (!ProgramArtworkResolver.resolve(program.icon, "").isEmpty() && !ProgramArtworkResolver.resolve(program.icon, "").equals(channel.logoUrl));
             currentPlaybackU7dPreviewEntry.artworkKey = fanart != null ? fanart : ProgramArtworkResolver.resolve(program, channel);
@@ -9909,7 +10060,8 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onDestroy() {
-        archiveGeneration++; archiveExecutor.shutdownNow(); archiveStorageExecutor.shutdownNow(); archivePresentationExecutor.shutdownNow();archiveFanartExecutor.shutdownNow();if(archiveAvailability!=null)archiveAvailability.close();
+        timelineLoadGeneration++; timelineDownloads.shutdownNow(); timelineCacheExecutor.shutdownNow();
+        archiveGeneration++; movistarGuideExecutor.shutdownNow(); archiveExecutor.shutdownNow(); archiveStorageExecutor.shutdownNow(); archivePresentationExecutor.shutdownNow();archiveFanartExecutor.shutdownNow();if(archiveAvailability!=null)archiveAvailability.close();if(movistarArtwork!=null)movistarArtwork.close();if(movistarGuide!=null)movistarGuide.close();
         uiHandler.removeCallbacks(playlistImportTick);
         playlistStatusExecutor.shutdownNow();
         PlaylistImportIndicator.update("");
@@ -9940,6 +10092,7 @@ public class MainActivity extends FragmentActivity {
         }
         uiHandler.removeCallbacksAndMessages(null);
         ioExecutor.shutdownNow();
+        channelLogoExecutor.shutdownNow();
         epgExecutor.shutdownNow();
         interactiveExecutor.shutdownNow();
         controlExecutor.shutdownNow();
@@ -10808,17 +10961,31 @@ public class MainActivity extends FragmentActivity {
         List<EpgRepository.EpgProgram> cached=liveGuideCache.get(channel.id);
         bindLiveChannelGuide(channel,cached,cached==null?"Cargando programación…":"");
         if(liveGuideFetch!=null)uiHandler.removeCallbacks(liveGuideFetch);
-        liveGuideFetch=() -> ioExecutor.execute(() -> {
-            List<EpgRepository.EpgProgram> rows;try{rows=epgRepository.fetchChannelPrograms(channel.id,80);}catch(Exception e){rows=new ArrayList<>();}
-            final List<EpgRepository.EpgProgram> result=rows;
-            postUiIfAlive(() -> {
-                if(generation!=liveChannelGuideGeneration||!liveChannelGuideVisible)return;
-                liveGuideCache.put(channel.id,result);while(liveGuideCache.size()>32)liveGuideCache.remove(liveGuideCache.keySet().iterator().next());
-                bindLiveChannelGuide(channel,result,result.isEmpty()?"Sin programación disponible":"");
+        if(timelineStore==null)timelineStore=new TimelineEpgStore(this);
+        liveGuideFetch=() -> submitExecutorTask(timelineCacheExecutor,"channel guide cache",() -> {
+            try {
+                long now=System.currentTimeMillis();
+                List<EpgRepository.EpgProgram> local=timelineStore.read(channel,now,now+30*86400000L);
+                if(!local.isEmpty())postUiIfAlive(()->publishLiveGuide(channel,generation,local));
+                if(!local.isEmpty()&&timelineStore.fresh(channel))return;
+            }catch(Exception e){Log.w(TAG,"Channel guide cache failed",e);}
+            submitExecutorTask(timelineDownloads,"channel guide refresh",()->{
+                try {
+                    List<EpgRepository.EpgProgram> fetched=epgRepository.fetchChannelProgramsForChannelsDirect(java.util.Collections.singletonList(channel),0).get(channel.id);
+                    if(fetched!=null&&!fetched.isEmpty()) {
+                        timelineStore.save(channel,fetched);
+                        postUiIfAlive(()->publishLiveGuide(channel,generation,fetched));
+                    } else postUiIfAlive(()->{if(generation==liveChannelGuideGeneration&&liveChannelGuideVisible&&!liveGuideCache.containsKey(channel.id))bindLiveChannelGuide(channel,new ArrayList<>(),"Sin programación disponible");});
+                }catch(Exception e){Log.w(TAG,"Channel guide refresh failed",e);}
             });
         });
         uiHandler.postDelayed(liveGuideFetch,180L);
         uiHandler.removeCallbacks(hideOverlayRunnable);
+    }
+    private void publishLiveGuide(ChannelItem channel,int generation,List<EpgRepository.EpgProgram> rows) {
+        if(generation!=liveChannelGuideGeneration||!liveChannelGuideVisible)return;
+        liveGuideCache.put(channel.id,rows);while(liveGuideCache.size()>32)liveGuideCache.remove(liveGuideCache.keySet().iterator().next());
+        bindLiveChannelGuide(channel,rows,rows.isEmpty()?"Sin programación disponible":"");
     }
     private void bindLiveChannelGuide(ChannelItem channel,List<EpgRepository.EpgProgram> programs,String message){
         List<LiveChannelGuideUiModel.Row> rows=new ArrayList<>();long now=System.currentTimeMillis();String previousDay="";
@@ -13895,6 +14062,7 @@ public class MainActivity extends FragmentActivity {
                 JSONObject status = new JSONObject();
                 Runtime runtime = Runtime.getRuntime();
                 status.put("Versión", BuildConfig.VERSION_NAME);
+                status.put("Dispositivo", android.os.Build.MODEL);
                 status.put("Importaciones",new org.json.JSONArray(playlistImportSnapshot));
                 status.put("Memoria de la app", ((runtime.totalMemory()-runtime.freeMemory())/1048576)+" MB / "+(runtime.maxMemory()/1048576)+" MB");
                 status.put("Espacio disponible", (getFilesDir().getUsableSpace()/1048576)+" MB");
@@ -13935,13 +14103,17 @@ public class MainActivity extends FragmentActivity {
                 try(java.io.InputStream input=getAssets().open("device-panel.html"); java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream()) {
                     byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1)output.write(buffer,0,n);page=output.toByteArray();
                 }
+                final DevicePanelScreen panelScreen = new DevicePanelScreen(this);
                 DeviceWebPanel candidate=new DeviceWebPanel(new DeviceWebPanel.Host() {
+                    public byte[] screen() throws Exception { return panelScreen.capture(); }
+                    public String ui() throws Exception { return panelScreen.ui(); }
+                    public byte[] artwork(String id)throws Exception{return devicePanelArtwork(id);}
                     public String status() { return devicePanelStatus; }
                     public long importPlaylist(java.io.InputStream input) throws Exception { return importer.importWeb(input); }
                     public String enqueuePlaylist(java.io.InputStream input)throws Exception {
                         return new JSONObject().put("job",PlaylistImportJobs.queueUpload(getApplicationContext(),input)).put("queued",true).toString();
                     }
-                    public String manage(String json) throws Exception { return importer.manageWeb(json); }
+                    public String manage(String json) throws Exception { return manageDevicePanel(json,importer); }
                 },page);
                 pending[0]=candidate;
                 int port=candidate.start();
@@ -13962,6 +14134,86 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch(Exception e){if(pending[0]!=null)pending[0].close();postUiIfAlive(() -> showStatus("No se pudo abrir el panel. Comprueba la conexión a la red local."));}
         });
+    }
+
+    private byte[] devicePanelArtwork(String id)throws Exception {
+        java.util.concurrent.FutureTask<JSONObject> lookup=new java.util.concurrent.FutureTask<>(()->{
+            if(movistarArtwork==null)movistarArtwork=new MovistarArtworkRepository(getCacheDir());
+            for(U7dCatalogEntry e:archiveState.getEntries())if(e.id.equals(id)){
+                ChannelItem c=findAllowedHomeLiveChannel(e.channelId);String provider=c==null||isOrangeChannel(c)||archiveAvailability==null?"":archiveAvailability.provider(archiveScope,c);
+                return new JSONObject().put("fallback",e.artworkKey).put("provider",provider).put("start",e.start).put("title",e.title);
+            }return new JSONObject();
+        });uiHandler.post(lookup);JSONObject metadata=lookup.get(5,java.util.concurrent.TimeUnit.SECONDS);
+        String fallback=metadata.optString("fallback"),url=MovistarGuideRepository.officialImage(fallback)?fallback:"",provider=metadata.optString("provider");
+        if(url.isEmpty()&&!provider.isEmpty()){
+            java.util.concurrent.CompletableFuture<String> result=new java.util.concurrent.CompletableFuture<>();
+            movistarArtwork.request(provider,metadata.optLong("start"),metadata.optString("title"),result::complete);
+            try{url=result.get(16,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ignored){}
+        }
+        if(url.isEmpty())url=fallback;if(url.isEmpty())throw new java.io.IOException("Artwork unavailable");
+        com.bumptech.glide.RequestBuilder<android.graphics.Bitmap> request=Glide.with(getApplicationContext()).asBitmap().load(authenticatedPosterModel(url)).diskCacheStrategy(DiskCacheStrategy.ALL).fitCenter().override(480,270);
+        if(!fallback.isEmpty()&&!fallback.equals(url))request=request.error(Glide.with(getApplicationContext()).asBitmap().load(authenticatedPosterModel(fallback)).fitCenter().override(480,270));
+        com.bumptech.glide.request.FutureTarget<android.graphics.Bitmap> target=request.submit();
+        try {android.graphics.Bitmap bitmap=target.get(12,java.util.concurrent.TimeUnit.SECONDS);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,85,out);return out.toByteArray();}finally{Glide.with(getApplicationContext()).clear(target);}
+    }
+
+    private String manageDevicePanel(String text,PersonalPlaylistController importer)throws Exception {
+        JSONObject request=new JSONObject(text);String action=request.optString("action");
+        if(action.startsWith("guide-") && "__drbep".equals(request.optString("source"))) {
+            java.util.concurrent.FutureTask<java.util.List<ChannelItem>> snapshot = new java.util.concurrent.FutureTask<>(() -> new ArrayList<>(channels));
+            uiHandler.post(snapshot);
+            try(TimelineEpgStore store=new TimelineEpgStore(getApplicationContext())) {
+                return ServerGuidePanel.manage(request,snapshot.get(5,java.util.concurrent.TimeUnit.SECONDS),epgRepository,store);
+            }
+        }
+        if(!action.startsWith("remote")&&!action.startsWith("catchup")) {
+            String result=importer.manageWeb(text);
+            if(action.equals("clear-history")) {
+                java.util.Set<String> episodeIds=importer.seriesIds(request.optString("source"),request.optString("series"));
+                java.util.concurrent.FutureTask<Void> clear=new java.util.concurrent.FutureTask<>(()->{for(String id:episodeIds)vodResumePositions.remove(id);saveVodResumePositions();return null;});
+                uiHandler.post(clear);clear.get(5,java.util.concurrent.TimeUnit.SECONDS);
+            }
+            return result;
+        }
+        java.util.concurrent.FutureTask<String> task=new java.util.concurrent.FutureTask<>(()->devicePanelOnUi(request));
+        uiHandler.post(task);try{return task.get(5,java.util.concurrent.TimeUnit.SECONDS);}catch(java.util.concurrent.ExecutionException e){if(e.getCause() instanceof Exception)throw (Exception)e.getCause();throw e;}catch(java.util.concurrent.TimeoutException e){task.cancel(false);throw new DeviceWebPanel.PanelError("El dispositivo está ocupado. Vuelve a intentarlo.");}
+    }
+    private String devicePanelOnUi(JSONObject request)throws Exception {
+        if(activityDestroyed)throw new DeviceWebPanel.PanelError("El reproductor está cerrado.");
+        String action=request.optString("action");JSONObject out=new JSONObject();
+        if(action.equals("remote-status")) {
+            ChannelItem current=getCurrentPlaybackChannelItem();boolean media=playerController!=null&&current!=null&&!"IDLE".equals(playerController.getPlaybackDiagnostics().playbackState);
+            boolean live=media&&!current.isVod&&!isCurrentU7dPlayback();
+            return out.put("title",current==null?"Sin reproducción":displayName(current)).put("hasMedia",media).put("playing",media&&playerController.isPlaying()).put("live",live)
+                .put("seekable",media&&(isCurrentU7dPlayback()||playerController.isPanelSeekable())).put("canPrevious",live).put("canNext",live).put("canLive",isCurrentU7dPlayback()).toString();
+        }
+        if(action.equals("remote-command")) {
+            if(playerController==null||getCurrentPlaybackChannelItem()==null)throw new DeviceWebPanel.PanelError("No hay una reproducción activa.");
+            String command=request.getString("command");
+            switch(command){
+                case "pause":playerController.setPlayWhenReady(!playerController.isPlaying());break;
+                case "stop":playerController.stopForSourceSwitch();break;
+                case "previous":case "next":if(getCurrentPlaybackChannelItem().isVod||isCurrentU7dPlayback())throw new DeviceWebPanel.PanelError("El contenido no tiene un canal siguiente.");tuneRelative(command.equals("next")?1:-1);break;
+                case "seek":long delta=request.optLong("delta");if(Math.abs(delta)>60000)throw new DeviceWebPanel.PanelError("Salto no válido.");if(isCurrentU7dPlayback())seekCurrentU7dPlaybackTo(Math.max(0,currentPlaybackU7dOffsetMs+playerController.getCurrentPlaybackPosition()+delta));else {if(!playerController.isPanelSeekable())throw new DeviceWebPanel.PanelError("Esta reproducción no permite avanzar ni retroceder.");playerController.seekToPosition(Math.max(0,Math.min(playerController.getCurrentVodDurationMs(),playerController.getCurrentPlaybackPosition()+delta)));}break;
+                case "live":if(!isCurrentU7dPlayback()||currentPlaybackU7dChannel==null)throw new DeviceWebPanel.PanelError("Ya estás en directo.");tuneChannelById(currentPlaybackU7dChannel.id);break;
+                default:throw new DeviceWebPanel.PanelError("Control no disponible.");
+            }
+            return out.put("ok",true).toString();
+        }
+        if(action.equals("catchup-list")) {
+            loadArchiveCatalog(true);String day=request.optString("day"),channel=request.optString("channel"),genre=request.optString("genre"),query=request.optString("query").toLowerCase(Locale.ROOT);if(query.length()>200)throw new DeviceWebPanel.PanelError("La búsqueda es demasiado larga.");
+            org.json.JSONArray rows=new org.json.JSONArray(),days=new org.json.JSONArray(),channelsJson=new org.json.JSONArray(),genres=new org.json.JSONArray();
+            java.util.Set<String> seenDays=new java.util.TreeSet<>(java.util.Collections.reverseOrder()),seenChannels=new java.util.HashSet<>(),seenGenres=new java.util.TreeSet<>();
+            List<U7dCatalogEntry> all=new ArrayList<>(archiveState.getEntries());all.sort((a,b)->Long.compare(b.start,a.start));for(U7dCatalogEntry e:all){seenDays.add(e.day);if(seenChannels.add(e.channelId))channelsJson.put(new JSONObject().put("id",e.channelId).put("name",e.channel));if(!e.genre.isEmpty())seenGenres.add(e.genre);}
+            for(String d:seenDays)days.put(d);for(String g:seenGenres)genres.put(g);if(day.isEmpty()&&!seenDays.isEmpty())day=seenDays.iterator().next();
+            int offset=Math.max(0,request.optInt("offset")),matched=0;long now=System.currentTimeMillis();
+            for(U7dCatalogEntry e:all){if(request.optBoolean("saved")?!e.saved:!day.equals(e.day))continue;if(!channel.isEmpty()&&!channel.equals(e.channelId)||!genre.isEmpty()&&!genre.equals(e.genre)||!query.isEmpty()&&!(e.title+" "+e.channel).toLowerCase(Locale.ROOT).contains(query))continue;if(matched++<offset)continue;if(rows.length()>=51)continue;rows.put(new JSONObject().put("id",e.id).put("title",e.title).put("channel",e.channel).put("genre",e.genre).put("description",e.description).put("start",e.start).put("end",e.end).put("saved",e.saved).put("airing",e.end>now).put("available",e.expires>now));}
+            return out.put("rows",rows).put("days",days).put("channels",channelsJson).put("genres",genres).put("day",day).put("loading",archiveState.getLoading()).toString();
+        }
+        if(action.equals("catchup-play")||action.equals("catchup-save")) {
+            String id=request.getString("id");for(U7dCatalogEntry e:archiveState.getEntries())if(e.id.equals(id)){if(action.equals("catchup-save"))e.save.run();else {if(e.expires<System.currentTimeMillis())throw new DeviceWebPanel.PanelError("Este programa ya no está disponible en el archivo.");e.play.run();}return out.put("ok",true).toString();}throw new DeviceWebPanel.PanelError("El programa ya no está disponible. Actualiza la guía.");
+        }
+        throw new DeviceWebPanel.PanelError("Operación no disponible.");
     }
 
     private static final int REQUEST_PERSONAL_PLAYLIST = 18663;
@@ -14011,6 +14263,10 @@ public class MainActivity extends FragmentActivity {
             public void post(Runnable action) { postUiIfAlive(action); }
             public void status(String message) { showStatus(message); }
             public void play(ChannelItem item) { playChannelItem(item, true); }
+            public void webPlay(ChannelItem item,boolean resume) {
+                if(!resume){rememberCurrentVodPosition();if(item.id.equals(currentPlaybackVodId))currentPlaybackVodId=null;clearVodResumePosition(item.id);}
+                playChannelItem(item,true);
+            }
             public void movies(String source,Runnable back) { showImportedMovies(source,back); }
             public void series(String source,Runnable back) { showImportedSeries(source,back); }
         });
@@ -17572,16 +17828,19 @@ public class MainActivity extends FragmentActivity {
 
     private void showAppUpdateAvailableDialog(AppUpdateManager.UpdateInfo info) {
         if (info == null) return;
-        StringBuilder message = new StringBuilder("Instalada: ").append(BuildConfig.VERSION_NAME)
-                .append("\nDisponible: ").append(safeUpdateVersionName(info));
+        StringBuilder message = new StringBuilder("Instalada: ").append(BuildConfig.VERSION_NAME.split("-", 2)[0])
+                .append("\nDisponible: ").append(safeUpdateVersionName(info).split("-", 2)[0]);
         if (info.changelog != null) {
             int count = 0;
             for (String item : info.changelog) {
-                if (item != null && !item.trim().isEmpty() && count++ < 3) message.append("\n• ").append(item.trim());
+                if (item != null && !item.trim().isEmpty() && count++ < 3) {
+                    String note = item.trim().replaceAll("\\s+", " ");
+                    message.append("\n• ").append(note.length() > 180 ? note.substring(0, 177) + "…" : note);
+                }
             }
         }
-        message.append(info.required ? "\nEsta actualización es necesaria para continuar." : "\n¿Quieres actualizar ahora?");
-        message.append("\nLa descarga se hará aquí. Fire TV pedirá confirmar la instalación.");
+        if (info.required) message.append("\nEsta actualización es necesaria para continuar.");
+        message.append("\nLa descarga se realiza en DRBEP. El dispositivo pedirá confirmar la instalación.");
         showAppUpdatePanel("Nueva versión de DRBEP", message.toString(), -1,
                 () -> downloadAndInstallAppUpdate(info), info.required, false);
     }
@@ -18900,6 +19159,7 @@ public class MainActivity extends FragmentActivity {
         }
         prepareModalSurface();
         discoveryPrivateFailed.clear();
+        prefetchChannelLogos(channels, 8, 48, 34);
         final long dialogGeneration = startupSummaryGate.open();
         final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
@@ -18911,6 +19171,7 @@ public class MainActivity extends FragmentActivity {
             else dialogHolder[0].dismiss();
         };
         final StartupHubState[] latestHomeState = { state };
+        final long[] lastHomeNavigation = { 0L };
         StartupHomeHubUiModel model = buildStartupHomeHubModel(state, open, close);
         startupSummaryUpdater = fresh -> {
             latestHomeState[0] = fresh;
@@ -18924,6 +19185,11 @@ public class MainActivity extends FragmentActivity {
                 if (!startupSummaryGate.accepts(dialogGeneration) || dialogHolder[0] == null
                         || !dialogHolder[0].isShowing()) return;
                 uiHandler.removeCallbacks(this);
+                long idleMs = android.os.SystemClock.uptimeMillis() - lastHomeNavigation[0];
+                if (idleMs < 450L) {
+                    uiHandler.postDelayed(this, 450L - idleMs);
+                    return;
+                }
                 StartupHomeHubComposeBinder.update(composeView, buildStartupHomeHubModel(latestHomeState[0], open, close));
                 ensureHomeLiveEpg();
                 uiHandler.postDelayed(this, 30000L);
@@ -19056,6 +19322,10 @@ public class MainActivity extends FragmentActivity {
         }
         uiHandler.post(homeRefresh);
         dialog.setOnKeyListener((ignored, keyCode, event) -> {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                    || keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                lastHomeNavigation[0] = android.os.SystemClock.uptimeMillis();
+            }
             if (keyCode != KeyEvent.KEYCODE_BACK) return false;
             // Consume both phases here so Compose and Dialog cannot handle the same Back twice.
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
@@ -19087,7 +19357,7 @@ public class MainActivity extends FragmentActivity {
         if (playerController != null && imageView.getParent() instanceof FrameLayout) {
             FrameLayout container = (FrameLayout) imageView.getParent();
             PlayerView previewView = (PlayerView) getLayoutInflater().inflate(
-                    R.layout.startup_preview_player, container, false);
+                    playerController.startupPreviewLayout(), container, false);
             previewView.setUseController(false);
             previewView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
             previewView.setBackgroundColor(Color.BLACK);
@@ -19096,6 +19366,17 @@ public class MainActivity extends FragmentActivity {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
             ));
+            // AndroidView may already be measured when this child is inserted.
+            // Size the new surface now rather than waiting for a clock/focus update.
+            container.post(() -> {
+                if (startupLivePreviewPlayerView != previewView || !container.isAttachedToWindow()) return;
+                int width = container.getWidth();
+                int height = container.getHeight();
+                if (width <= 0 || height <= 0) return;
+                previewView.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+                previewView.layout(0, 0, width, height);
+            });
             if (playerController.attachStartupPreview(previewView)) {
                 startupLivePreviewPlayerView = previewView;
                 startupLivePreviewContainer = container;
@@ -19625,7 +19906,7 @@ public class MainActivity extends FragmentActivity {
                 }));
         card.channelId = item.id;
         card.description = current == null || current.description == null ? "" : current.description;
-        card.schedule = current == null ? "" : shortTime(current.startTime) + " – " + shortTime(current.endTime);
+        card.schedule = current == null || parseIsoMillis(current.startTime) <= 0L || parseIsoMillis(current.endTime) <= parseIsoMillis(current.startTime) ? "" : shortTime(current.startTime) + " – " + shortTime(current.endTime);
         card.nextProgram = next == null ? (item.nextProgram == null ? "" : item.nextProgram)
                 : shortTime(next.startTime) + " · " + next.title;
         return card;
@@ -22626,10 +22907,11 @@ public class MainActivity extends FragmentActivity {
         });
 
         android.util.DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
-        int dialogWidthPx = (int) (displayMetrics.widthPixels * 0.98f);
-        int horizontalChrome = dp(20);
+        int dialogWidthPx = displayMetrics.widthPixels;
+        int horizontalChrome = dp(64);
         int labelWidth = Math.max(dp(108), Math.min(dp(132), (int) (dialogWidthPx * 0.18f)));
-        int stripWidth = Math.max(dp(540), dialogWidthPx - labelWidth - horizontalChrome);
+        int stripWidth = Math.max(dp(120), dialogWidthPx - labelWidth - horizontalChrome);
+        activeTimelineLabelWidth=labelWidth; activeTimelineStripWidth=stripWidth; activeTimelinePanel=timelinePanelComposeView;
         int totalWindowMinutes = (int) (TIMELINE_WINDOW_MS / 60000L);
         float minuteWidth = stripWidth / (float) totalWindowMinutes;
         TimelineScaleUiModel timelineScaleModel = TimelineGuideUiFactory.buildScale(windowStartMs, labelWidth, stripWidth, TIMELINE_WINDOW_MS, hourFormat);
@@ -22646,9 +22928,28 @@ public class MainActivity extends FragmentActivity {
                 renderTimelineProgramDetail
         );
         attachDialogViewTreeOwners(timelinePanelComposeView);
+        TimelineGuidePanelUiModel panelModel=new TimelineGuidePanelUiModel(timelineHeaderModel, timelineScaleModel, timelineRowsModel, initialTimelineDetail);
+        panelModel.windowStartMs=windowStartMs;panelModel.windowEndMs=windowEndMs;
+        List<TimelineHeaderUiModel.TimelineHeaderActionUiModel> dayActions=new ArrayList<>();
+        java.time.LocalDate today=java.time.LocalDate.now(java.time.ZoneId.systemDefault());
+        java.time.LocalDate selectedDay=java.time.Instant.ofEpochMilli(windowStartMs).atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        // Days are navigable even when a source has gaps. Empty periods remain visibly empty.
+        for(int offset=-7;offset<=7;offset++) {
+            final java.time.LocalDate day=today.plusDays(offset);
+            String label=(offset==0?"Hoy":offset==1?"Mañana":offset==-1?"Ayer":day.format(java.time.format.DateTimeFormatter.ofPattern("EEE d",Locale.getDefault())));
+            if(day.equals(selectedDay))label="● "+label;
+            dayActions.add(new TimelineHeaderUiModel.TimelineHeaderActionUiModel(label,() -> {
+                List<ChannelItem> requested=new ArrayList<>(); for(TimelineChannelPrograms row:activeTimelineRows)requested.add(row.channel);
+                String anchor=activeTimelineAnchorChannelId;
+                long nextStart=day.atTime(java.time.Instant.ofEpochMilli(windowStartMs).atZone(java.time.ZoneId.systemDefault()).toLocalTime()).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                if(timelineDialogRef[0]!=null)timelineDialogRef[0].dismiss();
+                loadTimelineGuideRowsAsync(requested,anchor,nextStart,"timeline day",true);
+            },null));
+        }
+        panelModel.days=dayActions;
         TimelineGuidePanelComposeBinder.bind(
                 timelinePanelComposeView,
-                new TimelineGuidePanelUiModel(timelineHeaderModel, timelineScaleModel, timelineRowsModel, initialTimelineDetail),
+                panelModel,
                 (imageView, row) -> bindChannelLogo(imageView, row.logoUrl, row.channelName, 26, 26),
                 (imageView, item) -> {
                     if (imageView == null || item == null || item.imageUrl == null || item.imageUrl.trim().isEmpty()) {
@@ -22665,11 +22966,13 @@ public class MainActivity extends FragmentActivity {
         );
         Dialog timelineDialog = ComposeDialogHost.showFullscreen(this, timelinePanelComposeView, () -> {
             TimelineGuidePanelComposeBinder.clear(timelinePanelComposeView);
-            if (!refreshingTimelineDialog) {
+            if (!refreshingTimelineDialog && activeTimelineDialog == timelineDialogRef[0]) {
                 lastTimelineAnchorChannelId = activeTimelineAnchorChannelId;
                 lastTimelineWindowStartMs = activeTimelineWindowStartMs;
                 lastTimelineFocusedCenterMinute = activeTimelineFocusedCenterMinute;
                 activeTimelineDialog = null;
+                activeTimelinePanel = null;
+                timelineLoadGeneration++;
                 activeTimelineRows = new ArrayList<>();
                 activeTimelineScheduledItems = new ArrayList<>();
                 activeProgramScheduledItems = new ArrayList<>();
@@ -22677,7 +22980,7 @@ public class MainActivity extends FragmentActivity {
                 activeTimelineWindowStartMs = 0L;
                 activeTimelineFocusedCenterMinute = -1;
             }
-            handleModalDismissed();
+            if(activeTimelineDialog==null)handleModalDismissed();
         });
         timelineDialogRef[0] = timelineDialog;
         activeTimelineDialog = timelineDialog;
@@ -24505,7 +24808,7 @@ public class MainActivity extends FragmentActivity {
             String trimmedLogoUrl = normalizeChannelLogoUrl(item.logoUrl);
             if (isSvgLogoUrl(trimmedLogoUrl)) {
                 if (channelLogoCache.get(trimmedLogoUrl) == null) {
-                    ioExecutor.execute(() -> {
+                    channelLogoExecutor.execute(() -> {
                         Drawable loaded = loadSvgDrawable(trimmedLogoUrl, widthDp, heightDp);
                         if (loaded != null) {
                             channelLogoCache.put(trimmedLogoUrl, loaded);
@@ -24516,7 +24819,7 @@ public class MainActivity extends FragmentActivity {
                 Glide.with(getApplicationContext())
                         .load(authenticatedPosterModel(trimmedLogoUrl))
                         .fitCenter()
-                        .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                        .diskCacheStrategy(DiskCacheStrategy.ALL)
                         .preload(dp(widthDp), dp(heightDp));
             }
             count++;
@@ -24524,6 +24827,22 @@ public class MainActivity extends FragmentActivity {
                 break;
             }
         }
+    }
+
+    private void prefetchHomeChannelLogos() {
+        if (isFinishing() || activityDestroyed) return;
+        List<ChannelItem> warm = new ArrayList<>();
+        ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current != null && !shouldHideProtectedItem(current)) warm.add(current);
+        warm.addAll(buildFavoriteQuickChannels());
+        warm.addAll(buildRecentQuickChannels());
+        warm.addAll(channels);
+        java.util.LinkedHashMap<String, ChannelItem> unique = new java.util.LinkedHashMap<>();
+        for (ChannelItem item : warm) {
+            if (item != null && !shouldHideProtectedItem(item)) unique.putIfAbsent(item.id, item);
+            if (unique.size() >= 12) break;
+        }
+        prefetchChannelLogos(new ArrayList<>(unique.values()), 12, 48, 34);
     }
 
     private void prefetchCurrentChannelLogos() {
@@ -24549,7 +24868,13 @@ public class MainActivity extends FragmentActivity {
         if (imageView == null) {
             return;
         }
-        Drawable fallback = buildChannelLogoFallback(channelName, widthDp, heightDp);
+        String fallbackKey = channelName + "|" + widthDp + "|" + heightDp;
+        Drawable fallback = channelLogoFallbacks.get(fallbackKey);
+        if (fallback == null) {
+            fallback = buildChannelLogoFallback(channelName, widthDp, heightDp);
+            channelLogoFallbacks.put(fallbackKey, fallback);
+        }
+        if (fallback.getConstantState() != null) fallback = fallback.getConstantState().newDrawable(getResources());
         String trimmedLogoUrl = normalizeChannelLogoUrl(logoUrl);
         if (trimmedLogoUrl.isEmpty()) {
             Glide.with(imageView.getContext()).clear(imageView);
@@ -24562,11 +24887,20 @@ public class MainActivity extends FragmentActivity {
             bindSvgChannelLogo(imageView, trimmedLogoUrl, fallback, widthDp, heightDp);
             return;
         }
+        final long logoStarted = android.os.SystemClock.elapsedRealtime();
         Glide.with(imageView.getContext())
                 .load(authenticatedPosterModel(trimmedLogoUrl))
                 .fitCenter()
-                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .override(Math.max(1, dp(widthDp)), Math.max(1, dp(heightDp)))
+                .listener(new com.bumptech.glide.request.RequestListener<Drawable>() {
+                    @Override public boolean onLoadFailed(com.bumptech.glide.load.engine.GlideException e, Object model, com.bumptech.glide.request.target.Target<Drawable> target, boolean first) {
+                        Log.println(android.util.Log.INFO, "LogoPerf", "type=raster failed=true ms="+(android.os.SystemClock.elapsedRealtime()-logoStarted));return false;
+                    }
+                    @Override public boolean onResourceReady(Drawable resource, Object model, com.bumptech.glide.request.target.Target<Drawable> target, com.bumptech.glide.load.DataSource source, boolean first) {
+                        Log.println(android.util.Log.INFO, "LogoPerf", "type=raster source="+source+" ms="+(android.os.SystemClock.elapsedRealtime()-logoStarted));return false;
+                    }
+                })
                 .placeholder(fallback)
                 .error(fallback)
                 .into(imageView);
@@ -24605,7 +24939,7 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         imageView.setImageDrawable(fallback);
-        ioExecutor.execute(() -> {
+        channelLogoExecutor.execute(() -> {
             Drawable loaded = loadSvgDrawable(logoUrl, widthDp, heightDp);
             if (loaded != null) {
                 channelLogoCache.put(logoUrl, loaded);
@@ -24621,37 +24955,15 @@ public class MainActivity extends FragmentActivity {
     }
 
     private Drawable loadSvgDrawable(String logoUrl, int widthDp, int heightDp) {
-        HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(logoUrl).openConnection();
-            connection.setConnectTimeout(8000);
-            connection.setReadTimeout(8000);
-            connection.setInstanceFollowRedirects(true);
-            connection.setRequestProperty("User-Agent", "DRBEP-TVPlayer/1.3.2");
-            connection.connect();
-            int status = connection.getResponseCode();
-            if (status < 200 || status >= 300) {
-                return null;
-            }
-            try (InputStream stream = connection.getInputStream()) {
-                SVG svg = SVG.getFromInputStream(stream);
-                int widthPx = Math.max(1, dp(widthDp));
-                int heightPx = Math.max(1, dp(heightDp));
-                svg.setDocumentWidth(widthPx);
-                svg.setDocumentHeight(heightPx);
-                Bitmap bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(bitmap);
-                svg.renderToCanvas(canvas);
-                return new BitmapDrawable(getResources(), bitmap);
-            }
-        } catch (Exception e) {
-            Log.d(TAG, "Failed to render SVG logo: " + logoUrl, e);
-            return null;
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
+            byte[] source = ChannelSvgDiskCache.read(getCacheDir(), logoUrl);
+            SVG svg = SVG.getFromInputStream(new java.io.ByteArrayInputStream(source));
+            int widthPx = Math.max(1, dp(widthDp)), heightPx = Math.max(1, dp(heightDp));
+            svg.setDocumentWidth(widthPx); svg.setDocumentHeight(heightPx);
+            Bitmap bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888);
+            svg.renderToCanvas(new Canvas(bitmap));
+            return new BitmapDrawable(getResources(), bitmap);
+        } catch (Exception ignored) { return null; }
     }
 
     private Drawable buildChannelLogoFallback(String channelName, int widthDp, int heightDp) {
@@ -24726,6 +25038,46 @@ public class MainActivity extends FragmentActivity {
             }
         }
         return true;
+    }
+
+    private void publishOfficialArchiveArtwork(String channel,long start,String url) {
+        boolean changed=false;
+        for(U7dCatalogEntry e:archiveState.getEntries())if(e.channelId.equals(channel)&&e.start==start&&!url.equals(e.artworkKey)){e.artworkKey=url;e.hasProgramArtwork=true;changed=true;}
+        if(changed)archiveState.setRevision(archiveState.getRevision()+1);
+        U7dCatalogEntry preview=currentPlaybackU7dPreviewEntry;
+        if(preview!=null&&preview.channelId.equals(channel)&&preview.start==start&&!url.equals(preview.artworkKey)){preview.artworkKey=url;preview.hasProgramArtwork=true;if(isTouchControlsVisibleForRemote())refreshTouchControlsBar();}
+    }
+
+    private void prefetchMovistarArchiveArtwork(List<U7dCatalogEntry> entries) {
+        if(movistarArtwork==null)movistarArtwork=new MovistarArtworkRepository(getCacheDir());
+        if(prefetchedArchiveArtwork.size()>1000)prefetchedArchiveArtwork.clear();
+        String today=java.time.LocalDate.now().toString();int count=0;
+        List<U7dCatalogEntry> visible=new ArrayList<>(entries);visible.sort((a,b)->Long.compare(b.start,a.start));
+        for(U7dCatalogEntry e:visible){if(!e.day.equals(today)||count>=12)continue;if(MovistarGuideRepository.officialImage(e.artworkKey)){count++;Glide.with(getApplicationContext()).load(e.artworkKey).diskCacheStrategy(DiskCacheStrategy.ALL).override(dp(320),dp(180)).preload();continue;}ChannelItem c=findAllowedHomeLiveChannel(e.channelId);if(c==null||isOrangeChannel(c))continue;
+            String provider=archiveAvailability==null?"":archiveAvailability.provider(archiveScope,c);if(provider.isEmpty())continue;count++;
+            if(!prefetchedArchiveArtwork.add(archiveScope+"|"+e.id))continue;
+            movistarArtwork.request(provider,e.start,e.title,url->postUiIfAlive(()->{if(url.isEmpty())return;publishOfficialArchiveArtwork(e.channelId,e.start,url);Glide.with(getApplicationContext()).load(url).diskCacheStrategy(DiskCacheStrategy.ALL).override(dp(320),dp(180)).preload();}));
+        }
+    }
+
+    private void bindMovistarArchiveArtwork(ImageView image,ChannelItem channel,EpgRepository.EpgProgram program,String fanart) {
+        if(MovistarGuideRepository.officialImage(program.icon)){bindArchiveFanart(image,program.icon,channel.logoUrl);return;}
+        if(movistarArtwork==null)movistarArtwork=new MovistarArtworkRepository(getCacheDir());
+        String provider=archiveAvailability==null?"":archiveAvailability.provider(archiveScope,channel);
+        long start=parseIsoMillis(program.startTime);
+        String cached=movistarArtwork.cached(provider,start,program.title);
+        String fallback=ProgramArtworkResolver.resolve(program,channel);
+        bindArchiveFanart(image,cached.isEmpty()?fanart:cached,fallback);
+        if(isOrangeChannel(channel)||provider.isEmpty())return;
+        Object binding=new Object();image.setTag(binding);
+        movistarArtwork.request(provider,start,program.title,url->postUiIfAlive(()->{
+            if(url.isEmpty())return;
+            publishOfficialArchiveArtwork(channel.id,start,url);
+            if(image.getTag()!=binding||!image.isAttachedToWindow())return;
+            image.setVisibility(View.VISIBLE);image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            Glide.with(image).load(url).fitCenter().override(dp(320),dp(180)).diskCacheStrategy(DiskCacheStrategy.ALL)
+                .error(Glide.with(image).load(authenticatedPosterModel(fanart==null?fallback:fanart)).fitCenter().override(dp(320),dp(180))).into(image);
+        }));
     }
 
     private void bindArchiveFanart(ImageView image,String fanart,String fallback) {
@@ -24871,14 +25223,19 @@ public class MainActivity extends FragmentActivity {
     }
 
     private TimelineProgramDetailUiModel buildTimelineProgramDetailModel(ChannelItem channel, EpgRepository.EpgProgram program, boolean live, boolean scheduled) {
-        return new TimelineProgramDetailUiModel(
+        TimelineProgramDetailUiModel model = new TimelineProgramDetailUiModel(
                 buildTimelineProgramTitle(program),
-                buildTimelineProgramMeta(channel, program, live, scheduled),
+                buildTimelineProgramMeta(channel, program, live, scheduled) + (program.category == null || program.category.isEmpty() ? "" : "  ·  " + program.category),
                 buildTimelineProgramDescription(program),
                 buildTimelineProgramPosterUrl(channel, program),
                 scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
                 getString(R.string.timeline_program_action_hint)
         );
+        if ((program.description == null || program.description.trim().isEmpty()) && supportsU7d(channel) && !isOrangeChannel(channel)) {
+            final String code=program.tvgId, start=program.startTime;
+            model.descriptionLoader=()->TimelineProgrammeDetails.load(code,start);
+        }
+        return model;
     }
 
     private List<TimelineVisibleBlock> buildTimelineVisibleBlocks(
@@ -24906,14 +25263,14 @@ public class MainActivity extends FragmentActivity {
             int visibleEndMinutes = (int) Math.max(visibleStartMinutes + 1L, (Math.min(windowEndMs, endMs) - windowStartMs) / 60000L);
             int targetOffsetWidth = Math.round(visibleStartMinutes * minuteWidth);
             int spacerWidth = Math.max(0, targetOffsetWidth - usedWidth);
-            int durationMinutes = Math.max(15, visibleEndMinutes - visibleStartMinutes);
-            int blockWidth = Math.max(dp(72), Math.round(durationMinutes * minuteWidth));
+            int durationMinutes = Math.max(1, visibleEndMinutes - visibleStartMinutes);
+            int blockWidth = Math.max(1, Math.round(visibleEndMinutes * minuteWidth) - targetOffsetWidth);
             int centerMinute = visibleStartMinutes + (durationMinutes / 2);
             boolean scheduled = isProgramScheduled(row.channel, program, scheduledItems);
-            boolean live = program.progress >= 0;
             boolean activeNow = System.currentTimeMillis() >= startMs && System.currentTimeMillis() < endMs;
+            boolean live = activeNow;
             blocks.add(new TimelineVisibleBlock(program, scheduled, live, activeNow, spacerWidth, blockWidth, centerMinute));
-            usedWidth = targetOffsetWidth + blockWidth + dp(2);
+            usedWidth = targetOffsetWidth + blockWidth;
         }
         return blocks;
     }

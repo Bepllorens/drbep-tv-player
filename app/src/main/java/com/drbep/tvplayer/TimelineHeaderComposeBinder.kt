@@ -51,28 +51,22 @@ internal fun TimelineHeader(model: TimelineHeaderUiModel) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = if (compact) 8.dp else 10.dp),
+            .padding(bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            BasicText(
-                text = model.title,
-                style = TextStyle(
-                    color = Color.White,
-                    fontSize = if (compact) 20.sp else 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-            if (model.windowLabel.isNotEmpty()) {
-                BasicText(
-                    text = model.windowLabel,
-                    modifier = Modifier.padding(top = 8.dp),
-                    style = TextStyle(
-                        color = OfflineTvTheme.Colors.textSoft,
-                        fontSize = if (compact) 13.sp else 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
+        if (compact) {
+            Column(modifier = Modifier.weight(1f)) {
+                BasicText(model.title, style = TextStyle(Color.White, 18.sp, FontWeight.Bold))
+                if (model.windowLabel.isNotEmpty()) BasicText(model.windowLabel,
+                    style = TextStyle(OfflineTvTheme.Colors.textSoft, 12.sp))
+            }
+        } else {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                BasicText(model.title, maxLines = 1, style = TextStyle(Color.White, 18.sp, FontWeight.Bold))
+                Spacer(Modifier.width(12.dp))
+                BasicText(model.windowLabel, modifier = Modifier.weight(1f), maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    style = TextStyle(OfflineTvTheme.Colors.textSoft, 12.sp))
             }
         }
         if (model.actions.isNotEmpty()) {
@@ -91,7 +85,7 @@ internal fun TimelineHeader(model: TimelineHeaderUiModel) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TimelineHeaderAction(action: TimelineHeaderUiModel.TimelineHeaderActionUiModel, compact: Boolean) {
+internal fun TimelineHeaderAction(action: TimelineHeaderUiModel.TimelineHeaderActionUiModel, compact: Boolean) {
     var focused by remember { mutableStateOf(false) }
     BasicText(
         text = action.label,
@@ -102,8 +96,7 @@ private fun TimelineHeaderAction(action: TimelineHeaderUiModel.TimelineHeaderAct
             .tvButtonSemantics(action.onClick != null, action.label)
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                    action.onDown?.run()
-                    true
+                    false
                 } else {
                     false
                 }

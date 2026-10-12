@@ -125,30 +125,6 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
         )
         Spacer(modifier = Modifier.padding(top = 2.dp))
         BasicText(
-            text = model.route,
-            style = TextStyle(
-                color = OfflineTvTheme.Colors.textPrimary,
-                fontSize = if (compact) 9.sp else 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-        )
-        if (model.qualityVisible) {
-            Spacer(modifier = Modifier.padding(top = 2.dp))
-            BasicText(
-                text = model.quality,
-                style = TextStyle(
-                    color = OfflineTvTheme.Colors.accentCyan,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                modifier = Modifier
-                    .wrapContentWidth()
-                    .background(Color.Transparent)
-                    .padding(horizontal = 7.dp, vertical = 3.dp)
-            )
-        }
-        Spacer(modifier = Modifier.padding(top = 2.dp))
-        BasicText(
             text = model.meta,
             style = TextStyle(
                 color = OfflineTvTheme.Colors.textSoft,

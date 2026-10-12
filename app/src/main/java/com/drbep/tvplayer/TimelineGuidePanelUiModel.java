@@ -1,6 +1,9 @@
 package com.drbep.tvplayer;
 
 public final class TimelineGuidePanelUiModel {
+    public long windowStartMs;
+    public long windowEndMs;
+    public java.util.List<TimelineHeaderUiModel.TimelineHeaderActionUiModel> days = java.util.Collections.emptyList();
     public final TimelineHeaderUiModel header;
     public final TimelineScaleUiModel scale;
     public final TimelineGuideRowsUiModel rows;

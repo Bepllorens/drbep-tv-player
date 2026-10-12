@@ -11,6 +11,11 @@ public final class PlaylistRefreshWorker extends Worker {
                 PlaylistImportJobs.enqueue(getApplicationContext(),id,"url","");
             }catch(Exception e){failed=true;}
         }}catch(Exception e){return Result.retry();}
+        try(Cursor c=db.dueGuides(System.currentTimeMillis()-TimeUnit.HOURS.toMillis(12))){while(c.moveToNext()){
+            if(isStopped())return Result.retry();
+            try {PlaylistImportJobs.enqueue(getApplicationContext(),c.getString(0),"guide","");}catch(Exception e){failed=true;}
+        }}catch(Exception e){failed=true;}
+        try {db.maintainGuides(System.currentTimeMillis());}catch(Exception e){failed=true;}
         return failed?Result.retry():Result.success();
     }
     static void schedule(Context context){WorkManager.getInstance(context).enqueueUniquePeriodicWork("personal-playlists-refresh",ExistingPeriodicWorkPolicy.KEEP,new PeriodicWorkRequest.Builder(PlaylistRefreshWorker.class,12,TimeUnit.HOURS).setConstraints(new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).setRequiresStorageNotLow(true).build()).build());}

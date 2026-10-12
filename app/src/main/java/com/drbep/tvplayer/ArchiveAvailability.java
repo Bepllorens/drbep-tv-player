@@ -14,6 +14,12 @@ final class ArchiveAvailability {
  static String code(String value){if(value==null)return "";if(value.matches("[0-9]{3,6}"))return value;Matcher m=Pattern.compile("(?:/CVXCH|/deliverty/)([0-9]{3,6})(?:[/.])|/([0-9]{3,6})/vxfmt=dp/").matcher(value);return m.find()?(m.group(1)!=null?m.group(1):m.group(2)):"";}
  private String key(String scope,String id){return android.net.Uri.encode(scope+"|"+id);}
  void register(String scope,ChannelItem c,String providerCode){String baseKey=key(scope,c.id);if(providerCode!=null&&providerCode.matches("[A-Za-z0-9_-]{1,24}")&&!providerCode.equals(prefs.getString(baseKey+".provider","")))prefs.edit().putString(baseKey+".provider",providerCode).apply();String value=code(providerCode);if(value.isEmpty())value=code(c.tvgId);if(value.isEmpty())value=code(c.playUrl);if(value.isEmpty())value=code(c.fallbackPlayUrl);String k=key(scope,c.id)+".code";if(!value.isEmpty()&&!value.equals(prefs.getString(k,"")))prefs.edit().putString(k,value).apply();}
+ void registerOfficial(String scope,ChannelItem c,org.json.JSONObject identity){
+  String base=key(scope,c.id),provider=identity.optString("CodCadenaTv"),service=identity.optString("ServiceUid2");
+  if(!provider.matches("[A-Za-z0-9_-]{1,24}"))return;
+  SharedPreferences.Editor edit=prefs.edit().putString(base+".provider",provider).putString(base+".name",identity.optString("Nombre"));
+  if(service.matches("[0-9]{3,6}"))edit.putString(base+".code",service);edit.apply();
+ }
  static long ttl(State s){return s==State.AVAILABLE?3*86400000L:s==State.UNAVAILABLE?86400000L:15*60000L;}
  static State classify(int status,String prefix){if(status==404||status==410)return State.UNAVAILABLE;if(status>=200&&status<300&&prefix.trim().startsWith("#EXTM3U"))return State.AVAILABLE;return State.UNKNOWN;}
  State cached(String scope,ChannelItem c){String k=key(scope,c.id);long age=System.currentTimeMillis()-prefs.getLong(k+".time",0);State s;try{s=State.valueOf(prefs.getString(k+".state","UNKNOWN"));}catch(Exception e){s=State.UNKNOWN;}return age>=0&&age<ttl(s)?s:State.UNKNOWN;}
@@ -25,6 +31,15 @@ final class ArchiveAvailability {
    prefs.edit().putString(k+".state",state.name()).putLong(k+".time",System.currentTimeMillis()).apply();if(state!=old)changed.run();
   }finally{pending.remove(k);}});
  }
+ boolean invalidateMismatchedIdentity(String scope,ChannelItem c){
+  String base=key(scope,c.id),official=prefs.getString(base+".name","");
+  if(official.isEmpty()||U7dChannelIdentity.matches(c.name,official)||U7dChannelIdentity.matches(c.tvgId,official))return false;
+  SharedPreferences.Editor edit=prefs.edit();
+  // Remove only derived identity/probe fields for this mismatched channel.
+  for(String suffix:new String[]{".provider",".code",".name",".state",".time",".identityAttempt"})edit.remove(base+suffix);
+  edit.apply();return true;
+ }
+ String provider(String scope,ChannelItem c){String value=prefs.getString(key(scope,c.id)+".provider","");if(value.isEmpty()&&c.tvgId!=null&&!c.tvgId.matches("[0-9]+"))value=c.tvgId;return value;}
  String officialName(String scope,ChannelItem c,String fallback){return prefs.getString(key(scope,c.id)+".name",fallback);}
  private String resolveCode(String key){
   String provider=prefs.getString(key+".provider","");

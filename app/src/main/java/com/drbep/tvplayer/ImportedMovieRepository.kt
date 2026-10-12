@@ -44,7 +44,9 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
             sql.execSQL("UPDATE preferences SET resume_ms=0 WHERE EXISTS(SELECT 1 FROM entries e WHERE e.kind IN ('movie','series') AND e.source=preferences.source AND e.identity=preferences.identity AND e.occurrence=preferences.occurrence)")
             for((id,ms) in progress) {
                 val parts=id.split(":");if(parts.size!=4||parts[0]!="m3u")continue
-                sql.execSQL("INSERT OR IGNORE INTO preferences(source,identity,occurrence) VALUES(?,?,?)",arrayOf(parts[1],parts[2],parts[3]))
+                // Resume history can arrive from another device or outlive a deleted list.
+                // OR IGNORE does not suppress foreign-key failures: only insert for a local entry.
+                sql.execSQL("INSERT OR IGNORE INTO preferences(source,identity,occurrence) SELECT e.source,e.identity,e.occurrence FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation WHERE e.source=? AND e.identity=? AND e.occurrence=? AND e.kind IN ('movie','series') LIMIT 1",arrayOf(parts[1],parts[2],parts[3]))
                 sql.execSQL("UPDATE preferences SET resume_ms=? WHERE source=? AND identity=? AND occurrence=?",arrayOf(ms,parts[1],parts[2],parts[3]))
             };sql.setTransactionSuccessful()
         }finally{sql.endTransaction()}

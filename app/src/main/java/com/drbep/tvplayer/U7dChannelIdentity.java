@@ -5,6 +5,10 @@ import java.util.Locale;
 
 /** Canonical channel identity, keeping the name of the Movistar Plus channel. */
 final class U7dChannelIdentity {
+    static boolean matches(String left, String right) {
+        String a=normalize(left), b=normalize(right);
+        return !a.isEmpty() && a.equals(b);
+    }
     static String normalize(String value) {
         String text = Normalizer.normalize(value == null ? "" : value.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
                 .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");

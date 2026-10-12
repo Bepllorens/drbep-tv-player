@@ -22,6 +22,7 @@ final class PersonalPlaylistController {
         void post(Runnable action);
         void status(String message);
         void play(ChannelItem item);
+        default void webPlay(ChannelItem item,boolean resume){play(item);}
         void movies(String source, Runnable back);
         void series(String source, Runnable back);
     }
@@ -174,20 +175,22 @@ final class PersonalPlaylistController {
     private void guide(String source,ChannelItem channel,JSONObject attributes,int offset,Runnable back) {
         work(() -> {
             List<String> labels=new ArrayList<>();List<Runnable> actions=new ArrayList<>();long now=System.currentTimeMillis();
-            try(Cursor c=db.guide(source,channel.tvgId,now-7*86400000L,now+86400000L,offset)) {
+            try(Cursor c=db.guide(source,db.resolveGuideChannel(source,channel.tvgId,channel.name),now-7*86400000L,now+86400000L,offset)) {
                 while(c.moveToNext()) {
                     if(labels.size()==50){labels.add("Más programas →");actions.add(() -> guide(source,channel,attributes,offset+50,() -> guide(source,channel,attributes,offset,back)));break;}
                     long start=c.getLong(c.getColumnIndexOrThrow("start_ms")),end=c.getLong(c.getColumnIndexOrThrow("end_ms"));String title=c.getString(c.getColumnIndexOrThrow("title"));
                     String date=new java.text.SimpleDateFormat("EEE dd/MM · HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(start));
                     labels.add(date+" · "+title);
-                    actions.add(() -> {
+                    final String detailText=ProgrammePresentation.metadata(new JSONObject(c.getString(c.getColumnIndexOrThrow("metadata"))))+"\n\n"+c.getString(c.getColumnIndexOrThrow("description"));
+                    Runnable replayAction=() -> {
                         try {
                             String url=PlaylistCatchup.url(channel.playUrl,attributes,start,end,System.currentTimeMillis());
                             ChannelItem replay=new ChannelItem(channel.id+":catchup:"+start,title,channel.tvgId,channel.logoUrl,channel.group,url,"",0,0,true,channel.isAdultVod,channel.platformId,channel.platformName,channel.customGroups,channel.drmScheme,channel.drmLicenseUrl,"m3u",true);
                             replay.playlistStreamHeaders=channel.playlistStreamHeaders;replay.playlistLicenseHeaders=channel.playlistLicenseHeaders;replay.playlistMimeType=channel.playlistMimeType;
                             host.play(replay);
                         } catch(Exception e) {host.status("Este programa no tiene catch-up disponible en la lista.");}
-                    });
+                    };
+                    actions.add(() -> host.menu(title,detailText,Arrays.asList("Ver desde el principio"),Arrays.asList(replayAction),() -> guide(source,channel,attributes,offset,back)));
                 }
                 post(() -> host.menu("Guía · "+channel.name,labels.isEmpty()?"Sin programas. Actualiza la guía y comprueba el tvg-id de la lista.":"Programas ordenados por día y hora",labels,actions,back));
             }catch(Exception e){error();}
@@ -214,6 +217,17 @@ final class PersonalPlaylistController {
     }
     String manageWeb(String text) throws Exception {
         JSONObject request=new JSONObject(text);String action=request.optString("action"),id=request.optString("source");JSONObject result=new JSONObject();
+        if(action.equals("import-url")) {
+            String name=request.optString("name").trim(),url=request.optString("url").trim(),epg=request.optString("epg").trim();
+            okhttp3.HttpUrl parsed=okhttp3.HttpUrl.parse(url);
+            if(name.isEmpty()||name.length()>160||url.length()>8192||parsed==null||epg.length()>8192||(!epg.isEmpty()&&okhttp3.HttpUrl.parse(epg)==null))throw new IOException("Invalid source");
+            String source=db.createSource(name,"url");
+            try {
+                db.configure(source,name,parsed.toString(),request.optBoolean("automatic"));
+                if(!epg.isEmpty()){db.setGuideUrl(source,epg);db.guideMode(source,"manual");}
+                return result.put("job",PlaylistImportJobs.enqueue(context,source,"url","")).put("queued",true).toString();
+            }catch(Exception e){db.deleteUnpublishedSource(source);throw e;}
+        }
         if(action.equals("jobs"))return result.put("jobs",PlaylistImportJobs.list(context)).toString();
         if(action.equals("cancel-job")){PlaylistImportJobs.cancel(context,request.getString("job"));return result.put("ok",true).toString();}
         if(action.equals("lists")) {
@@ -222,11 +236,16 @@ final class PersonalPlaylistController {
             return result.put("sources",rows).toString();
         }
         try(Cursor c=db.source(id)){if(!c.moveToFirst())throw new IOException("Unknown source");}
+        if(action.startsWith("guide-")) return new PlaylistGuidePanel(db).manage(request);
+        if(action.equals("source-info")) {
+            try(Cursor c=db.source(id)){c.moveToFirst();return result.put("automatic",c.getInt(c.getColumnIndexOrThrow("auto_refresh"))!=0).toString();}
+        }
+        if(action.equals("series")||action.equals("episodes")||action.equals("watched")||action.equals("clear-history")||action.equals("play-entry"))return libraryWeb(request);
         if(action.equals("entries")) {
             org.json.JSONArray rows=new org.json.JSONArray();String query=request.optString("query");if(query.length()>200)throw new IOException("Query too long");
             try(Cursor c=db.browse(id,request.optString("kind"),query,request.optBoolean("favorites"),request.optBoolean("hidden"),request.optInt("offset"),50)) {
                 while(c.moveToNext())rows.put(new JSONObject().put("identity",c.getString(c.getColumnIndexOrThrow("identity"))).put("occurrence",c.getInt(c.getColumnIndexOrThrow("occurrence")))
-                    .put("title",c.getString(c.getColumnIndexOrThrow("display_title"))).put("kind",c.getString(c.getColumnIndexOrThrow("kind"))).put("favorite",c.getInt(c.getColumnIndexOrThrow("favorite"))!=0).put("hidden",c.getInt(c.getColumnIndexOrThrow("hidden"))!=0));
+                    .put("title",c.getString(c.getColumnIndexOrThrow("display_title"))).put("order",c.isNull(c.getColumnIndexOrThrow("sort_order"))?0:c.getInt(c.getColumnIndexOrThrow("sort_order"))).put("kind",c.getString(c.getColumnIndexOrThrow("kind"))).put("favorite",c.getInt(c.getColumnIndexOrThrow("favorite"))!=0).put("hidden",c.getInt(c.getColumnIndexOrThrow("hidden"))!=0));
             }
             return result.put("entries",rows).toString();
         }
@@ -243,12 +262,50 @@ final class PersonalPlaylistController {
                 if(epg!=null&&!epg.isEmpty()&&okhttp3.HttpUrl.parse(epg)==null)throw new IOException("Invalid EPG URL");
                 if("server".equals(c.getString(c.getColumnIndexOrThrow("origin")))&&!url.isEmpty())throw new IOException("Server lists are managed by the server");
                 db.configure(id,name,url,request.optBoolean("automatic"));
-                if(epg!=null)db.setGuideUrl(id,epg);
+                if(epg!=null){db.setGuideUrl(id,epg);db.guideMode(id,epg.isEmpty()?"off":"manual");}
             }
         } else if(action.equals("refresh")) { refreshSource(id,false);
         } else if(action.equals("guide")) { refreshSource(id,true);
         } else throw new IOException("Unknown action");
         return result.put("ok",true).toString();
+    }
+    java.util.Set<String> seriesIds(String source,String series) {
+        java.util.Set<String> ids=new java.util.HashSet<>();
+        try(Cursor c=db.getReadableDatabase().rawQuery("SELECT identity,occurrence FROM entries WHERE source=? AND series=? AND kind='series'",new String[]{source,series})){while(c.moveToNext())ids.add("m3u:"+source+":"+c.getString(0)+":"+c.getInt(1));}
+        return ids;
+    }
+    private String libraryWeb(JSONObject request)throws Exception {
+        String action=request.getString("action"),source=request.getString("source"),series=request.optString("series");
+        if(series.length()>300)throw new IOException("Invalid series");
+        android.database.sqlite.SQLiteDatabase sql=db.getWritableDatabase();
+        String from=" FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation LEFT JOIN preferences p ON p.source=e.source AND p.identity=e.identity AND p.occurrence=e.occurrence ";
+        JSONObject out=new JSONObject();org.json.JSONArray rows=new org.json.JSONArray();int offset=Math.max(0,request.optInt("offset"));
+        if(action.equals("series")) {
+            String query=request.optString("query");if(query.length()>200)throw new IOException("Invalid search");
+            try(Cursor c=sql.rawQuery("SELECT e.series,COUNT(*) AS count"+from+" WHERE e.source=? AND e.kind='series' AND COALESCE(p.hidden,0)=0 AND instr(lower(e.series),lower(?))>0 GROUP BY e.series ORDER BY e.series COLLATE NOCASE LIMIT 51 OFFSET ?",new String[]{source,query,Integer.toString(offset)})){while(c.moveToNext())rows.put(new JSONObject().put("title",c.getString(0)).put("episodes",c.getInt(1)));}
+            return out.put("rows",rows).toString();
+        }
+        if(action.equals("episodes")) {
+            String order=request.optBoolean("descending")?" DESC":" ASC";
+            org.json.JSONArray seasons=new org.json.JSONArray();
+            try(Cursor c=sql.rawQuery("SELECT DISTINCT e.season"+from+" WHERE e.source=? AND e.kind='series' AND e.series=? AND COALESCE(p.hidden,0)=0 ORDER BY e.season"+order,new String[]{source,series})){while(c.moveToNext())seasons.put(c.getInt(0));}
+            int season=request.has("season")?request.getInt("season"):seasons.optInt(0);
+            try(Cursor c=sql.rawQuery("SELECT e.identity,e.occurrence,e.title,e.episode,COALESCE(p.resume_ms,0),COALESCE(p.watched,0)"+from+" WHERE e.source=? AND e.kind='series' AND e.series=? AND e.season=? AND COALESCE(p.hidden,0)=0 AND (?='0' OR COALESCE(p.watched,0)=0) ORDER BY e.episode"+order+",e.position LIMIT 51 OFFSET ?",new String[]{source,series,Integer.toString(season),request.optBoolean("hideWatched")?"1":"0",Integer.toString(offset)})){while(c.moveToNext())rows.put(new JSONObject().put("identity",c.getString(0)).put("occurrence",c.getInt(1)).put("title",c.getString(2)).put("episode",c.getInt(3)).put("position",c.getLong(4)).put("watched",c.getInt(5)!=0));}
+            return out.put("rows",rows).put("seasons",seasons).put("season",season).toString();
+        }
+        if(action.equals("clear-history")) {
+            sql.execSQL("UPDATE preferences SET resume_ms=0,watched=0 WHERE source=? AND EXISTS(SELECT 1 FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation WHERE e.source=preferences.source AND e.identity=preferences.identity AND e.occurrence=preferences.occurrence AND e.kind='series' AND e.series=?)",new Object[]{source,series});return out.put("ok",true).toString();
+        }
+        String identity=request.getString("identity");int occurrence=request.optInt("occurrence");if(!identity.matches("[a-f0-9]{64}")||occurrence<0)throw new IOException("Invalid episode");
+        try(Cursor c=sql.rawQuery("SELECT e.*"+from+" WHERE e.source=? AND e.identity=? AND e.occurrence=? AND COALESCE(p.hidden,0)=0 LIMIT 1",new String[]{source,identity,Integer.toString(occurrence)})){
+            if(!c.moveToFirst())throw new IOException("Content no longer available");
+            if(action.equals("watched")) {
+                if(!"series".equals(c.getString(c.getColumnIndexOrThrow("kind"))))throw new IOException("Not an episode");
+                sql.execSQL("INSERT OR IGNORE INTO preferences(source,identity,occurrence) VALUES(?,?,?)",new Object[]{source,identity,occurrence});
+                sql.execSQL("UPDATE preferences SET watched=? WHERE source=? AND identity=? AND occurrence=?",new Object[]{request.optBoolean("watched")?1:0,source,identity,occurrence});
+            }else{ChannelItem channel=item(c,"Mis listas");boolean resume=request.optBoolean("resume",true);host.post(()->host.webPlay(channel,resume));}
+        }
+        return out.put("ok",true).toString();
     }
     private void refreshSource(String id,boolean guide) {
         queue(() -> PlaylistImportJobs.enqueue(context,id,guide?"guide":"url",""));

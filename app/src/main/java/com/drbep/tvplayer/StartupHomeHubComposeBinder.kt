@@ -2,6 +2,7 @@ package com.drbep.tvplayer
 
 import kotlin.coroutines.resume
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -44,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.drawWithContent
@@ -447,11 +449,12 @@ private fun StartupShortcut(item: StartupHomeHubUiModel.Shortcut, modifier: Modi
 @Composable
 private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubArtworkBinder?) {
     val discovery = model.discovery ?: return
+    val touchLayout = (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) != android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     var section by remember { mutableStateOf(discovery.section.takeIf { it in listOf("Inicio", "En directo", "Mi biblioteca") } ?: "Inicio") }
     var provider by remember(section, model) { mutableStateOf(discovery.selectedProviders["En directo"] ?: "") }
-    var liveTick by remember { mutableStateOf(0) }
-    LaunchedEffect(section) { if (section == "En directo") while (true) { delay(15000); liveTick++ } }
-    val page = remember(model, section, provider, liveTick) { discovery.page.apply(section, provider) }
+    // MainActivity already publishes fresh EPG/home models every 30 seconds.
+    // A second timer rebuilt every channel card on the UI thread between those updates.
+    val page = remember(model, section, provider) { discovery.page.apply(section, provider) }
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -459,31 +462,31 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
     }
     val openSection: (String) -> Unit = { section = it; discovery.section = it; discovery.restoreLiveFocus = false; discovery.refreshHome?.run() }
     Box(Modifier.fillMaxSize().tvPanelBackHandler(Runnable { (discovery.cancelLiveOrder ?: model.onBack)?.run() })
-        .background(if (model.livePlaybackError) OfflineTvTheme.Colors.backdrop else Color.Transparent)
+        .background(if (section == "Inicio" || model.livePlaybackError) OfflineTvTheme.Colors.backdrop else Color.Transparent)
         .background(CachedMenuFade.horizontal(0f to Color(0xFA09121C), 0.38f to Color(0xE009121C), 0.75f to Color(0x7509121C), 1f to Color.Transparent))) {
         Box(Modifier.fillMaxSize().background(CachedMenuFade.vertical(0f to Color(0x1809121C), 0.45f to Color.Transparent, 1f to Color(0xF009121C))))
         Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(if (section == "Inicio") 34.dp else 20.dp)) {
             var navigationFocused by remember { mutableStateOf(false) }
-            val railWidth by androidx.compose.animation.core.animateDpAsState(if (navigationFocused) 158.dp else 66.dp, label = "homeRail")
+            val railWidth by androidx.compose.animation.core.animateDpAsState(if (navigationFocused || touchLayout) 146.dp else 66.dp, label = "homeRail")
             Column(Modifier.width(railWidth).fillMaxHeight().onFocusChanged { navigationFocused = it.hasFocus }.focusGroup()
                 .background(OfflineTvTheme.Menu.background).padding(horizontal = 6.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(painterResource(R.drawable.drbep_menu_logo), model.brand, Modifier.size(if (navigationFocused) 72.dp else 50.dp))
+                Image(painterResource(R.drawable.drbep_menu_logo), model.brand, Modifier.size(if (navigationFocused || touchLayout) 72.dp else 50.dp))
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    DiscoveryNavItem("Buscar", "⌕", navigationFocused, false, action = { model.onSearch?.run() })
+                    DiscoveryNavItem("Buscar", "⌕", (navigationFocused || touchLayout), false, action = { model.onSearch?.run() })
                     listOf("Inicio" to "⌂", "En directo" to "TV", "Mi biblioteca" to "☆").forEach { (name, icon) ->
-                        DiscoveryNavItem(name, icon, navigationFocused, section == name,
+                        DiscoveryNavItem(name, icon, (navigationFocused || touchLayout), section == name,
                             modifier = if (name == discovery.section) Modifier.focusRequester(initialFocus) else Modifier,
                             action = { openSection(name) })
                     }
                     listOf("Películas" to "▶", "Series" to "▤").forEach { (name, icon) ->
                         model.primaryCards.firstOrNull { it.title == name }?.let { card ->
-                            DiscoveryNavItem(name, icon, navigationFocused, false, action = { card.onClick?.run() })
+                            DiscoveryNavItem(name, icon, (navigationFocused || touchLayout), false, action = { card.onClick?.run() })
                         }
                     }
-                    model.onLiveGuide?.let { action -> DiscoveryNavItem("Guía", "▤", navigationFocused, false, action = { action.run() }) }
-                    model.onLiveHistory?.let { action -> DiscoveryNavItem("Últimos 7 días", "↶", navigationFocused, false, action = { action.run() }) }
-                    DiscoveryNavItem("Ajustes", "⚙", navigationFocused, false, action = { model.onSettings?.run() })
+                    model.onLiveGuide?.let { action -> DiscoveryNavItem("Guía", "▤", (navigationFocused || touchLayout), false, action = { action.run() }) }
+                    model.onLiveHistory?.let { action -> DiscoveryNavItem("Últimos 7 días", "↶", (navigationFocused || touchLayout), false, action = { action.run() }) }
+                    DiscoveryNavItem("Ajustes", "⚙", (navigationFocused || touchLayout), false, action = { model.onSettings?.run() })
                 }
                 BasicText("BETA ${AppBuildInfo.versionCode()}", Modifier.padding(top = 4.dp), style = TextStyle(Color(0xFF8094A8), 9.sp))
             }
@@ -506,7 +509,9 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
 private fun DiscoveryLibrary(model: StartupHomeHubUiModel, artwork: StartupHomeHubArtworkBinder?) {
     var removed by remember { mutableStateOf(setOf<String>()) }
     fun identity(card: StartupHomeHubUiModel.ContinueCard) = card.libraryId.ifBlank { card.title + card.imageUrl }
-    val cards = StartupHomeHubUiModel.continueGroup(model.continueCards, false).filter { identity(it) !in removed }.distinctBy { identity(it) }
+    val cards = remember(model.continueCards, removed) {
+        StartupHomeHubUiModel.continueGroup(model.continueCards, false).filter { identity(it) !in removed }.distinctBy { identity(it) }
+    }
     var selectedId by remember { mutableStateOf(model.discovery?.librarySelectedId.orEmpty()) }
     val selected = cards.firstOrNull { identity(it) == selectedId } ?: cards.firstOrNull()
     var details by remember(selected?.libraryId, selected?.title) { mutableStateOf(arrayOf(selected?.description.orEmpty(), selected?.facts.orEmpty())) }
@@ -613,93 +618,111 @@ private fun DiscoveryLibrary(model: StartupHomeHubUiModel, artwork: StartupHomeH
 private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHubArtworkBinder?, browse: () -> Unit) {
     val discovery = model.discovery ?: return
     val live = model.currentLive
-    var folded by remember { mutableStateOf(false) }
-    val heroHeight by androidx.compose.animation.core.animateDpAsState(if (folded) 112.dp else 252.dp, label = "liveHero")
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val requesters = remember { mutableMapOf<String, FocusRequester>() }
+    val groupFocus = remember { FocusRequester() }
+    var groupsOpen by remember { mutableStateOf(false) }
+    var restoreGroup by remember { mutableStateOf(false) }
+    val presentation = remember(live?.subtitle) { HomeProgramPresentation.of(live?.subtitle.orEmpty()) }
+    val spacious = LocalConfiguration.current.screenHeightDp >= 650
+    androidx.compose.runtime.DisposableEffect(groupsOpen) {
+        val close=if(groupsOpen) Runnable { groupsOpen=false;restoreGroup=true } else null
+        discovery.cancelLiveOrder=close
+        onDispose { if(discovery.cancelLiveOrder===close)discovery.cancelLiveOrder=null }
+    }
+    LaunchedEffect(groupsOpen) {
+        if (!groupsOpen && restoreGroup) { withFrameNanos { }; runCatching { groupFocus.requestFocus() }; restoreGroup=false }
+    }
     LaunchedEffect(Unit) {
         val id = discovery.homeFocusedChannel
         val index = model.homeChannels.indexOfFirst { it.channelId == id }
         if (index >= 0) {
-            folded = true
-            listState.scrollToItem(index + 1)
+            listState.scrollToItem(index)
             withFrameNanos { }; withFrameNanos { }
             runCatching { requesters[id]?.requestFocus() }
         }
     }
-    Column(Modifier.fillMaxSize().padding(top = 12.dp)) {
-            Column(Modifier.fillMaxWidth().height(heroHeight)
-                .background(if (folded) OfflineTvTheme.Menu.background else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)))
-                .padding(end = 22.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    BasicText(if (live == null) "TU TELEVISIÓN" else if (model.livePlaybackError) "REPRODUCCIÓN INTERRUMPIDA  ·  ${live.title}" else "● EN DIRECTO  ·  ${live.title}", Modifier.weight(1f), maxLines = 1,
-                        style = TextStyle(OfflineTvTheme.Colors.accentCyan, 12.sp, FontWeight.Bold, letterSpacing = 1.sp))
-                    BasicText(model.clock, style = TextStyle(Color.White, 16.sp, FontWeight.Medium))
+    Column(Modifier.fillMaxSize().padding(top=8.dp,end=14.dp), verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            BasicText(if(live==null) "TU TELEVISIÓN" else if(model.livePlaybackError) "REPRODUCCIÓN INTERRUMPIDA · ${live.title}" else "● EN DIRECTO · ${live.title}",
+                Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(OfflineTvTheme.Colors.accentCyan,12.sp,FontWeight.Bold))
+            BasicText(model.clock,style=TextStyle(Color.White,14.sp))
+        }
+        Row(Modifier.fillMaxWidth().height(if(spacious) 230.dp else 180.dp),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                BasicText(presentation.title.ifBlank { "Todo listo para ver televisión" },maxLines=2,overflow=TextOverflow.Ellipsis,
+                    style=TextStyle(Color.White,if(spacious) 27.sp else 24.sp,FontWeight.Bold))
+                if(presentation.metadata.isNotBlank()) BasicText(presentation.metadata,maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(OfflineTvTheme.Colors.textSoft,12.sp))
+                if(!live?.schedule.isNullOrBlank()) BasicText(live!!.schedule,style=TextStyle(Color(0xFFC6D8E4),12.sp))
+                if(live!=null) Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0x35FFFFFF))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(live.progress.coerceIn(0f,1f)).background(OfflineTvTheme.Colors.accentCyan))
                 }
-                BasicText(live?.subtitle ?: "Todo listo para ver televisión", maxLines = if (folded) 1 else 2, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(if (folded) 0.9f else 0.7f), style = TextStyle(Color.White, if (folded) 22.sp else 32.sp, FontWeight.Bold))
-                if (!folded) {
-                    if (!live?.schedule.isNullOrBlank()) BasicText(live!!.schedule, style = TextStyle(Color(0xFFC6D8E4), 13.sp))
-                    if (!live?.description.isNullOrBlank()) BasicText(live!!.description, Modifier.fillMaxWidth(0.65f), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(Color(0xFFBDD0DE), 13.sp))
-                    if (live != null) {
-                        Box(Modifier.fillMaxWidth(0.58f).height(2.dp).background(Color(0x35FFFFFF))) {
-                            Box(Modifier.fillMaxHeight().fillMaxWidth(live.progress.coerceIn(0f, 1f)).background(OfflineTvTheme.Colors.accentCyan))
-                        }
-                        if (live.nextProgram.isNotBlank()) BasicText("Después · ${live.nextProgram}", Modifier.fillMaxWidth(0.7f), maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9CB4C6), 12.sp))
+                if(!live?.description.isNullOrBlank()) BasicText(live!!.description,maxLines=2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFFBDD0DE),12.sp))
+                if(!live?.nextProgram.isNullOrBlank()) BasicText("Después · ${live!!.nextProgram}",maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFF9CB4C6),11.sp))
+            }
+            Box(Modifier.weight(1.1f).fillMaxHeight(),contentAlignment=Alignment.CenterEnd) {
+                if(live!=null) {
+                    var focused by remember { mutableStateOf(false) }
+                    Box(Modifier.fillMaxHeight().aspectRatio(16f/9f,true)
+                        .border(2.dp,if(focused) Color.White else Color.Transparent,RoundedCornerShape(6.dp))
+                        .onFocusChanged { focused=it.isFocused }
+                        .tvButtonSemantics(true,"Ver ${live.title} a pantalla completa")
+                        .clickable { live.onClick?.run() }) {
+                        DiscoveryLivePreview(live,artwork,Modifier.fillMaxSize())
                     }
-                }
-                Row(Modifier.onFocusChanged { if (it.hasFocus) { folded = false; discovery.homeFocusedChannel = "" } }.focusGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DiscoveryButton(if (live == null) "Elegir canal" else if (model.livePlaybackError) "Reintentar canal" else "Ver televisión", accent = Color(0xFF62DDED),
-                        action = { if (live == null) browse() else live.onClick?.run() })
-                    model.onLiveStartOver?.let { action -> DiscoveryButton("Desde el inicio", accent = Color(0xFFFFC56B), action = { action.run() }) }
-                    model.onLiveRecord?.let { action -> DiscoveryButton("Grabar", accent = Color(0xFFFF8594), action = { action.run() }) }
-                }
-            }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)) {
-        item(key = "channels-heading") {
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    BasicText("Tus canales", style = TextStyle(Color.White, 18.sp, FontWeight.Bold))
-                    BasicText(model.liveGroupTitle.ifBlank { "Selecciona una plataforma o grupo" }, style = TextStyle(Color(0xFF9CB4C6), 12.sp))
-                }
-                DiscoveryButton("Explorar canales", onFocus = { folded = true }, action = browse)
+                } else BasicText("Selecciona un canal",style=TextStyle(OfflineTvTheme.Colors.textMuted,14.sp))
             }
         }
-        items(model.homeChannels.size, key = { "channel:${model.homeChannels[it].channelId}" }) { index ->
-            val channel = model.homeChannels[index]
-            val focus = requesters.getOrPut(channel.channelId) { FocusRequester() }
-            var focused by remember { mutableStateOf(false) }
-            Row(Modifier.fillMaxWidth().height(64.dp).focusRequester(focus)
-                .onFocusChanged { focused = it.isFocused; if (it.isFocused) { folded = true; discovery.homeFocusedChannel = channel.channelId } }
-                .background(if (focused) OfflineTvTheme.Menu.selected else Color.Transparent)
-                .tvButtonSemantics(true, channel.title + ". " + channel.subtitle, channel.channelId == live?.channelId)
-                .clickable { channel.onClick?.run() }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(3.dp).height(38.dp).background(if (focused) OfflineTvTheme.Colors.accentCyan else Color.Transparent))
-                Spacer(Modifier.width(12.dp))
-                DiscoveryArtwork(channel.imageUrl, channel.title, false, artwork, Modifier.width(62.dp).height(40.dp), 124, 80)
-                Column(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    BasicText(channel.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 15.sp, FontWeight.SemiBold))
-                    BasicText(channel.title + if (channel.schedule.isBlank()) "" else "  ·  ${channel.schedule}", maxLines = 1,
-                        style = TextStyle(Color(0xFF9CB4C6), 12.sp))
+        Row(Modifier.focusGroup(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            DiscoveryButton(if(live==null) "Elegir canal" else if(model.livePlaybackError) "Reintentar canal" else "Ver televisión",accent=Color(0xFF62DDED),action={ if(live==null) browse() else live.onClick?.run() })
+            model.onLiveStartOver?.let { action -> DiscoveryButton("Desde el inicio",accent=Color(0xFFFFC56B),action={action.run()}) }
+            model.onLiveRecord?.let { action -> DiscoveryButton("Grabar",accent=Color(0xFFFF8594),action={action.run()}) }
+        }
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+            BasicText("Tus canales",style=TextStyle(Color.White,17.sp,FontWeight.Bold))
+            DiscoveryButton(model.liveGroupTitle.ifBlank { "Plataforma" }+" ▾",modifier=Modifier.focusRequester(groupFocus),action={groupsOpen=!groupsOpen;restoreGroup=true})
+            Spacer(Modifier.weight(1f))
+            DiscoveryButton("Explorar →",action=browse)
+        }
+        if(groupsOpen) {
+            val first=rememberTvInitialFocusRequester(true)
+            LazyColumn(Modifier.weight(1f).fillMaxWidth().background(OfflineTvTheme.Menu.background)
+                .tvPanelBackHandler(Runnable { groupsOpen=false;restoreGroup=true })) {
+                items(discovery.liveProviders.size,key={discovery.liveProviders[it].key}) { i ->
+                    val provider=discovery.liveProviders[i]
+                    DiscoveryButton(provider.title,selected=discovery.selectedProviders["En directo"]==provider.key,
+                        modifier=if(i==0) Modifier.focusRequester(first) else Modifier,action={
+                            discovery.homeFocusedChannel="";discovery.selectLiveProvider?.accept(provider.key);groupsOpen=false;restoreGroup=true
+                        })
                 }
-                if (channel.channelId == live?.channelId) BasicText("EN EMISIÓN", style = TextStyle(OfflineTvTheme.Colors.accentCyan, 10.sp, FontWeight.Bold))
+            }
+        } else LazyColumn(Modifier.weight(1f).fillMaxWidth().background(OfflineTvTheme.Menu.background),state=listState,
+            verticalArrangement=Arrangement.spacedBy(2.dp),contentPadding=androidx.compose.foundation.layout.PaddingValues(bottom=12.dp)) {
+            items(model.homeChannels.size,key={"channel:${model.homeChannels[it].channelId}"}) { index ->
+                val channel=model.homeChannels[index]
+                val focus=requesters.getOrPut(channel.channelId) { FocusRequester() }
+                var focused by remember { mutableStateOf(false) }
+                val playing=channel.channelId==live?.channelId
+                Row(Modifier.fillMaxWidth().height(54.dp).focusRequester(focus)
+                    .onFocusChanged { focused=it.isFocused;if(it.isFocused)discovery.homeFocusedChannel=channel.channelId }
+                    .background(if(focused) OfflineTvTheme.Menu.selected else if(playing) Color(0x172FD2D9) else Color.Transparent)
+                    .tvButtonSemantics(true,channel.title+". "+channel.subtitle,playing)
+                    .clickable { channel.onClick?.run() }.padding(horizontal=8.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Box(Modifier.width(2.dp).height(34.dp).background(if(focused||playing) OfflineTvTheme.Colors.accentCyan else Color.Transparent))
+                    Spacer(Modifier.width(10.dp))
+                    DiscoveryArtwork(channel.imageUrl,channel.title,false,artwork,Modifier.width(48.dp).height(34.dp),48,34)
+                    Column(Modifier.weight(1f).padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                        BasicText(HomeProgramPresentation.of(channel.subtitle).title,maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(Color.White,14.sp,FontWeight.SemiBold))
+                        BasicText(channel.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(if(playing) OfflineTvTheme.Colors.accentCyan else Color(0xFF9CB4C6),11.sp))
+                    }
+                    BasicText(channel.schedule,maxLines=1,style=TextStyle(Color(0xFF9CB4C6),11.sp))
+                }
             }
         }
-        item(key = "home-shortcuts") {
-            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                model.onLiveGuide?.let { action -> DiscoveryButton("Guía de televisión", onFocus = { folded = true }, action = { action.run() }) }
-                model.onLiveHistory?.let { action -> DiscoveryButton("Últimos 7 días", onFocus = { folded = true }, action = { action.run() }) }
-                model.shortcuts.firstOrNull { it.icon == "●" }?.let { item -> DiscoveryButton(item.title, onFocus = { folded = true }, action = { item.onClick?.run() }) }
-            }
-        }
-    }
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiModel.Page, provider: String,
     artwork: StartupHomeHubArtworkBinder?, modifier: Modifier, selectProvider: (String) -> Unit) {
@@ -741,16 +764,27 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
         }
     }
     var query by remember { mutableStateOf(discovery.liveQuery) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var restoreSearch by remember { mutableStateOf(false) }
+    val searchFocus = remember { FocusRequester() }
+    val searchButtonFocus = remember { FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val closeSearch: () -> Unit = { searchOpen = false; restoreSearch = true; keyboard?.hide() }
+    LaunchedEffect(searchOpen, restoreSearch) {
+        if (searchOpen) { withFrameNanos { }; searchFocus.requestFocus() }
+        else if (restoreSearch) { withFrameNanos { }; searchButtonFocus.requestFocus(); restoreSearch = false }
+    }
     var channelRows by remember(provider) { mutableStateOf(page.cards.toList()) }
     var movingChannel by remember(provider) { mutableStateOf<String?>(null) }
     var beforeChannels by remember(provider) { mutableStateOf(channelRows) }
     var channelLongPress by remember { mutableStateOf(false) }
     LaunchedEffect(page) { if (movingChannel == null) channelRows = page.cards.toList() }
-    val channels = channelRows.filter { it.title.contains(query, true) || it.subtitle.contains(query, true) }
+    val channels = remember(channelRows, query) { channelRows.filter { it.title.contains(query, true) || it.subtitle.contains(query, true) } }
     val channelFocus = remember { mutableMapOf<String, FocusRequester>() }
     androidx.compose.runtime.SideEffect {
         discovery.cancelLiveOrder = when {
             groupsOpen -> Runnable { closeGroups() }
+            searchOpen -> Runnable { closeSearch() }
             movingChannel != null -> Runnable { channelRows = beforeChannels; movingChannel = null }
             moving != null -> Runnable { categories = beforeMove; moving = null }
             else -> null
@@ -758,8 +792,9 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
     }
     androidx.compose.runtime.DisposableEffect(discovery) { onDispose { discovery.cancelLiveOrder = null } }
 
+    var previewChannelId by remember { mutableStateOf(model.currentLive?.channelId ?: "") }
     var selectedId by remember(provider) { mutableStateOf(discovery.selectedLiveChannels[provider] ?: discovery.selectedLiveChannel) }
-    val selected = channels.firstOrNull { it.channelId == selectedId }
+    val selectedChannel = { channels.firstOrNull { it.channelId == selectedId } }
     val positionKey = "live:$provider:$query"
     val gridState = remember(positionKey) { androidx.compose.foundation.lazy.LazyListState(
         discovery.scrollPositions[positionKey] ?: 0, discovery.scrollPositions["$positionKey:offset"] ?: 0) }
@@ -783,7 +818,7 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
     LaunchedEffect(provider) {
         // Explore replaces the focused home button. Give the new screen a
         // concrete focus target instead of leaving focus on a removed node.
-        val target = selected ?: channels.getOrNull(gridState.firstVisibleItemIndex) ?: channels.firstOrNull()
+        val target = selectedChannel() ?: channels.getOrNull(gridState.firstVisibleItemIndex) ?: channels.firstOrNull()
         if (target == null) {
             withFrameNanos { }
             runCatching { groupButtonFocus.requestFocus() }
@@ -795,16 +830,9 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
         }
         discovery.restoreLiveFocus = false
     }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BasicText("En directo", style = TextStyle(Color.White, 23.sp, FontWeight.Bold))
-            BasicText(if (moving != null || movingChannel != null) "Flechas Mover · OK Guardar · Atrás Cancelar" else "${channels.size} canales · Mantén OK para ordenar", style = TextStyle(Color(0xFFB0C8D5), 12.sp))
-            Spacer(Modifier.weight(1f))
-            BasicTextField(query, { query = it; discovery.liveQuery = it }, singleLine = true,
-                textStyle = TextStyle(Color.White, 13.sp), cursorBrush = Brush.verticalGradient(listOf(Color.White, Color.White)),
-                modifier = Modifier.width(190.dp).background(Color(0xFF344E61), OfflineTvTheme.Menu.shape).padding(horizontal = 14.dp, vertical = 9.dp),
-                decorationBox = { inner -> Box { if (query.isEmpty()) BasicText("Buscar canal o programa", style = TextStyle(Color(0xFFCCE0EB), 12.sp)); inner() } })
-        }
+            BasicText("En directo", style = TextStyle(Color.White, 21.sp, FontWeight.Bold))
         Box {
             DiscoveryButton((categories.firstOrNull { it.key == provider }?.title ?: "Elegir grupo") + " ▾",
                 selected = groupsOpen, modifier = Modifier.focusRequester(groupButtonFocus), action = { groupsOpen = true })
@@ -855,12 +883,30 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
             }
             }
         }
+            BasicText("${channels.size} canales", style = TextStyle(Color(0xFF9BAFC1), 11.sp))
+            Spacer(Modifier.weight(1f))
+            if (searchOpen) {
+                BasicTextField(query, { query = it; discovery.liveQuery = it }, singleLine = true,
+                    textStyle = TextStyle(Color.White, 13.sp), cursorBrush = Brush.verticalGradient(listOf(Color.White, Color.White)),
+                    modifier = Modifier.width(190.dp).focusRequester(searchFocus).background(Color(0xFF203747), OfflineTvTheme.Menu.shape).padding(horizontal = 12.dp, vertical = 9.dp),
+                    decorationBox = { inner -> Box { if (query.isEmpty()) BasicText("Canal o programa", style = TextStyle(Color(0xFFCCE0EB), 12.sp)); inner() } })
+                DiscoveryButton("Cerrar búsqueda", action = closeSearch)
+            } else DiscoveryButton(if (query.isBlank()) "⌕ Buscar" else "⌕ Buscar · filtro activo", modifier = Modifier.focusRequester(searchButtonFocus), action = { searchOpen = true })
+        }
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             if (channels.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                     BasicText(if (provider.isBlank()) "Elige un grupo para ver sus canales." else if (query.isBlank()) "No hay canales disponibles para este usuario." else "No se encontraron canales.", style = TextStyle(Color.White, 16.sp))
                 }
             } else {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides remember {
+                        object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+                            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
+                                androidx.compose.animation.core.tween(100, easing = androidx.compose.animation.core.LinearEasing)
+                        }
+                    }
+                ) {
                 LazyColumn(Modifier.weight(1.05f).fillMaxHeight().background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape).focusGroup(), state = gridState,
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(3.dp)) {
@@ -868,7 +914,10 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                         val channel = channels[index]
                         val requester = channelFocus.getOrPut(channel.channelId) { FocusRequester() }
                         var focused by remember { mutableStateOf(false) }
-                        Column(Modifier.fillMaxWidth().height(62.dp)
+                        val playing = channel.channelId == previewChannelId
+                        val hasProgramme = channel.subtitle.isNotBlank() && !channel.subtitle.equals(channel.title, true) && channel.subtitle != "Programación no disponible"
+                        val hasSchedule = hasProgramme && channel.schedule.isNotBlank()
+                        Column(Modifier.fillMaxWidth().height(58.dp)
                             .focusRequester(requester)
                             .onPreviewKeyEvent { event ->
                                 val key = event.nativeKeyEvent
@@ -902,55 +951,98 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                                     true
                                 } else false
                             }
-                            .clip(OfflineTvTheme.Menu.shape).background(if (movingChannel == channel.channelId) Color(0xFF916B22) else if (focused) Color.White else if (selected?.channelId == channel.channelId) Color(0xFF203747) else Color.Transparent)
+                            .clip(OfflineTvTheme.Menu.shape)
+                            // Focus changes only invalidate drawing, not the logo/text composition.
+                            .drawBehind {
+                                val radius = CornerRadius(3.dp.toPx())
+                                drawRoundRect(if (movingChannel == channel.channelId) Color(0xFF916B22) else if (focused) Color(0xFF203C4C) else if (playing) Color(0x1928C6CC) else Color.Transparent, cornerRadius = radius)
+                                if (focused) {
+                                    val inset = 0.75.dp.toPx()
+                                    drawRoundRect(Color(0xFF67DBEA), topLeft = Offset(inset, inset),
+                                        size = Size((size.width - 2 * inset).coerceAtLeast(0f), (size.height - 2 * inset).coerceAtLeast(0f)),
+                                        cornerRadius = radius, style = Stroke(1.5.dp.toPx()))
+                                }
+                            }
                             .onFocusChanged { focused = it.isFocused; if (it.isFocused) { selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId } }
                             .tvButtonSemantics(true, (if (movingChannel == channel.channelId) "Moviendo " else "") + channel.title + ". " + channel.subtitle)
                             .clickable { selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId; channel.onClick?.run() }
                             .padding(9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                BasicText("${index + 1}", modifier = Modifier.width(22.dp), style = TextStyle(if (focused) Color(0xFF526170) else Color(0xFF8094A8), 10.sp))
-                                DiscoveryArtwork(channel.imageUrl, channel.title, false, artwork, Modifier.width(42.dp).height(34.dp), 42, 34)
+                                BasicText(if (playing) "▶" else "${index + 1}", modifier = Modifier.width(18.dp), style = TextStyle(if (playing) Color(0xFF67DBEA) else Color(0xFF9BB4C5), 10.sp))
+                                DiscoveryArtwork(channel.imageUrl, channel.title, false, artwork, Modifier.width(42.dp).height(34.dp).background(Color(0xFFB9C4CC), RoundedCornerShape(4.dp)).padding(3.dp), 42, 34)
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    BasicText(channel.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(if (focused) Color(0xFF0D1520) else Color.White, 14.sp, FontWeight.SemiBold))
-                                    BasicText(channel.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(if (focused) Color(0xFF526170) else Color(0xFF9BAFC1), 11.sp))
-                                    Box(Modifier.fillMaxWidth().height(1.dp).background(if (focused) Color(0xFFD4DEE5) else Color(0xFF253545))) {
-                                        Box(Modifier.fillMaxWidth(channel.progress.coerceIn(0f, 1f)).fillMaxHeight().background(if (focused) Color(0xFF245573) else Color(0xFF8CD9F8)))
+                                    BasicText(channel.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 14.sp, FontWeight.SemiBold))
+                                    BasicText(if (hasProgramme) remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle).title } else "Sin programación", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFB7CAD8), 11.sp))
+                                    if (hasSchedule) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF354B5B))) {
+                                        Box(Modifier.fillMaxWidth(channel.progress.coerceIn(0f, 1f)).fillMaxHeight().background(Color(0xFF67DBEA)))
                                     }
                                 }
                             }
                         }
                     }
                 }
-                Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    if (selected == null) Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape), contentAlignment = Alignment.Center) {
-                        BasicText("Selecciona un canal", style = TextStyle(Color(0xFFCCE0EB), 16.sp))
-                    }
-                    selected?.let { channel ->
-                        androidx.compose.runtime.key(provider) { DiscoveryLivePreview(channel, artwork) }
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            BasicText(channel.title, modifier = Modifier.weight(1f), maxLines = 1, style = TextStyle(Color.White, 20.sp, FontWeight.Bold))
-                            BasicText("● EN DIRECTO", style = TextStyle(Color(0xFF8AD9F5), 10.sp, FontWeight.Bold))
-                        }
-                        BasicText("OK para pantalla completa", style = TextStyle(Color(0xFF98D1ED), 12.sp))
-                        BasicText(channel.schedule, style = TextStyle(Color(0xFF98D1ED), 12.sp))
-                        BasicText(channel.subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 17.sp, FontWeight.Bold))
-                        if (channel.description.isNotBlank()) BasicText(channel.description, maxLines = 3, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFC5D6E2), 12.sp))
-                        if (channel.nextProgram.isNotBlank()) BasicText("Después · ${channel.nextProgram}", maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
-                    }
                 }
+                DiscoveryLiveDetails(selectedChannel, { gridState.isScrollInProgress }, provider, artwork, Modifier.weight(1f),
+                    onPreviewChannel = { previewChannelId = it })
             }
         }
+        BasicText(if (moving != null || movingChannel != null) "Flechas Mover · OK Guardar · Atrás Cancelar" else "Mantén OK para ordenar canales", style = TextStyle(Color(0xFF819BAE), 10.sp))
     }
 }
 
+/** Read selection in this restart scope, not in the parent containing the channel list. */
 @Composable
-private fun DiscoveryLivePreview(channel: StartupHomeHubUiModel.ContinueCard, artwork: StartupHomeHubArtworkBinder?) {
-    var settled by remember { mutableStateOf<StartupHomeHubUiModel.ContinueCard?>(null) }
+private fun DiscoveryLiveDetails(selectedChannel: () -> StartupHomeHubUiModel.ContinueCard?, scrolling: () -> Boolean, provider: String,
+    artwork: StartupHomeHubArtworkBinder?, modifier: Modifier, onPreviewChannel: (String) -> Unit) {
+    var displayed by remember(provider) { mutableStateOf(selectedChannel()) }
+    LaunchedEffect(provider, selectedChannel, scrolling) {
+        // Observe focus without recomposing the detail panel for every intermediate row.
+        androidx.compose.runtime.snapshotFlow { selectedChannel() to scrolling() }.collectLatest { (selected, moving) ->
+            if (moving) return@collectLatest
+            delay(150)
+            displayed = selected
+        }
+    }
+    Column(modifier.fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    if (displayed == null) Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape), contentAlignment = Alignment.Center) {
+                        BasicText("Selecciona un canal", style = TextStyle(Color(0xFFCCE0EB), 16.sp))
+                    }
+                    displayed?.let { channel ->
+                        androidx.compose.runtime.key(provider) { DiscoveryLivePreview(channel, artwork, onPreviewChannel = onPreviewChannel) }
+                        val programme = remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle) }
+                        val hasProgramme = channel.subtitle.isNotBlank() && !channel.subtitle.equals(channel.title, true) && channel.subtitle != "Programación no disponible"
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            BasicText(channel.title, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 15.sp, FontWeight.SemiBold))
+                            BasicText("OK para pantalla completa", style = TextStyle(Color(0xFF9FBDCF), 10.sp))
+                        }
+                        BasicText(if (hasProgramme) programme.title else "Sin programación", maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 20.sp, FontWeight.Bold))
+                        if (hasProgramme && programme.metadata.isNotBlank()) BasicText(programme.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 12.sp))
+                        if (hasProgramme && channel.schedule.isNotBlank()) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                BasicText(channel.schedule, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
+                                BasicText("● EN DIRECTO", style = TextStyle(Color(0xFF67DBEA), 10.sp, FontWeight.Bold))
+                            }
+                            Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0xFF354B5B))) {
+                                Box(Modifier.fillMaxWidth(channel.progress.coerceIn(0f,1f)).fillMaxHeight().background(Color(0xFF67DBEA)))
+                            }
+                        }
+                        if (hasProgramme && channel.description.isNotBlank()) BasicText(channel.description, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFC5D6E2), 12.sp))
+                        if (channel.nextProgram.isNotBlank() && !channel.nextProgram.equals(channel.title,true)) BasicText("Después · ${channel.nextProgram}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
+                    }
+                }
+}
+
+@Composable
+private fun DiscoveryLivePreview(channel: StartupHomeHubUiModel.ContinueCard, artwork: StartupHomeHubArtworkBinder?, modifier: Modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f), onPreviewChannel: (String) -> Unit = {}) {
+    // The first channel is already selected; debounce only subsequent focus changes.
+    var settled by remember { mutableStateOf<StartupHomeHubUiModel.ContinueCard?>(channel) }
     // Debounce rapid D-pad traversal without covering the existing video.
-    LaunchedEffect(channel.channelId) { delay(150); settled = channel }
+    LaunchedEffect(channel.channelId) { delay(650); settled = channel }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { artwork?.releaseLivePreview() } }
-    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(OfflineTvTheme.Menu.shape).background(Color(0xFF1C3346))) {
+    Box(modifier.clip(OfflineTvTheme.Menu.shape).background(Color(0xFF1C3346))) {
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { context -> FrameLayout(context).apply {
+            descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            importantForAccessibility=android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             addView(AppCompatImageView(context).apply { id = R.id.startup_home_artwork }, FrameLayout.LayoutParams(-1, -1))
         } }, onReset = null, onRelease = { artwork?.releaseLivePreview() }, update = { frame ->
             val ready = settled
@@ -958,6 +1050,7 @@ private fun DiscoveryLivePreview(channel: StartupHomeHubUiModel.ContinueCard, ar
                 val image = frame.findViewById<ImageView>(R.id.startup_home_artwork)
                 artwork?.bindSelectedLivePreview(image, ready, 420, 236)
                 frame.tag = ready.channelId
+                onPreviewChannel(ready.channelId)
             }
         })
     }

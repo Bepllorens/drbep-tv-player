@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 public final class TimelineGuideBlockUiModel {
+    public String genre = "";
     public final String title;
     public final String time;
     public final String status;

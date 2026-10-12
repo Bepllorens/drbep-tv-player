@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -147,7 +148,7 @@ object OfflineTvTheme {
     fun chipSelectedArgb(): Int = activePalette.chipSelected.value.toInt()
 
     @JvmStatic
-    fun accentCyanArgb(): Int = activePalette.accentCyan.value.toInt()
+    fun accentCyanArgb(): Int = activePalette.accentCyan.toArgb()
 
     @JvmStatic
     fun accentSecondaryArgb(): Int = activePalette.accentSecondary.value.toInt()
@@ -156,7 +157,7 @@ object OfflineTvTheme {
     fun accentGoldArgb(): Int = activePalette.accentGold.value.toInt()
 
     @JvmStatic
-    fun textSoftArgb(): Int = activePalette.textSoft.value.toInt()
+    fun textSoftArgb(): Int = activePalette.textSoft.toArgb()
 
     object Colors {
         val backdrop get() = activePalette.backdrop

@@ -15,6 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,17 +54,28 @@ object TimelineProgramDetailComposeBinder {
 @Composable
 internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imageBinder: TimelineProgramDetailImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
+    var description by remember(model) { mutableStateOf(model.description) }
+    LaunchedEffect(model) {
+        val loader = model.descriptionLoader ?: return@LaunchedEffect
+        delay(350) // Moving through the grid must not make a request for every crossed cell.
+        try {
+            val loaded = withContext(Dispatchers.IO) { loader.call() }
+            if (!loaded.isNullOrBlank()) description = loaded
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: Exception) { /* Keep the supplied guide text when offline. */ }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(if (compact) 112.dp else 108.dp)
             .background(OfflineTvTheme.Menu.background)
-            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact) 7.dp else 10.dp),
+            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Top
     ) {
         if (model.imageUrl.isNotEmpty()) {
             AndroidView(
                 modifier = Modifier
-                    .size(width = if (compact) 62.dp else 84.dp, height = if (compact) 88.dp else 118.dp)
+                    .size(width = if (compact) 62.dp else 124.dp, height = if (compact) 88.dp else 76.dp)
                     .clip(OfflineTvTheme.Menu.shape),
                 factory = { context ->
                     FrameLayout(context).apply {
@@ -80,55 +101,24 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.foundation.text.BasicText(
-                    text = model.title,
-                    modifier = Modifier.weight(1f),
-                    maxLines = if (compact) 1 else 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = Color.White, fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Bold)
-                )
-                if (model.statusLabel.isNotEmpty()) {
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(OfflineTvTheme.Menu.shape)
-                            .background(OfflineTvTheme.Menu.selected)
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        androidx.compose.foundation.text.BasicText(
-                            text = model.statusLabel,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = TextStyle(color = Color.White, fontSize = if (compact) 9.sp else 10.sp, fontWeight = FontWeight.Bold)
-                        )
-                    }
-                }
-            }
-            if (model.meta.isNotEmpty()) {
-                androidx.compose.foundation.text.BasicText(
-                    text = model.meta,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 12.sp)
-                )
-            }
-            if (model.description.isNotEmpty()) {
-                androidx.compose.foundation.text.BasicText(
-                    text = model.description,
-                    maxLines = if (compact) 2 else 3,
-                    overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(color = OfflineTvTheme.Colors.textMuted, fontSize = if (compact) 11.sp else 12.sp)
-                )
-            }
+            androidx.compose.foundation.text.BasicText(
+                text=model.title, maxLines=1, overflow=TextOverflow.Ellipsis,
+                style=TextStyle(color=Color.White,fontSize=16.sp,fontWeight=FontWeight.Bold))
+            androidx.compose.foundation.text.BasicText(
+                text=model.meta, maxLines=1, overflow=TextOverflow.Ellipsis,
+                style=TextStyle(color=OfflineTvTheme.Colors.textSoft,fontSize=11.sp))
+            androidx.compose.foundation.text.BasicText(
+                text=description, modifier=Modifier.height(32.dp), maxLines=2,
+                overflow=TextOverflow.Ellipsis,
+                style=TextStyle(color=OfflineTvTheme.Colors.textMuted,fontSize=12.sp,lineHeight=16.sp))
             if (model.actionHint.isNotEmpty()) {
                 Box(
                     modifier = Modifier
                         .clip(OfflineTvTheme.Menu.shape)
                         .background(OfflineTvTheme.Menu.row)
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                        .padding(horizontal = 0.dp, vertical = 0.dp)
                 ) {
                     androidx.compose.foundation.text.BasicText(
                         text = model.actionHint,

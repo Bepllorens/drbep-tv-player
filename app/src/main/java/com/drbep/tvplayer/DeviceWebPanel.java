@@ -10,7 +10,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Explicit, short-lived LAN session. No filesystem browsing or playback credentials are exposed. */
 final class DeviceWebPanel implements AutoCloseable {
-    interface Host { String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
+    interface Host { default byte[] screen()throws Exception{throw new IOException("Unavailable");} default String ui()throws Exception{throw new IOException("Unavailable");} default byte[] artwork(String id)throws Exception {throw new IOException("Unavailable");} String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
+    static final class PanelError extends IOException { PanelError(String message){super(message);} }
     private final Host host;
     private final byte[] page;
     private final Set<Socket> sockets=ConcurrentHashMap.newKeySet();
@@ -62,11 +63,20 @@ final class DeviceWebPanel implements AutoCloseable {
             }
             String supplied=headers.getOrDefault("x-panel-token","");
             if(closed||System.nanoTime()>=expires||!MessageDigest.isEqual(supplied.getBytes(StandardCharsets.UTF_8),token.getBytes(StandardCharsets.UTF_8))){reply(out,401,"text/plain","Session expired");return;}
+            if(method.equals("GET")&&(path.equals("/screen")||path.equals("/ui"))){
+                try{if(path.equals("/screen"))reply(out,200,"image/jpeg",host.screen());else reply(out,200,"application/json",host.ui());}
+                catch(Exception e){reply(out,503,"text/plain","Pantalla no disponible");}return;
+            }
             if(method.equals("GET")&&path.equals("/status")){reply(out,200,"application/json",host.status());return;}
+            if(method.equals("POST")&&path.equals("/artwork")){
+                if(length>1024){reply(out,413,"text/plain","Request too large");return;}
+                try {String id=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8)).getString("id");reply(out,200,"image/jpeg",host.artwork(id));}
+                catch(Exception e){reply(out,404,"text/plain","Artwork unavailable");}return;
+            }
             if(method.equals("POST")&&path.equals("/manage")){
                 if(length>65536){reply(out,413,"text/plain","Request too large");return;}
                 try {reply(out,200,"application/json",host.manage(new String(read(in,(int)length),StandardCharsets.UTF_8)));}
-                catch(Exception e){reply(out,400,"application/json","{\"error\":\"Operación no disponible o datos inválidos\"}");}
+                catch(Exception e){reply(out,400,"application/json",new org.json.JSONObject().put("error",e instanceof PanelError?e.getMessage():"No se pudo completar la operación. Comprueba los datos y vuelve a intentarlo.").toString());}
                 return;
             }
             if(method.equals("GET")&&path.equals("/report")){reply(out,200,"application/json",host.status());return;}
@@ -92,7 +102,7 @@ final class DeviceWebPanel implements AutoCloseable {
     private static String line(InputStream in,int limit)throws IOException {ByteArrayOutputStream b=new ByteArrayOutputStream();int c;while((c=in.read())!=-1){if(c=='\n')return b.toString("US-ASCII").replaceFirst("\\r$","");if(b.size()>=limit)throw new IOException("Line too long");b.write(c);}throw new EOFException();}
     private static void reply(OutputStream out,int code,String type,String text)throws IOException {reply(out,code,type,text.getBytes(StandardCharsets.UTF_8));}
     private static void reply(OutputStream out,int code,String type,byte[] body)throws IOException {
-        out.write(("HTTP/1.1 "+code+" Response\r\nContent-Type: "+type+"\r\nContent-Length: "+body.length+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(body);out.flush();
+        out.write(("HTTP/1.1 "+code+" Response\r\nContent-Type: "+type+"\r\nContent-Length: "+body.length+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' blob:; frame-ancestors 'none'\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(body);out.flush();
     }
     @Override public synchronized void close(){if(closed)return;closed=true;try{if(server!=null)server.close();}catch(IOException ignored){}for(Socket s:sockets)try{s.close();}catch(IOException ignored){}workers.shutdownNow();}
 }

@@ -55,7 +55,8 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         if(s.day.isBlank() || s.day !in days || s.day==previousToday) s.day=today.toString()
         previousToday=today.toString()
     }
-    LaunchedEffect(s.day) { if(s.day.isNotBlank()) refresh.run() }
+    var firstDayEffect by remember { mutableStateOf(true) }
+    LaunchedEffect(s.day) { if(firstDayEffect)firstDayEffect=false else if(s.day.isNotBlank())refresh.run() }
     val entries=s.entries
     val visible=remember(entries,s.day,s.channel,s.genre,s.query,s.savedOnly,s.revision,now) {
         entries.filter { (if(s.savedOnly) it.saved else it.day==s.day && it.start<=now && it.expires>now) &&
@@ -142,7 +143,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         } else Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
             if(!detail) {
                 if(visible.isEmpty()) Text(if(s.loading) "Cargando programas del día…" else if(s.savedOnly) "No hay programas guardados con estos filtros." else "No hay programas disponibles con estos filtros.",16)
-                LazyVerticalGrid(columns=GridCells.Fixed(4),state=listState,modifier=Modifier.fillMaxSize(),
+                LazyVerticalGrid(columns=GridCells.Adaptive(160.dp),state=listState,modifier=Modifier.fillMaxSize(),
                     horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=8.dp)) {
                     items(visible,key={it.id}) { e ->
                         var focus by remember { mutableStateOf(false) }
@@ -153,11 +154,11 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                             .onFocusChanged { focus=it.isFocused;if(focus)s.selectedId=e.id }
                             .border(2.dp,if(focus)Color.White else Color.Transparent,RoundedCornerShape(8.dp))
                             .clickable { s.selectedId=e.id;detail=true }.padding(4.dp)) {
-                            Box(Modifier.fillMaxWidth().aspectRatio(16f/9f).clip(RoundedCornerShape(7.dp))) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(4f/3f).clip(RoundedCornerShape(7.dp))) {
                                 ArchiveArtwork(e,Modifier.fillMaxSize())
                                 if(e.start<=now && e.end>now) Box(Modifier.padding(6.dp).background(Color(0xE6297051),RoundedCornerShape(4.dp)).padding(horizontal=6.dp)) { Text("EN EMISIÓN",10,true) }
                                 if(e.saved) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color(0xDD11151F),RoundedCornerShape(4.dp)).padding(horizontal=5.dp)) { Text("★",11,color=archiveSavedColor) }
-                                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(dayAccent(e.day)))
+                                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(Color(android.graphics.Color.parseColor(ProgrammePresentation.color(e.genre)))))
                             }
                             Text(e.title,14,true)
                             Text("${time(e.start)}–${time(e.end)} · ${e.channel}",11,color=dayAccent(e.day))
@@ -170,8 +171,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                 Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
                     ArchiveArtwork(e,Modifier.weight(.8f).fillMaxHeight())
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Text(e.title,21,true,2)
-                    Text("${e.channel} · ${time(e.start)}–${time(e.end)} · ${e.genre}",12,color=dayAccent(e.day))
+                    ProgrammeSummary(e.title,"${e.channel} · ${time(e.start)}–${time(e.end)} · ${e.genre}")
                     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         if(e.start<=now && e.end>now)Text("● En emisión",12,color=archiveLiveColor)
                         if(e.saved)Text("★ Guardado",12,color=archiveSavedColor)
@@ -233,7 +233,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     Box(modifier.background(Color(0xFF111C29)),contentAlignment=Alignment.Center) {
         key(e.id,e.artworkKey) {
             AndroidView(factory={c->ImageView(c).apply { e.artwork.accept(this) }},
-                modifier=if(e.hasProgramArtwork) Modifier.fillMaxSize().padding(4.dp) else Modifier.size(46.dp).padding(3.dp))
+                modifier=if(e.hasProgramArtwork) Modifier.fillMaxSize() else Modifier.size(46.dp).padding(3.dp))
         }
         if(!e.hasProgramArtwork) BasicText(e.channel,Modifier.align(Alignment.BottomCenter).padding(5.dp),
             style=TextStyle(Color(0xFFADB9C9),10.sp),maxLines=1,overflow=TextOverflow.Ellipsis)

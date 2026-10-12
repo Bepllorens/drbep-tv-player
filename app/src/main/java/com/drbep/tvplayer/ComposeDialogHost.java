@@ -26,6 +26,10 @@ public final class ComposeDialogHost {
         }
     }
 
+    static Window topWindow(android.app.Activity activity) {
+        for(int i=OPEN.size()-1;i>=0;i--){Dialog d=OPEN.get(i).get();if(d!=null&&d.isShowing()&&(d.getOwnerActivity()==activity||d.getContext()==activity))return d.getWindow();}return null;
+    }
+
     private ComposeDialogHost() {
     }
 

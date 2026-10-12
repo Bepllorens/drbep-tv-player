@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class TimelineScaleUiModel {
+    public long startMs, endMs;
     public final int leadingWidthPx;
     public final List<TimelineScaleSlotUiModel> slots;
 

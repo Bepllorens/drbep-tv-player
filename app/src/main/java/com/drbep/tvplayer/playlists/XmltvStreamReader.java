@@ -7,9 +7,13 @@ import org.xml.sax.*;
 import org.xml.sax.helpers.DefaultHandler;
 /** Bounded XMLTV reader: entities and external DTDs are disabled. */
 public final class XmltvStreamReader {
-    public static final class Programme { public String channel="",title="",description="";public long start,end; }
+    public static final class Programme { public String channel="",title="",description="",subtitle="",genre="",year="",image="",episode="",age="",rating="",country="";public long start,end;
+        public final java.util.Map<String,String> credits=new java.util.LinkedHashMap<>();
+        public String metadata() throws Exception {return new org.json.JSONObject().put("subtitle",subtitle).put("genre",genre).put("year",year).put("image",image).put("episode",episode).put("age",age).put("rating",rating).put("country",country).put("credits",new org.json.JSONObject(credits)).toString();} }
     public interface Sink {void accept(Programme p)throws Exception;}
-    public void read(InputStream input,Sink sink)throws Exception {
+    public interface ChannelSink {void accept(String id,String name)throws Exception;}
+    public void read(InputStream input,Sink sink)throws Exception {read(input,sink,(id,name)->{});}
+    public void read(InputStream input,Sink sink,ChannelSink channels)throws Exception {
         SAXParserFactory f=SAXParserFactory.newInstance();f.setNamespaceAware(false);
         f.setFeature("http://xml.org/sax/features/external-general-entities",false);
         f.setFeature("http://xml.org/sax/features/external-parameter-entities",false);
@@ -28,19 +32,43 @@ public final class XmltvStreamReader {
             public int read(byte[] b,int off,int len)throws IOException{int n=in.read(b,off,len);for(int i=0;i<n;i++)check(b[off+i]&255);return n;}
         };
         f.newSAXParser().parse(guarded,new DefaultHandler(){
-            Programme current;String capture="";StringBuilder text=new StringBuilder();
+            String channelId="",channelName="";
+            Programme current;String capture="",container="",episodeSystem="";StringBuilder text=new StringBuilder();
             public void startElement(String uri,String local,String name,Attributes a)throws SAXException {
                 if(Thread.currentThread().isInterrupted())throw new SAXException("Cancelled");
+                if(name.equals("channel")){channelId=a.getValue("id");channelName="";}
+                if(name.equals("display-name")&&current==null){capture=name;text.setLength(0);}
                 if(name.equals("programme")){current=new Programme();current.channel=a.getValue("channel");try{current.start=date(a.getValue("start"));current.end=date(a.getValue("stop"));}catch(Exception e){throw new SAXException("Invalid programme time");}}
-                else if(current!=null&&(name.equals("title")||name.equals("desc"))){capture=name;text.setLength(0);}
+                else if(current!=null) {
+                    if(name.equals("rating")||name.equals("star-rating"))container=name;
+                    if(name.equals("episode-num"))episodeSystem=a.getValue("system");
+                    if(name.equals("icon")&&current.image.isEmpty()){String src=a.getValue("src");if(src!=null&&(src.startsWith("https://")||src.startsWith("http://")))current.image=src.length()<=8192?src:"";}
+                    if(java.util.Arrays.asList("title","desc","sub-title","category","date","episode-num","country","director","actor","presenter","writer","value").contains(name)){capture=name;text.setLength(0);}
+                }
             }
             public void characters(char[] ch,int start,int length)throws SAXException {if(!capture.isEmpty()){if(text.length()+length>16384)throw new SAXException("Programme text too long");text.append(ch,start,length);}}
             public void endElement(String uri,String local,String name)throws SAXException {
-                if(current==null)return;
-                if(name.equals(capture)){if(name.equals("title")&&current.title.isEmpty())current.title=text.toString();if(name.equals("desc")&&current.description.isEmpty())current.description=text.toString();capture="";}
+                if(current==null){
+                    if(name.equals("display-name")){channelName=text.toString();capture="";}
+                    if(name.equals("channel")&&channelId!=null&&!channelId.isEmpty()&&!channelName.isEmpty())try{channels.accept(channelId,channelName);}catch(Exception e){throw new SAXException(e);}
+                    return;
+                }
+                if(name.equals(capture)){if(name.equals("title")&&current.title.isEmpty())current.title=text.toString();if(name.equals("desc")&&current.description.isEmpty())current.description=text.toString();String value=text.toString().trim();
+                    switch(name){case "sub-title":current.subtitle=value;break;case "category":if(current.genre.length()<1024)current.genre=current.genre.isEmpty()?value:current.genre+", "+value;break;case "date":current.year=value.length()>=4?value.substring(0,4):value;break;case "episode-num":if(current.episode.isEmpty())current.episode=episode(value,episodeSystem);break;case "country":current.country=value;break;case "director":case "actor":case "presenter":case "writer":String previous=current.credits.get(name);if(previous==null||previous.length()<4096)current.credits.put(name,previous==null?value:previous+", "+value);break;case "value":if(container.equals("rating"))current.age=value;else if(container.equals("star-rating"))current.rating=value;break;default:break;}
+                    capture="";}
+                if(name.equals(container))container="";
                 if(name.equals("programme")){if(current.channel==null||current.channel.isEmpty()||current.end<=current.start)throw new SAXException("Invalid programme");try{sink.accept(current);}catch(Exception e){throw new SAXException(e);}current=null;}
             }
         });
+    }
+    static String episode(String value,String system) {
+        if(!"xmltv_ns".equals(system))return value;
+        String[] parts=value.split("\\.");StringBuilder out=new StringBuilder();
+        for(int i=0;i<Math.min(2,parts.length);i++)try {
+            String n=parts[i].trim().split("/")[0].trim();if(n.isEmpty())continue;
+            if(out.length()>0)out.append(" ");out.append(i==0?"T":"E").append(Integer.parseInt(n)+1);
+        }catch(NumberFormatException ignored){}
+        return out.toString();
     }
     static long date(String value)throws ParseException {if(value==null)throw new ParseException("Missing time",0);String s=value.trim();if(s.matches("[0-9]{14}"))s+=" +0000";SimpleDateFormat f=new SimpleDateFormat("yyyyMMddHHmmss Z",Locale.ROOT);f.setLenient(false);ParsePosition pos=new ParsePosition(0);Date date=f.parse(s,pos);if(date==null||pos.getIndex()!=s.length())throw new ParseException("Invalid XMLTV time",0);return date.getTime();}
 }

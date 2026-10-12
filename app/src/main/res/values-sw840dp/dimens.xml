@@ -3,7 +3,7 @@
     <dimen name="touch_controls_translation_y">0dp</dimen>
     <dimen name="touch_controls_side_margin">80dp</dimen>
     <dimen name="touch_surface_panel_bottom_margin">222dp</dimen>
-    <dimen name="channel_overlay_width">340dp</dimen>
+    <dimen name="channel_overlay_width">280dp</dimen>
     <dimen name="recordings_panel_width">720dp</dimen>
     <dimen name="quick_search_width">480dp</dimen>
     <dimen name="touch_button_padding_horizontal">18dp</dimen>

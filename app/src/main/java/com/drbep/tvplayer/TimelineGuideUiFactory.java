@@ -102,7 +102,9 @@ final class TimelineGuideUiFactory {
                     headerSlotWidth
             ));
         }
-        return new TimelineScaleUiModel(labelWidth, scaleSlots);
+        TimelineScaleUiModel model=new TimelineScaleUiModel(labelWidth, scaleSlots);
+        model.startMs=windowStartMs;model.endMs=windowStartMs+windowMs;
+        return model;
     }
 
     private static List<TimelineGuideBlockUiModel> buildBlocks(
@@ -178,6 +180,7 @@ final class TimelineGuideUiFactory {
                     () -> host.openProgramActions(row.channel, program),
                     () -> host.toggleRecording(row.channel, program, scheduled)
             ));
+            blocks.get(blocks.size()-1).genre = program.category;
         }
         return blocks;
     }

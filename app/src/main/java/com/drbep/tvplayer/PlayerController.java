@@ -670,6 +670,7 @@ final class PlayerController {
     private String pendingAutoRecoveryReason;
     private boolean firstFrameRenderedForCurrentItem;
     private boolean startupPreviewAttached;
+    private PlayerView activeStartupPreview;
     private boolean homePreviewMode;
     private long currentPrepareStartedMs;
     private long currentReadyElapsedMs;
@@ -1015,7 +1016,8 @@ final class PlayerController {
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
                 Log.w(TAG, "playback surface-frame target=" + (startupPreviewAttached ? "home-preview" : "main-player")
                         + " repeated=" + repeatedSurfaceFrame + " sincePrepareMs=" + elapsedMs
-                        + " targetShown=" + (!startupPreviewAttached && playerView.isShown()));
+                        + " previewSize=" + (activeStartupPreview == null ? "none" : activeStartupPreview.getWidth() + "x" + activeStartupPreview.getHeight())
+                        + " targetShown=" + (startupPreviewAttached ? activeStartupPreview != null && activeStartupPreview.isShown() : playerView.isShown()));
                 Log.w(TAG, "firstFrame channel=" + describeRequest(request)
                         + " decision=" + describeDecision(currentPlaybackDecision)
                         + " readyElapsedMs=" + currentReadyElapsedMs
@@ -1194,6 +1196,14 @@ final class PlayerController {
         if (diagnosticAllocator != null) diagnosticAllocator.trim();
     }
 
+    int startupPreviewLayout() {
+        // Keep protected output for licence-backed playback; composite ordinary
+        // previews inside the Compose dialog to avoid SurfaceView recreation delays.
+        String drm = currentPlaybackDecision == null ? "" : currentPlaybackDecision.drmType;
+        return "widevine".equals(drm) || "playready".equals(drm)
+                ? R.layout.startup_preview_player : R.layout.startup_preview_texture;
+    }
+
     boolean attachStartupPreview(PlayerView previewView) {
         if (previewView == null || player == null || isVlcDirectPlayActive()) {
             return false;
@@ -1202,6 +1212,7 @@ final class PlayerController {
         previewView.setKeepContentOnPlayerReset(true);
         previewView.setShutterBackgroundColor(android.graphics.Color.BLACK);
         startupPreviewAttached = true;
+        activeStartupPreview = previewView;
         Log.w(TAG, "playback surface-switch target=home-preview");
         PlayerView.switchTargetView(player, playerView, previewView);
         return previewView.getPlayer() == player;
@@ -1209,6 +1220,7 @@ final class PlayerController {
 
     void detachStartupPreview(PlayerView previewView) {
         startupPreviewAttached = false;
+        activeStartupPreview = null;
         Log.w(TAG, "playback surface-switch target=main-player");
         if (player == null) {
             return;
@@ -2618,6 +2630,8 @@ final class PlayerController {
         Log.i(TAG, "U7D buffered seek: reused current replay window");
         return true;
     }
+
+    boolean isPanelSeekable() { return !isVlcDirectPlayActive() && player != null && player.isCurrentMediaItemSeekable(); }
 
     void seekToPosition(long positionMs) {
         if (isVlcDirectPlayActive()) {

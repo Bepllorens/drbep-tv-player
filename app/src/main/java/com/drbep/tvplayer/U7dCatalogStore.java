@@ -34,6 +34,9 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         } catch(Exception ignored) { }
         return out;
     }
+    synchronized void invalidate(String scope,String channel) {
+        getWritableDatabase().delete("catalog","scope=? AND channel=?",new String[]{scope,channel});
+    }
     synchronized boolean fresh(String scope,String channel,long now) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT updated FROM catalog WHERE scope=? AND channel=?",new String[]{scope,channel})) {
             return c.moveToFirst() && now>=c.getLong(0) && now-c.getLong(0)<300000L;
@@ -44,6 +47,14 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         SQLiteDatabase db=getWritableDatabase();
         db.execSQL("INSERT OR REPLACE INTO catalog VALUES(?,?,?,?)",new Object[]{scope,channel,System.currentTimeMillis(),a.toString()});
         db.execSQL("DELETE FROM catalog WHERE updated<?",new Object[]{System.currentTimeMillis()-8L*86400000});
+    }
+    synchronized void writeAll(String scope, java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception {
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> channel:channels.entrySet())write(scope,channel.getKey(),channel.getValue());
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
     synchronized boolean saved(String scope,String id) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM saved WHERE scope=? AND id=?",new String[]{scope,id})) { return c.moveToFirst(); }

@@ -49,8 +49,17 @@ public final class PlaylistImportWorker extends Worker {
             if(getRunAttemptCount()<2&&!(e instanceof FileNotFoundException)){
                 PlaylistImportJobs.update(db,id,"retry","Interrumpida · reintentando",count[0]);return Result.retry();
             }
-            PlaylistImportJobs.update(db,id,"error","No se completó · se conserva la lista anterior",count[0]);removeSpool(filename);return Result.failure();
+            PlaylistImportJobs.update(db,id,"error",failureMessage(e)+" · se conserva la lista anterior",count[0]);removeSpool(filename);return Result.failure();
         }
+    }
+    static String failureMessage(Exception error) {
+        for(Throwable e=error;e!=null;e=e.getCause()) {
+            if(e instanceof android.database.sqlite.SQLiteFullException)return "Sin espacio. Libera almacenamiento y reintenta";
+            if(e instanceof java.net.SocketTimeoutException)return "La conexión tardó demasiado. Comprueba la red y reintenta";
+            if(e instanceof java.net.UnknownHostException||e instanceof java.net.ConnectException)return "No se pudo conectar. Comprueba la red y la dirección";
+            if(e instanceof FileNotFoundException)return "El archivo ya no está disponible. Vuelve a seleccionarlo";
+        }
+        return "No se pudo leer la lista o guía. Comprueba el formato y la dirección";
     }
     private void removeSpool(String filename){if(filename!=null&&filename.matches("[a-f0-9-]+\\.m3u"))new File(PlaylistImportJobs.spoolDir(getApplicationContext()),filename).delete();}
     @Override public void onStopped(){super.onStopped();}

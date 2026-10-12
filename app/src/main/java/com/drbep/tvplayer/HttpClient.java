@@ -28,12 +28,19 @@ final class HttpClient {
         final int code;
         final String body;
         final String finalUrl;
+        final String etag, lastModified;
 
         Response(int code, String body) {
             this(code, body, "");
         }
 
         Response(int code, String body, String finalUrl) {
+            this(code, body, finalUrl, "", "");
+        }
+
+        Response(int code, String body, String finalUrl, String etag, String lastModified) {
+            this.etag = etag == null ? "" : etag;
+            this.lastModified = lastModified == null ? "" : lastModified;
             this.code = code;
             this.body = body;
             this.finalUrl = finalUrl == null ? "" : finalUrl;
@@ -169,7 +176,7 @@ final class HttpClient {
             }
             String responseText = responseBody == null ? "" : readAll(responseBody.byteStream(), maxResponseBytes);
             Log.d(TAG, method + " " + safeEndpoint(url) + " status=" + code + " responseChars=" + responseText.length());
-            return new Response(code, responseText, response.request().url().toString());
+            return new Response(code, responseText, response.request().url().toString(), response.header("ETag"), response.header("Last-Modified"));
         }
     }
 

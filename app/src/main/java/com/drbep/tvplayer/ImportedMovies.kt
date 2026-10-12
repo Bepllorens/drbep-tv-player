@@ -107,7 +107,17 @@ internal object ImportedMovies {
     }
     fun pick(title:String,options:List<Pair<String,()->Unit>>) {pickerTitle=title;picker=options}
     fun change(f:MovieFilter){if(f==filter&&offset==0){navigation.filter(navigation.filterIndex);return};navigation.cancel();filter=f;offset=0;selected=null;page=null}
-    LaunchedEffect(Unit){withContext(Dispatchers.IO){repo.syncProgress(progress)};ready=true}
+    LaunchedEffect(Unit,revision) {
+        if(ready)return@LaunchedEffect
+        try {
+            withContext(Dispatchers.IO){repo.syncProgress(progress)}
+            ready=true
+        } catch(e:CancellationException){throw e}
+        catch(e:Exception){
+            android.util.Log.e("ImportedLibrary","Cannot initialize local catalogue",e)
+            notice="No se pudo abrir la biblioteca local. Puedes reintentar o volver."
+        }
+    }
     LaunchedEffect(filter,offset,revision,ready) {
         if(!ready)return@LaunchedEffect
         try {
@@ -136,23 +146,34 @@ internal object ImportedMovies {
                 }
             }
         }
-        catch(e:Exception){notice="No se pudo abrir el catálogo. Vuelve a intentarlo."}
+        catch(e:CancellationException){throw e}
+        catch(e:Exception){
+            android.util.Log.e("ImportedLibrary","Cannot read catalogue",e)
+            notice="No se pudo abrir el catálogo. Vuelve a intentarlo."
+        }
     }
     LaunchedEffect(selected?.id) {
         val item=selected?:return@LaunchedEffect
         delay(700)
-        val enriched=withContext(Dispatchers.IO){repo.resolve(item)}
-        if(selected?.id==item.id)selected=enriched
+        try {
+            val enriched=withContext(Dispatchers.IO){repo.resolve(item)}
+            if(selected?.id==item.id)selected=enriched
+        } catch(e:CancellationException){throw e}
+        catch(e:Exception){android.util.Log.w("ImportedLibrary","Cannot enrich selected title",e)}
     }
     // Small batches while this screen is open; opening the app never triggers catalogue enrichment.
     LaunchedEffect(ready,filter.source) {
         if(!ready)return@LaunchedEffect
         delay(2000)
         while(isActive) {
-            val batch=withContext(Dispatchers.IO){repo.pending(filter.source)}
-            if(batch.isEmpty())break
-            for(item in batch){ensureActive();withContext(Dispatchers.IO){repo.resolve(item)};delay(500)}
-            revision++;delay(30000)
+            try {
+                val batch=withContext(Dispatchers.IO){repo.pending(filter.source)}
+                if(batch.isEmpty())break
+                for(item in batch){ensureActive();withContext(Dispatchers.IO){repo.resolve(item)};delay(500)}
+                revision++
+            } catch(e:CancellationException){throw e}
+            catch(e:Exception){android.util.Log.w("ImportedLibrary","Cannot enrich catalogue",e)}
+            delay(30000)
         }
     }
     fun closePicker(){picker=null;if(details)return;navigation.filter(navigation.filterIndex)}
@@ -185,7 +206,7 @@ internal object ImportedMovies {
             Column(Modifier.fillMaxWidth().height(if(details)250.dp else 126.dp).padding(vertical=7.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 BasicText(item?.title?:"Tu biblioteca de ${repo.label}",maxLines=2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color.White,26.sp,FontWeight.Bold))
                 BasicText(item?.meta.orEmpty(),style=TextStyle(OfflineTvTheme.Colors.accentCyan,12.sp))
-                BasicText(item?.description?.ifBlank{"Ficha pendiente de identificar. Puedes reproducir con los datos de tu lista."}?:"Cargando catálogo local…",maxLines=if(details)6 else 2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFFCFD7E0),13.sp))
+                BasicText(item?.description?.ifBlank{"Ficha pendiente de identificar. Puedes reproducir con los datos de tu lista."}?:if(page!=null)"Importa una lista M3U desde Mis listas para añadir ${repo.label}." else "Cargando catálogo local…",maxLines=if(details)6 else 2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFFCFD7E0),13.sp))
                 if(details&&item!=null){
                     val cast=item.metadata?.optJSONArray("cast")
                     BasicText(cast?.let{a->"Reparto: "+(0 until a.length()).joinToString(", "){a.getString(it)}}.orEmpty(),maxLines=2,style=TextStyle(Color(0xFF9FB0C2),12.sp))
@@ -240,7 +261,10 @@ internal object ImportedMovies {
                     }
                 }
             }
-            if(notice.isNotBlank())BasicText(notice,style=TextStyle(Color(0xFFFFC56B),12.sp))
+            if(notice.isNotBlank()) {
+                BasicText(notice,style=TextStyle(Color(0xFFFFC56B),12.sp))
+                MovieButton("Reintentar"){notice="";revision++}
+            }
             BasicText("TMDB ${page?.identified?:0}/${page?.total?:0} · Fichas y géneros se completan mientras exploras · Disponibles después sin conexión",style=TextStyle(Color(0xFF8094A8),10.sp),modifier=Modifier.padding(top=6.dp))
         }
         picker?.let {options->
@@ -276,13 +300,19 @@ private fun filterModifier(nav:MovieFocusNavigation,index:Int)=Modifier.focusReq
     var error by remember{mutableStateOf("")}
     val list=rememberLazyListState()
     LaunchedEffect(item.id){
-        seasons=withContext(Dispatchers.IO){repo.seasons(item)}
-        season=seasons.firstOrNull()?.first
+        try {
+            seasons=withContext(Dispatchers.IO){repo.seasons(item)}
+            season=seasons.firstOrNull()?.first
+        } catch(e:CancellationException){throw e}
+        catch(e:Exception){error="No se pudieron cargar las temporadas.";android.util.Log.e("ImportedLibrary","Cannot read seasons",e)}
     }
     LaunchedEffect(season,offset){
         val current=season?:return@LaunchedEffect
-        entries=withContext(Dispatchers.IO){repo.episodes(item,current,offset)}
-        list.scrollToItem(0)
+        try {
+            entries=withContext(Dispatchers.IO){repo.episodes(item,current,offset)}
+            list.scrollToItem(0)
+        } catch(e:CancellationException){throw e}
+        catch(e:Exception){error="No se pudieron cargar los episodios.";android.util.Log.e("ImportedLibrary","Cannot read episodes",e)}
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF0B1018))) {
         MovieArt(item.backdrop,Modifier.fillMaxSize(),true)

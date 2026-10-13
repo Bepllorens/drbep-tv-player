@@ -3409,6 +3409,7 @@ public class MainActivity extends FragmentActivity {
         invalidateVodDerivedCaches();
         channelOverlayCoordinator.applyLoadedChannels(result, keepChannelId);
         syncOverlayStateFromCoordinator();
+        refreshArchiveAssociations();
         persistNavigationState();
         int restoredEpgChannels = applyProgramPairUpdates(allChannels, epgNowByChannelId, epgProgramPairByChannelId);
         applyProgramPairUpdates(channels, epgNowByChannelId, epgProgramPairByChannelId);
@@ -3536,6 +3537,7 @@ public class MainActivity extends FragmentActivity {
         long coordinatorMs = System.currentTimeMillis() - coordinatorStartMs;
         long overlayStartMs = System.currentTimeMillis();
         syncOverlayStateFromCoordinator();
+        refreshArchiveAssociations();
         purgePrivateRecents();
         persistNavigationState();
         refreshOverlayChannelList();
@@ -5719,6 +5721,26 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private void refreshArchiveAssociations() {
+        ensureArchiveScope();
+        List<ChannelItem> changed=new ArrayList<>();
+        for(ChannelItem c:allChannels)if(supportsU7d(c) && !isOrangeChannel(c)
+                && archiveAvailability.invalidateMismatchedIdentity(archiveScope,c))changed.add(c);
+        if(changed.isEmpty())return;
+        // Cancel old metadata jobs, retaining all unaffected channel programmes and playback.
+        archiveGeneration++;archiveWindowRevision++;archiveWindowKey="";archiveWindowLoading=false;
+        archiveLoading.clear();pendingMovistarGuideChannels.clear();archivePrefetchedChannel="";
+        final String scope=archiveScope;
+        archiveEligible=new ArrayList<>(archiveChannels());
+        for(ChannelItem c:changed){archivePrograms.remove(c.id);archiveErrors.remove(c.id);}
+        archiveStorageExecutor.execute(()->{
+            for(ChannelItem c:changed)archiveStore.invalidate(scope,c.id);
+        });
+        Log.i(TAG,"catchup associations refreshed channels="+changed.size());
+        refreshMovistarArchiveBatch(changed,scope,archiveGeneration);
+        if(archiveDialog!=null)loadArchiveCatalog(false);
+    }
+
     private void openArchiveCatalog(ChannelItem initial, boolean savedOnly) {
         ensureArchiveScope();
         if (archiveChannels().isEmpty()) { showStatus("No hay canales con U7D disponibles para esta cuenta");return; }
@@ -5762,13 +5784,12 @@ public class MainActivity extends FragmentActivity {
         }
         archiveWindowKey=windowKey;archiveWindowLoading=true;archiveState.setLoading(true);
         final int windowRevision=++archiveWindowRevision;
-        final List<ChannelItem> identityChannels=new ArrayList<>(allChannels);
         List<ChannelItem> directChannels=new ArrayList<>();for(ChannelItem c:snapshot)if(!isOrangeChannel(c))directChannels.add(c);
         if(!directChannels.isEmpty())refreshMovistarArchiveBatch(directChannels,scope,generation);
         archiveStorageExecutor.execute(()->{
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             // Include alternate platform copies omitted by the visible-channel deduplication.
-            for(ChannelItem c:identityChannels)if(!isOrangeChannel(c) && archiveAvailability.invalidateMismatchedIdentity(scope,c))archiveStore.invalidate(scope,c.id);
+
             List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
             java.util.Map<String,List<EpgRepository.EpgProgram>> cached=new java.util.LinkedHashMap<>();
             for(ChannelItem c:snapshot) {
@@ -5841,7 +5862,7 @@ public class MainActivity extends FragmentActivity {
                     if(!result.complete)failed=true;
                     loaded++;
                     final java.util.Map<String,List<EpgRepository.EpgProgram>> diskSnapshot=new java.util.LinkedHashMap<>(aggregate);
-                    archiveStorageExecutor.execute(()->{try{archiveStore.writeAll(scope,diskSnapshot);}catch(Exception ignored){}});
+                    archiveStorageExecutor.execute(()->{try{if(generation==archiveGeneration)archiveStore.writeAll(scope,diskSnapshot);}catch(Exception ignored){}});
                 }catch(Exception e){failed=true;android.util.Log.w("DirectGuide","Day failed: "+e.getClass().getSimpleName());}
             }
             final boolean error=failed;final boolean noGuide=loaded==0;
@@ -24908,8 +24929,10 @@ public class MainActivity extends FragmentActivity {
 
     private String normalizeChannelLogoUrl(String logoUrl) {
         String trimmed = logoUrl == null ? "" : logoUrl.trim();
-        if (trimmed.startsWith("http://www.movistarplus.es/")) {
-            return "https://www.movistarplus.es/" + trimmed.substring("http://www.movistarplus.es/".length());
+        // Both official image hosts support HTTPS; only upgrade these known hosts.
+        if (trimmed.startsWith("http://www.movistarplus.es/")
+                || trimmed.startsWith("http://estatico.emisiondof6.com/")) {
+            return "https://" + trimmed.substring("http://".length());
         }
         return trimmed;
     }

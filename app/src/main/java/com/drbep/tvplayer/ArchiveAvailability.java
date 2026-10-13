@@ -27,18 +27,32 @@ final class ArchiveAvailability {
  void identityAttempt(String scope,ChannelItem c){prefs.edit().putLong(key(scope,c.id)+".identityAttempt",System.currentTimeMillis()).apply();}
  boolean unavailable(String scope,ChannelItem c){return cached(scope,c)==State.UNAVAILABLE;}
  void schedule(String scope,ChannelItem c,Runnable changed){register(scope,c,"");String k=key(scope,c.id),code=prefs.getString(k+".code","");if(code.isEmpty()&&prefs.getString(k+".provider","").isEmpty())return;long age=System.currentTimeMillis()-prefs.getLong(k+".time",0);State old=cached(scope,c);if(age>=0&&age<ttl(old))return;if(!pending.add(k))return;
+  final String identity=identityFingerprint(c);
   executor.execute(()->{try{long now=System.currentTimeMillis();String resolved=code.isEmpty()?resolveCode(k):code;State state=resolved.isEmpty()?State.UNKNOWN:probe(resolved,now-4*3600000L);if(state==State.UNAVAILABLE){State second=probe(resolved,now-24*3600000L);state=second==State.UNAVAILABLE?State.UNAVAILABLE:second;}
+   if(!identity.equals(prefs.getString(k+".identity",identity)))return;
    prefs.edit().putString(k+".state",state.name()).putLong(k+".time",System.currentTimeMillis()).apply();if(state!=old)changed.run();
   }finally{pending.remove(k);}});
  }
- boolean invalidateMismatchedIdentity(String scope,ChannelItem c){
-  String base=key(scope,c.id),official=prefs.getString(base+".name","");
-  if(official.isEmpty()||U7dChannelIdentity.matches(c.name,official)||U7dChannelIdentity.matches(c.tvgId,official))return false;
-  SharedPreferences.Editor edit=prefs.edit();
-  // Remove only derived identity/probe fields for this mismatched channel.
-  for(String suffix:new String[]{".provider",".code",".name",".state",".time",".identityAttempt"})edit.remove(base+suffix);
-  edit.apply();return true;
+ static String identityFingerprint(ChannelItem c){
+  // Metadata only. Do not persist signed URLs or rotating playback credentials.
+  return U7dChannelIdentity.normalize(c.name)+"|"+Objects.toString(c.tvgId,"").trim().toUpperCase(Locale.ROOT)
+    +"|"+code(c.playUrl)+"|"+code(c.fallbackPlayUrl);
  }
+ static boolean associationChanged(ChannelItem c,String previous,String official,String provider){
+  return previous!=null ? !previous.equals(identityFingerprint(c))
+    : !official.isEmpty() && !U7dChannelIdentity.matches(c.name,official)
+      && !U7dChannelIdentity.matches(c.tvgId,official)
+      && !Objects.toString(c.tvgId,"").equalsIgnoreCase(provider);
+ }
+ synchronized boolean invalidateMismatchedIdentity(String scope,ChannelItem c){
+  String base=key(scope,c.id),current=identityFingerprint(c),previous=prefs.getString(base+".identity",null);
+  String official=prefs.getString(base+".name","");
+  boolean changed=associationChanged(c,previous,official,prefs.getString(base+".provider",""));
+  SharedPreferences.Editor edit=prefs.edit().putString(base+".identity",current);
+  if(changed)for(String suffix:new String[]{".provider",".code",".name",".state",".time",".identityAttempt"})edit.remove(base+suffix);
+  edit.apply();return changed;
+ }
+
  String provider(String scope,ChannelItem c){String value=prefs.getString(key(scope,c.id)+".provider","");if(value.isEmpty()&&c.tvgId!=null&&!c.tvgId.matches("[0-9]+"))value=c.tvgId;return value;}
  String officialName(String scope,ChannelItem c,String fallback){return prefs.getString(key(scope,c.id)+".name",fallback);}
  private String resolveCode(String key){

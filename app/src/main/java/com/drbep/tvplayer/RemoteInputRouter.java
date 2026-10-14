@@ -129,6 +129,7 @@ final class RemoteInputRouter {
         void scheduleSelectedOrCurrentProgram();
 
         void closeMultiView();
+        default void showMultiViewOptions() { showMultiViewChannelPicker(getMultiViewActiveIndex()); }
 
         void moveMultiViewSelection(int columnDelta, int rowDelta);
 
@@ -150,10 +151,24 @@ final class RemoteInputRouter {
         if (event == null) {
             return false;
         }
+        if(event.isCanceled() && isConfirmKey(event.getKeyCode())){multiConfirmPending=false;multiConfirmLong=false;return false;}
         return dispatchKey(event.getAction(), event.getKeyCode(), event.getUnicodeChar(), event.getRepeatCount());
     }
 
+    private boolean multiConfirmPending, multiConfirmLong;
     boolean dispatchKey(int action, int keyCode, int unicode, int repeatCount) {
+        if (host.isMultiViewVisible() && isConfirmKey(keyCode)) {
+            if(action==KeyEvent.ACTION_DOWN) {
+                if(repeatCount==0){multiConfirmPending=true;multiConfirmLong=false;}
+                else if(multiConfirmPending){multiConfirmLong=true;}
+                return true;
+            }
+            if(action==KeyEvent.ACTION_UP){
+                boolean pending=multiConfirmPending,held=multiConfirmLong;multiConfirmPending=false;multiConfirmLong=false;
+                if(pending){if(held)host.showMultiViewOptions();else host.focusMultiViewSlot(host.getMultiViewActiveIndex());}return true;
+            }
+        }
+        if(!host.isMultiViewVisible()){multiConfirmPending=false;multiConfirmLong=false;}
         if (action != KeyEvent.ACTION_DOWN) {
             return false;
         }
@@ -236,6 +251,9 @@ final class RemoteInputRouter {
     }
 
     boolean onKeyLongPress(int keyCode) {
+        if(host.isMultiViewVisible() && isConfirmKey(keyCode)) {
+            multiConfirmLong=true;return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
             if (host.canResumeTimeshiftLive()) {
                 host.resumeTimeshiftLive();

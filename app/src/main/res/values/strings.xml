@@ -791,7 +791,7 @@
     <string name="multiview_title">Multiview</string>
     <string name="multiview_title_capacity">Multiview · %1$d de %2$d ventanas</string>
     <string name="multiview_hint_touch">Toca para audio; toca la activa para controles. Mantén para cambiar canal</string>
-    <string name="multiview_hint_tv">Flechas: audio · OK: controles · MENU: cambiar canal</string>
+    <string name="multiview_hint_tv">Flechas: ventana · OK: audio / ampliar · Mantén OK: opciones · Atrás: volver</string>
     <string name="multiview_select_channel_title">Elegir canal para ventana</string>
     <string name="multiview_select_platform_title">Elegir plataforma</string>
     <string name="multiview_select_platform_subtitle">%1$d plataformas · %2$d canales disponibles</string>
@@ -804,7 +804,7 @@
     <string name="multiview_close">Cerrar</string>
     <string name="multiview_slot_label">Ventana %1$d</string>
     <string name="multiview_active_audio">Audio activo</string>
-    <string name="multiview_tile_hint_tv">OK: controles · MENU: cambiar</string>
+    <string name="multiview_tile_hint_tv">OK: audio / ampliar · Mantén OK: opciones</string>
     <string name="multiview_tile_hint_touch">Toca activa: controles · Mantener: cambiar</string>
     <string name="multiview_open_preset_title">Abrir preset multiview</string>
     <string name="multiview_save_preset_title">Guardar preset multiview</string>

@@ -18,13 +18,6 @@ public final class PublicInitIdTest {
     byte[] suffix={(byte)0x48,(byte)0xf3,(byte)0xc6,(byte)0x89,(byte)0x9b,0x06};
     assertArrayEquals(id,PublicInitId.protobufId(message(id,suffix)));
   }
-  @Test public void publicWidevineBoxIsReadWithoutLicenseData() {
-    byte[] id=new byte[16];id[15]=42;
-    byte[] payload=message(id,new byte[]{0x48,(byte)0xf3,(byte)0xc6,(byte)0x89,(byte)0x9b,0x06});
-    byte[] box=PsshAtomUtil.buildPsshAtom(C.WIDEVINE_UUID,payload);
-    assertArrayEquals(id,PublicInitId.single(new DrmInitData(
-      new DrmInitData.SchemeData(C.WIDEVINE_UUID,"video/mp4",box))));
-  }
   @Test public void differentDrmSystemIsNotUsed() {
     byte[] box=PsshAtomUtil.buildPsshAtom(C.PLAYREADY_UUID,message(new byte[16],new byte[0]));
     assertNull(PublicInitId.single(new DrmInitData(

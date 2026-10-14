@@ -3,6 +3,10 @@ package com.drbep.tvplayer;
 /** Pixel geometry only; never owns players or changes their playback state. */
 public final class MultiViewLayoutPolicy {
     private MultiViewLayoutPolicy() { }
+    public static int[] expandedBounds(int width,int height,int slot,int selected) {
+        // Keep existing surfaces attached; no release/prepare on layout changes.
+        return slot==selected?new int[]{0,0,Math.max(1,width),Math.max(1,height)}:new int[]{Math.max(1,width),0,1,1};
+    }
     public static int[] bounds(int width, int height, int count, int slot,
                                boolean pip, int primary, int corner, int margin) {
         width = Math.max(1, width);

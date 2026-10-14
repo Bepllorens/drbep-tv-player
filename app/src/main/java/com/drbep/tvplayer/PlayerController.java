@@ -331,6 +331,22 @@ final class PlayerController {
         }
     }
 
+    private String panelVideoDecoder = "";
+    JSONObject panelWindowDiagnostics() throws org.json.JSONException {
+        PlaybackDiagnostics d=getPlaybackDiagnostics();
+        JSONObject out=new JSONObject().put("channel",d.channelName).put("state",d.playbackState)
+                .put("playing",d.playing).put("resolution",d.videoWidth+" × "+d.videoHeight)
+                .put("codec",d.videoCodec==null?"—":d.videoCodec).put("decoder",panelVideoDecoder).put("bitrate",d.videoBitrate)
+                .put("bufferingCount",d.bufferingCount).put("bufferingMs",d.bufferingTotalMs)
+                .put("firstFrame",d.firstFrameRendered).put("readyMs",d.readyElapsedMs);
+        if(player!=null){
+            out.put("bufferMs",Math.max(0,player.getTotalBufferedDuration()));
+            androidx.media3.exoplayer.DecoderCounters counters=player.getVideoDecoderCounters();
+            if(counters!=null){counters.ensureUpdated();out.put("renderedFrames",counters.renderedOutputBufferCount).put("droppedFrames",counters.droppedBufferCount);}
+        }
+        return out;
+    }
+
     static final class PlaybackDiagnostics {
         final String channelName;
         final String playbackState;
@@ -753,6 +769,54 @@ final class PlayerController {
         subtitles.setFractionalTextSize(new float[]{0.028f, 0.035f, 0.045f}[getSubtitleSize()]);
     }
 
+    private android.view.Surface multiCompositionSurface;
+    private android.view.ViewGroup multiVideoParent;
+    private android.view.ViewGroup.LayoutParams multiVideoLayout;
+    private java.util.function.BiConsumer<Double,Float> multiCompositionAspect;
+
+    // Main-thread only. Used exclusively by multiview; retains the decoder and playback state.
+    void setMultiCompositionSurface(android.view.Surface surface, java.util.function.BiConsumer<Double,Float> aspect) {
+        if (!host.isMultiViewPlayback()) return;
+        android.view.Surface previous = multiCompositionSurface;
+        multiCompositionSurface = surface;
+        multiCompositionAspect = aspect;
+        if (player == null) return;
+        if (previous != null) player.clearVideoSurface(previous);
+        if (surface != null) {
+            // Keep PlayerView attached for subtitles, hiding only its independent video output.
+            android.view.View video = playerView.getVideoSurfaceView();
+            if (video instanceof android.view.TextureView) player.clearVideoTextureView((android.view.TextureView)video);
+            if (video != null && video.getParent() instanceof android.view.ViewGroup) {
+                multiVideoParent=(android.view.ViewGroup)video.getParent();
+                multiVideoLayout=video.getLayoutParams();
+                multiVideoParent.removeView(video);
+            }
+            playerView.setShutterBackgroundColor(android.graphics.Color.TRANSPARENT);
+            player.setVideoSurface(surface);
+            reportMultiCompositionAspect();
+        } else {
+            restoreMultiVideoView();
+            playerView.setVisibility(View.VISIBLE);
+            playerView.setPlayer(player);
+            android.view.View video = playerView.getVideoSurfaceView();
+            if (video != null) video.setVisibility(View.VISIBLE);
+            if (video instanceof android.view.TextureView) player.setVideoTextureView((android.view.TextureView)video);
+        }
+    }
+
+    private void restoreMultiVideoView() {
+        android.view.View video=playerView.getVideoSurfaceView();
+        if(video!=null && video.getParent()==null && multiVideoParent!=null) multiVideoParent.addView(video,0,multiVideoLayout);
+        multiVideoParent=null;multiVideoLayout=null;
+    }
+
+    private void reportMultiCompositionAspect() {
+        if (player == null || multiCompositionAspect == null) return;
+        androidx.media3.common.VideoSize size = player.getVideoSize();
+        if (size.width > 0 && size.height > 0)
+            multiCompositionAspect.accept(size.width * (double) size.pixelWidthHeightRatio / size.height, player.getVideoFormat()==null ? 0f : player.getVideoFormat().frameRate);
+    }
+
     void initialize() {
         applySubtitleSize();
         installPlaybackCrashGuard();
@@ -824,9 +888,12 @@ final class PlayerController {
                 .build(), shouldHandleSystemAudioFocus(multiViewPlayback));
         player.setHandleAudioBecomingNoisy(!multiViewPlayback);
         player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
+            @Override public void onVideoDecoderInitialized(EventTime eventTime,String decoderName,long initializedTimestampMs,long initializationDurationMs) { panelVideoDecoder=decoderName; }
+            @Override public void onVideoDecoderReleased(EventTime eventTime,String decoderName) { if(decoderName.equals(panelVideoDecoder))panelVideoDecoder=""; }
+
             @Override public void onVideoInputFormatChanged(EventTime time,Format format,
                     androidx.media3.exoplayer.DecoderReuseEvaluation reuse) {
-                updateSelectedPlaybackFormats();maybeShowHdrBadge();
+                updateSelectedPlaybackFormats();maybeShowHdrBadge();reportMultiCompositionAspect();
             }
         });
         if (shouldRegisterSystemMediaControls(multiViewPlayback)) {
@@ -837,6 +904,12 @@ final class PlayerController {
         }
         playerView.setPlayer(player);
         playerView.setVisibility(View.VISIBLE);
+        if (host.isMultiViewPlayback()) {
+            player.addListener(new Player.Listener() {
+                @Override public void onVideoSizeChanged(androidx.media3.common.VideoSize size) { reportMultiCompositionAspect(); }
+            });
+            if (multiCompositionSurface != null) setMultiCompositionSurface(multiCompositionSurface, multiCompositionAspect);
+        }
         playerView.setUseController(false);
         playerView.setKeepContentOnPlayerReset(false);
         playerView.setKeepScreenOn(true);
@@ -2702,6 +2775,7 @@ final class PlayerController {
             player.release();
             player = null;
         }
+        if (host.isMultiViewPlayback()) { multiCompositionSurface=null; multiCompositionAspect=null; restoreMultiVideoView(); }
         if (vlcDirectPlayController != null) {
             vlcDirectPlayController.release();
             vlcDirectPlayController = null;

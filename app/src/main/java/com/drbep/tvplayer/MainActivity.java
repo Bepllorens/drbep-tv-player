@@ -241,6 +241,9 @@ public class MainActivity extends FragmentActivity {
     private final List<ChannelItem> multiViewChannels = new ArrayList<>();
     private final String[] multiViewChannelIds = new String[4];
     private int multiViewActiveIndex = 0;
+    private int multiViewFocusedIndex = 0;
+    private int multiViewExpandedIndex = -1;
+    private final Map<String,String> multiViewPickerPositions = new LinkedHashMap<>();
     private boolean multiViewPipMode;
     private int multiViewPrimaryIndex;
     private int multiViewPipCorner;
@@ -5773,10 +5776,14 @@ public class MainActivity extends FragmentActivity {
         String priority=preload && active!=null?active.id:archiveState.getChannel();
         allowed.sort((a,b)->Boolean.compare(!a.id.equals(priority),!b.id.equals(priority)));
         if(preload)allowed=new ArrayList<>(allowed.subList(0,Math.min(1,allowed.size())));
+        else if(priority!=null&&!priority.isEmpty()){
+            List<ChannelItem> selected=new ArrayList<>();for(ChannelItem c:allowed)if(c.id.equals(priority))selected.add(c);
+            if(!selected.isEmpty())allowed=selected;
+        }
         final int generation=archiveGeneration;final String scope=archiveScope;
         final List<ChannelItem> snapshot=allowed;
         final java.util.Set<String> windowDays=archiveWindowDays();
-        String windowKey=scope+"|"+new java.util.TreeSet<>(windowDays)+"|"+(preload?priority:"all");
+        String windowKey=scope+"|"+new java.util.TreeSet<>(windowDays)+"|"+(preload?"preload:":"visible:")+priority;
         if(windowKey.equals(archiveWindowKey)) {
             if(archiveWindowLoading)return;
             List<ChannelItem> movistar=new ArrayList<>();for(ChannelItem c:snapshot)if(isOrangeChannel(c))refreshArchiveChannel(c,scope,generation);else movistar.add(c);
@@ -9736,7 +9743,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public int getMultiViewActiveIndex() {
-                return multiViewActiveIndex;
+                return multiViewFocusedIndex;
             }
 
             @Override
@@ -9957,8 +9964,10 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void closeMultiView() {
-                MainActivity.this.closeMultiView();
+                if (multiViewExpandedIndex >= 0) { multiViewExpandedIndex=-1; applyMultiViewLayout(); updateMultiViewFocus(); }
+                else MainActivity.this.closeMultiView();
             }
+            @Override public void showMultiViewOptions() { showMultiViewControls(); }
 
             @Override
             public void moveMultiViewSelection(int columnDelta, int rowDelta) {
@@ -11253,12 +11262,15 @@ public class MainActivity extends FragmentActivity {
         multiViewPrimaryIndex = 0;
         if (selected.size() != 2) multiViewPipMode = false;
         ensureMultiViewControllers();
+        multiCompositionPendingStart = shouldStartSharedMultiComposition();
         multiViewChannels.clear();
         multiViewChannels.addAll(selected);
         for (int i = 0; i < multiViewChannelIds.length; i++) {
             multiViewChannelIds[i] = i < selected.size() ? selected.get(i).id : null;
         }
         multiViewActiveIndex = 0;
+        multiViewFocusedIndex = 0;
+        multiViewExpandedIndex = -1;
         multiViewPrimaryIndex = 0;
         multiViewControlsOpen = false;
         if (selected.size() != 2) multiViewPipMode = false;
@@ -11269,6 +11281,27 @@ public class MainActivity extends FragmentActivity {
             if (i < selected.size()) {
                 ChannelItem item = selected.get(i);
                 multiTiles[i].setVisibility(View.VISIBLE);
+                if (!multiCompositionPendingStart) playInitialMultiViewChannel(i,item);
+            } else {
+                multiTiles[i].setVisibility(View.INVISIBLE);
+            }
+        }
+        refreshMultiViewHeader();
+        updateMultiViewFocus();
+        if (multiViewContainer != null) {
+            multiViewContainer.setVisibility(View.VISIBLE);
+        }
+        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, true);
+        startSharedMultiComposition();
+        multiViewContainer.post(this::applyMultiViewLayout);
+        revealMultiViewHud();
+        Log.println(Log.INFO, TAG, "multiview opened");
+        showStatus(limitedByDevice
+                ? getString(R.string.status_multiview_device_limit, supportedStreams)
+                : getString(R.string.multiview_title));
+    }
+
+    private void playInitialMultiViewChannel(int i,ChannelItem item) {
                 PlayerController controller = multiPlayerControllers.get(i);
                 controller.setMuted(i != multiViewActiveIndex);
                 PlayerController.PlaybackRequest request = toPlaybackRequest(item);
@@ -11281,25 +11314,10 @@ public class MainActivity extends FragmentActivity {
                 if (request != null && !shouldResolveStreamInfoBeforePlayback(item, request) && !request.directPlayback) {
                     controller.resolveStreamInfoAndReplayIfNeeded(request, true, streamInfoByChannelId);
                 }
-            } else {
-                multiTiles[i].setVisibility(View.INVISIBLE);
-            }
-        }
-        refreshMultiViewHeader();
-        updateMultiViewFocus();
-        if (multiViewContainer != null) {
-            multiViewContainer.setVisibility(View.VISIBLE);
-        }
-        overlaySurfaceState.setVisible(OfflineOverlayState.Surface.MULTIVIEW, true);
-        multiViewContainer.post(this::applyMultiViewLayout);
-        revealMultiViewHud();
-        Log.println(Log.INFO, TAG, "multiview opened");
-        showStatus(limitedByDevice
-                ? getString(R.string.status_multiview_device_limit, supportedStreams)
-                : getString(R.string.multiview_title));
     }
 
     private void closeMultiView() {
+        multiViewExpandedIndex = -1;
         uiHandler.removeCallbacks(hideMultiViewHud);
         multiViewControlsOpen = false;
         if (multiViewContainer != null && multiViewContainer.getVisibility() != View.VISIBLE) {
@@ -11322,6 +11340,61 @@ public class MainActivity extends FragmentActivity {
         }
         mainWasPlayingBeforeMultiView = false;
         updateTouchHomeHub();
+    }
+
+    private SharedMultiViewCompositor multiCompositor;
+    private boolean multiCompositionDisabledForSession;
+    private boolean multiCompositionPendingStart;
+    private boolean shouldStartSharedMultiComposition() {
+        return "beta".equalsIgnoreCase(BuildConfig.UPDATE_CHANNEL) && !multiCompositionDisabledForSession
+                && prefs.getBoolean("multiview_shared_composition",true) && multiCompositor==null;
+    }
+    private void completeMultiCompositionStart() {
+        if(!multiCompositionPendingStart || !isMultiViewVisible())return;
+        multiCompositionPendingStart=false;
+        for(int i=0;i<multiViewChannels.size();i++)playInitialMultiViewChannel(i,multiViewChannels.get(i));
+    }
+    private boolean usesSharedMultiComposition() { return multiCompositor != null; }
+
+    private void startSharedMultiComposition() {
+        Log.i("SharedMultiGL","start disabled="+multiCompositionDisabledForSession+" preference="+prefs.getBoolean("multiview_shared_composition",true)+" existing="+(multiCompositor!=null));
+        if (!shouldStartSharedMultiComposition() || !isMultiViewVisible() || multiPlayerControllers.isEmpty()) return;
+        final SharedMultiViewCompositor[] holder = new SharedMultiViewCompositor[1];
+        holder[0] = new SharedMultiViewCompositor(this, multiPlayerControllers.size(), surfaces -> {
+            if (multiCompositor != holder[0] || !isMultiViewVisible()) return;
+            for (int i=0;i<surfaces.length && i<multiPlayerControllers.size();i++) {
+                final int slot=i;
+                multiPlayerControllers.get(i).setMultiCompositionSurface(surfaces[i], (ratio,fps) -> holder[0].configureSlot(slot,ratio.floatValue(),fps));
+            }
+            updateMultiViewFocus(); applyMultiViewLayout();
+            completeMultiCompositionStart();
+        }, () -> {
+            if (multiCompositor == holder[0]) {
+                multiCompositionDisabledForSession=true;
+                stopSharedMultiComposition();
+                updateMultiViewFocus(); applyMultiViewLayout();
+                completeMultiCompositionStart();
+                Log.w("SharedMultiGL","fallback to independent surfaces");
+            }
+        });
+        multiCompositor=holder[0];
+        ((FrameLayout)multiViewContainer).addView(multiCompositor,0,new FrameLayout.LayoutParams(-1,-1));
+        uiHandler.postDelayed(() -> {
+            if(multiCompositor==holder[0] && multiCompositionPendingStart) {
+                multiCompositionDisabledForSession=true;stopSharedMultiComposition();
+                updateMultiViewFocus();applyMultiViewLayout();completeMultiCompositionStart();
+                Log.w("SharedMultiGL","initialization timeout; using classic output");
+            }
+        },8000L);
+    }
+
+    private void stopSharedMultiComposition() {
+        SharedMultiViewCompositor previous=multiCompositor;
+        if(previous==null)return;
+        multiCompositor=null;
+        for(PlayerController pc:multiPlayerControllers)pc.setMultiCompositionSurface(null,null);
+        ((FrameLayout)multiViewContainer).removeView(previous);
+        previous.close();
     }
 
     private void ensureMultiViewControllers() {
@@ -11400,12 +11473,14 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void releaseMultiViewControllers() {
+        multiCompositionPendingStart=false;
         for (PlayerController controller : multiPlayerControllers) {
             if (controller != null) {
                 controller.release();
             }
         }
         multiPlayerControllers.clear();
+        stopSharedMultiComposition();
     }
 
     private List<ChannelItem> buildMultiViewChannels() {
@@ -11579,7 +11654,7 @@ public class MainActivity extends FragmentActivity {
         Map<String, MultiViewChannelSelector.PlatformGroup> platformByRowId = new LinkedHashMap<>();
         int order = 1;
         for (MultiViewChannelSelector.PlatformGroup group : platformGroups) {
-            String rowId = "multiview-platform-" + order;
+            String rowId = "multiview-platform-" + group.key;
             String platformName = group.name.trim().isEmpty()
                     ? getString(R.string.multiview_platform_unknown)
                     : group.name.trim();
@@ -11609,7 +11684,8 @@ public class MainActivity extends FragmentActivity {
             platformByRowId.put(rowId, group);
             order++;
         }
-        showQuickChannelListDialog(
+        showRememberedMultiViewPicker(
+                "platform:"+slot,
                 getString(R.string.multiview_select_platform_title),
                 getString(R.string.multiview_select_platform_subtitle, platformGroups.size(), items.size()),
                 platformRows,
@@ -11634,7 +11710,8 @@ public class MainActivity extends FragmentActivity {
                 ? getString(R.string.multiview_platform_unknown)
                 : group.name.trim();
         int channelCount = group.channels.size();
-        showQuickChannelListDialog(
+        showRememberedMultiViewPicker(
+                "channels:"+slot+":"+group.key,
                 getString(R.string.multiview_select_platform_channels_title, platformName),
                 getResources().getQuantityString(R.plurals.multiview_platform_channels_available, channelCount, channelCount),
                 group.channels,
@@ -11677,9 +11754,11 @@ public class MainActivity extends FragmentActivity {
         if (slot < 0 || slot >= multiViewChannels.size()) {
             return;
         }
+        multiViewFocusedIndex = slot;
+        if (touchDeviceMode && slot == multiViewActiveIndex) { showMultiViewControls(); return; }
         if (slot == multiViewActiveIndex) {
-            showMultiViewControls();
-            return;
+            multiViewExpandedIndex = multiViewExpandedIndex == slot ? -1 : slot;
+            applyMultiViewLayout(); updateMultiViewFocus(); return;
         }
         multiViewActiveIndex = slot;
         for (int i = 0; i < multiPlayerControllers.size(); i++) {
@@ -11692,7 +11771,7 @@ public class MainActivity extends FragmentActivity {
         if (!isMultiViewVisible() || multiViewChannels.isEmpty()) {
             return;
         }
-        int currentSlot = Math.max(0, Math.min(multiViewActiveIndex, multiViewChannels.size() - 1));
+        int currentSlot = Math.max(0, Math.min(multiViewFocusedIndex, multiViewChannels.size() - 1));
         int currentColumn = currentSlot % 2;
         int currentRow = currentSlot / 2;
         int nextColumn = Math.max(0, Math.min(1, currentColumn + columnDelta));
@@ -11701,10 +11780,8 @@ public class MainActivity extends FragmentActivity {
         if (nextSlot >= multiViewChannels.size() || nextSlot == currentSlot) {
             return;
         }
-        multiViewActiveIndex = nextSlot;
-        for (int i = 0; i < multiPlayerControllers.size(); i++) {
-            multiPlayerControllers.get(i).setMuted(i != multiViewActiveIndex);
-        }
+        multiViewFocusedIndex = nextSlot;
+        if (multiViewExpandedIndex >= 0) { multiViewExpandedIndex=-1; applyMultiViewLayout(); }
         updateMultiViewFocus();
     }
 
@@ -11712,15 +11789,11 @@ public class MainActivity extends FragmentActivity {
         if (slot < 0 || slot >= multiViewChannels.size()) {
             return;
         }
-        ChannelItem item = multiViewChannels.get(slot);
-        if (item == null) {
-            return;
-        }
-        closeMultiView();
-        showStatus(item.name == null || item.name.trim().isEmpty()
-                ? getString(R.string.status_ready)
-                : item.name.trim());
-        tuneChannelById(item.id);
+        multiViewFocusedIndex = slot;
+        multiViewActiveIndex = slot;
+        for(int i=0;i<multiPlayerControllers.size();i++)multiPlayerControllers.get(i).setMuted(i!=slot);
+        multiViewExpandedIndex = slot;
+        applyMultiViewLayout();updateMultiViewFocus();
     }
 
     private void refreshMultiViewHeader() {
@@ -11762,9 +11835,9 @@ public class MainActivity extends FragmentActivity {
                 continue;
             }
             boolean hasChannel = i < multiViewChannels.size();
-            boolean active = i == multiViewActiveIndex && hasChannel;
+            boolean active = i == multiViewFocusedIndex && hasChannel;
             GradientDrawable tileBackground = new GradientDrawable();
-            tileBackground.setColor(Color.parseColor("#FF1A1730"));
+            tileBackground.setColor(usesSharedMultiComposition() ? Color.TRANSPARENT : Color.parseColor("#FF1A1730"));
             tileBackground.setStroke(active ? dpToPx(4) : dpToPx(2), active ? Color.parseColor("#FFA889FF") : Color.parseColor("#663A2857"));
             multiTiles[i].setBackground(tileBackground);
             multiTiles[i].setAlpha(hasChannel ? 1f : 0.7f);
@@ -11794,14 +11867,18 @@ public class MainActivity extends FragmentActivity {
         if (!multiViewLayoutInitialized || multiViewChannels.isEmpty()) return;
         int w = multiViewContainer.getWidth(), h = multiViewContainer.getHeight();
         if (w <= 0 || h <= 0) return;
+        int[][] compositionBounds = new int[multiViewChannels.size()][];
         for (int i=0;i<multiViewChannels.size();i++) {
             int[] b = MultiViewLayoutPolicy.bounds(w,h,multiViewChannels.size(),i,
                     multiViewPipMode,multiViewPrimaryIndex,multiViewPipCorner,dp(16));
+            if (multiViewExpandedIndex >= 0) b = MultiViewLayoutPolicy.expandedBounds(w,h,i,multiViewExpandedIndex);
+            compositionBounds[i]=b;
             FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(b[2],b[3]);
             p.leftMargin=b[0]; p.topMargin=b[1];
             multiTiles[i].setLayoutParams(p);
             multiTiles[i].setElevation(multiViewPipMode && i != multiViewPrimaryIndex ? dp(8) : 0);
         }
+        if (multiCompositor != null) multiCompositor.layout(compositionBounds,multiViewPipMode && multiViewExpandedIndex < 0,multiViewPrimaryIndex);
         multiViewHeaderComposeView.setElevation(dp(12));
         // Lower the old primary first; no prepare/seek or surface reattachment.
         for (int i=0; i<multiPlayerControllers.size(); i++)
@@ -11850,9 +11927,19 @@ public class MainActivity extends FragmentActivity {
             }));
         }
         labels.add(getString(R.string.multiview_change_channel));
-        actions.add(multiViewAction(() -> showMultiViewChannelPicker(multiViewActiveIndex)));
+        actions.add(multiViewAction(() -> showMultiViewChannelPicker(multiViewFocusedIndex)));
         labels.add(getString(R.string.multiview_fullscreen));
-        actions.add(multiViewAction(() -> openMultiViewSlotFullscreen(multiViewActiveIndex)));
+        actions.add(multiViewAction(() -> openMultiViewSlotFullscreen(multiViewFocusedIndex)));
+        if ("beta".equalsIgnoreCase(BuildConfig.UPDATE_CHANNEL)) {
+            labels.add(usesSharedMultiComposition() ? "Composición: compartida · cambiar a clásica" : "Composición: clásica · probar compartida");
+            actions.add(multiViewAction(() -> {
+                boolean enable=!usesSharedMultiComposition();
+                prefs.edit().putBoolean("multiview_shared_composition",enable).apply();
+                if(enable){multiCompositionDisabledForSession=false;startSharedMultiComposition();}
+                else stopSharedMultiComposition();
+                updateMultiViewFocus();applyMultiViewLayout();
+            }));
+        }
         labels.add(getString(R.string.multiview_close));
         actions.add(multiViewAction(this::closeMultiView));
         showTvOptionsDialog(R.string.multiview_controls, null, labels, actions,
@@ -14098,6 +14185,14 @@ public class MainActivity extends FragmentActivity {
                     status.put("Red",d.networkAvailable ? "Disponible" : "Sin conexión");
                     status.put("Recuperaciones recientes",new org.json.JSONArray(playerController.recentRecoveryEvents()));
                 }
+                org.json.JSONArray windows=new org.json.JSONArray();
+                if(isMultiViewVisible()) for(int i=0;i<multiViewChannels.size() && i<multiPlayerControllers.size();i++) {
+                    JSONObject window=multiPlayerControllers.get(i).panelWindowDiagnostics();
+                    window.put("slot",i+1).put("audio",i==multiViewActiveIndex).put("focused",i==multiViewFocusedIndex);
+                    windows.put(window);
+                }
+                status.put("Composición multipantalla",multiCompositor == null ? "Clásica" : "Compartida · "+multiCompositor.diagnostics().optLong("draws")+" dibujos / "+multiCompositor.diagnostics().optLong("inputFrames")+" fotogramas recibidos");
+                status.put("multiview",new JSONObject().put("active",isMultiViewVisible()).put("layout",multiViewExpandedIndex>=0?"Pantalla completa":multiViewPipMode?"Ventana destacada":"Mosaico").put("windows",windows));
                 devicePanelStatus=status.toString();
             } catch(Exception ignored) {}
             uiHandler.postDelayed(this,5000);
@@ -23062,7 +23157,13 @@ public class MainActivity extends FragmentActivity {
         showQuickChannelListDialog(title, null, items, emptyMessage, action, onBack, null);
     }
 
+    private void showRememberedMultiViewPicker(String key,String title,String subtitle,List<ChannelItem> items,String emptyMessage,QuickChannelSelectionAction action,Runnable onBack,List<ZapActionItem> panelActions) {
+        showQuickChannelListDialog(title,subtitle,items,emptyMessage,action,onBack,panelActions,key);
+    }
     private void showQuickChannelListDialog(String title, String subtitle, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action, Runnable onBack, List<ZapActionItem> panelActions) {
+        showQuickChannelListDialog(title,subtitle,items,emptyMessage,action,onBack,panelActions,null);
+    }
+    private void showQuickChannelListDialog(String title, String subtitle, List<ChannelItem> items, String emptyMessage, QuickChannelSelectionAction action, Runnable onBack, List<ZapActionItem> panelActions,String pickerKey) {
         QuickChannelDialogUiFactory.Host dialogHost = buildQuickChannelDialogUiHost();
         if (!QuickChannelDialogUiFactory.hasItems(items)) {
             showStatus(QuickChannelDialogUiFactory.emptyMessage(emptyMessage, dialogHost));
@@ -23103,7 +23204,7 @@ public class MainActivity extends FragmentActivity {
                 ));
             }
         }
-        QuickChannelListComposeBinder.bind(quickChannelListComposeView, buildQuickChannelListUiModel(
+        QuickChannelListUiModel quickModel = buildQuickChannelListUiModel(
                 title,
                 subtitle == null ? QuickChannelDialogUiFactory.subtitle(items, dialogHost) : subtitle,
                 modalPanelActions,
@@ -23111,7 +23212,12 @@ public class MainActivity extends FragmentActivity {
                 dialogHolder,
                 action,
                 panelBackAction
-        ), (imageView, item) -> {
+        );
+        if (pickerKey != null) {
+            quickModel.rememberedChannelId = multiViewPickerPositions.getOrDefault(pickerKey, "");
+            quickModel.onChannelFocused = id -> multiViewPickerPositions.put(pickerKey,id);
+        }
+        QuickChannelListComposeBinder.bind(quickChannelListComposeView, quickModel, (imageView, item) -> {
             if (imageView == null || item == null) {
                 return;
             }

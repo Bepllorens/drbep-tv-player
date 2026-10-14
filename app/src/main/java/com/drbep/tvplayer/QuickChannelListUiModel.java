@@ -9,6 +9,8 @@ public final class QuickChannelListUiModel {
     public final List<ZapActionItem> actions;
     public final List<QuickChannelRowUiModel> items;
     public final Runnable onBack;
+    public String rememberedChannelId = "";
+    public java.util.function.Consumer<String> onChannelFocused;
 
     public QuickChannelListUiModel(List<QuickChannelRowUiModel> items) {
         this(null, null, items);

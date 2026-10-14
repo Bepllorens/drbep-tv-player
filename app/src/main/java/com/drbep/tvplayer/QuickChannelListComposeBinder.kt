@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -78,7 +82,14 @@ object QuickChannelListComposeBinder {
 @Composable
 private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: QuickChannelImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
+    val initialIndex = model.items.indexOfFirst { it.channelId == model.rememberedChannelId }.coerceAtLeast(0)
     val firstRowRequester = rememberTvInitialFocusRequester(model.items.isNotEmpty(), model)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val scope = rememberCoroutineScope()
+    val rowRequesters = remember(model) { List(model.items.size) { if (it == initialIndex) firstRowRequester else FocusRequester() } }
+    var desiredIndex by remember(model) { mutableStateOf(initialIndex) }
+    var navigationJob by remember(model) { mutableStateOf<Job?>(null) }
+    val rememberedPicker = model.onChannelFocused != null
     val actionRequesters = remember(model) { List(model.actions.size) { FocusRequester() } }
     val topActionIndex = QuickChannelFocusPolicy.topActionIndex(model.actions)
     val bottomActionIndex = QuickChannelFocusPolicy.bottomActionIndex(model.actions)
@@ -97,6 +108,7 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
         PanelHeader(model.title, model.subtitle, compact)
         QuickChannelActions(model.actions, actionRequesters, compact)
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -110,9 +122,24 @@ private fun QuickChannelPanel(model: QuickChannelListUiModel, imageBinder: Quick
                     item,
                     imageBinder,
                     compact,
-                    if (index == 0) firstRowRequester else null,
+                    if (rememberedPicker) rowRequesters[index] else if (index == 0) firstRowRequester else null,
                     if (index == 0) topActionRequester else null,
-                    if (index == model.items.lastIndex) bottomActionRequester else null
+                    if (index == model.items.lastIndex) bottomActionRequester else null,
+                    onFocused = { model.onChannelFocused?.accept(item.channelId); desiredIndex = index },
+                    navigate = if (!rememberedPicker) null else { delta ->
+                        val target = (desiredIndex + delta).coerceIn(0, model.items.lastIndex)
+                        desiredIndex = target
+                        navigationJob?.cancel()
+                        navigationJob = scope.launch {
+                            val visible = listState.layoutInfo.visibleItemsInfo
+                            if (visible.none { it.index == target }) {
+                                val first = if (delta > 0) (target - visible.size.coerceAtLeast(1) + 1).coerceAtLeast(0) else target
+                                listState.scrollToItem(first)
+                            }
+                            androidx.compose.runtime.withFrameNanos { }
+                            runCatching { rowRequesters[target].requestFocus() }
+                        }
+                    }
                 )
             }
         }
@@ -200,7 +227,9 @@ private fun QuickChannelRow(
     compact: Boolean,
     focusRequester: FocusRequester?,
     upEdgeRequester: FocusRequester?,
-    downEdgeRequester: FocusRequester?
+    downEdgeRequester: FocusRequester?,
+    onFocused: () -> Unit,
+    navigate: ((Int) -> Unit)?
 ) {
     var focused by remember(item.channelId) { mutableStateOf(false) }
     val shape = OfflineTvTheme.Menu.shape
@@ -222,10 +251,14 @@ private fun QuickChannelRow(
             )
             .background(rowBackground, shape)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) {
                     return@onPreviewKeyEvent false
+                }
+                if (navigate != null && event.nativeKeyEvent.keyCode in listOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN)) {
+                    navigate(if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
+                    return@onPreviewKeyEvent true
                 }
                 val target = when (event.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_UP -> upEdgeRequester

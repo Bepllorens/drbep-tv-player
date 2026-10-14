@@ -2,7 +2,6 @@ package com.drbep.tvplayer;
 
 import android.os.SystemClock;
 import android.util.Log;
-import androidx.annotation.Nullable;
 import androidx.media3.common.Format;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.audio.AudioSink;
@@ -22,9 +21,9 @@ final class DiagnosticAudioSink extends ForwardingAudioSink {
 
     DiagnosticAudioSink(AudioSink delegate) { super(delegate); }
 
-    @Override public void configure(Format format, int bufferSize, @Nullable int[] channels)
-            throws ConfigurationException {
-        super.configure(format, bufferSize, channels);
+    @Override public void configure(AudioSinkConfig config) throws ConfigurationException {
+        super.configure(config);
+        Format format = config.format;
         clearProbe();
         sampleRate = format.sampleRate;
         encodedDolby = "audio/eac3".equals(format.sampleMimeType)

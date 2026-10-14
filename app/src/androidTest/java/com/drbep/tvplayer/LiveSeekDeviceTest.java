@@ -30,6 +30,7 @@ public class LiveSeekDeviceTest {
   try(ActivityScenario<MainActivity> sc=ActivityScenario.launch(MainActivity.class)) {
    Thread.sleep(6000);
    sc.onActivity(a->{try {
+    ComposeDialogHost.dismissAll(a);
     java.lang.reflect.Field f=MainActivity.class.getDeclaredField("allChannels");f.setAccessible(true);
     ChannelItem candidate=null;
     for(ChannelItem c:(java.util.List<ChannelItem>)f.get(a)) if(c.platformName.toLowerCase(java.util.Locale.ROOT).contains(platform) && FanartRepository.channelKey(c.name).equals("la1")){candidate=c;break;}
@@ -49,6 +50,7 @@ public class LiveSeekDeviceTest {
     PlayerController.PlaybackSeekState state=pc.getPlaybackSeekState();assertNotNull(platform+" should expose a seek window",state);
     assertTrue("Native live DVR available",pc.isTimeshiftSupportedForCurrentChannel());before[0]=state.currentMs;
     if(platform.equals("hls")) {
+     ComposeDialogHost.dismissAll(a);
      ((android.view.View)CatchupFocusDeviceTest.field(a,"touchHomeHub")).setVisibility(android.view.View.GONE);
      CatchupFocusDeviceTest.call(a,"showTouchControlsTemporarily");
      CatchupFocusDeviceTest.call(a,"focusTouchControlsTimeshift");

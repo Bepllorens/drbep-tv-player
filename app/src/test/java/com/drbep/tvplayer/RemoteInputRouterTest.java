@@ -8,6 +8,24 @@ import android.view.KeyEvent;
 import org.junit.Test;
 
 public class RemoteInputRouterTest {
+    @Test public void multiViewConfirmRunsOnceOnReleaseAndHoldDoesNotClick() {
+        FakeHost host=new FakeHost();host.multiViewVisible=true;
+        RemoteInputRouter router=new RemoteInputRouter(host,450L);
+        router.dispatchKey(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_CENTER,0,0);
+        router.dispatchKey(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_CENTER,0,0);
+        assertEquals("multi:focus:0",host.lastAction);
+        host.lastAction="none";
+        router.dispatchKey(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_CENTER,0,0);
+        router.dispatchKey(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_CENTER,0,1);
+        router.dispatchKey(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_CENTER,0,2);
+        assertEquals("none",host.lastAction);
+        router.dispatchKey(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_CENTER,0,0);
+        assertEquals("multi:options",host.lastAction);
+        host.lastAction="none";
+        router.dispatchKey(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_CENTER,0,0);
+        assertEquals("none",host.lastAction);
+    }
+
     @Test public void rightShowsGuideAndBackClosesItBeforeChannels() {
         FakeHost host = new FakeHost(); host.overlayVisible=true; host.guideEnabled=true;
         RemoteInputRouter router=new RemoteInputRouter(host,450L);
@@ -702,6 +720,8 @@ public class RemoteInputRouterTest {
             lastAction = "multi:focus:" + slot;
         }
 
+        @Override
+        public void showMultiViewOptions() {lastAction="multi:options";}
         @Override
         public void showMultiViewChannelPicker(int slot) {
             lastAction = "multi:picker:" + slot;

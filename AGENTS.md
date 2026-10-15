@@ -1,0 +1,70 @@
+# Instrucciones de desarrollo DRBEP
+
+## Entorno obligatorio
+
+El entorno de desarrollo de DRBEP es el servidor **192.168.93.185**, con usuario **drbep-dev**. Desarrollar, editar el codigo, compilar y ejecutar las pruebas alli. El Mac es un punto de acceso y puede usarse para ADB o comprobaciones visuales autorizadas; no volver a instalar en el Mac el entorno de compilacion ni usar sus copias antiguas como fuente canonica.
+
+Si este repositorio se abre desde otro ordenador, entrar primero por SSH:
+
+```bash
+ssh drbep-dev-185
+# Alternativa si ese alias no existe en el ordenador de acceso:
+ssh drbep-dev@192.168.93.185
+```
+
+Verificar el servidor y el usuario antes de actuar. El alias `proxmox-drbep` entra como root y se reserva para administracion, no para el desarrollo habitual. Un worktree debe residir tambien en el .185 y conservar la base Git correcta.
+
+Cargar las herramientas, tambien en shells SSH no interactivas:
+
+```bash
+source /srv/drbep-dev/env.sh
+```
+
+## Contexto que se debe leer
+
+Antes de modificar codigo, leer completamente estos documentos del checkout del backend en el .185:
+
+- `/srv/drbep-dev/repos/drbep/docs/CONTEXTO_DRBEP_PARA_OTRA_IA.md`
+- `/srv/drbep-dev/repos/drbep/docs/INICIO_OTRA_IA.txt`
+
+Comprobar el estado real y las instrucciones mas cercanas al archivo; los commits y versiones del documento son referencias fechadas, no una orden de volver a una version antigua. Seguir la peticion actual del usuario si cambia el alcance autorizado.
+
+## Produccion y secretos
+
+- Produccion esta en **192.168.93.223** y en **https://iptv.bepllorens.com**. No modificarla, reiniciarla, desplegar, publicar APK, cambiar canales beta/stable ni ejecutar sincronizadores reales salvo peticion expresa del usuario para esa operacion. Una tarea de desarrollo o un commit/push no lo autoriza.
+- No usar bases de datos, configuraciones ni credenciales de produccion como fixtures. Preparar datos y configuracion de desarrollo independientes.
+- No mostrar ni incorporar a Git contrasenas, claves privadas, tokens, sesiones, archivos de firma ni material de reproduccion. Cargar los secretos mediante los auxiliares existentes sin poner valores en argumentos ni activar trazas del shell.
+- `/srv/drbep-dev/secrets/beta-publish.json` tiene una credencial administrativa completa; el campo beta no limita sus permisos. No usarla para comprobar una tarea que no requiere acceso a produccion.
+- El .185 aloja otros servicios. No borrar contenedores ni reiniciar servicios ajenos para limpiar o compilar.
+
+## Git y forma de trabajar
+
+Comprobar `git status --short --branch`, el commit y las diferencias antes de editar. Conservar cambios ajenos. No usar reset destructivo, clean general, push forzado ni sincronizaciones con borrado para resolver diferencias.
+
+Aplicar cambios acotados y validar el comportamiento relevante. Health, HTTP 200 y tests no sustituyen una prueba real de reproduccion. Para pruebas visuales en el Fire, verificar que la television este encendida en su entrada HDMI y que el mando este libre.
+
+Responder en castellano. Informar que cambio, como se comprobo y que queda sin comprobar. No pedir otra vez una autorizacion ya concedida para la misma operacion; tampoco extenderla a otras operaciones.
+
+## Repositorio Android
+
+Checkout canonico: `/srv/drbep-dev/repos/drbep-tv-player`.
+Rama de referencia: `qoder/disneyplus-vod-582`. Su nombre historico no limita el contenido a Disney. No sustituirla automaticamente por main.
+
+El cliente es nativo, con Java, Kotlin, vistas tradicionales y Jetpack Compose; Media3/ExoPlayer es el reproductor principal. Leer el mapa de archivos del documento de contexto antes de reorganizar `MainActivity.java` o las superficies Compose.
+
+Validacion habitual para el Fire ARM32:
+
+```bash
+cd /srv/drbep-dev/repos/drbep-tv-player
+bash ./gradlew --no-daemon --max-workers=1 \
+  :app:assembleDebug :app:testDebugUnitTest \
+  -PupdateChannel=beta -PfireAbiOnly=true -PprofileBeta=true
+```
+
+Para compilar una beta firmada, usar `/srv/drbep-dev/build-signed-beta.py` despues de cargar el entorno. No publica ni incrementa automaticamente la version. El canal por defecto de Gradle es stable: ser explicito con beta. No generar otra firma ni desinstalar la app para resolver un conflicto.
+
+Beta y stable usan el mismo identificador de aplicacion; no son instalaciones aisladas. Verificar version, firma, ABI y dispositivo antes de instalar. Para una futura publicacion autorizada, subir exactamente el binario probado, sin recompilarlo despues.
+
+Preservar foco de mando, gestos tactiles, navegacion de series y retorno a la portada. Mantener listas de canales ligeras, controles discretos y degradados de la estetica actual. Al modificar video o superficies, probar zapeo, miniatura, vuelta desde pantalla completa y multipantalla; al modificar catchup, probar tambien acceso al timeshift y retorno al directo.
+
+No reintroducir cargas masivas de catalogos al arrancar, parrillas completas en memoria ni temporizadores trabajando en pantallas ocultas. Conservar la base indexada, paginacion y refresco selectivo del catchup. No recordar canales o grupos de adultos como seleccion de arranque.

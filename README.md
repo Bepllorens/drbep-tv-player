@@ -6,6 +6,11 @@ ruta libVLC acotada para formatos que Media3 no puede reproducir correctamente.
 La edición offline consume un catálogo firmado de DRBEP, reproduce en direct play
 y mantiene permisos, telemetría y dispositivos asociados al usuario.
 
+## Desarrollo con otra IA
+
+- [Contexto de DRBEP y acceso al servidor de desarrollo](https://github.com/Bepllorens/drbep/blob/codex/backend-migration-20261015/docs/CONTEXTO_DRBEP_PARA_OTRA_IA.md): conexión SSH al `.185`, repositorios, arquitectura, pruebas y precauciones de producción.
+- [Mensaje de inicio para otra IA](https://github.com/Bepllorens/drbep/blob/codex/backend-migration-20261015/docs/INICIO_OTRA_IA.txt): instrucciones listas para copiar y retomar el trabajo desde el servidor de desarrollo.
+
 ## Fire Stick controls
 
 - `DPAD UP/DOWN`: zapping canal anterior/siguiente.

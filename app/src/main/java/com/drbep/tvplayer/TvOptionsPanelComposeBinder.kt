@@ -66,6 +66,7 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
             .fillMaxWidth()
             .fillMaxHeight()
             .tvPanelBackHandler(model.onBack)
+            .tvLeftReturns(model.onBack)
             .background(OfflineTvTheme.Menu.scrim),
         contentAlignment = Alignment.CenterStart
     ) {

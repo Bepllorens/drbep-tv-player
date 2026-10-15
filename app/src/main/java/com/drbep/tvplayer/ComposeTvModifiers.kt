@@ -87,3 +87,12 @@ fun TvRequestFocus(
         }
     }
 }
+
+
+// Vertical option menus have no destination to their left.
+fun Modifier.tvLeftReturns(onBack: Runnable?): Modifier = onPreviewKeyEvent { event ->
+    if(onBack != null && event.key.nativeKeyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+        if(event.type == KeyEventType.KeyUp) onBack.run()
+        true
+    } else false
+}

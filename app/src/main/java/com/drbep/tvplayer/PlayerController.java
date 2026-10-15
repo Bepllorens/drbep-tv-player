@@ -1307,6 +1307,7 @@ final class PlayerController {
     }
 
     private boolean startVlcDirectPlayback(PlaybackRequest request, PlaybackRouteResolver.Decision decision, long resumePositionMs, boolean autoPlay) {
+        if(request==null || !VlcFallbackPolicy.allowsUnprotectedEngine(request.drmScheme,request.playbackProfile)) return false;
         VlcDirectPlayController controller = ensureVlcDirectPlayController();
         if (controller == null || !controller.isAvailable()) {
             return false;

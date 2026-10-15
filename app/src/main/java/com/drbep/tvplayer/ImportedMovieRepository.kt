@@ -54,7 +54,7 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
     private fun rows(f:MovieFilter,offset:Int=0,limit:Int=24,continuing:Boolean=false,scanned:(Int)->Unit={}):List<ImportedMovie> {
         val args=mutableListOf<String>();val where=StringBuilder(" WHERE e.kind='$kind' AND COALESCE(p.hidden,0)=0")
         for((field,value) in listOf("e.source" to f.source,"e.group_name" to f.group)) if(value.isNotBlank()){where.append(" AND $field=?");args+=value}
-        if(f.genre.isNotBlank()){where.append(" AND instr(md.genres,?)>0");args+="|${f.genre}|"}
+        if(f.genre.isNotBlank()){where.append(" AND instr(lower(md.genres),lower(?))>0");args+="|${f.genre}|"}
         if(f.search.isNotBlank()){where.append(" AND (instr(lower(e.title),lower(?))>0 OR instr(lower(md.json),lower(?))>0)");args+=f.search;args+=f.search}
         if(continuing)where.append(" AND $progressColumn>30000")
         val order=when(f.order){"title"->"e.title COLLATE NOCASE";"release"->"md.release_date DESC";"rating"->"md.rating DESC";else->"a.added DESC"}
@@ -68,6 +68,18 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
                 result+=ImportedMovie(item,c.s("source"),c.s("identity"),c.getInt(c.getColumnIndexOrThrow("occurrence")),c.s("group_name"),c.s("provider"),c.s("meta_query").ifBlank {query(if(series)c.s("series") else item.name)},meta,c.getLong(c.getColumnIndexOrThrow("progress")),if(series)c.s("series") else "")
             }
         };scanned(count);return result
+    }
+    fun searchLocal(query:String,genre:Boolean,similar:Boolean):List<ImportedMovie> {
+        var f=if(genre)MovieFilter(genre=query,order="rating") else MovieFilter(search=query)
+        if(similar) {
+            val seed=rows(f,limit=1).firstOrNull()?:return emptyList()
+            val genres=seed.metadata?.optJSONArray("genres")
+            val first=genres?.optString(0).orEmpty()
+            if(first.isBlank())return emptyList()
+            f=MovieFilter(genre=first,order="rating")
+            return rows(f,limit=24).filter{it.id!=seed.id}.take(12)
+        }
+        return rows(f,limit=24).take(12)
     }
     fun page(f:MovieFilter,offset:Int):MoviePage {
         val sources=mutableListOf<Pair<String,String>>();db.sources().use{while(it.moveToNext())sources+=it.getString(0) to it.getString(1)}

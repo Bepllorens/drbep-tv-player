@@ -33,6 +33,9 @@ internal data class MovieBrowsePosition(val filter:MovieFilter,val offset:Int,va
 internal data class SeriesPosition(var season:Int?=null,var offset:Int=0,var episode:String="")
 internal object ImportedMovies {
     internal val positions=mutableMapOf<String,MovieBrowsePosition>()
+    @JvmStatic fun prepareSearch(source:String,query:String,series:Boolean) {
+        positions[if(series)"series:$source" else source]=MovieBrowsePosition(MovieFilter(source=source,search=query),0,"")
+    }
     interface Host {
         fun play(item:ChannelItem)
         fun allowed(item:ChannelItem):Boolean
@@ -72,6 +75,15 @@ internal object ImportedMovies {
     var notice by remember { mutableStateOf("") }
     var picker by remember { mutableStateOf<List<Pair<String,()->Unit>>?>(null) }
     var pickerTitle by remember { mutableStateOf("") }
+    var previewPicker by remember { mutableStateOf(false) }
+    var pickerFocus by remember { mutableStateOf(-1) }
+    LaunchedEffect(pickerFocus,picker) {
+        val options=picker
+        if(previewPicker && options!=null && pickerFocus in options.indices) {
+            delay(350)
+            options[pickerFocus].second()
+        }
+    }
     var revision by remember { mutableStateOf(0) }
     var ready by remember { mutableStateOf(false) }
     val scope=rememberCoroutineScope()
@@ -107,8 +119,8 @@ internal object ImportedMovies {
     DisposableEffect(filter,offset,selected?.id) {
         onDispose{ImportedMovies.positions[positionKey]=MovieBrowsePosition(filter,offset,selected?.id.orEmpty())}
     }
-    fun pick(title:String,options:List<Pair<String,()->Unit>>) {pickerTitle=title;picker=options}
-    fun change(f:MovieFilter){if(f==filter&&offset==0){navigation.filter(navigation.filterIndex);return};navigation.cancel();filter=f;offset=0;selected=null;page=null}
+    fun pick(title:String,options:List<Pair<String,()->Unit>>,preview:Boolean=false) {pickerFocus=-1;previewPicker=preview;pickerTitle=title;picker=options}
+    fun change(f:MovieFilter){if(f==filter&&offset==0){if(picker==null)navigation.filter(navigation.filterIndex);return};navigation.cancel();filter=f;offset=0;selected=null;page=null}
     LaunchedEffect(Unit,revision) {
         if(ready)return@LaunchedEffect
         try {
@@ -140,7 +152,8 @@ internal object ImportedMovies {
             if(fresh) {
                 selected=loaded.shelves.flatMap{it.items}.find{firstLoad&&it.id==saved?.id}?:loaded.shelves.firstOrNull()?.items?.firstOrNull()
                 loadedKey=filter to offset
-                if(loaded.shelves.isEmpty())navigation.filter(0)
+                if(picker!=null) { /* Keep category focus while its preview changes. */ }
+                else if(loaded.shelves.isEmpty())navigation.filter(0)
                 else {
                     val row=loaded.shelves.indexOfFirst{it.items.any{movie->movie.id==selected?.id}}.coerceAtLeast(0)
                     val index=loaded.shelves[row].items.indexOfFirst{it.id==selected?.id}.coerceAtLeast(0)
@@ -199,8 +212,8 @@ internal object ImportedMovies {
                 item {MovieButton("Lista: "+(page?.sources?.find{it.first==filter.source}?.second?:"Todas"),modifier=filterModifier(navigation,0)){
                     pick("Seleccionar lista",listOf("Todas las listas" to {change(filter.copy(source="",group=""))})+page?.sources.orEmpty().map{(id,name)->name to {change(filter.copy(source=id,group=""))}})
                 }}
-                item {MovieButton("Grupo: "+filter.group.ifBlank{"Todos"},modifier=filterModifier(navigation,1)){pick("Categorías de tus listas",listOf("Todos los grupos" to {change(filter.copy(group=""))})+page?.groups.orEmpty().map{g->g to {change(filter.copy(group=g))}})}}
-                item {MovieButton("Género: "+filter.genre.ifBlank{"Todos"},modifier=filterModifier(navigation,2)){pick("Géneros identificados",listOf("Todos los géneros" to {change(filter.copy(genre=""))})+page?.genres.orEmpty().map{g->g to {change(filter.copy(genre=g))}})}}
+                item {MovieButton("Grupo: "+filter.group.ifBlank{"Todos"},modifier=filterModifier(navigation,1)){pick("Categorías de tus listas",listOf("Todos los grupos" to {change(filter.copy(group=""))})+page?.groups.orEmpty().map{g->g to {change(filter.copy(group=g))}},preview=true)}}
+                item {MovieButton("Género: "+filter.genre.ifBlank{"Todos"},modifier=filterModifier(navigation,2)){pick("Géneros identificados",listOf("Todos los géneros" to {change(filter.copy(genre=""))})+page?.genres.orEmpty().map{g->g to {change(filter.copy(genre=g))}},preview=true)}}
                 item {MovieButton("Buscar"+if(filter.search.isBlank())"" else ": ${filter.search}",modifier=filterModifier(navigation,3)){host.input("Buscar ${repo.label}",filter.search,Consumer{change(filter.copy(search=it))})}}
                 item {MovieButton("Ordenar",modifier=filterModifier(navigation,4)){pick("Ordenar ${repo.label}",listOf("Añadidas recientemente" to "added","Fecha de estreno" to "release","Título A–Z" to "title","Valoración" to "rating").map{(label,id)->label to {change(filter.copy(order=id))}})}}
             }
@@ -273,7 +286,7 @@ internal object ImportedMovies {
             Column(Modifier.fillMaxHeight().width(360.dp).background(OfflineTvTheme.Menu.background).background(Color(0xED101722)).padding(24.dp)) {
                 BasicText(pickerTitle,style=TextStyle(Color.White,20.sp,FontWeight.Bold));Spacer(Modifier.height(12.dp))
                 MovieButton("Cerrar",true){closePicker()}
-                LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {items(options.size){i->MovieButton(options[i].first){val action=options[i].second;picker=null;action()}}}
+                LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {items(options.size){i->MovieButton(options[i].first,modifier=Modifier.onFocusChanged{if(it.isFocused)pickerFocus=i}){val action=options[i].second;picker=null;action()}}}
             }
         }
     }

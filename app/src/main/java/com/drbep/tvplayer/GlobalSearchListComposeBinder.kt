@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.ComposeView
@@ -76,6 +77,12 @@ private fun GlobalSearchPanel(model: GlobalSearchListUiModel, imageBinder: Globa
             style = TextStyle(color = Color.White, fontSize = if (compact) 20.sp else 28.sp, fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
+        model.onVoice?.let { voice ->
+            var voiceFocused by remember { mutableStateOf(false) }
+            BasicText("🎙 Hablar · «pon La 1», «qué echan en…», «algo de comedia»",
+                style=TextStyle(if(voiceFocused)Color.Black else OfflineTvTheme.Colors.accentCyan,12.sp),
+                modifier=Modifier.onFocusChanged{voiceFocused=it.isFocused}.background(if(voiceFocused)Color.White else Color.Transparent).clickable { voice.run() }.padding(vertical=10.dp))
+        }
         GlobalSearchField(model, compact)
         if (model.filters.isNotEmpty()) {
             Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))

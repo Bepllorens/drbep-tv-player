@@ -40,6 +40,7 @@ public final class ComposeDialogHost {
     public static Dialog showFullscreen(Context context, View content, CancelHandler onCancel, DismissHandler onDismiss) {
         Dialog dialog = new Dialog(context, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen) {
             @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+                if(context instanceof MainActivity && ((MainActivity)context).handleSearchShortcut(event)) return true;
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
                         && WindowFocusRecovery.navigationKey(event.getKeyCode())) {
                     WindowFocusRecovery.recover(getWindow(), content);

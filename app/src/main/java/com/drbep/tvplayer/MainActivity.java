@@ -323,6 +323,7 @@ public class MainActivity extends FragmentActivity {
     private NetworkConnectivityMonitor networkConnectivityMonitor;
     private boolean enteringPictureInPicture;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService searchExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService channelLogoExecutor = Executors.newFixedThreadPool(2);
     private final LruCache<String, Drawable> channelLogoFallbacks = new LruCache<>(64);
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
@@ -599,7 +600,7 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, Integer> epgFilterOffsets = new HashMap<>();
     private final Map<String, Long> epgFilterLastOverlayRequestAtMs = new HashMap<>();
     private int offlineCatalogRetryCount;
-    private int globalSearchGeneration;
+    private volatile int globalSearchGeneration;
     private int globalSearchFilter = GLOBAL_SEARCH_FILTER_ALL;
     private Runnable pendingGlobalSearchRunnable;
     private boolean modalTransitionInProgress;
@@ -682,6 +683,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     static final class GlobalSearchResult {
+        Runnable action;
         final int type;
         final String title;
         final String meta;
@@ -1115,16 +1117,51 @@ public class MainActivity extends FragmentActivity {
         super.onPause();
     }
 
+    boolean handleSearchShortcut(KeyEvent event) {
+        int key=event.getKeyCode();
+        if(key!=KeyEvent.KEYCODE_SEARCH && key!=KeyEvent.KEYCODE_VOICE_ASSIST) return false;
+        if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled()) startVoiceSearch();
+        return true;
+    }
+
+    private void handleVoiceQuery(String spoken) {
+        VoiceSearchCommand command=VoiceSearchCommand.parse(spoken);
+        if(command.kind==VoiceSearchCommand.Kind.PLAY || command.kind==VoiceSearchCommand.Kind.GUIDE) {
+            List<ChannelItem> exact=new ArrayList<>();
+            for(ChannelItem item:allChannels) {
+                if(item!=null && !item.isVod && !shouldHideProtectedItem(item)
+                    && VoiceSearchCommand.normalize(displayName(item)).equals(VoiceSearchCommand.normalize(command.query))) exact.add(item);
+            }
+            // Ambiguous matches remain a choice; do not silently change bouquet.
+            if(exact.size()==1) {
+                ChannelItem item=exact.get(0);
+                ensureParentalAccessForItem(item,()->{
+                    ComposeDialogHost.dismissAll(this);
+                    if(command.kind==VoiceSearchCommand.Kind.GUIDE) openMiniGuideForChannel(item);
+                    else tuneChannelById(item.id);
+                });
+                return;
+            }
+        }
+        ComposeDialogHost.dismissAll(this);
+        showGlobalSearchDialog(command.kind==VoiceSearchCommand.Kind.RECOMMEND || command.kind==VoiceSearchCommand.Kind.SIMILAR ? spoken : command.query);
+    }
+
     private void startVoiceSearch() {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
                 .putExtra(RecognizerIntent.EXTRA_PROMPT, getString(R.string.title_global_search));
         try {
             startActivityForResult(intent, REQUEST_VOICE_SEARCH);
         } catch (Exception e) {
-            Log.w(TAG, "voice search unavailable", e);
-            showStatus(getString(R.string.status_voice_search_unavailable));
+            Log.i(TAG, "Using system keyboard for voice/text search");
+            showTvTextInputPanel(new TvTextInputPanelUiModel("Asistente",
+                "Escribe una orden o usa el micrófono del teclado del dispositivo. Por ejemplo: pon La 1, qué echan en La 1 o algo de comedia.",
+                "Buscar","Cancelar","",
+                Arrays.asList(new TvTextInputFieldUiModel("Canal, programa o película","",false,false)),
+                values -> { if(values!=null && !values.isEmpty() && !values.get(0).trim().isEmpty())handleVoiceQuery(values.get(0)); },null,null));
         }
     }
 
@@ -1183,7 +1220,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.status_voice_search_unavailable));
             return;
         }
-        showGlobalSearchDialog(query);
+        handleVoiceQuery(query);
     }
 
     private void enterVideoPictureInPicture() {
@@ -3900,12 +3937,13 @@ public class MainActivity extends FragmentActivity {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    private static final java.util.regex.Pattern SEARCH_MARKS = java.util.regex.Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
     private static String safeSearchText(String value) {
         if (value == null) {
             return "";
         }
         String normalized = Normalizer.normalize(value.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
-        return normalized.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+        return SEARCH_MARKS.matcher(normalized).replaceAll("");
     }
 
     private static boolean matchesSearch(String haystack, String query) {
@@ -10057,6 +10095,7 @@ public class MainActivity extends FragmentActivity {
     @SuppressLint("RestrictedApi")
     public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN) lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime();
+        if (handleSearchShortcut(event)) return true;
         if (handleRemoteMessageKeyEvent(event)) {
             return true;
         }
@@ -10194,6 +10233,7 @@ public class MainActivity extends FragmentActivity {
             touchControlsController.cancelTimers();
         }
         uiHandler.removeCallbacksAndMessages(null);
+        searchExecutor.shutdownNow();
         ioExecutor.shutdownNow();
         channelLogoExecutor.shutdownNow();
         epgExecutor.shutdownNow();
@@ -22314,9 +22354,9 @@ public class MainActivity extends FragmentActivity {
 
         final Dialog[] dialogHolder = new Dialog[1];
         final String[] queryHolder = new String[]{initialQuery == null ? "" : initialQuery.trim()};
-        renderGlobalSearchResults(searchComposeView, buildGlobalSearchLocalResults(queryHolder[0], globalSearchFilter), dialogHolder, queryHolder);
+        renderGlobalSearchResults(searchComposeView, queryHolder[0].isEmpty() ? buildGlobalSearchLocalResults("", globalSearchFilter) : new ArrayList<>(), dialogHolder, queryHolder);
 
-        Dialog dialog = ComposeDialogHost.showFullscreen(this, searchComposeView, this::handleModalDismissed);
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, searchComposeView, () -> { globalSearchGeneration++; if(pendingGlobalSearchRunnable!=null)uiHandler.removeCallbacks(pendingGlobalSearchRunnable); handleModalDismissed(); });
         dialogHolder[0] = dialog;
 
         handleModalShown();
@@ -22371,7 +22411,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private GlobalSearchListUiModel buildGlobalSearchListUiModel(List<GlobalSearchResult> results, Dialog[] dialogHolder, String[] queryHolder, ComposeView composeView, String query) {
-        return GlobalSearchUiFactory.build(query, results, new GlobalSearchUiFactory.Host() {
+        GlobalSearchListUiModel model = GlobalSearchUiFactory.build(query, results, new GlobalSearchUiFactory.Host() {
             @Override
             public String text(int resId) {
                 return getString(resId);
@@ -22471,6 +22511,8 @@ public class MainActivity extends FragmentActivity {
                 showGlobalSearchActions(result);
             }
         });
+        model.onVoice=this::startVoiceSearch;
+        return model;
     }
 
     private void updateGlobalSearchResults(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder, String query) {
@@ -22485,9 +22527,9 @@ public class MainActivity extends FragmentActivity {
             uiHandler.removeCallbacks(pendingGlobalSearchRunnable);
             pendingGlobalSearchRunnable = null;
         }
-        renderGlobalSearchResults(composeView, buildGlobalSearchLocalResults(query, globalSearchFilter), dialogHolder, queryHolder);
         String trimmed = query == null ? "" : query.trim();
-        if (trimmed.length() < 2) {
+        if (trimmed.isEmpty()) {
+            renderGlobalSearchResults(composeView, buildGlobalSearchLocalResults("",globalSearchFilter), dialogHolder,queryHolder);
             return;
         }
         int requestedFilter = globalSearchFilter;
@@ -22496,8 +22538,50 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void fetchGlobalSearchRemoteResults(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder, String query, int generation, int requestedFilter) {
-        ioExecutor.execute(() -> {
+        final PersonalPlaylistController personal=personalPlaylists();
+        final List<ChannelItem> snapshot=new ArrayList<>(allChannels);
+        searchExecutor.execute(() -> {
+            if(generation!=globalSearchGeneration)return;
+            List<GlobalSearchResult> local=buildGlobalSearchLocalResults(query,requestedFilter,snapshot);
             List<GlobalSearchResult> remoteResults = new ArrayList<>();
+            if(requestedFilter==GLOBAL_SEARCH_FILTER_ALL || requestedFilter==GLOBAL_SEARCH_FILTER_VOD) {
+                VoiceSearchCommand command=VoiceSearchCommand.parse(query);
+                for(boolean series:new boolean[]{false,true}) try {
+                    ImportedMovieRepository repository=new ImportedMovieRepository(this,personal,baseUrl,java.util.Collections.emptyMap(), item -> !shouldHideProtectedItem(item),series);
+                    List<ImportedMovie> matches=repository.searchLocal(command.query,command.kind==VoiceSearchCommand.Kind.RECOMMEND,command.kind==VoiceSearchCommand.Kind.SIMILAR);
+                    if(!matches.isEmpty())remoteResults.add(globalSearchHeader(series?"Series · Mis listas":"Películas · Mis listas"));
+                    for(ImportedMovie movie:matches) {
+                        GlobalSearchResult row=new GlobalSearchResult(GLOBAL_SEARCH_VOD,movie.getTitle(),movie.getMeta(),"Mis listas",movie.getChannel(),null,null,"");
+                        row.action=()-> {
+                            if(series) {
+                                ImportedMovies.prepareSearch(movie.getSource(),movie.getTitle(),true);
+                                showImportedSeries(movie.getSource(),this::showGlobalSearchDialog);
+                            } else showVodInfoDialog(movie.getChannel());
+                        };
+                        remoteResults.add(row);
+                    }
+                } catch(Exception e) { Log.w(TAG,"Local library search unavailable"); }
+            }
+            publishSearchResults(composeView,dialogHolder,queryHolder,generation,local,remoteResults);
+            if(generation!=globalSearchGeneration)return;
+            VoiceSearchCommand command=VoiceSearchCommand.parse(query);
+            if((requestedFilter==GLOBAL_SEARCH_FILTER_ALL || requestedFilter==GLOBAL_SEARCH_FILTER_VOD)
+                    && command.kind==VoiceSearchCommand.Kind.SEARCH && catalogRepository!=null
+                    && (currentOfflinePermissions==null || currentOfflinePermissions.allowsPlexVod())) {
+                try {
+                    List<ChannelItem> plex=catalogRepository.fetchPlexVodPage("all",0L,"",command.query,0,12).items;
+                    boolean header=false;
+                    for(ChannelItem item:plex) {
+                        if(shouldHideProtectedItem(item))continue;
+                        boolean duplicate=false;
+                        for(GlobalSearchResult row:local)if(row.channel!=null && row.channel.id.equals(item.id)){duplicate=true;break;}
+                        if(duplicate)continue;
+                        if(!header){remoteResults.add(globalSearchHeader("Plex"));header=true;}
+                        remoteResults.add(new GlobalSearchResult(GLOBAL_SEARCH_VOD,displayName(item),buildGlobalVodMeta(item),"Plex",item,null,null,""));
+                    }
+                } catch(Exception ignored) { /* Local results remain available when Plex is offline. */ }
+            }
+            if(generation!=globalSearchGeneration)return;
             try {
                 if (requestedFilter != GLOBAL_SEARCH_FILTER_ALL && requestedFilter != GLOBAL_SEARCH_FILTER_EPG) {
                     throw new IllegalStateException("EPG search skipped by filter");
@@ -22517,15 +22601,15 @@ public class MainActivity extends FragmentActivity {
             } catch (Exception e) {
                 Log.w(TAG, "global recording search failed", e);
             }
-            postUiIfAlive(() -> {
-                if (generation != globalSearchGeneration) {
-                    return;
-                }
-                List<GlobalSearchResult> merged = new ArrayList<>(buildGlobalSearchLocalResults(query, requestedFilter));
-                merged.addAll(remoteResults);
-                renderGlobalSearchResults(composeView, merged, dialogHolder, queryHolder);
-            });
+            publishSearchResults(composeView,dialogHolder,queryHolder,generation,local,remoteResults);
         });
+    }
+
+    private void publishSearchResults(ComposeView view,Dialog[] dialogs,String[] query,int generation,List<GlobalSearchResult> local,List<GlobalSearchResult> remote) {
+        final List<GlobalSearchResult> merged=new ArrayList<>(local);
+        if(!remote.isEmpty() && merged.size()==1 && merged.get(0).type==GLOBAL_SEARCH_HEADER)merged.clear();
+        merged.addAll(remote);
+        postUiIfAlive(()->{if(generation==globalSearchGeneration && dialogs[0]!=null && dialogs[0].isShowing())renderGlobalSearchResults(view,merged,dialogs,query);});
     }
 
     private void appendGroupedGlobalEpgResults(List<GlobalSearchResult> out, List<EpgSearchResult> epgResults, int limit) {
@@ -22576,6 +22660,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<GlobalSearchResult> buildGlobalSearchLocalResults(String query, int filter) {
+        return buildGlobalSearchLocalResults(query,filter,new ArrayList<>(allChannels));
+    }
+
+    private List<GlobalSearchResult> buildGlobalSearchLocalResults(String query, int filter,List<ChannelItem> snapshot) {
         String trimmed = query == null ? "" : query.trim();
         List<GlobalSearchResult> results = new ArrayList<>();
         if (trimmed.isEmpty()) {
@@ -22586,7 +22674,7 @@ public class MainActivity extends FragmentActivity {
         List<GlobalSearchResult> vod = new ArrayList<>();
         List<ChannelItem> channelMatches = new ArrayList<>();
         List<ChannelItem> vodMatches = new ArrayList<>();
-        for (ChannelItem item : allChannels) {
+        for (ChannelItem item : snapshot) {
             if (item == null) {
                 continue;
             }
@@ -22653,7 +22741,9 @@ public class MainActivity extends FragmentActivity {
         if (items == null) {
             return;
         }
-        items.sort((left, right) -> Integer.compare(searchScore(right, query), searchScore(left, query)));
+        java.util.IdentityHashMap<ChannelItem,Integer> scores=new java.util.IdentityHashMap<>();
+        for(ChannelItem item:items)scores.put(item,searchScore(item,query));
+        items.sort((left,right)->Integer.compare(scores.get(right),scores.get(left)));
     }
 
     private int searchScore(ChannelItem item, String query) {
@@ -22821,6 +22911,7 @@ public class MainActivity extends FragmentActivity {
         if (result == null) {
             return;
         }
+        if(result.action!=null) { ensureParentalAccessForItem(result.channel,result.action); return; }
         if ((result.type == GLOBAL_SEARCH_CHANNEL || result.type == GLOBAL_SEARCH_VOD) && result.channel != null) {
             ensureParentalAccessForItem(result.channel, () -> {
                 if (result.channel.isVod) {

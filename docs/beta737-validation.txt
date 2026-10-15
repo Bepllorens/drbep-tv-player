@@ -1,0 +1,22 @@
+Beta 737: validacion de navegacion y busqueda (2026-10-15)
+
+Desarrollo y compilacion: servidor .185. No se ha publicado esta beta ni modificado stable o el backend de produccion.
+
+Implementado: previsualizacion de categorias al enfocar; regreso con izquierda en paneles verticales; busqueda local de peliculas/series importadas y consulta Plex autorizada; ordenes locales de canal, guia y recomendaciones por genero; acceso de voz con alternativa al teclado del dispositivo; proteccion de entrada al motor VLC para contenido protegido.
+
+Pruebas: 694 tests unitarios, cero fallos/errores/omitidos. Compilacion universal release correcta. git diff --check correcto.
+
+ADB Fire .190: instalada 737 conservando datos. La version 735 instalada estaba firmada con la clave Android Debug antigua. Se conserva su APK de respaldo. Para actualizar sin desinstalar se ha firmado una copia de prueba con esa misma clave. Esta copia NO es la APK oficial para publicar.
+
+Comprobaciones visuales: inicio y video en miniatura; categoria Animacion cambia peliculas sin OK y conserva foco; apertura de serie, temporada y episodios y regreso; busqueda de algo de comedia muestra resultados importados; tecla Buscar abre alternativa Asistente en Fire; envio de texto muestra resultados; izquierda cierra Herramientas y vuelve al video.
+
+Incidencia encontrada: la primera compilacion producia ANR al introducir una consulta, por ordenar el catalogo y normalizar cadenas en el hilo principal. Corregido con executor dedicado, debounce, puntuacion precalculada, patron reutilizado y descarte de resultados antiguos. La consulta que reproducia el ANR se repitio correctamente tras corregirlo.
+
+Limites: no se ha probado dictado real con microfono fisico mediante ADB. No se ha implementado la ruta catchup ISML ni su fallback de formatos de backend; se conserva la ruta DASH existente. No se ha hecho una validacion completa de todos los proveedores/remotos ni de playback catchup en esta pasada.
+
+SHA256 oficial universal:
+015ff2f60c5b5f54ce5e6c2bc3aa899dda9094c0ab9e1aa68ecefd1934776453
+SHA256 copia de prueba Fire:
+bac9177abd909b69174bfd222320a8faed8111c270fe885f2e383930bc4bdbd3
+Artefactos: /srv/drbep-dev/artifacts/beta737-navigation-search/
+Cambios incorporados a Git junto con el documento CONTEXTO_ISML_PENDIENTE.md; esta beta no se ha publicado.

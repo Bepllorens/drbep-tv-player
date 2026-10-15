@@ -8,6 +8,13 @@ import androidx.media3.common.PlaybackException;
 import org.junit.Test;
 
 public class VlcFallbackPolicyTest {
+    @Test public void protectedAndArchivePlaybackNeverUseUnprotectedEngine() {
+        assertFalse(VlcFallbackPolicy.allowsUnprotectedEngine("widevine",""));
+        assertFalse(VlcFallbackPolicy.allowsUnprotectedEngine("clearkey",""));
+        assertFalse(VlcFallbackPolicy.allowsUnprotectedEngine("playready",""));
+        assertFalse(VlcFallbackPolicy.allowsUnprotectedEngine("","u7d_proxy"));
+        assertTrue(VlcFallbackPolicy.allowsUnprotectedEngine("",""));
+    }
     @Test
     public void plexAviDirectUsesVlc() {
         PlayerController.PlaybackRequest request = request(true, true, VlcFallbackPolicy.PLEX_AVI_PROFILE);

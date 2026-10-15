@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public final class GlobalSearchListUiModel {
+    public Runnable onVoice;
     public final String title;
     public final String hint;
     public final String query;

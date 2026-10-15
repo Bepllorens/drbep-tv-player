@@ -47,7 +47,8 @@ private fun dayAccent(day:String):Color = runCatching {
 private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ms))
 @Composable private fun Catalog(s: U7dCatalogState, close: Runnable, refresh: Runnable) {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while(true) { delay(60_000); now=System.currentTimeMillis(); refresh.run() } }
+    // Only advance the visible clock. Network refresh remains explicit / on day change.
+    LaunchedEffect(Unit) { while(true) { delay(60_000); now=System.currentTimeMillis(); if(now>=s.nextChange)s.queryPage.run() } }
     val today=java.time.Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
     val days=(0..7).map { today.minusDays(it.toLong()).toString() }
     var previousToday by remember { mutableStateOf(today.toString()) }
@@ -58,27 +59,43 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     var firstDayEffect by remember { mutableStateOf(true) }
     LaunchedEffect(s.day) { if(firstDayEffect)firstDayEffect=false else if(s.day.isNotBlank())refresh.run() }
     val entries=s.entries
-    val visible=remember(entries,s.day,s.channel,s.genre,s.query,s.savedOnly,s.revision,now) {
-        entries.filter { (if(s.savedOnly) it.saved else it.day==s.day && it.start<=now && it.expires>now) &&
-            (s.channel.isEmpty() || it.channelId==s.channel) && (s.genre.isEmpty() || it.genre==s.genre) &&
-            (s.query.isBlank() || (it.title+" "+it.channel).contains(s.query,true)) }.sortedByDescending { it.start }
+    val visible=remember(entries,s.pageIds) { entries.filter { it.id in s.pageIds }.sortedWith(compareByDescending<U7dCatalogEntry> { it.start }.thenBy { it.id }) }
+    LaunchedEffect(s.day,s.channel,s.genre,s.query,s.savedOnly) {
+        s.offset=0
+        if(s.query.isNotBlank())delay(250)
+        s.queryPage.run()
     }
     var picker by remember { mutableStateOf("") }
     var pickerQuery by remember { mutableStateOf("") }
     var detail by remember { mutableStateOf(false) }
     val selected=visible.firstOrNull { it.id==s.selectedId } ?: visible.firstOrNull()
     val listState=rememberLazyGridState()
-    val initial=rememberTvInitialFocusRequester(true)
+    val initial=remember { FocusRequester() }
+    var initialFocusDone by remember { mutableStateOf(false) }
+    val windowFocused=androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(windowFocused) {
+        if(windowFocused && !initialFocusDone) {
+            awaitFrame();awaitFrame()
+            initialFocusDone=runCatching { initial.requestFocus();true }.getOrDefault(false)
+        }
+    }
     val entryFocus=remember { mutableMapOf<String,FocusRequester>() }
     LaunchedEffect(visible) { entryFocus.keys.retainAll(visible.map { it.id }.toSet()) }
     val channelFocus=remember { FocusRequester() }
     val genreFocus=remember { FocusRequester() }
     var returnToGrid by remember { mutableStateOf(false) }
     var pendingGridFocus by remember { mutableStateOf(false) }
-    LaunchedEffect(visible,pendingGridFocus) {
-        if(pendingGridFocus && visible.isNotEmpty()) {
-            listState.scrollToItem(0);awaitFrame();awaitFrame()
-            entryFocus[visible.first().id]?.let { it.requestFocus();pendingGridFocus=false }
+    LaunchedEffect(visible,pendingGridFocus,s.querying) {
+        if(!s.querying && pendingGridFocus && visible.isNotEmpty()) {
+            listState.scrollToItem(0)
+            val target=visible.first().id
+            repeat(12) {
+                awaitFrame()
+                if(pendingGridFocus) {
+                    entryFocus[target]?.requestFocus()
+                    if(s.selectedId==target)pendingGridFocus=false
+                }
+            }
         }
     }
     var returnToFilter by remember { mutableStateOf("") }
@@ -106,7 +123,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
             Column {
                 Text("Catchup · Últimos 7 días",24,true)
-                Text("${visible.size} programas · ${s.status}",11)
+                Text("${s.total} programas · ${s.status}",11)
             }
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 Button("Movistar: ${s.format}") { s.format=when(s.format){"Auto"->"HLS";"HLS"->"MPEG-TS";else->"Auto"} }
@@ -114,7 +131,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                 Button("Volver") { back.run() }
             }
         }
-        LazyRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+        LazyRow(modifier=Modifier.focusProperties { down=channelFocus },horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             items(days,key={it}) { d ->
                 val label=when(d) { today.toString()->"Hoy";today.minusDays(1).toString()->"Ayer";else->LocalDate.parse(d).format(DateTimeFormatter.ofPattern("EEE d",java.util.Locale.getDefault())) }
                 Button(label,if(d==days.first()) Modifier.focusRequester(initial) else Modifier,active=d==s.day,tint=dayAccent(d)) { s.day=d;s.savedOnly=false;detail=false }
@@ -127,7 +144,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                 pendingGridFocus=true;true
             } else { if(native.keyCode==android.view.KeyEvent.KEYCODE_DPAD_UP || native.keyCode==android.view.KeyEvent.KEYCODE_BACK)pendingGridFocus=false;false }
         },horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            Button(entries.firstOrNull { it.channelId==s.channel }?.channel ?: "Todos los canales",Modifier.focusRequester(channelFocus)) { returnToFilter="Canales";picker="Canales";pickerQuery="" }
+            Button(s.channels[s.channel] ?: "Todos los canales",Modifier.focusRequester(channelFocus)) { returnToFilter="Canales";picker="Canales";pickerQuery="" }
             Button(s.genre.ifBlank { "Géneros" },Modifier.focusRequester(genreFocus)) { returnToFilter="Géneros";picker="Géneros";pickerQuery="" }
             BasicTextField(s.query,{ s.query=it;detail=false },Modifier.weight(1f).padding(10.dp).border(1.dp,Color.Gray).padding(8.dp),singleLine=true,
                 textStyle=TextStyle(Color.White,14.sp),decorationBox={ inner -> if(s.query.isEmpty()) Text("Buscar título o canal…",14);inner() })
@@ -135,7 +152,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         if(picker.isNotEmpty()) {
             Text("Filtrar: $picker",18,true)
             BasicTextField(pickerQuery,{pickerQuery=it},Modifier.fillMaxWidth().padding(8.dp).border(1.dp,Color.Gray).padding(10.dp),singleLine=true,textStyle=TextStyle(Color.White,16.sp),decorationBox={inner->if(pickerQuery.isEmpty())Text("Buscar…",14);inner()})
-            val options=if(picker=="Canales") entries.map { it.channelId to it.channel }.distinct().sortedBy { it.second } else entries.map { it.genre to it.genre }.filter { it.first.isNotBlank() }.distinct().sortedBy { it.second }
+            val options=if(picker=="Canales") s.channels.map { it.key to it.value }.sortedBy { it.second } else s.genres.map { it to it }
             LazyColumn {
                 item { Button("Todos") { if(picker=="Canales")s.channel="" else s.genre="";picker="" } }
                 items(options.filter { it.second.contains(pickerQuery,true) }) { (id,name) -> Button(name) { if(picker=="Canales")s.channel=id else s.genre=id;picker="";detail=false } }
@@ -176,9 +193,11 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                         if(e.start<=now && e.end>now)Text("● En emisión",12,color=archiveLiveColor)
                         if(e.saved)Text("★ Guardado",12,color=archiveSavedColor)
                     }
+                    val metadata=rememberProgrammeMetadata(e.programmeMetadata)
+                    ProgrammeMetadataRow(metadata)
                     val expired=e.expires<=now
                     Text(if(expired) "Caducado · ya no está en el archivo" else "Disponibilidad estimada hasta "+java.text.SimpleDateFormat("d MMM HH:mm",java.util.Locale.getDefault()).format(java.util.Date(e.expires)),11,color=if(expired)Color(0xFF9CA6B4) else Color(0xFFCFD7E4))
-                    Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) { Text(e.description.ifBlank { "Sin información adicional de la fuente." },14,max=20) }
+                    Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) { Text(metadata.description.ifBlank { e.description }.ifBlank { "Sin información adicional de la fuente." },14,max=20) }
                     if(detail) {
                         val playFocus=rememberTvInitialFocusRequester(true,e.id)
                         if(!expired) Button("Ver desde el principio",Modifier.focusRequester(playFocus)) { e.play.run() }
@@ -188,6 +207,11 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                 }
                 }
             }
+        }
+        if(!detail && picker.isEmpty() && s.total>60) Row(horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+            if(s.offset>0)Button("← Anteriores") { s.offset=(s.offset-60).coerceAtLeast(0);s.queryPage.run();pendingGridFocus=true }
+            Text("${s.offset+1}–${(s.offset+visible.size).coerceAtMost(s.total)} de ${s.total}",12)
+            if(s.offset+60<s.total)Button("Siguientes →") { s.offset+=60;s.queryPage.run();pendingGridFocus=true }
         }
         Text("Días y filtros arriba · OK: ficha · Atrás: volver",11)
     }

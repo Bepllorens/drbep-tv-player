@@ -547,6 +547,8 @@ public class MainActivity extends FragmentActivity {
     private long lastEpgNowLoadDurationMs;
     private long lastApplyChannelsDurationMs;
     private long lastImageCacheClearMs;
+    private long touchGestureLastTapTime;
+    private float touchGestureLastTapX;
     private float touchGestureDownX = Float.NaN;
     private float touchGestureDownY = Float.NaN;
     private boolean timeshiftSeekUserDragging;
@@ -752,6 +754,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        TimelineProgrammeDetails.initialize(getCacheDir());
         HomeTmdbArtwork.initialize(getApplicationContext());
         captureReminderIntent(getIntent());
         activityCreatedAtMs = System.currentTimeMillis();
@@ -2492,6 +2495,16 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean canAddScreen() {
+                return devicePerformanceProfile == null || devicePerformanceProfile.maxMultiViewStreams >= 2;
+            }
+
+            @Override
+            public void addScreen() {
+                showAddMultiViewScreenPicker();
+            }
+
+            @Override
             public String currentFilterLabel() {
                 return buildTouchHomeFilterLabel();
             }
@@ -2736,7 +2749,7 @@ public class MainActivity extends FragmentActivity {
             String programTitle = channel.nowProgram == null || channel.nowProgram.trim().isEmpty()
                     ? displayName(channel)
                     : channel.nowProgram.trim();
-            return new TouchControlsNowPlayingUiModel(
+            TouchControlsNowPlayingUiModel model = new TouchControlsNowPlayingUiModel(
                     true,
                     channel.logoUrl,
                     "",
@@ -2751,6 +2764,8 @@ public class MainActivity extends FragmentActivity {
                     false,
                     ""
             );
+            model.programmeMetadata=currentPlaybackU7dPreviewEntry==null?null:currentPlaybackU7dPreviewEntry.programmeMetadata;
+            return model;
         }
         ensureTouchControlsEpgPair(channel);
         EpgRepository.EpgProgramPair pair = normalizedEpgPair(channel.id);
@@ -2771,7 +2786,7 @@ public class MainActivity extends FragmentActivity {
                 : "";
         String endTimeText = currentProgram == null ? "" : shortTime(currentProgram.endTime);
         String nextLabel = nextTitle.isEmpty() ? "" : getString(R.string.zap_banner_next_prefix) + ": " + nextTitle;
-        return new TouchControlsNowPlayingUiModel(
+        TouchControlsNowPlayingUiModel model = new TouchControlsNowPlayingUiModel(
                 true,
                 channel.logoUrl,
                 buildZapChannelBadge(channel),
@@ -2786,6 +2801,8 @@ public class MainActivity extends FragmentActivity {
                 progressVisible,
                 endTimeText
         );
+        model.programmeMetadata=programmeMetadata(channel,currentProgram);
+        return model;
     }
 
     private void ensureTouchControlsEpgPair(ChannelItem channel) {
@@ -3072,7 +3089,9 @@ public class MainActivity extends FragmentActivity {
                     return true;
                 }
                 return true;
+            case MotionEvent.ACTION_POINTER_DOWN:
             case MotionEvent.ACTION_CANCEL:
+                touchGestureLastTapTime = 0L;
                 touchGestureDownX = Float.NaN;
                 touchGestureDownY = Float.NaN;
                 touchGestureLastY = Float.NaN;
@@ -3093,12 +3112,35 @@ public class MainActivity extends FragmentActivity {
                 float minSwipeDistancePx = dpToPx(72f);
                 float maxOffAxisPx = dpToPx(56f);
                 float tapSlopPx = dpToPx(18f);
-                if (Math.abs(deltaX) <= tapSlopPx && Math.abs(deltaY) <= tapSlopPx) {
+                if (!verticalHandled && Math.abs(deltaX) <= tapSlopPx && Math.abs(deltaY) <= tapSlopPx) {
+                    long now = event.getEventTime();
+                    int width = playbackGestureLayer == null ? 0 : playbackGestureLayer.getWidth();
+                    ChannelItem tappedChannel = getCurrentPlaybackChannelItem();
+                    boolean recorded = isCurrentU7dPlayback() || (tappedChannel != null && tappedChannel.isVod);
+                    if (recorded && width > 0 && touchGestureLastTapTime > 0
+                            && now - touchGestureLastTapTime <= android.view.ViewConfiguration.getDoubleTapTimeout()
+                            && Math.abs(event.getX() - touchGestureLastTapX) <= dpToPx(48f)
+                            && getEffectivePlaybackSeekState() != null) {
+                        if (event.getX() < width / 3f) seekTouchControlsBack();
+                        else if (event.getX() > width * 2f / 3f) seekTouchControlsForward();
+                        touchGestureLastTapTime = 0L;
+                    } else {
+                        touchGestureLastTapTime = now;
+                        touchGestureLastTapX = event.getX();
+                    }
                     showTouchControlsTemporarily();
                     return true;
                 }
-                if (Math.abs(deltaX) >= minSwipeDistancePx && Math.abs(deltaY) <= maxOffAxisPx && Math.abs(deltaX) > Math.abs(deltaY)) {
-                    tuneRelative(deltaX > 0 ? 1 : -1);
+                if (!verticalHandled && Math.abs(deltaX) >= minSwipeDistancePx && Math.abs(deltaY) <= maxOffAxisPx && Math.abs(deltaX) > Math.abs(deltaY)) {
+                    ChannelItem gestureChannel = getCurrentPlaybackChannelItem();
+                    if (isCurrentU7dPlayback() || (gestureChannel != null && gestureChannel.isVod)) {
+                        if (getEffectivePlaybackSeekState() != null) {
+                            if (deltaX > 0) seekTouchControlsForward(); else seekTouchControlsBack();
+                            showTouchControlsTemporarily();
+                        }
+                    } else {
+                        tuneRelative(deltaX > 0 ? 1 : -1);
+                    }
                     return true;
                 }
                 if (!verticalHandled && Math.abs(deltaY) >= minSwipeDistancePx && Math.abs(deltaX) <= maxOffAxisPx && Math.abs(deltaY) > Math.abs(deltaX)) {
@@ -5110,7 +5152,7 @@ public class MainActivity extends FragmentActivity {
                 java.time.Instant.ofEpochMilli(startMs).toString(),
                 java.time.Instant.ofEpochMilli(endMs).toString(),
                 program.category,
-                next ? -1 : Math.max(program.progress, 0)
+                next ? -1 : Math.max(program.progress, 0), program.metadata, program.detailsUrl
         ));
     }
 
@@ -5572,14 +5614,7 @@ public class MainActivity extends FragmentActivity {
                     if (scheduled) {
                         detailMeta = detailMeta + "  ·  " + getString(R.string.timeline_program_scheduled_short);
                     }
-                    renderVisualEpgDetail.accept(new TimelineProgramDetailUiModel(
-                            program.title == null || program.title.trim().isEmpty() ? getString(R.string.label_program_default) : program.title.trim(),
-                            detailMeta,
-                            program.description == null || program.description.trim().isEmpty() ? getString(R.string.timeline_program_desc_empty) : program.description.trim(),
-                            heroPoster,
-                            scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
-                            getString(R.string.timeline_program_action_hint)
-                    ));
+                    renderVisualEpgDetail.accept(buildTimelineProgramDetailModel(channel,program,live,scheduled));
                 };
                 entryModels.add(new VisualEpgEntryUiModel(
                         new VisualEpgCardUiModel(cardTitle, cardTime, cardBadge, heroPoster, scheduled, false),
@@ -5681,6 +5716,16 @@ public class MainActivity extends FragmentActivity {
     private Dialog archiveDialog;
     private volatile int archiveGeneration;
     private volatile int archivePublishRevision;
+    private void queryArchivePage() {
+        if(archiveDialog==null)return;
+        final String scope=archiveScope;final int generation=archiveGeneration;
+        // Invalidate queued presentation immediately; never publish an old filter over a new one.
+        archivePublishRevision++;archiveState.setQuerying(true);
+        archivePresentationExecutor.execute(()->{
+            List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
+            postUiIfAlive(()->{if(generation==archiveGeneration && archiveDialog!=null)publishArchiveEntries(saved);});
+        });
+    }
     private int archiveLastPublishedRevision;
     private String archiveScope = "";
     private List<ChannelItem> archiveEligible = new ArrayList<>();
@@ -5713,8 +5758,7 @@ public class MainActivity extends FragmentActivity {
     private void ensureArchiveScope() {
         if (archiveStore == null) archiveStore = new U7dCatalogStore(getApplicationContext());
         if(archiveAvailability==null)archiveAvailability=new ArchiveAvailability(getSharedPreferences("archive_availability",MODE_PRIVATE));
-        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(baseUrl);
-        String scope = status.sourceBaseUrl + "|" + status.subject;
+        String scope = catalogSnapshotStore.getUserScope();
         if (!scope.equals(archiveScope)) {
             archiveScope=scope;
             archiveState.setFormat(prefs.getString("u7d_transport_"+android.net.Uri.encode(scope),"Auto"));
@@ -5753,6 +5797,7 @@ public class MainActivity extends FragmentActivity {
         if(initial!=null) archiveState.setChannel(initial.id);
         if(savedOnly) {archiveState.setChannel("");archiveState.setGenre("");archiveState.setQuery("");}
         ComposeView view=new ComposeView(this);attachDialogViewTreeOwners(view);prepareModalSurface();
+        archiveState.setQueryPage(()->queryArchivePage());
         U7dCatalogComposeBinder.bind(view,archiveState,()->{if(archiveDialog!=null)archiveDialog.dismiss();},()->loadArchiveCatalog(false));
         archiveDialog=ComposeDialogHost.showFullscreen(this,view,()->{archiveDialog=null;handleModalDismissed();});
         handleModalShown();loadArchiveCatalog(false);
@@ -5802,7 +5847,6 @@ public class MainActivity extends FragmentActivity {
             for(ChannelItem c:snapshot) {
                 if(generation!=archiveGeneration || windowRevision!=archiveWindowRevision || Thread.currentThread().isInterrupted())return;
                 // Movistar has its own compact daily cache; avoid decoding the legacy full-week JSON.
-                if(!isOrangeChannel(c))continue;
                 cached.put(c.id,ArchiveWindow.filter(archiveStore.read(scope,c.id),windowDays));
                 if(cached.size()>=24) {
                     java.util.Map<String,List<EpgRepository.EpgProgram>> batch=new java.util.LinkedHashMap<>(cached);cached.clear();
@@ -5861,6 +5905,7 @@ public class MainActivity extends FragmentActivity {
                             try{merged.addAll(guide.programmes(c,identity));}catch(Exception invalid){continue;}
                             aggregate.put(c.id,merged);changed.put(c.id,merged);
                         }
+                        if(!changed.isEmpty())try{archiveStore.indexAll(scope,changed);}catch(Exception failure){Log.w(TAG,"Catchup index unavailable",failure);}
                         if(!changed.isEmpty())postUiIfAlive(()->{if(generation==archiveGeneration){
                             for(String id:changed.keySet())archivePrograms.put(id,windowArchive(changed.get(id)));
                             archiveState.setLoading(false);mergeArchiveSaved(saved);publishArchiveEntries(saved);
@@ -5962,14 +6007,34 @@ public class MainActivity extends FragmentActivity {
         java.util.Map<String,List<EpgRepository.EpgProgram>> snapshot=new java.util.LinkedHashMap<>(archivePrograms);
         int generation=archiveGeneration;int revision=++archivePublishRevision;
         final String availabilityScope=archiveScope;
+        final String queryDay=archiveState.getDay(),queryChannel=archiveState.getChannel(),queryGenre=archiveState.getGenre(),queryText=archiveState.getQuery();
+        final boolean querySaved=archiveState.getSavedOnly();final int queryOffset=archiveState.getOffset();
+        ChannelItem playing=currentPlaybackU7dChannel!=null?currentPlaybackU7dChannel:getCurrentPlaybackChannelItem();
+        final String stripChannel=playing==null?"":playing.id;
         if(archiveAvailability!=null)for(ChannelItem c:available)if(!isOrangeChannel(c))archiveAvailability.schedule(availabilityScope,c,()->postUiIfAlive(()->{if(generation==archiveGeneration)publishArchiveEntries(saved);}));
         archivePresentationExecutor.execute(()->{
         if(generation!=archiveGeneration || revision!=archivePublishRevision)return;
+        long queryStarted=android.os.SystemClock.elapsedRealtime();
+        List<String> allowedIds=new ArrayList<>();java.util.Map<String,String> channelOptions=new java.util.LinkedHashMap<>();
+        for(ChannelItem c:available)if(querySaved || archiveAvailability==null || !archiveAvailability.unavailable(availabilityScope,c)){
+            allowedIds.add(c.id);channelOptions.put(c.id,displayName(c));
+        }
+        U7dCatalogStore.Page page=archiveStore.page(availabilityScope,allowedIds,queryDay,queryChannel,queryGenre,queryText,querySaved,queryOffset,60,System.currentTimeMillis());
+        java.util.Set<String> pageIds=new java.util.LinkedHashSet<>();
+        java.util.Map<String,List<EpgRepository.EpgProgram>> presented=new java.util.LinkedHashMap<>();
+        for(EpgRepository.EpgProgram p:page.programs){pageIds.add(U7dCatalogStore.id(p));presented.computeIfAbsent(p.channelId,k->new ArrayList<>()).add(p);}
+        // The playback strip is independent of catalog filters and pages.
+        if(availableIds.contains(stripChannel)){
+            long now=System.currentTimeMillis();
+            presented.computeIfAbsent(stripChannel,k->new ArrayList<>()).addAll(archiveStore.recent(availabilityScope,stripChannel,now-2L*86400000,now,40));
+        }
+        List<String> genreOptions=archiveStore.genres(availabilityScope);
+        long nextChange=archiveStore.nextChange(availabilityScope,System.currentTimeMillis());
         List<U7dCatalogEntry> entries=new ArrayList<>();
         java.util.Set<String> emitted=new java.util.HashSet<>();
         SimpleDateFormat dayFormat=new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT);
-        for(ChannelItem c:available)for(EpgRepository.EpgProgram p:snapshot.getOrDefault(c.id,java.util.Collections.emptyList())) {
-            if(generation!=archiveGeneration || revision!=archivePublishRevision || Thread.currentThread().isInterrupted())return;
+        for(ChannelItem c:available)for(EpgRepository.EpgProgram p:presented.getOrDefault(c.id,java.util.Collections.emptyList())) {
+            if(generation!=archiveGeneration || Thread.currentThread().isInterrupted())return;
             long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);
             if(start<=0||end<=start)continue;
             String id=U7dCatalogStore.id(p);if(!emitted.add(id))continue;
@@ -5984,6 +6049,7 @@ public class MainActivity extends FragmentActivity {
                 ()->runArchiveAction(c,()->playMovistarIsmU7dProgram(c,p)),
                 ()->runArchiveAction(c,()->tuneChannelById(c.id)),
                 ()->toggleArchiveSaved(p,end+7L*86400000));
+            entry.programmeMetadata=programmeMetadata(c,p);
             entry.hasProgramArtwork=fanart!=null || (!ProgramArtworkResolver.resolve(p.icon, "").isEmpty() && !p.icon.equals(c.logoUrl));
             String official=movistarArtwork==null||archiveAvailability==null?"":movistarArtwork.cached(archiveAvailability.provider(archiveScope,c),start,p.title);
             entry.artworkKey=!official.isEmpty()?official:fanart!=null?fanart:ProgramArtworkResolver.resolve(p,c);
@@ -5992,8 +6058,16 @@ public class MainActivity extends FragmentActivity {
             entries.add(entry);
         }
         postUiIfAlive(()->{
-            if(generation==archiveGeneration && revision>archiveLastPublishedRevision) {
-                archiveLastPublishedRevision=revision;archiveState.setEntries(entries);prefetchMovistarArchiveArtwork(entries);
+            if(generation==archiveGeneration && revision>archiveLastPublishedRevision
+                    && queryDay.equals(archiveState.getDay()) && queryChannel.equals(archiveState.getChannel())
+                    && queryGenre.equals(archiveState.getGenre()) && queryText.equals(archiveState.getQuery())
+                    && querySaved==archiveState.getSavedOnly() && queryOffset==archiveState.getOffset()) {
+                archiveLastPublishedRevision=revision;archiveState.setEntries(entries);
+                archiveState.setQuerying(false);archiveState.setNextChange(nextChange);
+                archiveState.setPageIds(pageIds);archiveState.setTotal(page.total);archiveState.setOffset(page.offset);
+                archiveState.setChannels(channelOptions);archiveState.setGenres(genreOptions);
+                Log.i(TAG,"CatchupPage total="+page.total+" offset="+page.offset+" cards="+entries.size()+" ms="+(android.os.SystemClock.elapsedRealtime()-queryStarted));
+                prefetchMovistarArchiveArtwork(entries);
                 // The player model is a snapshot, unlike the catalog's Compose
                 // state. Publish newly loaded programmes to visible controls too.
                 if (isTouchControlsVisibleForRemote()) refreshTouchControlsBar();
@@ -6631,6 +6705,7 @@ public class MainActivity extends FragmentActivity {
                     program.category, program.description, java.time.Instant.ofEpochMilli(startMs).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(),
                     startMs, endMs, false, image -> bindMovistarArchiveArtwork(image,channel,program,fanart),
                     () -> playMovistarIsmU7dProgram(channel, program), () -> returnToLiveTv(), () -> {});
+            currentPlaybackU7dPreviewEntry.programmeMetadata=programmeMetadata(channel,program);
             currentPlaybackU7dPreviewEntry.hasProgramArtwork = fanart != null || (!ProgramArtworkResolver.resolve(program.icon, "").isEmpty() && !ProgramArtworkResolver.resolve(program.icon, "").equals(channel.logoUrl));
             currentPlaybackU7dPreviewEntry.artworkKey = fanart != null ? fanart : ProgramArtworkResolver.resolve(program, channel);
         }
@@ -7181,14 +7256,7 @@ public class MainActivity extends FragmentActivity {
                 composeView,
                 new ProgramInfoPanelUiModel(
                         getString(R.string.title_touch_program_info),
-                        new TimelineProgramDetailUiModel(
-                                title,
-                                meta,
-                                description,
-                                imageUrl,
-                                program.progress >= 0 ? getString(R.string.guide_program_now) : "",
-                                getString(R.string.timeline_program_action_hint)
-                        ),
+                        buildTimelineProgramDetailModel(channel,program,program.progress>=0,false),
                         actions
                 ),
                 (imageView, item) -> bindProgramPoster(imageView, item == null ? "" : item.imageUrl)
@@ -8651,8 +8719,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private String homeOrderPreferenceKey() {
-        CatalogSnapshotStore.SnapshotStatus status = catalogSnapshotStore.getStatus(baseUrl);
-        return "home_live_orders_" + Uri.encode(status.sourceBaseUrl + "|" + status.subject);
+        return "home_live_orders_" + Uri.encode(catalogSnapshotStore.getUserScope());
     }
     private JSONObject homeLiveOrders() {
         try { return new JSONObject(prefs.getString(homeOrderPreferenceKey(), "{}")); }
@@ -11027,7 +11094,9 @@ public class MainActivity extends FragmentActivity {
             for(EpgRepository.EpgProgram p:sorted){long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);if(end<=now||end<=start)continue;
                 boolean current=start<=now;String day=dayFormat.format(new java.util.Date(start));String heading=day.equals(previousDay)?"":day.equals(tomorrowLabel)?"Mañana · "+day:day;previousDay=day;
                 String time=(current?"Ahora · ":"")+clock.format(new java.util.Date(start))+" – "+clock.format(new java.util.Date(end))+" · "+Math.max(1,(end-(current?now:start))/60000)+(current?" min restantes":" min");
-                rows.add(new LiveChannelGuideUiModel.Row(heading,time,p.title,p.description,current?(now-start)/(float)(end-start):0f,current));if(rows.size()>=16)break;
+                LiveChannelGuideUiModel.Row row=new LiveChannelGuideUiModel.Row(heading,time,p.title,p.description,current?(now-start)/(float)(end-start):0f,current);
+                if(current)row.programmeMetadata=programmeMetadata(channel,p);
+                rows.add(row);if(rows.size()>=16)break;
             }
         }
         LiveChannelGuideComposeBinder.bind((ComposeView)findViewById(R.id.liveChannelGuide),new LiveChannelGuideUiModel(displayName(channel),rows.isEmpty()&&message.isEmpty()?"Sin próximas emisiones":message,rows));
@@ -11632,6 +11701,22 @@ public class MainActivity extends FragmentActivity {
         showTvOptionsDialog(R.string.multiview_open_preset_title, null, options, actions);
     }
 
+    private void showAddMultiViewScreenPicker() {
+        if (isMultiViewVisible()) {
+            showMultiViewControls();
+            return;
+        }
+        final ChannelItem current = getCurrentPlaybackChannelItem();
+        if (current == null || current.isVod || "u7d_proxy".equalsIgnoreCase(current.playbackProfile)) return;
+        if (devicePerformanceProfile != null && devicePerformanceProfile.maxMultiViewStreams < 2) return;
+        List<ChannelItem> items = MultiViewChannelSelector.selectable(allChannels, Arrays.asList(current), 1);
+        showMultiViewPlatformPicker(-1, items, item -> {
+            if (item == null) return;
+            multiViewPipMode = false;
+            openMultiView(Arrays.asList(current, item));
+        });
+    }
+
     private void showMultiViewChannelPicker(int slot) {
         if (slot < 0 || slot >= multiViewChannels.size()) {
             return;
@@ -11645,6 +11730,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showMultiViewPlatformPicker(int slot, List<ChannelItem> items) {
+        showMultiViewPlatformPicker(slot, items, item -> tuneMultiViewSlotChannel(slot, item));
+    }
+
+    private void showMultiViewPlatformPicker(int slot, List<ChannelItem> items, QuickChannelSelectionAction onSelected) {
         List<MultiViewChannelSelector.PlatformGroup> platformGroups = MultiViewChannelSelector.groupByPlatform(items);
         if (platformGroups.isEmpty()) {
             showStatus(getString(R.string.status_multiview_not_enough_channels));
@@ -11693,7 +11782,7 @@ public class MainActivity extends FragmentActivity {
                 row -> {
                     MultiViewChannelSelector.PlatformGroup group = row == null ? null : platformByRowId.get(row.id);
                     if (group != null) {
-                        showMultiViewPlatformChannels(slot, items, group);
+                        showMultiViewPlatformChannels(slot, items, group, onSelected);
                     }
                 },
                 null,
@@ -11704,7 +11793,8 @@ public class MainActivity extends FragmentActivity {
     private void showMultiViewPlatformChannels(
             int slot,
             List<ChannelItem> allSelectable,
-            MultiViewChannelSelector.PlatformGroup group
+            MultiViewChannelSelector.PlatformGroup group,
+            QuickChannelSelectionAction onSelected
     ) {
         String platformName = group.name.trim().isEmpty()
                 ? getString(R.string.multiview_platform_unknown)
@@ -11716,8 +11806,8 @@ public class MainActivity extends FragmentActivity {
                 getResources().getQuantityString(R.plurals.multiview_platform_channels_available, channelCount, channelCount),
                 group.channels,
                 getString(R.string.overlay_no_results),
-                item -> tuneMultiViewSlotChannel(slot, item),
-                () -> showMultiViewPlatformPicker(slot, allSelectable),
+                onSelected,
+                () -> showMultiViewPlatformPicker(slot, allSelectable, onSelected),
                 null
         );
     }
@@ -14253,12 +14343,22 @@ public class MainActivity extends FragmentActivity {
     }
 
     private byte[] devicePanelArtwork(String id)throws Exception {
+        java.util.concurrent.FutureTask<String> scopeTask=new java.util.concurrent.FutureTask<>(()->{ensureArchiveScope();return archiveScope;});
+        uiHandler.post(scopeTask);final String scope=scopeTask.get(5,java.util.concurrent.TimeUnit.SECONDS);
+        final EpgRepository.EpgProgram stored=archiveStore.find(scope,id);
         java.util.concurrent.FutureTask<JSONObject> lookup=new java.util.concurrent.FutureTask<>(()->{
             if(movistarArtwork==null)movistarArtwork=new MovistarArtworkRepository(getCacheDir());
             for(U7dCatalogEntry e:archiveState.getEntries())if(e.id.equals(id)){
                 ChannelItem c=findAllowedHomeLiveChannel(e.channelId);String provider=c==null||isOrangeChannel(c)||archiveAvailability==null?"":archiveAvailability.provider(archiveScope,c);
                 return new JSONObject().put("fallback",e.artworkKey).put("provider",provider).put("start",e.start).put("title",e.title);
-            }return new JSONObject();
+            }
+            if(stored!=null && scope.equals(archiveScope)) {
+                ChannelItem c=findAllowedHomeLiveChannel(stored.channelId);
+                if(c!=null && supportsU7d(c))return new JSONObject().put("fallback",ProgramArtworkResolver.resolve(stored,c))
+                    .put("provider",isOrangeChannel(c)||archiveAvailability==null?"":archiveAvailability.provider(scope,c))
+                    .put("start",EpgTimeCodec.parseEpochMillis(stored.startTime)).put("title",stored.title);
+            }
+            return new JSONObject();
         });uiHandler.post(lookup);JSONObject metadata=lookup.get(5,java.util.concurrent.TimeUnit.SECONDS);
         String fallback=metadata.optString("fallback"),url=MovistarGuideRepository.officialImage(fallback)?fallback:"",provider=metadata.optString("provider");
         if(url.isEmpty()&&!provider.isEmpty()){
@@ -14291,8 +14391,47 @@ public class MainActivity extends FragmentActivity {
             }
             return result;
         }
+        if(action.startsWith("catchup"))return devicePanelCatchup(request);
         java.util.concurrent.FutureTask<String> task=new java.util.concurrent.FutureTask<>(()->devicePanelOnUi(request));
         uiHandler.post(task);try{return task.get(5,java.util.concurrent.TimeUnit.SECONDS);}catch(java.util.concurrent.ExecutionException e){if(e.getCause() instanceof Exception)throw (Exception)e.getCause();throw e;}catch(java.util.concurrent.TimeoutException e){task.cancel(false);throw new DeviceWebPanel.PanelError("El dispositivo está ocupado. Vuelve a intentarlo.");}
+    }
+    private String devicePanelCatchup(JSONObject request)throws Exception {
+        final String action=request.optString("action");
+        java.util.concurrent.FutureTask<Object[]> capture=new java.util.concurrent.FutureTask<>(()->{
+            if(activityDestroyed)throw new DeviceWebPanel.PanelError("El reproductor está cerrado.");
+            ensureArchiveScope();if(archiveWindowKey.isEmpty())loadArchiveCatalog(false);
+            java.util.Map<String,String> allowed=new java.util.LinkedHashMap<>();
+            for(ChannelItem c:archiveChannels())allowed.put(c.id,displayName(c));
+            return new Object[]{archiveScope,allowed,archiveState.getLoading()};
+        });
+        uiHandler.post(capture);Object[] context;
+        try{context=capture.get(5,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception e){capture.cancel(false);throw e;}
+        String scope=(String)context[0];
+        @SuppressWarnings("unchecked") java.util.Map<String,String> allowed=(java.util.Map<String,String>)context[1];
+        if(action.equals("catchup-list")) {
+            String day=request.optString("day",java.time.LocalDate.now().toString());if(day.isEmpty())day=java.time.LocalDate.now().toString();
+            String query=request.optString("query");if(query.length()>200)throw new DeviceWebPanel.PanelError("La búsqueda es demasiado larga.");
+            long now=System.currentTimeMillis();
+            U7dCatalogStore.Page page=archiveStore.page(scope,new ArrayList<>(allowed.keySet()),day,request.optString("channel"),request.optString("genre"),query,request.optBoolean("saved"),Math.max(0,request.optInt("offset")),51,now);
+            JSONArray rows=new JSONArray(),days=new JSONArray(),channels=new JSONArray(),genres=new JSONArray();
+            for(EpgRepository.EpgProgram p:page.programs){long start=EpgTimeCodec.parseEpochMillis(p.startTime),end=EpgTimeCodec.parseEpochMillis(p.endTime);rows.put(new JSONObject().put("id",U7dCatalogStore.id(p)).put("title",p.title).put("channel",allowed.get(p.channelId)).put("genre",p.category).put("description",p.description).put("start",start).put("end",end).put("saved",archiveStore.saved(scope,U7dCatalogStore.id(p))).put("airing",start<=now&&end>now).put("available",end+7L*86400000>now));}
+            for(int i=0;i<=7;i++)days.put(java.time.LocalDate.now().minusDays(i).toString());
+            for(java.util.Map.Entry<String,String> e:allowed.entrySet())channels.put(new JSONObject().put("id",e.getKey()).put("name",e.getValue()));
+            for(String genre:archiveStore.genres(scope))genres.put(genre);
+            return new JSONObject().put("rows",rows).put("total",page.total).put("days",days).put("channels",channels).put("genres",genres).put("day",day).put("loading",context[2]).toString();
+        }
+        if(!action.equals("catchup-play")&&!action.equals("catchup-save"))throw new DeviceWebPanel.PanelError("Operación no disponible.");
+        EpgRepository.EpgProgram p=archiveStore.find(scope,request.getString("id"));
+        if(p==null||!allowed.containsKey(p.channelId))throw new DeviceWebPanel.PanelError("Programa no disponible.");
+        java.util.concurrent.FutureTask<String> command=new java.util.concurrent.FutureTask<>(()->{
+            if(!scope.equals(archiveScope))throw new DeviceWebPanel.PanelError("La cuenta ha cambiado.");
+            ChannelItem c=findAllowedHomeLiveChannel(p.channelId);if(c==null||!supportsU7d(c))throw new DeviceWebPanel.PanelError("Canal no disponible.");
+            long expires=EpgTimeCodec.parseEpochMillis(p.endTime)+7L*86400000;
+            if(action.equals("catchup-save"))toggleArchiveSaved(p,expires);
+            else {if(expires<System.currentTimeMillis())throw new DeviceWebPanel.PanelError("El programa ha caducado.");runArchiveAction(c,()->playMovistarIsmU7dProgram(c,p));}
+            return "{\"ok\":true}";
+        });
+        uiHandler.post(command);try{return command.get(5,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception e){command.cancel(false);throw e;}
     }
     private String devicePanelOnUi(JSONObject request)throws Exception {
         if(activityDestroyed)throw new DeviceWebPanel.PanelError("El reproductor está cerrado.");
@@ -14315,19 +14454,6 @@ public class MainActivity extends FragmentActivity {
                 default:throw new DeviceWebPanel.PanelError("Control no disponible.");
             }
             return out.put("ok",true).toString();
-        }
-        if(action.equals("catchup-list")) {
-            loadArchiveCatalog(true);String day=request.optString("day"),channel=request.optString("channel"),genre=request.optString("genre"),query=request.optString("query").toLowerCase(Locale.ROOT);if(query.length()>200)throw new DeviceWebPanel.PanelError("La búsqueda es demasiado larga.");
-            org.json.JSONArray rows=new org.json.JSONArray(),days=new org.json.JSONArray(),channelsJson=new org.json.JSONArray(),genres=new org.json.JSONArray();
-            java.util.Set<String> seenDays=new java.util.TreeSet<>(java.util.Collections.reverseOrder()),seenChannels=new java.util.HashSet<>(),seenGenres=new java.util.TreeSet<>();
-            List<U7dCatalogEntry> all=new ArrayList<>(archiveState.getEntries());all.sort((a,b)->Long.compare(b.start,a.start));for(U7dCatalogEntry e:all){seenDays.add(e.day);if(seenChannels.add(e.channelId))channelsJson.put(new JSONObject().put("id",e.channelId).put("name",e.channel));if(!e.genre.isEmpty())seenGenres.add(e.genre);}
-            for(String d:seenDays)days.put(d);for(String g:seenGenres)genres.put(g);if(day.isEmpty()&&!seenDays.isEmpty())day=seenDays.iterator().next();
-            int offset=Math.max(0,request.optInt("offset")),matched=0;long now=System.currentTimeMillis();
-            for(U7dCatalogEntry e:all){if(request.optBoolean("saved")?!e.saved:!day.equals(e.day))continue;if(!channel.isEmpty()&&!channel.equals(e.channelId)||!genre.isEmpty()&&!genre.equals(e.genre)||!query.isEmpty()&&!(e.title+" "+e.channel).toLowerCase(Locale.ROOT).contains(query))continue;if(matched++<offset)continue;if(rows.length()>=51)continue;rows.put(new JSONObject().put("id",e.id).put("title",e.title).put("channel",e.channel).put("genre",e.genre).put("description",e.description).put("start",e.start).put("end",e.end).put("saved",e.saved).put("airing",e.end>now).put("available",e.expires>now));}
-            return out.put("rows",rows).put("days",days).put("channels",channelsJson).put("genres",genres).put("day",day).put("loading",archiveState.getLoading()).toString();
-        }
-        if(action.equals("catchup-play")||action.equals("catchup-save")) {
-            String id=request.getString("id");for(U7dCatalogEntry e:archiveState.getEntries())if(e.id.equals(id)){if(action.equals("catchup-save"))e.save.run();else {if(e.expires<System.currentTimeMillis())throw new DeviceWebPanel.PanelError("Este programa ya no está disponible en el archivo.");e.play.run();}return out.put("ok",true).toString();}throw new DeviceWebPanel.PanelError("El programa ya no está disponible. Actualiza la guía.");
         }
         throw new DeviceWebPanel.PanelError("Operación no disponible.");
     }
@@ -19384,6 +19510,10 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override public void releaseLivePreview() { stopStartupLivePreview(); }
+            @Override public void releaseLivePreview(ImageView owner) {
+                // An outgoing AndroidView must not detach the new preview's player.
+                if (owner != null && owner == startupLivePreviewView) stopStartupLivePreview();
+            }
             @Override public void onLiveGroupChanged() {
                 stopStartupLivePreview();
                 if (playerController != null) playerController.setHomePreviewMode(false);
@@ -19438,6 +19568,8 @@ public class MainActivity extends FragmentActivity {
         }
         uiHandler.post(homeRefresh);
         dialog.setOnKeyListener((ignored, keyCode, event) -> {
+            // Dialog keys bypass Activity.dispatchKeyEvent; include them in the hydration idle gate.
+            if (event.getAction() == KeyEvent.ACTION_DOWN) lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime();
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                     || keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 lastHomeNavigation[0] = android.os.SystemClock.uptimeMillis();
@@ -19630,6 +19762,12 @@ public class MainActivity extends FragmentActivity {
     }
 
     private StartupHomeHubUiModel buildStartupHomeHubModel(StartupHubState state, Function<Runnable, Runnable> open, Runnable close) {
+        android.os.Trace.beginSection("DRBEP.homeModel");
+        try { return buildStartupHomeHubModelInternal(state, open, close); }
+        finally { android.os.Trace.endSection(); }
+    }
+
+    private StartupHomeHubUiModel buildStartupHomeHubModelInternal(StartupHubState state, Function<Runnable, Runnable> open, Runnable close) {
         ChannelItem current = getCurrentPlaybackChannelItem();
         int tvCount = countItemsForQuickTarget("tv");
         int vodCount = state == null ? countItemsForQuickTarget("vod") : state.vodCount;
@@ -19897,8 +20035,7 @@ public class MainActivity extends FragmentActivity {
         if (currentOfflinePermissions != null && currentOfflinePermissions.liveEnabled) {
             for (ChannelItem item : allChannels) if (LiveHomePolicy.visibleInHome(item, currentOfflinePermissions) && !shouldHideProtectedItem(item)) visibleLive.add(item);
         }
-        CatalogSnapshotStore.SnapshotStatus orderStatus = catalogSnapshotStore.getStatus(baseUrl);
-        String orderKey = "live_category_order_" + android.net.Uri.encode(orderStatus.sourceBaseUrl + "|" + orderStatus.subject);
+        String orderKey = "live_category_order_" + android.net.Uri.encode(catalogSnapshotStore.getUserScope());
         java.util.List<String> savedOrder = new java.util.ArrayList<>();
         try {
             org.json.JSONArray values = new org.json.JSONArray(prefs.getString(orderKey, "[]"));
@@ -20020,6 +20157,7 @@ public class MainActivity extends FragmentActivity {
                     hideTouchControlsForRemote();
                     hideZapBanner();
                 }));
+        card.programmeMetadata = programmeMetadata(item,current);
         card.channelId = item.id;
         card.description = current == null || current.description == null ? "" : current.description;
         card.schedule = current == null || parseIsoMillis(current.startTime) <= 0L || parseIsoMillis(current.endTime) <= parseIsoMillis(current.startTime) ? "" : shortTime(current.startTime) + " – " + shortTime(current.endTime);
@@ -25351,19 +25489,24 @@ public class MainActivity extends FragmentActivity {
         return ProgramArtworkResolver.resolve(program, channel);
     }
 
+    private ProgrammeMetadataUiModel programmeMetadata(ChannelItem channel, EpgRepository.EpgProgram program) {
+        if(program==null)return null;
+        boolean official=U7dChannelPolicy.isMovistarChannel(channel);
+        String code=channel==null?program.tvgId:archiveAvailability==null?channel.tvgId:archiveAvailability.provider(archiveScope,channel);
+        if(code==null||code.isEmpty())code=program.tvgId;
+        return new ProgrammeMetadataUiModel(program, official, code==null?"":code);
+    }
+
     private TimelineProgramDetailUiModel buildTimelineProgramDetailModel(ChannelItem channel, EpgRepository.EpgProgram program, boolean live, boolean scheduled) {
         TimelineProgramDetailUiModel model = new TimelineProgramDetailUiModel(
                 buildTimelineProgramTitle(program),
-                buildTimelineProgramMeta(channel, program, live, scheduled) + (program.category == null || program.category.isEmpty() ? "" : "  ·  " + program.category),
+                buildTimelineProgramMeta(channel, program, live, scheduled),
                 buildTimelineProgramDescription(program),
                 buildTimelineProgramPosterUrl(channel, program),
                 scheduled ? getString(R.string.timeline_program_scheduled_short) : live ? getString(R.string.guide_program_now) : "",
                 getString(R.string.timeline_program_action_hint)
         );
-        if ((program.description == null || program.description.trim().isEmpty()) && supportsU7d(channel) && !isOrangeChannel(channel)) {
-            final String code=program.tvgId, start=program.startTime;
-            model.descriptionLoader=()->TimelineProgrammeDetails.load(code,start);
-        }
+        model.programmeMetadata=programmeMetadata(channel,program);
         return model;
     }
 

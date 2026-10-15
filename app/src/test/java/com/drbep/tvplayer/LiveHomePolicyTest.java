@@ -4,6 +4,16 @@ import static org.junit.Assert.*;
 import java.util.*;
 
 public class LiveHomePolicyTest {
+    @Test public void platformLookupDoesNotChangeGroupMembershipOrAcceptPartialIds() {
+        ChannelItem item = channel();
+        assertTrue(LiveHomePolicy.matches(item, "live:42"));
+        assertFalse(LiveHomePolicy.matches(item, "live:4"));
+        assertFalse(LiveHomePolicy.matches(item, "live:420"));
+        assertTrue(LiveHomePolicy.matches(item, "group:deportes"));
+        assertFalse(LiveHomePolicy.matches(item, "group:otro"));
+        assertFalse(LiveHomePolicy.matches(item, null));
+    }
+
     private ChannelItem channel() {
         return new ChannelItem("one", "Uno", "", "", "Deportes", "", "", 0, 0, false, false, 42, "Operador", Arrays.asList("Deportes"), "", "", "", false);
     }

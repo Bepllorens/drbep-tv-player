@@ -30,6 +30,7 @@ import org.json.JSONObject
 import java.util.function.Consumer
 
 internal data class MovieBrowsePosition(val filter:MovieFilter,val offset:Int,val id:String)
+internal data class SeriesPosition(var season:Int?=null,var offset:Int=0,var episode:String="")
 internal object ImportedMovies {
     internal val positions=mutableMapOf<String,MovieBrowsePosition>()
     interface Host {
@@ -65,6 +66,7 @@ internal object ImportedMovies {
     var offset by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf<MoviePage?>(null) }
     var selected by remember { mutableStateOf<ImportedMovie?>(null) }
+    val seriesPositions=remember {mutableMapOf<String,SeriesPosition>()}
     var episodes by remember {mutableStateOf(false)}
     var details by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
@@ -181,7 +183,7 @@ internal object ImportedMovies {
     val goBack=Runnable {when{picker!=null->closePicker();episodes->episodes=false;details->closeDetails();else->back()}}
     SideEffect{onBackChanged(goBack)}
     if(episodes&&selected!=null) {
-        SeriesEpisodes(repo,selected!!,{episodes=false}) {channel->play(channel)}
+        SeriesEpisodes(repo,selected!!,seriesPositions.getOrPut(selected!!.id){SeriesPosition()},{episodes=false}) {channel->play(channel)}
         return
     }
     Box(Modifier.fillMaxSize().tvPanelBackHandler(goBack).background(Color(0xFF0B1018))) {
@@ -292,17 +294,24 @@ internal object ImportedMovies {
 private fun filterModifier(nav:MovieFocusNavigation,index:Int)=Modifier.focusRequester(nav.filters[index])
     .onFocusChanged{if(it.isFocused)nav.filterIndex=index}.movieDirections{nav.fromFilter(index,it)}
 
-@Composable private fun SeriesEpisodes(repo:ImportedMovieRepository,item:ImportedMovie,back:()->Unit,play:(ChannelItem)->Unit) {
+@Composable private fun SeriesEpisodes(repo:ImportedMovieRepository,item:ImportedMovie,position:SeriesPosition,back:()->Unit,play:(ChannelItem)->Unit) {
     var seasons by remember(item.id){mutableStateOf<List<Pair<Int,Int>>>(emptyList())}
-    var season by remember(item.id){mutableStateOf<Int?>(null)}
+    var season by remember(item.id){mutableStateOf<Int?>(position.season)}
     var entries by remember(item.id){mutableStateOf<List<Pair<ChannelItem,Long>>>(emptyList())}
-    var offset by remember{mutableStateOf(0)}
+    var offset by remember{mutableStateOf(position.offset)}
+    val episodeFocus=remember {FocusRequester()}
+    val seasonList=rememberLazyListState()
+    val episodeScope=rememberCoroutineScope()
+    val windowFocused=androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+    val seasonFocus=remember {FocusRequester()}
+    var focusId by remember {mutableStateOf(position.episode)}
+    var focusRevision by remember {mutableStateOf(0)}
     var error by remember{mutableStateOf("")}
     val list=rememberLazyListState()
     LaunchedEffect(item.id){
         try {
             seasons=withContext(Dispatchers.IO){repo.seasons(item)}
-            season=seasons.firstOrNull()?.first
+            if(seasons.none{it.first==season})season=seasons.firstOrNull()?.first
         } catch(e:CancellationException){throw e}
         catch(e:Exception){error="No se pudieron cargar las temporadas.";android.util.Log.e("ImportedLibrary","Cannot read seasons",e)}
     }
@@ -310,9 +319,19 @@ private fun filterModifier(nav:MovieFocusNavigation,index:Int)=Modifier.focusReq
         val current=season?:return@LaunchedEffect
         try {
             entries=withContext(Dispatchers.IO){repo.episodes(item,current,offset)}
-            list.scrollToItem(0)
+            val index=entries.indexOfFirst{it.first.id==position.episode}.coerceAtLeast(0)
+            focusId=entries.getOrNull(index)?.first?.id.orEmpty()
+            list.scrollToItem(index)
+            seasonList.scrollToItem(seasons.indexOfFirst{it.first==season}.coerceAtLeast(0))
+            focusRevision++
         } catch(e:CancellationException){throw e}
         catch(e:Exception){error="No se pudieron cargar los episodios.";android.util.Log.e("ImportedLibrary","Cannot read episodes",e)}
+    }
+    LaunchedEffect(focusRevision,windowFocused){
+        if(windowFocused && focusRevision>0 && entries.isNotEmpty()){
+            withFrameNanos{};withFrameNanos{}
+            runCatching{episodeFocus.requestFocus()}
+        }
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF0B1018))) {
         MovieArt(item.backdrop,Modifier.fillMaxSize(),true)
@@ -320,14 +339,14 @@ private fun filterModifier(nav:MovieFocusNavigation,index:Int)=Modifier.focusReq
         Column(Modifier.fillMaxSize().padding(28.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically) {
                 BasicText(item.title,style=TextStyle(Color.White,24.sp,FontWeight.Bold),modifier=Modifier.weight(1f),maxLines=1)
-                MovieButton("Volver a la ficha",true){back()}
+                MovieButton("Volver a la ficha"){back()}
             }
-            LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                items(seasons,key={it.first}){(number,count)->MovieButton((if(season==number)"✓ " else "")+(if(number<0)"Sin temporada" else if(number==0)"Especiales" else "Temporada $number")+" · $count") {season=number;offset=0}}
+            LazyRow(state=seasonList,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                items(seasons,key={it.first}){(number,count)->MovieButton((if(season==number)"✓ " else "")+(if(number<0)"Sin temporada" else if(number==0)"Especiales" else "Temporada $number")+" · $count",modifier=Modifier.then(if(season==number)Modifier.focusRequester(seasonFocus) else Modifier).movieDirections{key->if(key==android.view.KeyEvent.KEYCODE_DPAD_DOWN && entries.isNotEmpty()){episodeScope.launch{list.scrollToItem(entries.indexOfFirst{it.first.id==focusId}.coerceAtLeast(0));withFrameNanos{};withFrameNanos{};runCatching{episodeFocus.requestFocus()}};true}else false}) {season=number;offset=0;position.season=number;position.offset=0;position.episode=""}}
             }
             LazyColumn(Modifier.weight(1f).fillMaxWidth(),state=list,verticalArrangement=Arrangement.spacedBy(5.dp)) {
                 items(entries,key={it.first.id}){(episode,progress)->
-                    MovieButton(episode.name+(if(progress>30000)" · Continuar: ${progress/60000} min" else ""),modifier=Modifier.fillMaxWidth()) {
+                    MovieButton(episode.name+(if(progress>30000)" · Continuar: ${progress/60000} min" else ""),modifier=Modifier.fillMaxWidth().then(if(episode.id==focusId)Modifier.focusRequester(episodeFocus) else Modifier).onFocusChanged{if(it.isFocused){position.episode=episode.id;position.season=season;position.offset=offset}}.then(if(episode==entries.firstOrNull()?.first)Modifier.focusProperties{up=seasonFocus}else Modifier)) {
                         if(episode.playlistPlaybackError.isNotBlank())error=episode.playlistPlaybackError else play(episode)
                     }
                 }

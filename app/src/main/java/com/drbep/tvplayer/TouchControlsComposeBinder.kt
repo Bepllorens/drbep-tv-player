@@ -263,6 +263,7 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                 BasicText(model.programMeta, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 12.sp))
             }
+            ProgrammeMetadataStrip(model.programmeMetadata, true)
             if (model.nextProgramVisible) {
                 Spacer(Modifier.height(2.dp))
                 BasicText(model.nextProgram, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -559,9 +560,10 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
     }
 }
 
-private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, OTHER }
+private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, ADD_SCREEN, OTHER }
 
 private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
+    if (item.iconHint == "add-screen") return ModernActionIconKind.ADD_SCREEN
     if(item.iconHint == "u7d") return ModernActionIconKind.U7D
     if (item.iconHint == "vod_languages") return ModernActionIconKind.AUDIO
     if (item.iconHint.equals("platform", ignoreCase = true)) return ModernActionIconKind.PLATFORM
@@ -630,6 +632,12 @@ private fun ModernActionIcon(item: ZapActionItem, focused: Boolean, artworkBinde
                 val strokeWidth = 2.15.dp.toPx()
                 val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 when (kind) {
+                    ModernActionIconKind.ADD_SCREEN -> {
+                        drawRoundRect(iconColor, Offset(w * .08f, h * .10f), Size(w * .61f, h * .48f), CornerRadius(w * .06f), style = stroke)
+                        drawRoundRect(iconColor, Offset(w * .33f, h * .40f), Size(w * .60f, h * .47f), CornerRadius(w * .06f), style = stroke)
+                        drawLine(iconColor, Offset(w * .49f, h * .64f), Offset(w * .77f, h * .64f), strokeWidth, StrokeCap.Round)
+                        drawLine(iconColor, Offset(w * .63f, h * .51f), Offset(w * .63f, h * .77f), strokeWidth, StrokeCap.Round)
+                    }
                     ModernActionIconKind.AUDIO -> {
                         val speaker = Path().apply {
                             moveTo(w * .12f, h * .38f)
@@ -823,6 +831,7 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                     )
                 )
             }
+            ProgrammeMetadataStrip(model.programmeMetadata, true)
             if (model.nextProgramVisible) {
                 Spacer(modifier = Modifier.height(2.dp))
                 BasicText(

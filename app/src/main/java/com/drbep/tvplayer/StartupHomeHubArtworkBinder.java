@@ -28,6 +28,7 @@ public interface StartupHomeHubArtworkBinder {
 
     default void bindSelectedLivePreview(ImageView image, StartupHomeHubUiModel.ContinueCard card, int width, int height) { }
     default void releaseLivePreview() { }
+    default void releaseLivePreview(ImageView owner) { releaseLivePreview(); }
     default void onLiveGroupChanged() { }
 
     default void releaseArtwork(ImageView imageView) { }

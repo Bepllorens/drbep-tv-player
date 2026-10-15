@@ -1189,6 +1189,11 @@ final class CatalogSnapshotStore {
         return prefs.getString(PREF_DEVICE_ID, "");
     }
 
+    /** Same account namespace as SnapshotStatus; no token, keystore or snapshot file access. */
+    String getUserScope() {
+        return prefs.getString(PREF_SOURCE_BASE_URL, "") + "|" + prefs.getString(PREF_SUBJECT, "");
+    }
+
     SnapshotStatus getStatus(String fallbackUrl) {
         File file = snapshotFile();
         long expiresAtMs = prefs.getLong(PREF_EXPIRES_AT_MS, 0L);

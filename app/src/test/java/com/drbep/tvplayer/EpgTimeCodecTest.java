@@ -8,6 +8,24 @@ import java.time.ZoneId;
 import org.junit.Test;
 
 public class EpgTimeCodecTest {
+    @Test public void cachedLocalDatesRemainSpecificToTheirTimezone() {
+        String value = "2026-10-14T12:30:00";
+        for (int i = 0; i < 3; i++) {
+            assertEquals(Instant.parse("2026-10-14T10:30:00Z").toEpochMilli(), EpgTimeCodec.parseEpochMillis(value, ZoneId.of("Europe/Madrid")));
+            assertEquals(Instant.parse("2026-10-14T12:30:00Z").toEpochMilli(), EpgTimeCodec.parseEpochMillis(value, ZoneId.of("UTC")));
+        }
+    }
+
+    @Test public void cacheDoesNotRetainOldSystemTimezoneForLocalDates() {
+        java.util.TimeZone original = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
+            assertEquals(Instant.parse("2026-10-14T13:00:00Z").toEpochMilli(), EpgTimeCodec.parseEpochMillis("2026-10-14 13:00:00"));
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Madrid"));
+            assertEquals(Instant.parse("2026-10-14T11:00:00Z").toEpochMilli(), EpgTimeCodec.parseEpochMillis("2026-10-14 13:00:00"));
+        } finally { java.util.TimeZone.setDefault(original); }
+    }
+
     @Test
     public void explicitOffsetIsIndependentFromDeviceZone() {
         assertEquals(

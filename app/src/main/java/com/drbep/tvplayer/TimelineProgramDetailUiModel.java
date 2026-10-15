@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 public final class TimelineProgramDetailUiModel {
+    public ProgrammeMetadataUiModel programmeMetadata;
     public java.util.concurrent.Callable<String> descriptionLoader;
     public final String title;
     public final String meta;

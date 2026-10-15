@@ -12,6 +12,24 @@ import org.junit.Test;
 
 public class TouchControlsUiFactoryTest {
     @Test
+    public void addScreenIsAvailableOnlyForLiveOnCapableDevices() {
+        FakeHost host = new FakeHost();
+        host.current = channel(false);
+        host.multiAllowed = true;
+        TouchControlsBarUiModel live = TouchControlsUiFactory.build(host);
+        assertEquals("add-screen", find(live, "Añadir pantalla").iconHint);
+        click(live, "Añadir pantalla");
+        assertEquals("addScreen", String.join(",", host.events));
+        host.current = channel(true);
+        assertFalse(hasLabel(TouchControlsUiFactory.build(host), "Añadir pantalla"));
+        host.current = u7dReplayChannel();
+        assertFalse(hasLabel(TouchControlsUiFactory.build(host), "Añadir pantalla"));
+        host.current = channel(false);
+        host.multiAllowed = false;
+        assertFalse(hasLabel(TouchControlsUiFactory.build(host), "Añadir pantalla"));
+    }
+
+    @Test
     public void vodWithoutPermissionIsRemovedNotDisabled() {
         FakeHost host = new FakeHost();
         host.current = channel(false);
@@ -248,6 +266,10 @@ public class TouchControlsUiFactoryTest {
     }
 
     private static final class FakeHost implements TouchControlsUiFactory.Host {
+        boolean multiAllowed;
+        @Override public boolean canAddScreen() { return multiAllowed; }
+        @Override public void addScreen() { events.add("addScreen"); }
+
         @Override public void showAudioTracks() { events.add("audio"); }
         @Override public void showLanguages() { events.add("languages"); }
         @Override public void showSubtitles() { events.add("subtitles"); }

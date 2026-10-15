@@ -27,6 +27,7 @@ object LiveChannelGuideComposeBinder {
        BasicText((if(row.current) "● En emisión · " else "")+row.time,style=TextStyle(if(row.current) ContentStatusColors.live else ContentStatusColors.upcoming,11.sp))
        BasicText(row.title,Modifier.padding(top=3.dp),style=TextStyle(Color.White,15.sp,FontWeight.SemiBold),maxLines=3,overflow=TextOverflow.Ellipsis)
        if(row.current) {
+        ProgrammeMetadataStrip(row.programmeMetadata,true)
         Box(Modifier.fillMaxWidth().padding(vertical=8.dp).height(2.dp).background(Color(0x444F6678))) { Box(Modifier.fillMaxWidth(row.progress.coerceIn(0f,1f)).fillMaxHeight().background(ContentStatusColors.live)) }
         if(row.description.isNotBlank())BasicText(row.description,style=TextStyle(Color(0xFFC7D2DC),12.sp),maxLines=5,overflow=TextOverflow.Ellipsis)
        }

@@ -31,7 +31,9 @@ final class LiveHomePolicy {
     }
     static boolean matches(ChannelItem c, String key) {
         if ("ALL".equals(key)) return true;
-        if (("live:" + c.platformId).equals(key)) return true;
+        if (key == null) return false;
+        if (key.startsWith("live:")) return ("live:" + c.platformId).equals(key);
+        if (!key.startsWith("group:")) return false;
         for (String group : groups(c)) if (("group:" + normalized(group)).equals(key)) return true;
         return false;
     }

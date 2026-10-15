@@ -52,13 +52,13 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
@@ -657,6 +657,7 @@ private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHu
                 if(live!=null) Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0x35FFFFFF))) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(live.progress.coerceIn(0f,1f)).background(OfflineTvTheme.Colors.accentCyan))
                 }
+                ProgrammeMetadataStrip(live?.programmeMetadata)
                 if(!live?.description.isNullOrBlank()) BasicText(live!!.description,maxLines=2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFFBDD0DE),12.sp))
                 if(!live?.nextProgram.isNullOrBlank()) BasicText("Después · ${live!!.nextProgram}",maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFF9CB4C6),11.sp))
             }
@@ -795,6 +796,7 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
     var previewChannelId by remember { mutableStateOf(model.currentLive?.channelId ?: "") }
     var selectedId by remember(provider) { mutableStateOf(discovery.selectedLiveChannels[provider] ?: discovery.selectedLiveChannel) }
     val selectedChannel = { channels.firstOrNull { it.channelId == selectedId } }
+    val navigationCadence = remember(provider, query) { TvNavigationCadence() }
     val positionKey = "live:$provider:$query"
     val gridState = remember(positionKey) { androidx.compose.foundation.lazy.LazyListState(
         discovery.scrollPositions[positionKey] ?: 0, discovery.scrollPositions["$positionKey:offset"] ?: 0) }
@@ -900,14 +902,14 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                 }
             } else {
                 androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides remember {
+                    androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides remember(navigationCadence) {
                         object : androidx.compose.foundation.gestures.BringIntoViewSpec {
-                            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
-                                androidx.compose.animation.core.tween(100, easing = androidx.compose.animation.core.LinearEasing)
+                            override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float>
+                                get() = androidx.compose.animation.core.tween(navigationCadence.durationMs(), easing = androidx.compose.animation.core.LinearEasing)
                         }
                     }
                 ) {
-                LazyColumn(Modifier.weight(1.05f).fillMaxHeight().background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape).focusGroup(), state = gridState,
+                LazyColumn(Modifier.weight(1.05f).fillMaxHeight().graphicsLayer().background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape).focusGroup(), state = gridState,
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(3.dp)) {
                     items(channels.size, key = { channels[it].channelId }) { index ->
@@ -923,6 +925,10 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                                 val key = event.nativeKeyEvent
                                 val down = key.action == android.view.KeyEvent.ACTION_DOWN
                                 val ok = key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || key.keyCode == android.view.KeyEvent.KEYCODE_ENTER
+                                if (down && movingChannel == null &&
+                                    (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP || key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN)) {
+                                    navigationCadence.onNavigation(key.eventTime, key.repeatCount)
+                                }
                                 if (movingChannel != null) {
                                     val delta = when (key.keyCode) {
                                         android.view.KeyEvent.KEYCODE_DPAD_UP -> -1
@@ -955,12 +961,11 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                             // Focus changes only invalidate drawing, not the logo/text composition.
                             .drawBehind {
                                 val radius = CornerRadius(3.dp.toPx())
-                                drawRoundRect(if (movingChannel == channel.channelId) Color(0xFF916B22) else if (focused) Color(0xFF203C4C) else if (playing) Color(0x1928C6CC) else Color.Transparent, cornerRadius = radius)
-                                if (focused) {
-                                    val inset = 0.75.dp.toPx()
-                                    drawRoundRect(Color(0xFF67DBEA), topLeft = Offset(inset, inset),
-                                        size = Size((size.width - 2 * inset).coerceAtLeast(0f), (size.height - 2 * inset).coerceAtLeast(0f)),
-                                        cornerRadius = radius, style = Stroke(1.5.dp.toPx()))
+                                if (focused || playing || movingChannel == channel.channelId) {
+                                    drawRoundRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(
+                                        if (movingChannel == channel.channelId) Color(0x996B4A18) else if (focused) Color(0xCC30414F) else Color(0x55202F3C),
+                                        Color.Transparent)), cornerRadius = radius)
+                                    if (focused) drawRoundRect(Color(0xFFFFA348), size = Size(3.dp.toPx(), size.height), cornerRadius = radius)
                                 }
                             }
                             .onFocusChanged { focused = it.isFocused; if (it.isFocused) { selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId } }
@@ -969,7 +974,7 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                             .padding(9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 BasicText(if (playing) "▶" else "${index + 1}", modifier = Modifier.width(18.dp), style = TextStyle(if (playing) Color(0xFF67DBEA) else Color(0xFF9BB4C5), 10.sp))
-                                DiscoveryArtwork(channel.imageUrl, channel.title, false, artwork, Modifier.width(42.dp).height(34.dp).background(Color(0xFFB9C4CC), RoundedCornerShape(4.dp)).padding(3.dp), 42, 34)
+                                DiscoveryArtwork(channel.imageUrl, channel.title, false, artwork, Modifier.width(42.dp).height(34.dp).padding(3.dp), 42, 34)
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     BasicText(channel.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 14.sp, FontWeight.SemiBold))
                                     BasicText(if (hasProgramme) remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle).title } else "Sin programación", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFB7CAD8), 11.sp))
@@ -1026,6 +1031,7 @@ private fun DiscoveryLiveDetails(selectedChannel: () -> StartupHomeHubUiModel.Co
                                 Box(Modifier.fillMaxWidth(channel.progress.coerceIn(0f,1f)).fillMaxHeight().background(Color(0xFF67DBEA)))
                             }
                         }
+                        if (hasProgramme) ProgrammeMetadataStrip(channel.programmeMetadata)
                         if (hasProgramme && channel.description.isNotBlank()) BasicText(channel.description, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFC5D6E2), 12.sp))
                         if (channel.nextProgram.isNotBlank() && !channel.nextProgram.equals(channel.title,true)) BasicText("Después · ${channel.nextProgram}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
                     }
@@ -1038,19 +1044,23 @@ private fun DiscoveryLivePreview(channel: StartupHomeHubUiModel.ContinueCard, ar
     var settled by remember { mutableStateOf<StartupHomeHubUiModel.ContinueCard?>(channel) }
     // Debounce rapid D-pad traversal without covering the existing video.
     LaunchedEffect(channel.channelId) { delay(650); settled = channel }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { artwork?.releaseLivePreview() } }
     Box(modifier.clip(OfflineTvTheme.Menu.shape).background(Color(0xFF1C3346))) {
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { context -> FrameLayout(context).apply {
             descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS
             importantForAccessibility=android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             addView(AppCompatImageView(context).apply { id = R.id.startup_home_artwork }, FrameLayout.LayoutParams(-1, -1))
-        } }, onReset = null, onRelease = { artwork?.releaseLivePreview() }, update = { frame ->
+        } }, onReset = null, onRelease = { frame -> artwork?.releaseLivePreview(frame.findViewById<ImageView>(R.id.startup_home_artwork)) }, update = { frame ->
             val ready = settled
             if (ready != null && frame.tag != ready.channelId) {
                 val image = frame.findViewById<ImageView>(R.id.startup_home_artwork)
-                artwork?.bindSelectedLivePreview(image, ready, 420, 236)
                 frame.tag = ready.channelId
-                onPreviewChannel(ready.channelId)
+                // Wait until the dialog is shown; initial composition can run before show().
+                frame.post {
+                    if (frame.isAttachedToWindow && frame.tag == ready.channelId) {
+                        artwork?.bindSelectedLivePreview(image, ready, 420, 236)
+                        onPreviewChannel(ready.channelId)
+                    }
+                }
             }
         })
     }
@@ -1085,10 +1095,13 @@ private fun DiscoveryRail(title: String, cards: List<StartupHomeHubUiModel.Conti
 
 @Composable
 private fun DiscoveryArtwork(url: String, label: String, poster: Boolean, binder: StartupHomeHubArtworkBinder?, modifier: Modifier, width: Int, height: Int) {
-    AndroidView(modifier = modifier, factory = { context -> AppCompatImageView(context).apply {
+    AndroidView(modifier = modifier, factory = { context -> (if (poster) AppCompatImageView(context) else IntegratedChannelLogoView(context)).apply {
         scaleType = ImageView.ScaleType.FIT_CENTER
         importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
-    } }, onReset = null, onRelease = { binder?.releaseArtwork(it) }, update = { image ->
+    } }, onReset = { image ->
+        binder?.releaseArtwork(image)
+        image.setTag(R.id.startup_home_artwork_request, null)
+    }, onRelease = { binder?.releaseArtwork(it) }, update = { image ->
         if (image.getTag(R.id.startup_home_artwork_request) != url) {
             if (poster) binder?.bindPoster(image, url, width, height) else binder?.bindLogo(image, url, label, width, height)
             image.setTag(R.id.startup_home_artwork_request, url)

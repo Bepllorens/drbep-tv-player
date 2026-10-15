@@ -37,11 +37,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object StartupLoadingComposeBinder {
+    private data class LoadingState(val model: StartupLoadingUiModel?)
     @JvmStatic
     fun bind(composeView: ComposeView?, model: StartupLoadingUiModel) {
         if (composeView == null) return
-        composeView.setStableContent("startup-loading", model) { currentModel ->
-            StartupLoadingPanel(currentModel)
+        setState(composeView, LoadingState(model))
+    }
+
+    @JvmStatic
+    fun hide(composeView: ComposeView?) {
+        if (composeView != null) setState(composeView, LoadingState(null))
+    }
+
+    private fun setState(view: ComposeView, state: LoadingState) {
+        view.setStableContent("startup-loading", state) { current ->
+            // GONE alone keeps the infinite animation alive in an attached ComposeView.
+            current.model?.let { StartupLoadingPanel(it) }
         }
     }
 }

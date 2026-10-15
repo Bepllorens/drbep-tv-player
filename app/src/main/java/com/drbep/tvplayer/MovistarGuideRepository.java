@@ -50,7 +50,7 @@ final class MovistarGuideRepository implements AutoCloseable {
                 long start=p.optLong("FechaHoraInicio"),end=p.optLong("FechaHoraFin");if(start<=0||end<=start)continue;
                 String title=p.optString("Titulo"),episode=p.optString("TituloEpisodio").replaceAll("^\"|\"$","");
                 if(!episode.isEmpty()&&!title.contains(episode))title+=" - "+episode;
-                out.add(new EpgRepository.EpgProgram(local.id,channel.optString("Nombre"),code,title,p.optString("horizontal"),p.optString("Descripcion"),Instant.ofEpochMilli(start).toString(),Instant.ofEpochMilli(end).toString(),p.optString("GeneroComAntena"),0));
+                out.add(new EpgRepository.EpgProgram(local.id,channel.optString("Nombre"),code,title,p.optString("horizontal"),p.optString("Descripcion"),Instant.ofEpochMilli(start).toString(),Instant.ofEpochMilli(end).toString(),p.optString("GeneroComAntena"),0,ProgrammeMetadata.official(p),p.optString("Ficha")));
             }
             return out;
         }
@@ -203,7 +203,8 @@ final class MovistarGuideRepository implements AutoCloseable {
                     String key=in.nextName();
                     if(key.equals("Canal")&&in.peek()==JsonToken.BEGIN_OBJECT){JSONObject c=new JSONObject();in.beginObject();while(in.hasNext()){String k=in.nextName();if(Arrays.asList("CodCadenaTv","Nombre","ServiceUid","ServiceUid2","CasId").contains(k))c.put(k,scalar(in));else in.skipValue();}in.endObject();p.put(key,c);}
                     else if(key.equals("Imagenes")&&in.peek()==JsonToken.BEGIN_ARRAY){in.beginArray();while(in.hasNext()){String id="",uri="";in.beginObject();while(in.hasNext()){String k=in.nextName();if(k.equals("id"))id=scalar(in);else if(k.equals("uri"))uri=scalar(in);else in.skipValue();}in.endObject();if(id.equals("horizontal")&&officialImage(uri))p.put("horizontal",uri);}in.endArray();}
-                    else if(Arrays.asList("FechaHoraInicio","FechaHoraFin","Titulo","TituloEpisodio","GeneroComAntena","Descripcion","Sinopsis").contains(key)){String value=scalar(in);p.put(key.equals("Sinopsis")?"Descripcion":key,value);}
+                    else if(Arrays.asList("FechaHoraInicio","FechaHoraFin","Titulo","TituloEpisodio","GeneroComAntena","Descripcion","Sinopsis","Anno","Ficha").contains(key)){String value=scalar(in);p.put(key.equals("Sinopsis")?"Descripcion":key,value);}
+                    else if(key.equals("NivelMoral")&&in.peek()==JsonToken.BEGIN_OBJECT){JSONObject age=new JSONObject();in.beginObject();while(in.hasNext()){String k=in.nextName();if(k.equals("Id"))age.put(k,scalar(in));else in.skipValue();}in.endObject();p.put(key,age);}
                     else in.skipValue();
                 }
                 in.endObject();long start=p.optLong("FechaHoraInicio");

@@ -10,8 +10,16 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoField;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 final class EpgTimeCodec {
+    private static final Pattern NUMERIC_EPOCH = Pattern.compile("-?[0-9]{10,17}");
+    // Time parsing is pure for a value and fallback zone. Keep memory bounded.
+    private static final Map<String, Long> PARSED = new LinkedHashMap<String, Long>(256, .75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, Long> entry) { return size() > 2048; }
+    };
     private static final DateTimeFormatter XMLTV_WITH_OFFSET = new DateTimeFormatterBuilder()
             .parseCaseInsensitive()
             .appendPattern("yyyyMMddHHmmss")
@@ -40,6 +48,16 @@ final class EpgTimeCodec {
             return 0L;
         }
         String clean = value.trim();
+        ZoneId effectiveZone = fallbackZone == null ? ZoneId.systemDefault() : fallbackZone;
+        if (clean.length() > 160) return parseUncached(clean, effectiveZone);
+        String key = effectiveZone.getId() + '\u0000' + clean;
+        synchronized (PARSED) { Long cached = PARSED.get(key); if (cached != null) return cached; }
+        long parsed = parseUncached(clean, effectiveZone);
+        synchronized (PARSED) { PARSED.put(key, parsed); }
+        return parsed;
+    }
+
+    private static long parseUncached(String clean, ZoneId fallbackZone) {
         Long numeric = parseNumericEpoch(clean);
         if (numeric != null) {
             return numeric;
@@ -82,7 +100,7 @@ final class EpgTimeCodec {
     }
 
     private static Long parseNumericEpoch(String value) {
-        if (!value.matches("-?[0-9]{10,17}")) {
+        if (!NUMERIC_EPOCH.matcher(value).matches()) {
             return null;
         }
         try {

@@ -54,7 +54,16 @@ public class U7dCatalogDeviceTest {
                 try {
                     java.lang.reflect.Field f=MainActivity.class.getDeclaredField("archiveState");f.setAccessible(true);
                     U7dCatalogState state=(U7dCatalogState)f.get(a);
-                    assertFalse("Real account should have cached programs",state.getEntries().isEmpty());
+                    if(state.getEntries().isEmpty()) {
+                        StringBuilder diagnostic=new StringBuilder();
+                        for(String field:new String[]{"archiveGeneration","archivePublishRevision","archiveLastPublishedRevision","archiveEligible","archivePrograms"}) {
+                            java.lang.reflect.Field df=MainActivity.class.getDeclaredField(field);df.setAccessible(true);Object value=df.get(a);
+                            diagnostic.append(field).append('=').append(value instanceof java.util.Collection?((java.util.Collection)value).size():value instanceof java.util.Map?((java.util.Map)value).size():value).append(' ');
+                        }
+                        for(java.util.Map.Entry<Thread,StackTraceElement[]> t:Thread.getAllStackTraces().entrySet())for(StackTraceElement e:t.getValue())if(e.getClassName().contains("U7dCatalogStore"))diagnostic.append(" STORE ").append(t.getKey().getName()).append(':').append(e);
+                        throw new AssertionError("Empty catalogue: "+diagnostic+" status="+state.getStatus()+" day="+state.getDay()+" querying="+state.getQuerying());
+                    }
+                    assertFalse("Real account should have cached programs; day="+state.getDay()+" total="+state.getTotal()+" query="+state.getQuerying()+" status="+state.getStatus(),state.getEntries().isEmpty());
                     assertTrue("Catalog must show several channels",state.getEntries().stream().map(e->e.channelId).distinct().count()>1);
                     android.util.Log.i("U7dTest","Visible entries="+state.getEntries().size()+" channels="+state.getEntries().stream().map(e->e.channelId).distinct().count());
                 }catch(Exception e){throw new AssertionError(e);}

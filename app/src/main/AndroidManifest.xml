@@ -32,6 +32,8 @@
         android:usesCleartextTraffic="${appUsesCleartextTraffic}"
         android:theme="@style/Theme.DrbepTvPlayer">
 
+        <profileable android:shell="${appProfileable}" />
+
         <activity android:name=".netflix.NetflixPlaybackActivity"
             android:exported="false"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" />

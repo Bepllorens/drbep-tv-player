@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 public final class U7dCatalogEntry {
+    public ProgrammeMetadataUiModel programmeMetadata;
     public final String id,channelId,channel,title,genre,description,day;
     public final long start,end,expires;
     public boolean saved;

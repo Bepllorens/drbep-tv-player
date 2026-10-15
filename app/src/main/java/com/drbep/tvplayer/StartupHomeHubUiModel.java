@@ -117,6 +117,7 @@ public final class StartupHomeHubUiModel {
         public final String imageLabel;
         public final boolean poster;
         public final boolean livePreview;
+        public ProgrammeMetadataUiModel programmeMetadata;
         public String channelId = "", description = "", schedule = "", nextProgram = "";
         public String libraryId = "", facts = "";
         public Runnable onResume, onStartOver, onRemove, onEpisodes;

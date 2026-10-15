@@ -35,12 +35,22 @@ final class EpgRepository {
         final String endTime;
         final String category;
         final int progress;
+        final ProgrammeMetadata metadata;
+        final String detailsUrl;
 
         EpgProgram(String channelId, String channelName, String title, String icon, String description, String startTime, String endTime, int progress) {
             this(channelId, channelName, "", title, icon, description, startTime, endTime, "", progress);
         }
 
         EpgProgram(String channelId, String channelName, String tvgId, String title, String icon, String description, String startTime, String endTime, String category, int progress) {
+            this(channelId, channelName, tvgId, title, icon, description, startTime, endTime, category, progress,
+                    new ProgrammeMetadata(category,"","","",description), "");
+        }
+
+        EpgProgram(String channelId, String channelName, String tvgId, String title, String icon, String description,
+                String startTime, String endTime, String category, int progress, ProgrammeMetadata metadata, String detailsUrl) {
+            this.metadata=metadata;
+            this.detailsUrl=detailsUrl==null?"":detailsUrl;
             this.channelId = channelId;
             this.channelName = channelName;
             this.tvgId = tvgId == null ? "" : tvgId;
@@ -76,7 +86,9 @@ final class EpgRepository {
                 && java.util.Objects.equals(a.description, b.description)
                 && java.util.Objects.equals(a.startTime, b.startTime)
                 && java.util.Objects.equals(a.endTime, b.endTime)
-                && java.util.Objects.equals(a.category, b.category);
+                && java.util.Objects.equals(a.category, b.category)
+                && java.util.Objects.equals(a.metadata,b.metadata)
+                && java.util.Objects.equals(a.detailsUrl,b.detailsUrl);
     }
 
     private final String baseUrl;
@@ -1764,7 +1776,7 @@ final class EpgRepository {
                 program.startTime,
                 program.endTime,
                 program.category,
-                program.progress
+                program.progress, program.metadata, program.detailsUrl
         );
     }
 
@@ -1778,7 +1790,7 @@ final class EpgRepository {
         if (startMs > 0 && endMs > startMs && startMs <= nowMs && endMs > nowMs) {
             progress = (int) Math.max(0L, Math.min(100L, ((nowMs - startMs) * 100L) / (endMs - startMs)));
         }
-        return new EpgProgram(program.channelId, program.channelName, program.tvgId, program.title, program.icon, program.description, program.startTime, program.endTime, program.category, progress);
+        return new EpgProgram(program.channelId, program.channelName, program.tvgId, program.title, program.icon, program.description, program.startTime, program.endTime, program.category, progress, program.metadata, program.detailsUrl);
     }
 
     private static long parseIsoMillis(String value) {

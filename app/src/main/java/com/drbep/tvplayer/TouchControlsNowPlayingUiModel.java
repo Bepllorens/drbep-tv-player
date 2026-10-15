@@ -22,6 +22,7 @@ public final class TouchControlsNowPlayingUiModel {
     public final String channelBadge;
     public final String channelName;
     public final String programTitle;
+    public ProgrammeMetadataUiModel programmeMetadata;
     public final String programMeta;
     public final String nextProgram;
     public final boolean nextProgramVisible;

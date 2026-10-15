@@ -23,30 +23,64 @@ final class TimelineProgrammeDetails {
         GuideEntry(JSONArray rows) { this.rows=rows; }
     }
     private static final class CachedDescription {
-        final String text; final long expires;
-        CachedDescription(String text) { this.text=text; expires=System.currentTimeMillis()+(text.isEmpty()?60000:86400000); }
+        final ProgrammeMetadata metadata; final long expires;
+        CachedDescription(ProgrammeMetadata metadata, boolean success) { this.metadata=metadata; expires=System.currentTimeMillis()+(success?86400000:60000); }
     }
-    static String load(String code, String startTime) throws Exception {
-        if (code == null || !code.matches("[A-Za-z0-9_-]{1,32}")) return "";
+    private static volatile java.io.File disk;
+    static void initialize(java.io.File cache) { if(disk==null)disk=new java.io.File(cache,"programme-details-v1"); }
+    static String key(String code,String start) { return code+"|"+EpgTimeCodec.parseEpochMillis(start); }
+    static ProgrammeMetadata peek(String key) {
+        synchronized(CACHE) { CachedDescription hit=CACHE.get(key); return hit!=null&&hit.expires>System.currentTimeMillis()?hit.metadata:null; }
+    }
+    static String load(String code,String startTime)throws Exception { return loadMetadata(code,startTime,"").description; }
+    // One metadata request at a time; called exclusively on Dispatchers.IO after focus settles.
+    static synchronized ProgrammeMetadata loadMetadata(String code, String startTime, String suppliedFicha) throws Exception {
+        if(Thread.currentThread().isInterrupted())throw new InterruptedException();
+        long opened=System.nanoTime();
+        if (code == null || !code.matches("[A-Za-z0-9_-]{1,32}")) return ProgrammeMetadata.EMPTY;
         long start=EpgTimeCodec.parseEpochMillis(startTime);
-        if(start<=0)return "";
-        String key=code+"|"+start;
-        synchronized(CACHE) { CachedDescription hit=CACHE.get(key); if(hit!=null&&hit.expires>System.currentTimeMillis())return hit.text; }
-        String day=java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.of("Europe/Madrid")).toLocalDate().toString();
-        HttpUrl url=HttpUrl.parse("https://ottcache.dof6.com/movistarplus/webplayer/OTT/epg").newBuilder()
-            .addQueryParameter("from",day+"T00:00:00").addQueryParameter("span","1")
-            .addQueryParameter("channel",code).addQueryParameter("network","movistarplus")
-            .addQueryParameter("version","8.2").addQueryParameter("mdrm","true")
-            .addQueryParameter("tlsstream","true").addQueryParameter("demarcation","1").build();
-        String guideKey=code+"|"+day;
-        JSONArray rows;
-        synchronized(GUIDES) { GuideEntry hit=GUIDES.get(guideKey); rows=hit!=null&&System.currentTimeMillis()-hit.time<15*60000L?hit.rows:null; }
-        if(rows==null){ rows=new JSONArray(read(url)); synchronized(GUIDES){GUIDES.put(guideKey,new GuideEntry(rows));} }
-        String ficha=findFicha(rows,code,start);
-        String text="";
-        if(allowedFicha(ficha))text=description(new JSONObject(read(HttpUrl.parse(ficha))));
-        synchronized(CACHE) { CACHE.put(key,new CachedDescription(text)); }
-        return text;
+        if(start<=0)return ProgrammeMetadata.EMPTY;
+        String key=key(code,startTime);
+        ProgrammeMetadata hit=peek(key);if(hit!=null)return hit;
+        java.io.File file=disk==null?null:new java.io.File(disk,java.util.UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.UTF_8))+".json");
+        if(file!=null&&file.isFile()&&System.currentTimeMillis()-file.lastModified()<86400000L&&file.length()<65536) {
+            try {
+                JSONObject saved=new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()),java.nio.charset.StandardCharsets.UTF_8));
+                ProgrammeMetadata result=new ProgrammeMetadata(saved.optString("genre"),saved.optString("year"),saved.optString("age"),saved.optString("rating"),saved.optString("description"));
+                synchronized(CACHE){CACHE.put(key,new CachedDescription(result,true));}return result;
+            }catch(Exception ignored){}
+        }
+        try {
+            String ficha=suppliedFicha;
+            if(!allowedFicha(ficha)) {
+                String day=java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.of("Europe/Madrid")).toLocalDate().toString();
+                HttpUrl url=HttpUrl.parse("https://ottcache.dof6.com/movistarplus/webplayer/OTT/epg").newBuilder()
+                    .addQueryParameter("from",day+"T00:00:00").addQueryParameter("span","1")
+                    .addQueryParameter("channel",code).addQueryParameter("network","movistarplus")
+                    .addQueryParameter("version","8.2").addQueryParameter("mdrm","true")
+                    .addQueryParameter("tlsstream","true").addQueryParameter("demarcation","1").build();
+                String guideKey=code+"|"+day;
+                JSONArray rows;
+                synchronized(GUIDES) { GuideEntry g=GUIDES.get(guideKey); rows=g!=null&&System.currentTimeMillis()-g.time<15*60000L?g.rows:null; }
+                if(rows==null){rows=new JSONArray(read(url));synchronized(GUIDES){GUIDES.put(guideKey,new GuideEntry(rows));}}
+                ficha=findFicha(rows,code,start);
+            }
+            if(!allowedFicha(ficha)){synchronized(CACHE){CACHE.put(key,new CachedDescription(ProgrammeMetadata.EMPTY,false));}return ProgrammeMetadata.EMPTY;}
+            if(Thread.currentThread().isInterrupted())throw new InterruptedException();
+            ProgrammeMetadata result=ProgrammeMetadata.official(new JSONObject(read(HttpUrl.parse(ficha))));
+            if("beta".equals(BuildConfig.UPDATE_CHANNEL))android.util.Log.i("ProgrammeMetadata","source=network elapsed_ms="+((System.nanoTime()-opened)/1000000));
+            synchronized(CACHE){CACHE.put(key,new CachedDescription(result,true));}
+            if(file!=null)try{
+                disk.mkdirs();
+                JSONObject saved=new JSONObject().put("genre",result.genre).put("year",result.year).put("age",result.age).put("rating",result.rating).put("description",result.description);
+                java.io.File next=new java.io.File(file.getPath()+".next");
+                java.nio.file.Files.write(next.toPath(),saved.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                if(!next.renameTo(file))next.delete();
+                java.io.File[] entries=disk.listFiles((d,n)->n.endsWith(".json"));
+                if(entries!=null&&entries.length>128){java.util.Arrays.sort(entries,java.util.Comparator.comparingLong(java.io.File::lastModified));for(int i=0;i<entries.length-128;i++)entries[i].delete();}
+            }catch(Exception ignored){}
+            return result;
+        }catch(Exception failure){if(Thread.currentThread().isInterrupted())throw new InterruptedException();synchronized(CACHE){CACHE.put(key,new CachedDescription(ProgrammeMetadata.EMPTY,false));}return ProgrammeMetadata.EMPTY;}
     }
     static String findFicha(JSONArray rows,String code,long start) {
         for(int i=0;i<rows.length();i++) {
@@ -59,6 +93,7 @@ final class TimelineProgrammeDetails {
         return "";
     }
     static boolean allowedFicha(String value) {
+        if(value==null||value.isEmpty())return false;
         HttpUrl u=HttpUrl.parse(value);
         return u!=null&&u.isHttps()&&u.host().equals("ottcache.dof6.com")&&u.port()==443
             &&u.username().isEmpty()&&u.password().isEmpty()

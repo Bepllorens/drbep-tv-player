@@ -44,8 +44,10 @@ final class ArchiveAvailability {
       && !U7dChannelIdentity.matches(c.tvgId,official)
       && !Objects.toString(c.tvgId,"").equalsIgnoreCase(provider);
  }
- synchronized boolean invalidateMismatchedIdentity(String scope,ChannelItem c){
-  String base=key(scope,c.id),current=identityFingerprint(c),previous=prefs.getString(base+".identity",null);
+ boolean invalidateMismatchedIdentity(String scope,ChannelItem c){return invalidateMismatchedIdentityAtKey(key(scope,c.id),c);}
+ synchronized boolean invalidateMismatchedIdentityAtKey(String base,ChannelItem c){
+  String current=identityFingerprint(c),previous=prefs.getString(base+".identity",null);
+  if(current.equals(previous))return false; // No disk write or preference-map copy for unchanged associations.
   String official=prefs.getString(base+".name","");
   boolean changed=associationChanged(c,previous,official,prefs.getString(base+".provider",""));
   SharedPreferences.Editor edit=prefs.edit().putString(base+".identity",current);

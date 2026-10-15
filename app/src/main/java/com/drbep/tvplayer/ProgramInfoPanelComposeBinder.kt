@@ -57,6 +57,7 @@ object ProgramInfoPanelComposeBinder {
 
 @Composable
 private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: TimelineProgramDetailImageBinder) {
+    val metadata=rememberProgrammeMetadata(model.detail.programmeMetadata)
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val firstActionRequester = rememberTvInitialFocusRequester(!model.actions.isNullOrEmpty(), model)
     Box(
@@ -131,9 +132,10 @@ private fun ProgramInfoPanel(model: ProgramInfoPanelUiModel, imageBinder: Timeli
                             style = TextStyle(color = OfflineTvTheme.Colors.accentCyan, fontSize = if (compact) 12.sp else 14.sp, fontWeight = FontWeight.SemiBold)
                         )
                     }
-                    if (model.detail.description.isNotEmpty()) {
+                    ProgrammeMetadataRow(metadata)
+                    if (metadata.description.isNotEmpty() || model.detail.description.isNotEmpty()) {
                         BasicText(
-                            text = model.detail.description,
+                            text = metadata.description.ifBlank { model.detail.description },
                             style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 13.sp else 15.sp)
                         )
                     }

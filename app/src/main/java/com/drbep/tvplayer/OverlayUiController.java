@@ -97,6 +97,7 @@ final class OverlayUiController {
     void hideStartupLoading() {
         if (startupLoadingOverlay != null) {
             startupLoadingOverlay.setVisibility(View.GONE);
+            StartupLoadingComposeBinder.hide(startupLoadingOverlay);
         }
     }
 

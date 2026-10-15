@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 728
-        versionName "2.0.728-beta-shared-composition"
+        versionCode 735
+        versionName "2.0.735-beta-series-touch"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {
@@ -82,6 +82,7 @@ android {
             }
         }
         manifestPlaceholders = [
+                appProfileable: ((project.findProperty("profileBeta") ?: "false").toString().toBoolean() && updateChannel == "beta").toString(),
                 appAllowBackup: "false",
                 appFullBackupContent: "false",
                 appUsesCleartextTraffic: "false"
@@ -106,7 +107,8 @@ android {
     buildTypes {
         debug {
             manifestPlaceholders = [
-                    appAllowBackup: "false",
+                    appProfileable: ((project.findProperty("profileBeta") ?: "false").toString().toBoolean() && updateChannel == "beta").toString(),
+                appAllowBackup: "false",
                     appFullBackupContent: "false",
                     appUsesCleartextTraffic: "true"
             ]
@@ -131,7 +133,8 @@ android {
                 signingConfig signingConfigs.release
             }
             manifestPlaceholders = [
-                    appAllowBackup: "false",
+                    appProfileable: ((project.findProperty("profileBeta") ?: "false").toString().toBoolean() && updateChannel == "beta").toString(),
+                appAllowBackup: "false",
                     appFullBackupContent: "false",
                     appUsesCleartextTraffic: "false"
             ]

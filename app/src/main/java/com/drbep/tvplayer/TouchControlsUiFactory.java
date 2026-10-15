@@ -42,6 +42,8 @@ final class TouchControlsUiFactory {
         void showSubtitles();
         void showLanguages();
         default void showVideoQuality() {}
+        default boolean canAddScreen() { return false; }
+        default void addScreen() {}
         default boolean supportsLiveDvr() { return false; }
         default void showLiveJump() {}
     }
@@ -110,6 +112,9 @@ final class TouchControlsUiFactory {
                     }
                 }
         ));
+        if (current != null && !vod && !u7dReplay && host.canAddScreen()) {
+            actions.add(new ZapActionItem("Añadir pantalla", true, false, false, "add-screen", "", host::addScreen, null));
+        }
         if (!vod && !u7dReplay && host.supportsLiveDvr()) {
             actions.add(new ZapActionItem("Volver a…", true, false, false, host::showLiveJump));
         }

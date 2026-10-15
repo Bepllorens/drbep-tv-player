@@ -54,6 +54,7 @@ object TimelineProgramDetailComposeBinder {
 @Composable
 internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imageBinder: TimelineProgramDetailImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
+    val metadata=rememberProgrammeMetadata(model.programmeMetadata)
     var description by remember(model) { mutableStateOf(model.description) }
     LaunchedEffect(model) {
         val loader = model.descriptionLoader ?: return@LaunchedEffect
@@ -109,8 +110,9 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
             androidx.compose.foundation.text.BasicText(
                 text=model.meta, maxLines=1, overflow=TextOverflow.Ellipsis,
                 style=TextStyle(color=OfflineTvTheme.Colors.textSoft,fontSize=11.sp))
+            if(model.programmeMetadata!=null) ProgrammeMetadataRow(metadata,true)
             androidx.compose.foundation.text.BasicText(
-                text=description, modifier=Modifier.height(32.dp), maxLines=2,
+                text=metadata.description.ifBlank { description }, modifier=Modifier.height(if(model.programmeMetadata==null) 32.dp else 16.dp), maxLines=if(model.programmeMetadata==null) 2 else 1,
                 overflow=TextOverflow.Ellipsis,
                 style=TextStyle(color=OfflineTvTheme.Colors.textMuted,fontSize=12.sp,lineHeight=16.sp))
             if (model.actionHint.isNotEmpty()) {

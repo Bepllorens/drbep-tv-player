@@ -688,6 +688,7 @@ final class PlayerController {
     private boolean startupPreviewAttached;
     private PlayerView activeStartupPreview;
     private boolean homePreviewMode;
+    private long lastPreviewMetricsMs;
     private long currentPrepareStartedMs;
     private long currentReadyElapsedMs;
     private long currentBufferingStartedMs;
@@ -2110,6 +2111,18 @@ final class PlayerController {
                 activePlayer.getPlaybackState() == Player.STATE_READY
         );
         long nowMs = SystemClock.elapsedRealtime();
+        if (homePreviewMode && "beta".equals(BuildConfig.UPDATE_CHANNEL) && nowMs - lastPreviewMetricsMs >= 5000L) {
+            lastPreviewMetricsMs = nowMs;
+            androidx.media3.exoplayer.DecoderCounters counters = activePlayer.getVideoDecoderCounters();
+            if (counters != null) {
+                counters.ensureUpdated();
+                Log.println(Log.INFO, TAG, "PreviewPerf rendered=" + counters.renderedOutputBufferCount
+                        + " dropped=" + counters.droppedBufferCount
+                        + " consecutive=" + counters.maxConsecutiveDroppedBufferCount
+                        + " bufferMs=" + activePlayer.getTotalBufferedDuration()
+                        + " state=" + activePlayer.getPlaybackState());
+            }
+        }
         if (!shouldWatch) {
             lastObservedPlaybackPositionMs = watchdogPlaybackPosition(activePlayer);
             lastPlaybackProgressAtMs = nowMs;

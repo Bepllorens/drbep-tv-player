@@ -3479,6 +3479,7 @@ final class PlayerController {
             return options;
         }
         List<Tracks.Group> groups = tracks.getGroups();
+        List<TrackOptionGrouping.Candidate> candidates = new ArrayList<>();
         int audioNumber = 1;
         for (int groupIndex = 0; groupIndex < groups.size(); groupIndex++) {
             Tracks.Group group = groups.get(groupIndex);
@@ -3489,6 +3490,7 @@ final class PlayerController {
                 Format format = group.getTrackFormat(trackIndex);
                 boolean supported = group.isTrackSupported(trackIndex);
                 String label = audioTrackLabel(format, audioNumber);
+                candidates.add(trackGroupingCandidate(format, supported, group.isTrackSelected(trackIndex), groupIndex, trackIndex));
                 options.add(new AudioTrackOption(
                         groupIndex,
                         trackIndex,
@@ -3500,6 +3502,9 @@ final class PlayerController {
                 audioNumber++;
             }
         }
+        List<AudioTrackOption> grouped = new ArrayList<>();
+        for (int index : TrackOptionGrouping.representatives(candidates)) grouped.add(options.get(index));
+        options = grouped;
         List<String> labels = new ArrayList<>();
         for (AudioTrackOption option : options) labels.add(option.label);
         for (int i = 0; i < options.size(); i++) {
@@ -3620,6 +3625,7 @@ final class PlayerController {
             return options;
         }
         List<Tracks.Group> groups = player.getCurrentTracks().getGroups();
+        List<TrackOptionGrouping.Candidate> candidates = new ArrayList<>();
         int textNumber = 1;
         for (int groupIndex = 0; groupIndex < groups.size(); groupIndex++) {
             Tracks.Group group = groups.get(groupIndex);
@@ -3628,6 +3634,8 @@ final class PlayerController {
             }
             for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
                 Format format = group.getTrackFormat(trackIndex);
+                candidates.add(trackGroupingCandidate(format, group.isTrackSupported(trackIndex),
+                        group.isTrackSelected(trackIndex), groupIndex, trackIndex));
                 options.add(new TextTrackOption(
                         groupIndex,
                         trackIndex,
@@ -3638,7 +3646,18 @@ final class PlayerController {
                 ));
             }
         }
-        return options;
+        List<TextTrackOption> grouped = new ArrayList<>();
+        for (int index : TrackOptionGrouping.representatives(candidates)) grouped.add(options.get(index));
+        return grouped;
+    }
+
+    private static TrackOptionGrouping.Candidate trackGroupingCandidate(Format format, boolean supported,
+            boolean selected, int group, int track) {
+        String unknown = group + ":" + track;
+        String key = format == null ? "unknown:" + unknown : TrackOptionGrouping.identity(
+                format.language, format.label, format.sampleMimeType, format.codecs, format.channelCount,
+                format.sampleRate, format.roleFlags, format.selectionFlags, format.accessibilityChannel, unknown);
+        return new TrackOptionGrouping.Candidate(key, supported, selected, format == null ? -1 : format.bitrate);
     }
 
     private void selectForcedTextTrack(Tracks tracks) {

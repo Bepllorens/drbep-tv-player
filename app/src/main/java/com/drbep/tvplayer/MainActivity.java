@@ -10080,10 +10080,16 @@ public class MainActivity extends FragmentActivity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             enableImmersiveMode();
-            if (playerView != null) {
-                playerView.requestFocus();
-            }
+            // A window regain must not steal focus from a list or a Compose control.
+            if (ComposeDialogHost.topWindow(this) == null) WindowFocusRecovery.recover(getWindow(), activeFocusFallback());
         }
+    }
+
+    private View activeFocusFallback() {
+        View[] surfaces = {quickSearchOverlay, recordingsPanel, channelListComposeView,
+                touchControlsComposeView, timeshiftComposeView, multiViewHeaderComposeView};
+        for (View surface : surfaces) if (surface != null && surface.isShown()) return surface;
+        return playerView;
     }
 
     private void enableImmersiveMode() {
@@ -19434,6 +19440,16 @@ public class MainActivity extends FragmentActivity {
                 }
                 StartupHomeHubComposeBinder.update(composeView, buildStartupHomeHubModel(latestHomeState[0], open, close));
                 ensureHomeLiveEpg();
+            }
+        };
+        Runnable homeEpgTick = new Runnable() {
+            @Override public void run() {
+                if (!startupSummaryGate.accepts(dialogGeneration) || dialogHolder[0] == null
+                        || !dialogHolder[0].isShowing()) return;
+                if (dialogHolder[0].getWindow() != null && dialogHolder[0].getWindow().getDecorView().hasWindowFocus()) {
+                    if ("En directo".equals(discoveryHomeState.section)) ensureHomeLiveEpg();
+                    else homeRefresh.run();
+                }
                 uiHandler.postDelayed(this, 30000L);
             }
         };
@@ -19547,6 +19563,7 @@ public class MainActivity extends FragmentActivity {
         });
         Dialog dialog = ComposeDialogHost.showFullscreen(this, composeView, () -> {
             uiHandler.removeCallbacks(homeRefresh);
+            uiHandler.removeCallbacks(homeEpgTick);
             if (startupSummaryGate.close(dialogGeneration)) {
                 discoveryHomeState.refreshHome = null;
                 startupSummaryUpdater = null;
@@ -19567,6 +19584,7 @@ public class MainActivity extends FragmentActivity {
             appUpdateDialog.show();
         }
         uiHandler.post(homeRefresh);
+        uiHandler.postDelayed(homeEpgTick, 30000L);
         dialog.setOnKeyListener((ignored, keyCode, event) -> {
             // Dialog keys bypass Activity.dispatchKeyEvent; include them in the hydration idle gate.
             if (event.getAction() == KeyEvent.ACTION_DOWN) lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime();
@@ -20138,7 +20156,7 @@ public class MainActivity extends FragmentActivity {
         EpgRepository.EpgProgramPair pair = normalizedEpgPair(item.id);
         EpgRepository.EpgProgram current = pair == null ? null : pair.current;
         EpgRepository.EpgProgram next = pair == null ? null : pair.next;
-        String title = current == null ? item.nowProgram : current.title;
+        String title = current == null ? (pair == null ? item.nowProgram : "") : current.title;
         if (title == null || title.trim().isEmpty()) title = "Programación no disponible";
         StartupHomeHubUiModel.ContinueCard card = new StartupHomeHubUiModel.ContinueCard(
                 displayName(item), title, item.logoUrl, displayName(item), false,
@@ -20159,9 +20177,10 @@ public class MainActivity extends FragmentActivity {
                 }));
         card.programmeMetadata = programmeMetadata(item,current);
         card.channelId = item.id;
+        card.refreshProgramme = () -> buildHomeLiveCard(item, providerKey, open);
         card.description = current == null || current.description == null ? "" : current.description;
         card.schedule = current == null || parseIsoMillis(current.startTime) <= 0L || parseIsoMillis(current.endTime) <= parseIsoMillis(current.startTime) ? "" : shortTime(current.startTime) + " – " + shortTime(current.endTime);
-        card.nextProgram = next == null ? (item.nextProgram == null ? "" : item.nextProgram)
+        card.nextProgram = next == null ? (pair != null || item.nextProgram == null ? "" : item.nextProgram)
                 : shortTime(next.startTime) + " · " + next.title;
         return card;
     }

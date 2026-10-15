@@ -1,0 +1,30 @@
+Beta 736 - foco, pistas y refresco EPG
+Fecha: 15 de octubre de 2026. Trabajo realizado en 192.168.93.185.
+Base Git: b60645538a1371878959196988fb878df75c4bf9
+
+Cambios
+- ComposeDialogHost y WindowFocusRecovery conservan un foco valido y recuperan un destino visible cuando falta. MainActivity ya no envia siempre el foco al reproductor al recuperar su ventana. La portada usa restauracion Compose y la lista reintenta adquirir foco al pasar de vacia a poblada, sin intervenir mientras se busca o se ordena.
+- TrackOptionGrouping agrupa representaciones equivalentes en los selectores de audio y subtitulos. Conserva coordenadas originales para seleccionar la pista, prefiere la compatible seleccionada y conserva idioma regional, etiqueta, codec, canales, frecuencia, roles, flags y canal de accesibilidad. No cambia la seleccion automatica ni las rutas de reproduccion.
+- VisibleProgrammeRefresh consulta la EPG en memoria cada 15 segundos solo desde filas compuestas con ventana visible y lifecycle RESUMED. Actualiza el estado cuando cambia su contenido, conserva la identidad del canal y cancela la coroutine al desmontar la fila. Las ventanas sin foco no consultan ni actualizan datos. La pantalla TV ya no se reconstruye por el temporizador de 30 segundos; mantiene la hidratacion existente. La miniatura conserva su propietario y no se muestra la ficha de otro canal durante el debounce.
+
+Validacion
+689 tests JVM, cero fallos/errores/omitidos. Ocho tests nuevos: agrupacion conservadora, seleccion compatible, cambio de programa y refresco por canal sin sustituir filas ni acciones.
+assembleDebug universal, assembleRelease universal y lintVitalRelease correctos.
+Firma de release verificada; canal beta; versionCode 736.
+ABI verificados en la APK: arm64-v8a y armeabi-v7a.
+APK: /srv/drbep-dev/artifacts/beta736-focus-tracks-epg/drbep-beta736-universal-release.apk
+SHA256: 96a0a50030d62ba8c4b7687b9d97784863c6df76905b9320f214aad821dff046
+
+Tablet e historial
+El respaldo artifacts/beta699/implementation.md identifica la tablet como 2410CRP4CG y documenta una compilacion universal. Se inspecciono drbep-beta699-universal-release.apk en el respaldo privado y se confirmaron ambas ABI.
+La beta 735 publicada consultada previamente solo incluia armeabi-v7a. Esto acredita la diferencia de empaquetado, pero el error de instalacion de la tablet no se ha confirmado con logcat: 192.168.93.183:43177 no responde desde el Mac ni desde .185.
+El helper /srv/drbep-dev/build-signed-beta.py acepta ahora --universal. Sin ese argumento conserva ARM32. Respaldo previo: /srv/drbep-dev/build-signed-beta.py.before-beta736.
+
+Pendiente de validacion real
+Publicada en el canal beta. APK descargada desde el endpoint publico y verificada por SHA256 y ambas ABI. Stable conserva exactamente su metadata (version 582). No instalada por ADB ni validada visualmente en Fire/tablet todavia.
+Comprobar regreso pantalla completa/TV, recuperacion tras abrir y cerrar un dialogo, lista vacia que carga canales, busqueda sin resultados, apertura del selector de audio/subtitulos y cambio real de pista, cambio de programa con la lista abierta y miniatura continua durante navegacion rapida.
+Los tests no sustituyen estas comprobaciones. Cambios preparados para commit y push en qoder/disneyplus-vod-582.
+
+Publicacion
+Respaldo beta735 y metadatos previos: /srv/drbep-dev/artifacts/beta736-publication en .185. El servidor conserva tambien la version anterior para rollback. La APK se transfirio por SSH a una ruta nueva porque la subida HTTP superaba el limite del servidor; activacion mediante API beta, sin reinicios ni cambios stable.
+Helper reproducible: scripts/build-signed-beta.py (credenciales externas, no incluidas en Git).

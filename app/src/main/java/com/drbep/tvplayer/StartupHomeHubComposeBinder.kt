@@ -54,6 +54,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -446,13 +447,14 @@ private fun StartupShortcut(item: StartupHomeHubUiModel.Shortcut, modifier: Modi
 }
 
 /** Discovery home: section changes never launch a player. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubArtworkBinder?) {
     val discovery = model.discovery ?: return
     val touchLayout = (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) != android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     var section by remember { mutableStateOf(discovery.section.takeIf { it in listOf("Inicio", "En directo", "Mi biblioteca") } ?: "Inicio") }
     var provider by remember(section, model) { mutableStateOf(discovery.selectedProviders["En directo"] ?: "") }
-    // MainActivity already publishes fresh EPG/home models every 30 seconds.
+    // Visible TV rows refresh EPG independently; explicit home changes publish a model.
     // A second timer rebuilt every channel card on the UI thread between those updates.
     val page = remember(model, section, provider) { discovery.page.apply(section, provider) }
     val initialFocus = remember { FocusRequester() }
@@ -461,7 +463,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
         if ((!discovery.restoreLiveFocus || section != "En directo") && (section != "Inicio" || discovery.homeFocusedChannel.isBlank())) runCatching { initialFocus.requestFocus() }
     }
     val openSection: (String) -> Unit = { section = it; discovery.section = it; discovery.restoreLiveFocus = false; discovery.refreshHome?.run() }
-    Box(Modifier.fillMaxSize().tvPanelBackHandler(Runnable { (discovery.cancelLiveOrder ?: model.onBack)?.run() })
+    Box(Modifier.fillMaxSize().focusRestorer().focusGroup().tvPanelBackHandler(Runnable { (discovery.cancelLiveOrder ?: model.onBack)?.run() })
         .background(if (section == "Inicio" || model.livePlaybackError) OfflineTvTheme.Colors.backdrop else Color.Transparent)
         .background(CachedMenuFade.horizontal(0f to Color(0xFA09121C), 0.38f to Color(0xE009121C), 0.75f to Color(0x7509121C), 1f to Color.Transparent))) {
         Box(Modifier.fillMaxSize().background(CachedMenuFade.vertical(0f to Color(0x1809121C), 0.45f to Color.Transparent, 1f to Color(0xF009121C))))
@@ -817,7 +819,8 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
         }
     }
 
-    LaunchedEffect(provider) {
+    LaunchedEffect(provider, channels.isEmpty()) {
+        if (searchOpen || groupsOpen || movingChannel != null) return@LaunchedEffect
         // Explore replaces the focused home button. Give the new screen a
         // concrete focus target instead of leaving focus on a removed node.
         val target = selectedChannel() ?: channels.getOrNull(gridState.firstVisibleItemIndex) ?: channels.firstOrNull()
@@ -828,7 +831,18 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
             val index = channels.indexOf(target).coerceAtLeast(0)
             gridState.scrollToItem(index)
             withFrameNanos { }; withFrameNanos { }
-            channelFocus[target.channelId]?.requestFocus()
+            var restored = false
+            repeat(3) {
+                if (!restored) {
+                    withFrameNanos { }
+                    restored = runCatching {
+                        val requester = channelFocus[target.channelId] ?: return@runCatching false
+                        requester.requestFocus()
+                        true
+                    }.getOrDefault(false)
+                }
+            }
+            if (!restored) runCatching { groupButtonFocus.requestFocus() }
         }
         discovery.restoreLiveFocus = false
     }
@@ -913,7 +927,7 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(3.dp)) {
                     items(channels.size, key = { channels[it].channelId }) { index ->
-                        val channel = channels[index]
+                        val channel = liveProgrammeCard(channels[index])
                         val requester = channelFocus.getOrPut(channel.channelId) { FocusRequester() }
                         var focused by remember { mutableStateOf(false) }
                         val playing = channel.channelId == previewChannelId
@@ -1012,8 +1026,12 @@ private fun DiscoveryLiveDetails(selectedChannel: () -> StartupHomeHubUiModel.Co
                     if (displayed == null) Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(OfflineTvTheme.Menu.background, OfflineTvTheme.Menu.shape), contentAlignment = Alignment.Center) {
                         BasicText("Selecciona un canal", style = TextStyle(Color(0xFFCCE0EB), 16.sp))
                     }
-                    displayed?.let { channel ->
+                    displayed?.let { original ->
+                        val channel = liveProgrammeCard(original)
                         androidx.compose.runtime.key(provider) { DiscoveryLivePreview(channel, artwork, onPreviewChannel = onPreviewChannel) }
+                        if (channel.channelId != selectedChannel()?.channelId) {
+                            BasicText("Seleccionando canal…", style = TextStyle(Color(0xFF9FBDCF), 12.sp))
+                        } else {
                         val programme = remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle) }
                         val hasProgramme = channel.subtitle.isNotBlank() && !channel.subtitle.equals(channel.title, true) && channel.subtitle != "Programación no disponible"
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1034,6 +1052,7 @@ private fun DiscoveryLiveDetails(selectedChannel: () -> StartupHomeHubUiModel.Co
                         if (hasProgramme) ProgrammeMetadataStrip(channel.programmeMetadata)
                         if (hasProgramme && channel.description.isNotBlank()) BasicText(channel.description, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFC5D6E2), 12.sp))
                         if (channel.nextProgram.isNotBlank() && !channel.nextProgram.equals(channel.title,true)) BasicText("Después · ${channel.nextProgram}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
+                        }
                     }
                 }
 }

@@ -112,7 +112,7 @@ final class OverlayChannelListUiFactory {
             }
         }
         final int rowPosition = position;
-        return new OverlayChannelRowUiModel(
+        OverlayChannelRowUiModel row = new OverlayChannelRowUiModel(
                 channel.id,
                 channel.logoUrl,
                 name,
@@ -131,6 +131,8 @@ final class OverlayChannelListUiFactory {
                 () -> host.selectAndTune(rowPosition),
                 host.touchMode() ? () -> host.selectAndToggleFavorite(rowPosition) : null
         );
+        if (!channel.isVod) row.refreshMeta = () -> buildRow(host, channel, position, query).meta;
+        return row;
     }
 
     static String resolveCurrentProgram(

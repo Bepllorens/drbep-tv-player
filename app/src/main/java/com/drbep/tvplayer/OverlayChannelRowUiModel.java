@@ -1,6 +1,7 @@
 package com.drbep.tvplayer;
 
 public final class OverlayChannelRowUiModel {
+    public java.util.function.Supplier<String> refreshMeta;
     public final String channelId;
     public final String logoUrl;
     public final String name;

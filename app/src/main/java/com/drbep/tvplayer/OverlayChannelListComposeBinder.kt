@@ -293,6 +293,7 @@ private fun OverlayChannelRow(
     imageBinder: OverlayChannelImageBinder,
     compact: Boolean
 ) {
+    val meta = rememberVisibleProgramme(item.channelId, item.meta, item.refreshMeta?.let { supplier -> { supplier.get() } }) { a,b -> a==b }
     val shape = OfflineTvTheme.Menu.shape
     val bg = if (selected) Color.White else Color.Transparent
     Box(
@@ -302,7 +303,7 @@ private fun OverlayChannelRow(
             .background(Color.Transparent)
             .tvButtonSemantics(
                 item.onClick != null,
-                listOf(item.name, item.meta, if (item.tuned) "Canal sintonizado" else "").filter { it.isNotBlank() }.joinToString(". "),
+                listOf(item.name, meta, if (item.tuned) "Canal sintonizado" else "").filter { it.isNotBlank() }.joinToString(". "),
                 selected
             )
             .clickable(enabled = item.onClick != null) { item.onClick?.run() }
@@ -362,7 +363,7 @@ private fun OverlayChannelRow(
                 }
                 Spacer(modifier = Modifier.height(3.dp))
                 BasicText(
-                    text = highlightQuery(item.meta, item.query),
+                    text = highlightQuery(meta, item.query),
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     style = TextStyle(color = if (selected) Color(0xFF526170) else Color(0xFF9BAFC1), fontSize = if (compact) 10.sp else 11.sp)
                 )

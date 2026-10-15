@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 735
-        versionName "2.0.735-beta-series-touch"
+        versionCode 736
+        versionName "2.0.736-beta-focus-epg"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

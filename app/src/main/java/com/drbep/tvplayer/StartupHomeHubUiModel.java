@@ -118,6 +118,7 @@ public final class StartupHomeHubUiModel {
         public final boolean poster;
         public final boolean livePreview;
         public ProgrammeMetadataUiModel programmeMetadata;
+        public java.util.function.Supplier<ContinueCard> refreshProgramme;
         public String channelId = "", description = "", schedule = "", nextProgram = "";
         public String libraryId = "", facts = "";
         public Runnable onResume, onStartOver, onRemove, onEpisodes;

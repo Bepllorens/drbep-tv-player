@@ -38,7 +38,19 @@ public final class ComposeDialogHost {
     }
 
     public static Dialog showFullscreen(Context context, View content, CancelHandler onCancel, DismissHandler onDismiss) {
-        Dialog dialog = new Dialog(context, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+        Dialog dialog = new Dialog(context, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen) {
+            @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && WindowFocusRecovery.navigationKey(event.getKeyCode())) {
+                    WindowFocusRecovery.recover(getWindow(), content);
+                }
+                return super.dispatchKeyEvent(event);
+            }
+            @Override public void onWindowFocusChanged(boolean focused) {
+                super.onWindowFocusChanged(focused);
+                if (focused) content.post(() -> WindowFocusRecovery.recover(getWindow(), content));
+            }
+        };
         content.setFocusable(true);
         content.setFocusableInTouchMode(true);
         dialog.setContentView(content);
@@ -60,7 +72,7 @@ public final class ComposeDialogHost {
             // Let the Compose gradient reveal playback instead of the theme's black window.
             window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
         }
-        content.post(content::requestFocus);
+        content.post(() -> WindowFocusRecovery.recover(dialog.getWindow(), content));
         return dialog;
     }
 }

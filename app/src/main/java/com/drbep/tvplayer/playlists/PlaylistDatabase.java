@@ -24,7 +24,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         this(context, "personal-playlists.db");
     }
     private PlaylistDatabase(Context context, String name) {
-        super(context.getApplicationContext(), name, null, 7);
+        super(context.getApplicationContext(), name, null, 8);
         setWriteAheadLoggingEnabled(true);
     }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
@@ -41,6 +41,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         migrateV5(db);
         migrateV6(db);
         migrateV7(db);
+        migrateV8(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) migrateV2(db);
@@ -49,6 +50,11 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         if (oldVersion < 5) migrateV5(db);
         if (oldVersion < 6) migrateV6(db);
         if (oldVersion < 7) migrateV7(db);
+        if (oldVersion < 8) migrateV8(db);
+    }
+    private void migrateV8(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE metadata_index(kind TEXT NOT NULL,source TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,generation TEXT NOT NULL,identity TEXT NOT NULL,occurrence INTEGER NOT NULL,series TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(kind,source,generation,identity,occurrence))");
+        db.execSQL("CREATE INDEX metadata_index_state ON metadata_index(state,kind)");
     }
     private void migrateV7(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE sources ADD COLUMN guide_mode TEXT NOT NULL DEFAULT 'auto'");

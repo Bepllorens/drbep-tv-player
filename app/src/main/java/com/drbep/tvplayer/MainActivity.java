@@ -286,6 +286,8 @@ public class MainActivity extends FragmentActivity {
     private String currentPlaybackRecordingId;
     private String currentPlaybackReturnChannelId;
     private String currentPlaybackVodId;
+    private Runnable importedVodReturnAction;
+    private String importedVodReturnId = "";
     private ChannelItem currentPlaybackTransientItem;
     private String currentPlaybackRequestedChannelId = "";
     private ChannelItem currentPlaybackU7dItem;
@@ -756,6 +758,8 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        BlackBox.init(getApplicationContext());
+        BlackBox.event(BlackBoxStore.Event.ACTIVITY,0,0,0,0);
         TimelineProgrammeDetails.initialize(getCacheDir());
         HomeTmdbArtwork.initialize(getApplicationContext());
         captureReminderIntent(getIntent());
@@ -1071,6 +1075,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        BlackBox.foreground(true);
         uiHandler.removeCallbacks(sleepTimerTick);
         if (sleepTimer.active()) {
             sleepTimerTick.run();
@@ -1114,6 +1119,7 @@ public class MainActivity extends FragmentActivity {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || (!isInPictureInPictureMode() && !enteringPictureInPicture)) {
             stopPlaybackHeartbeat("stop");
         }
+        BlackBox.foreground(false);
         super.onPause();
     }
 
@@ -2603,11 +2609,29 @@ public class MainActivity extends FragmentActivity {
             public void showVodLibrary() {
                 hideTouchControlsForRemote();
                 hideZapBanner();
-                showVodLibraryDialog();
+                ChannelItem item = getCurrentPlaybackChannelItem();
+                if (item != null && item.id.equals(importedVodReturnId) && importedVodReturnAction != null) {
+                    importedVodReturnAction.run();
+                } else if (item != null && item.isVod && item.id.startsWith("m3u:")) {
+                    personalPlaylists().showKind(item.vodSeriesTitle.isEmpty() ? "movie" : "series",
+                            () -> showStartupHubDialog(null));
+                } else {
+                    showVodLibraryDialog();
+                }
+            }
+
+            @Override public String vodLibraryLabel() {
+                ChannelItem item = getCurrentPlaybackChannelItem();
+                return item != null && item.isVod && item.id.startsWith("m3u:")
+                        ? (item.vodSeriesTitle.isEmpty() ? "Volver a películas" : "Volver a series")
+                        : getString(R.string.touch_button_vod_library);
             }
 
             @Override
-            public boolean canOpenVod() { return canOpenVodLibrary(); }
+            public boolean canOpenVod() {
+                ChannelItem item = getCurrentPlaybackChannelItem();
+                return (item != null && item.isVod && item.id.startsWith("m3u:")) || canOpenVodLibrary();
+            }
 
             @Override
             public void showAudioTracks() { showAudioTrackDialog(); }
@@ -3523,8 +3547,24 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void logStartupMilestone(String stage) {
+        BlackBoxStore.Event event = null;
+        switch(stage) {
+            case "window-posted": event=BlackBoxStore.Event.WINDOW;break;
+            case "player-ready": event=BlackBoxStore.Event.PLAYER_READY;break;
+            case "first-surface-frame": event=BlackBoxStore.Event.STARTUP_FRAME;break;
+            case "full-catalog-applied": event=BlackBoxStore.Event.CATALOG_READY;break;
+        }
+        if(event!=null)BlackBox.event(event,0,android.os.SystemClock.elapsedRealtime()-activityCreatedElapsedMs,0,0);
         Log.w(TAG, "startup milestone=" + stage + " elapsedMs="
                 + (android.os.SystemClock.elapsedRealtime() - activityCreatedElapsedMs));
+    }
+
+    private void prepareStartupPreviewQuality() {
+        if (playerController != null && !startupHubShown
+                && !prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false)
+                && !StartupChannelPolicy.shouldSkipCachedFastChannel(pendingReminderChannelId, pendingReminderAction)) {
+            playerController.setHomePreviewMode(true);
+        }
     }
 
     private void tryFastStartupPlaybackFromCache() {
@@ -3558,6 +3598,7 @@ public class MainActivity extends FragmentActivity {
             );
             Log.w(TAG, "startup fast playback start channel=" + cached.id
                     + " loadMs=" + (System.currentTimeMillis() - startMs));
+            prepareStartupPreviewQuality();
             playChannelItemInternal(cached, true, 0L);
         } catch (Exception e) {
             Log.w(TAG, "startup fast playback failed", e);
@@ -3702,6 +3743,7 @@ public class MainActivity extends FragmentActivity {
                             + (channel == null ? "" : channel.id));
                     return;
                 }
+                prepareStartupPreviewQuality();
                 playChannelItem(channel, true);
             }, 120L);
             postUiDelayedIfAlive(this::prefetchCurrentChannelLogos, 2400L);
@@ -10252,6 +10294,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+        BlackBox.event(BlackBoxStore.Event.MEMORY_PRESSURE,0,level,0,0);
         Log.println(Log.INFO, TAG, "memoryTrim level=" + level + " multiview=" + isMultiViewVisible()
                 + " closeForPressure=" + MultiviewMemoryPolicy.shouldClose(level));
         Glide.get(this).trimMemory(level);
@@ -13370,7 +13413,18 @@ public class MainActivity extends FragmentActivity {
         return VodOriginPolicy.allowed(currentOfflinePermissions, filter.name());
     }
 
+    private final java.util.EnumMap<VodVisualPlatformFilter, String> vodOriginLogos =
+            new java.util.EnumMap<>(VodVisualPlatformFilter.class);
+
     private String vodOriginLogo(VodVisualPlatformFilter source) {
+        String cached = vodOriginLogos.get(source);
+        if (cached != null) return cached;
+        String logo = resolveVodOriginLogo(source);
+        vodOriginLogos.put(source, logo);
+        return logo;
+    }
+
+    private String resolveVodOriginLogo(VodVisualPlatformFilter source) {
         if (source == VodVisualPlatformFilter.ALL) return "";
         if (source == VodVisualPlatformFilter.NETFLIX) return "https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg";
         if (source == VodVisualPlatformFilter.DISNEYPLUS) return "https://static-assets.bamgrid.com/product/disneyplus/images/share-default.8bf3102623e935e7bc126df36b956b98.jpg";
@@ -13378,7 +13432,7 @@ public class MainActivity extends FragmentActivity {
         if (source == VodVisualPlatformFilter.HBO) return "https://cdn.prod.website-files.com/6911e6b4bcc8af690d496a26/6911e6b4bcc8af690d497038_HBO%20Max_White.jpg";
         if (source == VodVisualPlatformFilter.SKYSHOWTIME) return "https://d21buns5ku92am.cloudfront.net/69678/logo/retina-1734098031.png";
         for (ChannelItem item : allChannels) {
-            if (item != null && matchesVodVisualPlatform(item, source) && item.platformLogoUrl != null && !item.platformLogoUrl.trim().isEmpty()) return item.platformLogoUrl;
+            if (item != null && item.platformLogoUrl != null && !item.platformLogoUrl.trim().isEmpty() && matchesVodVisualPlatform(item, source)) return item.platformLogoUrl;
         }
         for (ChannelItem item : allChannels) {
             if (item != null && item.platformName != null
@@ -14361,6 +14415,10 @@ public class MainActivity extends FragmentActivity {
                     public String ui() throws Exception { return panelScreen.ui(); }
                     public byte[] artwork(String id)throws Exception{return devicePanelArtwork(id);}
                     public String status() { return devicePanelStatus; }
+                    public String metadataIndex(String command)throws Exception{return command.isEmpty()?MetadataIndexWorker.status(getApplicationContext()):MetadataIndexWorker.command(getApplicationContext(),command);}
+                    public String blackBox()throws Exception{return BlackBox.summary();}
+                    public byte[] blackBoxExport()throws Exception{return BlackBox.export();}
+                    public String blackBoxCommand(String command)throws Exception{return BlackBox.command(command);}
                     public long importPlaylist(java.io.InputStream input) throws Exception { return importer.importWeb(input); }
                     public String enqueuePlaylist(java.io.InputStream input)throws Exception {
                         return new JSONObject().put("job",PlaylistImportJobs.queueUpload(getApplicationContext(),input)).put("queued",true).toString();
@@ -14574,9 +14632,14 @@ public class MainActivity extends FragmentActivity {
         }
         ImportedMovies.open(this,view,personalPlaylists(),baseUrl,headers,new HashMap<>(vodResumePositions),source,new ImportedMovies.Host() {
             public boolean allowed(ChannelItem item) { return !shouldHideProtectedItem(item); }
-            public void play(ChannelItem item) {
-                modalReturnAction=() -> showImportedLibrary(source,series,back);
-                playChannelItem(item,true);
+            public void play(ChannelItem item, Dialog libraryDialog) {
+                // Finish dismissal before installing the return action for the resume dialog.
+                dismissModalForNextAction(libraryDialog, () -> {
+                    importedVodReturnId = item.id;
+                    importedVodReturnAction = () -> showImportedLibrary(source,series,back);
+                    modalReturnAction = importedVodReturnAction;
+                    playChannelItem(item,true);
+                });
             }
             public void back() { if(back!=null)back.run(); }
             public void closed() { handleModalDismissed(); }
@@ -19448,6 +19511,7 @@ public class MainActivity extends FragmentActivity {
         prepareModalSurface();
         discoveryPrivateFailed.clear();
         prefetchChannelLogos(channels, 8, 48, 34);
+        BlackBox.event(BlackBoxStore.Event.NAV_HOME,0,0,0,0);
         final long dialogGeneration = startupSummaryGate.open();
         final Dialog[] dialogHolder = new Dialog[1];
         ComposeView composeView = new ComposeView(this);
@@ -19461,13 +19525,6 @@ public class MainActivity extends FragmentActivity {
         final StartupHubState[] latestHomeState = { state };
         final long[] lastHomeNavigation = { 0L };
         StartupHomeHubUiModel model = buildStartupHomeHubModel(state, open, close);
-        startupSummaryUpdater = fresh -> {
-            latestHomeState[0] = fresh;
-            if (startupSummaryGate.accepts(dialogGeneration) && dialogHolder[0] != null
-                    && dialogHolder[0].isShowing()) {
-                StartupHomeHubComposeBinder.update(composeView, buildStartupHomeHubModel(fresh, open, close));
-            }
-        };
         Runnable homeRefresh = new Runnable() {
             @Override public void run() {
                 if (!startupSummaryGate.accepts(dialogGeneration) || dialogHolder[0] == null
@@ -19481,6 +19538,20 @@ public class MainActivity extends FragmentActivity {
                 StartupHomeHubComposeBinder.update(composeView, buildStartupHomeHubModel(latestHomeState[0], open, close));
                 ensureHomeLiveEpg();
             }
+        };
+        // Let the already-bound model finish a frame before applying a fresh
+        // summary. Reuse the coalescing refresh path and its navigation idle gate.
+        final boolean[] summaryFrameQueued = { false };
+        startupSummaryUpdater = fresh -> {
+            latestHomeState[0] = fresh;
+            if (!startupSummaryGate.accepts(dialogGeneration) || summaryFrameQueued[0]) return;
+            summaryFrameQueued[0] = true;
+            composeView.postOnAnimation(() -> {
+                summaryFrameQueued[0] = false;
+                if (!startupSummaryGate.accepts(dialogGeneration)) return;
+                uiHandler.removeCallbacks(homeRefresh);
+                uiHandler.post(homeRefresh);
+            });
         };
         Runnable homeEpgTick = new Runnable() {
             @Override public void run() {
@@ -19623,7 +19694,9 @@ public class MainActivity extends FragmentActivity {
             appUpdateDialog.hide();
             appUpdateDialog.show();
         }
-        uiHandler.post(homeRefresh);
+        // The initial model is already bound. Fetch missing guide data without
+        // rebuilding that same model before Compose has drawn its first frame.
+        uiHandler.post(this::ensureHomeLiveEpg);
         uiHandler.postDelayed(homeEpgTick, 30000L);
         dialog.setOnKeyListener((ignored, keyCode, event) -> {
             // Dialog keys bypass Activity.dispatchKeyEvent; include them in the hydration idle gate.
@@ -19631,6 +19704,7 @@ public class MainActivity extends FragmentActivity {
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                     || keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 lastHomeNavigation[0] = android.os.SystemClock.uptimeMillis();
+                if(event.getAction()==KeyEvent.ACTION_DOWN)BlackBox.event(BlackBoxStore.Event.NAV_KEY,0,keyCode,0,0);
             }
             if (keyCode != KeyEvent.KEYCODE_BACK) return false;
             // Consume both phases here so Compose and Dialog cannot handle the same Back twice.
@@ -19821,12 +19895,18 @@ public class MainActivity extends FragmentActivity {
 
     private StartupHomeHubUiModel buildStartupHomeHubModel(StartupHubState state, Function<Runnable, Runnable> open, Runnable close) {
         android.os.Trace.beginSection("DRBEP.homeModel");
+        long started=android.os.SystemClock.elapsedRealtime();
         try { return buildStartupHomeHubModelInternal(state, open, close); }
-        finally { android.os.Trace.endSection(); }
+        finally {
+            if ("beta".equals(BuildConfig.UPDATE_CHANNEL)) Log.println(Log.INFO,TAG,"StartupPerf homeModelMs="+(android.os.SystemClock.elapsedRealtime()-started));
+            BlackBox.event(BlackBoxStore.Event.HOME_MODEL,0,android.os.SystemClock.elapsedRealtime()-started,0,0);
+            android.os.Trace.endSection();
+        }
     }
 
     private StartupHomeHubUiModel buildStartupHomeHubModelInternal(StartupHubState state, Function<Runnable, Runnable> open, Runnable close) {
         ChannelItem current = getCurrentPlaybackChannelItem();
+        List<ChannelItem> homeFavorites = buildFavoriteQuickChannels();
         int tvCount = countItemsForQuickTarget("tv");
         int vodCount = state == null ? countItemsForQuickTarget("vod") : state.vodCount;
         int completedCount = state == null ? 0 : state.completedRecordings;
@@ -19981,7 +20061,7 @@ public class MainActivity extends FragmentActivity {
         Map<String, EpgRepository.EpgProgramPair> favoritePairs = state == null
                 ? epgProgramPairByChannelId
                 : state.recommendationPairs;
-        for (ChannelItem favorite : buildFavoriteQuickChannels()) {
+        for (ChannelItem favorite : homeFavorites) {
             EpgRepository.EpgProgramPair pair = favoritePairs.get(favorite.id);
             EpgRepository.EpgProgram next = pair == null ? null : pair.next;
             long startsAt = next == null ? 0L : parseIsoMillis(next.startTime);
@@ -20041,7 +20121,7 @@ public class MainActivity extends FragmentActivity {
         if (!isOfflineRecordingsDisabled()) {
             shortcuts.add(new StartupHomeHubUiModel.Shortcut("●", getString(R.string.quick_hub_recordings), getString(R.string.startup_home_recordings_subtitle, completedCount, scheduledCount), open.apply(this::openRecordingsBrowser)));
         }
-        shortcuts.add(new StartupHomeHubUiModel.Shortcut("★", getString(R.string.quick_hub_favorites), getResources().getQuantityString(R.plurals.startup_home_favorites, buildFavoriteQuickChannels().size(), buildFavoriteQuickChannels().size()), open.apply(this::showFavoriteChannelsQuickDialog)));
+        shortcuts.add(new StartupHomeHubUiModel.Shortcut("★", getString(R.string.quick_hub_favorites), getResources().getQuantityString(R.plurals.startup_home_favorites, homeFavorites.size(), homeFavorites.size()), open.apply(this::showFavoriteChannelsQuickDialog)));
         int multiviewCapacity = devicePerformanceProfile == null ? 2 : devicePerformanceProfile.maxMultiViewStreams;
         shortcuts.add(new StartupHomeHubUiModel.Shortcut("▦", getString(R.string.startup_home_multiview), getString(R.string.startup_home_multiview_subtitle, multiviewCapacity), open.apply(this::openMultiView)));
         DeviceExperiencePolicy.Result deviceExperience = currentDeviceExperience();
@@ -20079,15 +20159,9 @@ public class MainActivity extends FragmentActivity {
                 open.apply(() -> showStartupHubSettingsDialog(state)),
                 close
         );
+        // The current home opens dedicated movie/series browsers. Its former
+        // VOD provider strip has no consumer, so do not scan the catalogue for it.
         discoveryHomeState.providers.clear();
-        discoveryHomeState.providers.add(new StartupHomeHubUiModel.Provider("ALL", "Todos", ""));
-        if (canOpenVodLibrary()) {
-            for (VodVisualPlatformFilter provider : VodVisualPlatformFilter.values()) {
-                if (provider == VodVisualPlatformFilter.ALL || provider == VodVisualPlatformFilter.OTHER
-                        || !isVodPlatformFilterAvailable(provider, 0)) continue;
-                discoveryHomeState.providers.add(new StartupHomeHubUiModel.Provider(provider.name(), provider.label, vodOriginLogo(provider)));
-            }
-        }
         discoveryHomeState.liveProviders.clear();
         List<ChannelItem> visibleLive = new ArrayList<>();
         if (currentOfflinePermissions != null && currentOfflinePermissions.liveEnabled) {
@@ -20169,7 +20243,7 @@ public class MainActivity extends FragmentActivity {
             homeModel.onLiveHistory=open.apply(()->openArchiveCatalog(null,false));
             homeModel.onSavedArchive=open.apply(()->openArchiveCatalog(null,true));
         }
-        List<ChannelItem> homeCandidates = new ArrayList<>(buildFavoriteQuickChannels());
+        List<ChannelItem> homeCandidates = new ArrayList<>(homeFavorites);
         homeCandidates.addAll(buildRecentQuickChannels());
         homeCandidates.addAll(visibleLive);
         homeCandidates.removeIf(this::shouldHideProtectedItem);
@@ -20227,12 +20301,15 @@ public class MainActivity extends FragmentActivity {
 
     private ChannelItem findAllowedHomeLiveChannel(String id) {
         if (currentOfflinePermissions == null || !currentOfflinePermissions.liveEnabled) return null;
-        for (ChannelItem item : allChannels) if (LiveHomePolicy.visibleInHome(item, currentOfflinePermissions) && item.id.equals(id) && !shouldHideProtectedItem(item)) return item;
+        for (ChannelItem item : allChannels) if (item.id.equals(id) && LiveHomePolicy.visibleInHome(item, currentOfflinePermissions) && !shouldHideProtectedItem(item)) return item;
         return null;
     }
 
     private StartupHomeHubUiModel.Page buildDiscoveryHomePage(String section, String providerKey,
             Function<Runnable, Runnable> open, StartupHubState state) {
+        int diagnosticSection = java.util.Arrays.asList("Inicio","En directo","Películas","Series","Mi biblioteca","Guía","Últimos 7 días","Ajustes").indexOf(section);
+        BlackBox.event(BlackBoxStore.Event.NAV_SECTION,0,diagnosticSection,0,0);
+
         StartupHomeHubUiModel.Page page = new StartupHomeHubUiModel.Page();
         Runnable back = () -> showStartupHubDialog(state);
         // No VOD queries or artwork work for the lightweight start page.
@@ -21576,41 +21653,27 @@ public class MainActivity extends FragmentActivity {
         String filterKey = item.vodFilterKey == null ? "" : item.vodFilterKey.toLowerCase(Locale.ROOT);
         String platform = item.platformName == null ? "" : item.platformName.toLowerCase(Locale.ROOT);
         boolean isMovistar = filterKey.contains("movistar") || platform.contains("movistar");
+        if (platformFilter == VodVisualPlatformFilter.MOVISTAR) return isMovistar;
         boolean isTivify = filterKey.contains("tivify") || platform.contains("tivify");
+        if (platformFilter == VodVisualPlatformFilter.TIVIFY) return isTivify;
         boolean isRuntime = filterKey.contains("runtime") || platform.contains("runtime");
+        if (platformFilter == VodVisualPlatformFilter.RUNTIME) return isRuntime;
         boolean isPlex = filterKey.contains("plex") || platform.contains("plex");
+        if (platformFilter == VodVisualPlatformFilter.PLEX) return isPlex;
         boolean isDazn = filterKey.contains("dazn") || platform.contains("dazn");
+        if (platformFilter == VodVisualPlatformFilter.DAZN) return isDazn;
         boolean isPrime = filterKey.contains("prime") || platform.contains("prime");
+        if (platformFilter == VodVisualPlatformFilter.PRIME) return isPrime;
         boolean isSkyshowtime = filterKey.contains("skyshowtime") || platform.contains("skyshowtime");
+        if (platformFilter == VodVisualPlatformFilter.SKYSHOWTIME) return isSkyshowtime;
         boolean isHbo = filterKey.contains("hbomax") || platform.contains("hbo");
+        if (platformFilter == VodVisualPlatformFilter.HBO) return isHbo;
         boolean isApple = filterKey.contains("appletv") || platform.contains("apple tv")
                 || platform.contains("appletv") || (item.id != null && item.id.startsWith("appletv:"));
+        if (platformFilter == VodVisualPlatformFilter.APPLETV) return isApple;
         boolean isNetflix = filterKey.contains("netflix") || platform.contains("netflix")
                 || (item.id != null && item.id.startsWith("netflix:"));
-        if (platformFilter == VodVisualPlatformFilter.APPLETV) return isApple;
         if (platformFilter == VodVisualPlatformFilter.NETFLIX) return isNetflix;
-        if (platformFilter == VodVisualPlatformFilter.HBO) return isHbo;
-        if (platformFilter == VodVisualPlatformFilter.MOVISTAR) {
-            return isMovistar;
-        }
-        if (platformFilter == VodVisualPlatformFilter.TIVIFY) {
-            return isTivify;
-        }
-        if (platformFilter == VodVisualPlatformFilter.RUNTIME) {
-            return isRuntime;
-        }
-        if (platformFilter == VodVisualPlatformFilter.PLEX) {
-            return isPlex;
-        }
-        if (platformFilter == VodVisualPlatformFilter.DAZN) {
-            return isDazn;
-        }
-        if (platformFilter == VodVisualPlatformFilter.PRIME) {
-            return isPrime;
-        }
-        if (platformFilter == VodVisualPlatformFilter.SKYSHOWTIME) {
-            return isSkyshowtime;
-        }
         boolean isDisneyplus = isDisneyplusItem(item);
         if (platformFilter == VodVisualPlatformFilter.DISNEYPLUS) {
             return isDisneyplus;
@@ -21879,6 +21942,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void invalidateVodDerivedCaches() {
+        vodOriginLogos.clear();
         cachedMovistarVodItems.clear();
         cachedMovistarVodItemsValid = false;
     }

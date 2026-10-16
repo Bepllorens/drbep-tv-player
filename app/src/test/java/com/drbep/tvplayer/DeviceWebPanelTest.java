@@ -16,6 +16,31 @@ public class DeviceWebPanelTest {
             ByteArrayOutputStream response=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=s.getInputStream().read(b))!=-1)response.write(b,0,n);return response.toString("UTF-8");
         }
     }
+    @Test public void metadataControlsRequireSessionAndAllowOnlyKnownCommands() throws Exception {
+        AtomicInteger calls=new AtomicInteger();
+        DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+            public String status(){return "{}";}
+            public long importPlaylist(InputStream in){return 0;}
+            public String metadataIndex(String command){calls.incrementAndGet();return "{\"state\":\"paused\"}";}
+        };
+        try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+            int port=panel.start();
+            assertTrue(request(port,"GET","/metadata-index","","",0).startsWith("HTTP/1.1 401"));
+            assertEquals(0,calls.get());
+            String login=request(port,"POST","/session","",panel.pin(),6);
+            String token=new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token");
+            String auth="X-Panel-Token: "+token+"\r\n";
+            assertTrue(request(port,"GET","/metadata-index",auth,"",0).contains("paused"));
+            for(String command:new String[]{"start","pause","resume","retry"}){
+                String body=new JSONObject().put("command",command).toString();
+                assertTrue(request(port,"POST","/metadata-index",auth,body,body.length()).startsWith("HTTP/1.1 200"));
+            }
+            String invalid="{\"command\":\"delete\"}";
+            assertTrue(request(port,"POST","/metadata-index",auth,invalid,invalid.length()).startsWith("HTTP/1.1 400"));
+            assertEquals(5,calls.get());
+            assertTrue(request(port,"POST","/metadata-index",auth,"",129).startsWith("HTTP/1.1 400"));
+        }
+    }
     @Test public void sessionUploadAndTruncationAreBounded() throws Exception {
         AtomicInteger complete=new AtomicInteger();
         DeviceWebPanel.Host host=new DeviceWebPanel.Host(){public String status(){return "{\"state\":\"ready\"}";}public long importPlaylist(InputStream in)throws Exception{int n=0;byte[] b=new byte[1024];int read;while((read=in.read(b))!=-1)n+=read;complete.incrementAndGet();return n;}};
@@ -59,6 +84,31 @@ public class DeviceWebPanelTest {
             for(String route:new String[]{"/screen","/ui"})assertTrue(request(port,"GET",route,"","",0).startsWith("HTTP/1.1 401"));assertEquals(0,captures.get());
             String login=request(port,"POST","/session","",panel.pin(),6);String token=new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token");String auth="X-Panel-Token: "+token+"\r\n";
             assertTrue(request(port,"GET","/screen",auth,"",0).startsWith("HTTP/1.1 200"));assertEquals(1,captures.get());assertTrue(request(port,"GET","/ui",auth,"",0).contains("nodes"));
+        }
+    }
+
+    @Test public void blackBoxRequiresSessionAndChecksOrigin()throws Exception {
+        AtomicInteger calls=new AtomicInteger();
+        DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+            public String status(){return "{}";}
+            public long importPlaylist(InputStream in){return 0;}
+            public String blackBox(){calls.incrementAndGet();return "{\"enabled\":true}";}
+            public byte[] blackBoxExport(){calls.incrementAndGet();return new byte[]{1,2};}
+            public String blackBoxCommand(String command){calls.incrementAndGet();return "{}";}
+        };
+        try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+            int port=panel.start();
+            assertTrue(request(port,"GET","/blackbox","","",0).startsWith("HTTP/1.1 401"));
+            assertTrue(request(port,"GET","/blackbox-export","","",0).startsWith("HTTP/1.1 401"));
+            assertEquals(0,calls.get());
+            String login=request(port,"POST","/session","",panel.pin(),6);
+            String token=new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token");
+            String auth="X-Panel-Token: "+token+"\r\n";
+            assertTrue(request(port,"GET","/blackbox",auth,"",0).contains("enabled"));
+            assertTrue(request(port,"GET","/blackbox-export",auth,"",0).startsWith("HTTP/1.1 200"));
+            String body="{\"command\":\"mark\"}";
+            assertTrue(request(port,"POST","/blackbox",auth+"Origin: http://other.test\r\n",body,body.length()).startsWith("HTTP/1.1 403"));
+            assertEquals(2,calls.get());
         }
     }
 }

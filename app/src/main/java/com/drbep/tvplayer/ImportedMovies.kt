@@ -37,7 +37,7 @@ internal object ImportedMovies {
         positions[if(series)"series:$source" else source]=MovieBrowsePosition(MovieFilter(source=source,search=query),0,"")
     }
     interface Host {
-        fun play(item:ChannelItem)
+        fun play(item:ChannelItem, dialog:Dialog?)
         fun allowed(item:ChannelItem):Boolean
         fun input(title:String,value:String,submit:Consumer<String>)
         fun back()
@@ -50,7 +50,7 @@ internal object ImportedMovies {
         var dialog:Dialog?=null
         val exit={dialog?.dismiss();host.back()}
         var backHandler=Runnable{exit()}
-        view.setContent { MovieLibrary(repository,progress,source,host,exit,{backHandler=it}) {item->dialog?.dismiss();host.play(item)} }
+        view.setContent { MovieLibrary(repository,progress,source,host,exit,{backHandler=it}) {item->host.play(item,dialog)} }
         dialog=ComposeDialogHost.showFullscreen(activity,view,{host.back()},{host.closed()})
         dialog?.setOnKeyListener { _,code,event ->
             if(code==android.view.KeyEvent.KEYCODE_BACK) {
@@ -176,19 +176,14 @@ internal object ImportedMovies {
         } catch(e:CancellationException){throw e}
         catch(e:Exception){android.util.Log.w("ImportedLibrary","Cannot enrich selected title",e)}
     }
-    // Small batches while this screen is open; opening the app never triggers catalogue enrichment.
-    LaunchedEffect(ready,filter.source) {
+    // Bulk enrichment belongs to WorkManager, never to a browsing screen.
+    LaunchedEffect(ready) {
         if(!ready)return@LaunchedEffect
-        delay(2000)
+        var indexed=repo.indexRevision()
         while(isActive) {
-            try {
-                val batch=withContext(Dispatchers.IO){repo.pending(filter.source)}
-                if(batch.isEmpty())break
-                for(item in batch){ensureActive();withContext(Dispatchers.IO){repo.resolve(item)};delay(500)}
-                revision++
-            } catch(e:CancellationException){throw e}
-            catch(e:Exception){android.util.Log.w("ImportedLibrary","Cannot enrich catalogue",e)}
-            delay(30000)
+            delay(15000)
+            val next=repo.indexRevision()
+            if(next!=indexed){indexed=next;revision++}
         }
     }
     fun closePicker(){picker=null;if(details)return;navigation.filter(navigation.filterIndex)}
@@ -280,7 +275,7 @@ internal object ImportedMovies {
                 BasicText(notice,style=TextStyle(Color(0xFFFFC56B),12.sp))
                 MovieButton("Reintentar"){notice="";revision++}
             }
-            BasicText("TMDB ${page?.identified?:0}/${page?.total?:0} · Fichas y géneros se completan mientras exploras · Disponibles después sin conexión",style=TextStyle(Color(0xFF8094A8),10.sp),modifier=Modifier.padding(top=6.dp))
+            BasicText("TMDB ${page?.identified?:0}/${page?.total?:0} · Completa fichas y géneros desde el panel web → Actividad · Disponibles después sin conexión",style=TextStyle(Color(0xFF8094A8),10.sp),modifier=Modifier.padding(top=6.dp))
         }
         picker?.let {options->
             Column(Modifier.fillMaxHeight().width(360.dp).background(OfflineTvTheme.Menu.background).background(Color(0xED101722)).padding(24.dp)) {

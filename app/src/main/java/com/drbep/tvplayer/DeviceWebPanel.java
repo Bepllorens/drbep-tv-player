@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Explicit, short-lived LAN session. No filesystem browsing or playback credentials are exposed. */
 final class DeviceWebPanel implements AutoCloseable {
-    interface Host { default byte[] screen()throws Exception{throw new IOException("Unavailable");} default String ui()throws Exception{throw new IOException("Unavailable");} default byte[] artwork(String id)throws Exception {throw new IOException("Unavailable");} String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
+    interface Host { default String metadataIndex(String command)throws Exception{throw new IOException();}  default String blackBox()throws Exception{return "{}";} default byte[] blackBoxExport()throws Exception{throw new IOException();} default String blackBoxCommand(String command)throws Exception{throw new IOException();} default byte[] screen()throws Exception{throw new IOException("Unavailable");} default String ui()throws Exception{throw new IOException("Unavailable");} default byte[] artwork(String id)throws Exception {throw new IOException("Unavailable");} String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
     static final class PanelError extends IOException { PanelError(String message){super(message);} }
     private final Host host;
     private final byte[] page;
@@ -63,6 +63,28 @@ final class DeviceWebPanel implements AutoCloseable {
             }
             String supplied=headers.getOrDefault("x-panel-token","");
             if(closed||System.nanoTime()>=expires||!MessageDigest.isEqual(supplied.getBytes(StandardCharsets.UTF_8),token.getBytes(StandardCharsets.UTF_8))){reply(out,401,"text/plain","Session expired");return;}
+            if(path.equals("/metadata-index")){
+                try{
+                    if(method.equals("GET"))reply(out,200,"application/json",host.metadataIndex(""));
+                    else if(method.equals("POST")&&length>0&&length<=128){
+                        String command=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8)).getString("command");
+                        if(!Arrays.asList("start","pause","resume","retry").contains(command)){reply(out,400,"text/plain","Invalid command");return;}
+                        reply(out,200,"application/json",host.metadataIndex(command));
+                    }else reply(out,400,"text/plain","Invalid request");
+                }catch(Exception e){reply(out,503,"text/plain","Indexación no disponible");}
+                return;
+            }
+            if(path.equals("/blackbox")||path.equals("/blackbox-export")){
+                try{
+                    if(method.equals("GET")&&path.equals("/blackbox"))reply(out,200,"application/json",host.blackBox());
+                    else if(method.equals("GET")&&path.equals("/blackbox-export"))reply(out,200,"application/zip",host.blackBoxExport());
+                    else if(method.equals("POST")&&path.equals("/blackbox")&&length>0&&length<=128){
+                        String command=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8)).getString("command");
+                        reply(out,200,"application/json",host.blackBoxCommand(command));
+                    }else reply(out,400,"text/plain","Invalid request");
+                }catch(Exception e){reply(out,503,"text/plain","Diagnóstico no disponible");}
+                return;
+            }
             if(method.equals("GET")&&(path.equals("/screen")||path.equals("/ui"))){
                 try{if(path.equals("/screen"))reply(out,200,"image/jpeg",host.screen());else reply(out,200,"application/json",host.ui());}
                 catch(Exception e){reply(out,503,"text/plain","Pantalla no disponible");}return;

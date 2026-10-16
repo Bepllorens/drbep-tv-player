@@ -1119,16 +1119,19 @@ final class CatalogSnapshotStore {
         prefs.edit().putString("live_group_directory_" + android.net.Uri.encode(origin), json).apply();
     }
 
-    String getAccessToken() {
+    private final PreferenceValueCache accessTokenCache = new PreferenceValueCache();
+
+    synchronized String getAccessToken() {
         String encrypted = prefs.getString(PREF_ACCESS_TOKEN_ENCRYPTED, "");
         if (encrypted != null && !encrypted.trim().isEmpty()) {
             try {
-                return decryptPreferenceValue(encrypted.trim());
+                return accessTokenCache.read(encrypted.trim(), this::decryptPreferenceValue);
             } catch (Exception e) {
                 Log.e(TAG, "failed to decrypt access token", e);
                 return "";
             }
         }
+        accessTokenCache.clear();
         String legacy = prefs.getString(PREF_ACCESS_TOKEN, "");
         if (legacy == null || legacy.trim().isEmpty()) {
             return "";
@@ -1139,7 +1142,8 @@ final class CatalogSnapshotStore {
         return clean;
     }
 
-    void setAccessToken(String accessToken) {
+    synchronized void setAccessToken(String accessToken) {
+        accessTokenCache.clear();
         String clean = accessToken == null ? "" : accessToken.trim();
         if (clean.isEmpty()) {
             prefs.edit()
@@ -2296,6 +2300,7 @@ final class CatalogSnapshotStore {
         if (length < 0 || length > MAX_BINARY_CACHE_STR_BYTES) {
             throw new IOException("longitud de cadena invalida=" + length);
         }
+        if (length == 0) return "";
         byte[] bytes = new byte[length];
         in.readFully(bytes);
         return new String(bytes, StandardCharsets.UTF_8);

@@ -1,0 +1,19 @@
+Beta 738 - VOD resume dialog (2026-10-15)
+
+Reproduced on Fire .190 with beta 737: opening Al filo del manana from Peliculas and choosing Continuar / desde el inicio reopened the catalogue over the resume choice.
+Cause: ImportedMovies dismissed its dialog and immediately installed modalReturnAction; the asynchronous dismissal callback consumed that new action and reopened the catalogue over the child dialog.
+Fix: pass the library dialog to the host and use the existing dismissModalForNextAction transition before assigning the return action and starting the VOD flow. Applies to the shared imported movies/series surface. No playback URLs, DRM configuration, backend or catchup changes.
+
+694 unit tests passed, no errors or failures. Universal release build succeeded. git diff --check passed.
+
+Fire ADB beta 738 validation:
+- Resume dialog remains visible and focused above playback.
+- Back cancels and returns to catalogue with the same movie focused.
+- Continue starts the movie from the saved 01:50 position; advancing playback observed.
+- Right selects Empezar de nuevo; confirmed reset to beginning, 00:16 displayed after startup.
+- Audio access confirmed: down shows VOD controls, speaker icon opens Idiomas, then Pistas de audio or Subtitulos. Actual audio options displayed with language/codec/channel information. No new audio processing introduced in 738; duplicate grouping was already in 736.
+
+Installed preserving data with the existing Fire test signing identity; official release APK kept separately. No publication or production deployment.
+Official universal SHA256: d552ddc903df67ab3116870854624a5a8881451ab0f9e32eac5a4cd3f7174905
+Fire test SHA256: c75fdd0dd8bc02e23818b8b24dea088b3d1739ada44960e73747665934c6a3cd
+Artifacts: /srv/drbep-dev/artifacts/beta738-vod-resume/

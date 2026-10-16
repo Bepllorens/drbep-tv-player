@@ -560,9 +560,11 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
     }
 }
 
-private enum class ModernActionIconKind { CHANNELS, PLATFORM, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, ADD_SCREEN, OTHER }
+private enum class ModernActionIconKind { CHANNELS, PLATFORM, LIBRARY, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, ADD_SCREEN, OTHER }
 
 private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
+    if (item.iconHint == "vod-library") return ModernActionIconKind.LIBRARY
+    if (item.iconHint == "vod-detail") return ModernActionIconKind.INFO
     if (item.iconHint == "add-screen") return ModernActionIconKind.ADD_SCREEN
     if(item.iconHint == "u7d") return ModernActionIconKind.U7D
     if (item.iconHint == "vod_languages") return ModernActionIconKind.AUDIO
@@ -674,6 +676,13 @@ private fun ModernActionIcon(item: ZapActionItem, focused: Boolean, artworkBinde
                         }
                         drawLine(iconColor, Offset(w * .39f, h * .86f), Offset(w * .31f, h * .92f), strokeWidth, StrokeCap.Round)
                         drawLine(iconColor, Offset(w * .61f, h * .86f), Offset(w * .69f, h * .92f), strokeWidth, StrokeCap.Round)
+                    }
+                    ModernActionIconKind.LIBRARY -> {
+                        for (x in listOf(.12f, .54f)) {
+                            for (y in listOf(.12f, .54f)) {
+                                drawRoundRect(iconColor, Offset(w * x, h * y), Size(w * .34f, h * .34f), CornerRadius(w * .04f), style = stroke)
+                            }
+                        }
                     }
                     ModernActionIconKind.GUIDE -> {
                         drawRoundRect(iconColor, Offset(w * .12f, h * .17f), Size(w * .76f, h * .70f), CornerRadius(w * .08f), style = stroke)

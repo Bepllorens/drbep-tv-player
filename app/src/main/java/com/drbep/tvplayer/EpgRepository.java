@@ -208,6 +208,11 @@ final class EpgRepository {
     }
 
     Map<String, EpgProgramPair> fetchProgramPairsForChannels(List<ChannelItem> channelItems, boolean allowRemoteFallback, boolean preferRemote, boolean allowOfflineSnapshotScan) throws Exception {
+        long op=BlackBox.operation(),started=System.nanoTime();int count=0;boolean success=false;
+        try {Map<String,EpgProgramPair> result=fetchProgramPairsMeasured(channelItems,allowRemoteFallback,preferRemote,allowOfflineSnapshotScan);count=result.size();success=true;return result;}
+        finally {BlackBox.event(BlackBoxStore.Event.EPG_LOAD,op,BlackBox.elapsed(started),count,success?0:1);}
+    }
+    private Map<String, EpgProgramPair> fetchProgramPairsMeasured(List<ChannelItem> channelItems, boolean allowRemoteFallback, boolean preferRemote, boolean allowOfflineSnapshotScan) throws Exception {
         Map<String, EpgProgramPair> out = new LinkedHashMap<>();
         if (channelItems == null || channelItems.isEmpty()) {
             return out;

@@ -124,6 +124,11 @@ final class MovistarGuideRepository implements AutoCloseable {
     Guide day(String day)throws Exception {return day(day,"");}
     private Guide day(String day,String codes)throws Exception {return day(day,codes,null);}
     private Guide day(String day,String codes,java.util.function.Consumer<Guide> partial)throws Exception {
+        long op=BlackBox.operation(),started=System.nanoTime();int count=0,outcome=1;
+        try {Guide result=dayMeasured(day,codes,partial,op);count=result.rows.length();outcome=result.complete?0:2;return result;}
+        finally {BlackBox.event(BlackBoxStore.Event.GUIDE_LOAD,op,BlackBox.elapsed(started),count,outcome);}
+    }
+    private Guide dayMeasured(String day,String codes,java.util.function.Consumer<Guide> partial,long op)throws Exception {
         LocalDate requested=LocalDate.parse(day),today=LocalDate.now(ZoneId.of("Europe/Madrid"));
         if(requested.isAfter(today)||requested.isBefore(today.minusDays(7)))throw new IOException("Día fuera del archivo");
         List<String> requestedCodes=new ArrayList<>();for(String c:codes.split(","))if(!c.isEmpty()&&!requestedCodes.contains(c))requestedCodes.add(c);
@@ -144,6 +149,7 @@ final class MovistarGuideRepository implements AutoCloseable {
                 if(hit==null||now-stamp>=ttl)missing.add(code);
             }
             Guide cached=new Guide(cachedRows);
+            BlackBox.event(BlackBoxStore.Event.GUIDE_CACHE,op,shards.size()-missing.size(),missing.size(),cachedRows.length());
             if(cachedRows.length()>0 && partial!=null){
                 cached.complete=missing.isEmpty();partial.accept(cached);
                 android.util.Log.i("DirectGuide","timing source=cache_first channels="+requestedCodes.size()+" rows="+cachedRows.length()+" first_ms="+((System.nanoTime()-opened)/1000000));
@@ -157,10 +163,14 @@ final class MovistarGuideRepository implements AutoCloseable {
             long networkStart=System.nanoTime(),headersAt=networkStart;JSONArray rows;
             try(Response response=client.newCall(new Request.Builder().url(url).header("User-Agent","Mozilla/5.0 (Android TV) DRBEP/725").build()).execute()){
                 headersAt=System.nanoTime();
+                BlackBox.event(BlackBoxStore.Event.GUIDE_HTTP,op,BlackBox.elapsed(networkStart),response.code(),missing.size());
                 if(!response.isSuccessful()||response.body()==null)throw new IOException("Guía Movistar no disponible");
                 rows=parse(response.body().charStream(),day);
-            }catch(Exception failure){if(cachedRows.length()>0){cached.complete=false;return cached;}throw failure;}
+            }catch(Exception failure){
+                BlackBox.event(BlackBoxStore.Event.GUIDE_FALLBACK,op,BlackBox.elapsed(networkStart),cachedRows.length()>0?1:0,Thread.currentThread().isInterrupted()?2:1);
+                if(cachedRows.length()>0){cached.complete=false;return cached;}throw failure;}
             long parsedAt=System.nanoTime();
+            BlackBox.event(BlackBoxStore.Event.GUIDE_PARSE,op,(parsedAt-headersAt)/1000000,rows.length(),0);
             if(rows.length()==0 && networkCodes.isEmpty())throw new IOException("Guía vacía");
             Guide fresh=new Guide(rows);
             // Store stable per-channel/day shards: single-channel, batch, ISM and HLS

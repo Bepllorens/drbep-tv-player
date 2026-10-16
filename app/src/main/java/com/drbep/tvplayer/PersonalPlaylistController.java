@@ -196,7 +196,7 @@ final class PersonalPlaylistController {
             }catch(Exception e){error();}
         });
     }
-    ChannelItem item(Cursor c,String name) throws Exception {
+    static ChannelItem item(Cursor c,String name) throws Exception {
         String source=c.getString(c.getColumnIndexOrThrow("source"));
         String identity=c.getString(c.getColumnIndexOrThrow("identity"));
         String kind=c.getString(c.getColumnIndexOrThrow("kind"));

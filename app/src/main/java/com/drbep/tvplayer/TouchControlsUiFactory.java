@@ -22,6 +22,7 @@ final class TouchControlsUiFactory {
         void showOverlay();
         void showFilterPicker();
         void showVodLibrary();
+        default String vodLibraryLabel() { return text(R.string.touch_button_vod_library); }
         default boolean canOpenVod() { return false; }
         void openTimelineGuide();
         boolean supportsU7d(ChannelItem item);
@@ -99,10 +100,12 @@ final class TouchControlsUiFactory {
                 null
         ));
         if (!vod || host.canOpenVod()) actions.add(new ZapActionItem(
-                host.text(vod ? R.string.touch_button_vod_library : R.string.touch_button_guide),
+                vod ? host.vodLibraryLabel() : host.text(R.string.touch_button_guide),
                 true,
                 false,
                 false,
+                vod ? "vod-library" : "guide",
+                "",
                 () -> {
                     host.keepVisible();
                     if (vod) {
@@ -110,7 +113,7 @@ final class TouchControlsUiFactory {
                     } else {
                         host.openTimelineGuide();
                     }
-                }
+                }, null
         ));
         if (current != null && !vod && !u7dReplay && host.canAddScreen()) {
             actions.add(new ZapActionItem("Añadir pantalla", true, false, false, "add-screen", "", host::addScreen, null));
@@ -147,6 +150,8 @@ final class TouchControlsUiFactory {
                 true,
                 false,
                 false,
+                vod ? "vod-detail" : "previous",
+                "",
                 () -> {
                     host.keepVisible();
                     if (vod && current != null) {
@@ -154,7 +159,7 @@ final class TouchControlsUiFactory {
                     } else {
                         host.tunePreviousChannel();
                     }
-                }
+                }, null
         ));
         if (!vod) {
             actions.add(new ZapActionItem(

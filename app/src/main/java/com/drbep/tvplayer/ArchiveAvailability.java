@@ -11,7 +11,9 @@ final class ArchiveAvailability {
  private final ExecutorService executor=Executors.newFixedThreadPool(2);
  private final OkHttpClient client=new OkHttpClient.Builder().connectTimeout(5,TimeUnit.SECONDS).readTimeout(5,TimeUnit.SECONDS).callTimeout(8,TimeUnit.SECONDS).followRedirects(false).build();
  ArchiveAvailability(SharedPreferences p){prefs=p;}
- static String code(String value){if(value==null)return "";if(value.matches("[0-9]{3,6}"))return value;Matcher m=Pattern.compile("(?:/CVXCH|/deliverty/)([0-9]{3,6})(?:[/.])|/([0-9]{3,6})/vxfmt=dp/").matcher(value);return m.find()?(m.group(1)!=null?m.group(1):m.group(2)):"";}
+ private static final Pattern SERVICE_CODE=Pattern.compile("[0-9]{3,6}");
+ private static final Pattern SERVICE_PATH=Pattern.compile("(?:/CVXCH|/deliverty/)([0-9]{3,6})(?:[/.])|/([0-9]{3,6})/vxfmt=dp/");
+ static String code(String value){if(value==null||value.isEmpty())return "";if(SERVICE_CODE.matcher(value).matches())return value;Matcher m=SERVICE_PATH.matcher(value);return m.find()?(m.group(1)!=null?m.group(1):m.group(2)):"";}
  private String key(String scope,String id){return android.net.Uri.encode(scope+"|"+id);}
  void register(String scope,ChannelItem c,String providerCode){String baseKey=key(scope,c.id);if(providerCode!=null&&providerCode.matches("[A-Za-z0-9_-]{1,24}")&&!providerCode.equals(prefs.getString(baseKey+".provider","")))prefs.edit().putString(baseKey+".provider",providerCode).apply();String value=code(providerCode);if(value.isEmpty())value=code(c.tvgId);if(value.isEmpty())value=code(c.playUrl);if(value.isEmpty())value=code(c.fallbackPlayUrl);String k=key(scope,c.id)+".code";if(!value.isEmpty()&&!value.equals(prefs.getString(k,"")))prefs.edit().putString(k,value).apply();}
  void registerOfficial(String scope,ChannelItem c,org.json.JSONObject identity){

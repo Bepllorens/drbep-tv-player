@@ -57,6 +57,18 @@ public class TouchControlsUiFactoryTest {
     }
 
     @Test
+    public void importedLibraryHasDistinctIconAndDestinationLabel() {
+        FakeHost host = new FakeHost();
+        host.current = channel(true);
+        host.libraryLabel = "Volver a películas";
+        TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
+        assertEquals("vod-library", find(model, "Volver a películas").iconHint);
+        assertEquals("vod-detail", find(model, "Ficha VOD").iconHint);
+        click(model, "Volver a películas");
+        assertEquals("keep,showVodLibrary", String.join(",", host.events));
+    }
+
+    @Test
     public void vodChannelUsesVodLibraryAndDetailWithoutLiveOnlyActions() {
         FakeHost host = new FakeHost();
         host.current = channel(true);
@@ -274,6 +286,8 @@ public class TouchControlsUiFactoryTest {
         @Override public void showLanguages() { events.add("languages"); }
         @Override public void showSubtitles() { events.add("subtitles"); }
         boolean vodAllowed = true;
+        String libraryLabel = "Biblioteca VOD";
+        @Override public String vodLibraryLabel() { return libraryLabel; }
         @Override public boolean canOpenVod() { return vodAllowed; }
         final List<String> events = new ArrayList<>();
         ChannelItem current;

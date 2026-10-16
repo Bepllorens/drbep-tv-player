@@ -12,6 +12,9 @@ import java.util.List;
 /** Metadata only: never stores playback URLs, headers, licences or replay sessions. */
 final class U7dCatalogStore extends SQLiteOpenHelper {
     private final java.io.File legacyFile;
+    // SQLiteOpenHelper uses this monitor to open/read the database. Never hold it
+    // across a batch write: readers must be able to acquire WAL connections.
+    private final Object writeLock=new Object();
     U7dCatalogStore(Context context) { this(context,"u7d-index.db",context.getDatabasePath("u7d-catalog.db")); }
     U7dCatalogStore(Context context,String name,java.io.File legacy) { super(context.getApplicationContext(),name,null,2);legacyFile=legacy;setWriteAheadLoggingEnabled(true); }
 
@@ -72,6 +75,11 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         int total,offset;
     }
     Page page(String scope,List<String> allowed,String day,String channel,String genre,String search,boolean savedOnly,int offset,int limit,long now) {
+        long op=BlackBox.operation(),started=System.nanoTime();int count=0;boolean success=false;
+        try {Page result=pageMeasured(scope,allowed,day,channel,genre,search,savedOnly,offset,limit,now,op);count=result.programs.size();success=true;return result;}
+        finally {BlackBox.event(BlackBoxStore.Event.CATCHUP_PAGE,op,BlackBox.elapsed(started),count,success?0:1);}
+    }
+    private Page pageMeasured(String scope,List<String> allowed,String day,String channel,String genre,String search,boolean savedOnly,int offset,int limit,long now,long op) {
         Page page=new Page(); if(allowed.isEmpty())return page;
         List<String> args=new ArrayList<>();args.add(scope);
         StringBuilder where=new StringBuilder("p.scope=? AND p.channel IN (");
@@ -81,12 +89,23 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         if(!channel.isEmpty()){where.append(" AND p.channel=?");args.add(channel);}
         if(!genre.isEmpty()){where.append(" AND p.genre=?");args.add(genre);}
         if(!search.trim().isEmpty()){where.append(" AND instr(p.search,?)>0");args.add(search.trim().toLowerCase(java.util.Locale.ROOT));}
+        long stage=System.nanoTime();
         SQLiteDatabase db=getReadableDatabase();String[] values=args.toArray(new String[0]);
+        BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_OPEN,op,BlackBox.elapsed(stage),0,0);
+        stage=System.nanoTime();
         try(Cursor c=db.rawQuery("SELECT count(*) FROM programs p WHERE "+where,values)){if(c.moveToFirst())page.total=c.getInt(0);}
+        BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_COUNT,op,BlackBox.elapsed(stage),page.total,0);
+        stage=System.nanoTime();long decodeNanos=0;
         int size=Math.max(1,Math.min(240,limit));page.offset=Math.min(Math.max(0,offset),Math.max(0,((page.total-1)/size)*size));
         try(Cursor c=db.rawQuery("SELECT p.payload FROM programs p WHERE "+where+" ORDER BY p.start DESC,p.id LIMIT "+size+" OFFSET "+page.offset,values)){
-            while(c.moveToNext())try{page.programs.add(decode(new JSONObject(c.getString(0))));}catch(org.json.JSONException ignored){}
+            while(c.moveToNext()) {
+                String payload=c.getString(0);long decoding=System.nanoTime();
+                try{page.programs.add(decode(new JSONObject(payload)));}catch(org.json.JSONException ignored){}
+                finally{decodeNanos+=System.nanoTime()-decoding;}
+            }
         }
+        BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_FETCH,op,Math.max(0,(System.nanoTime()-stage-decodeNanos)/1000000),page.programs.size(),0);
+        BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_DECODE,op,decodeNanos/1000000,page.programs.size(),0);
         return page;
     }
     long nextChange(String scope,long now) {
@@ -121,24 +140,29 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         return out;
     }
     List<EpgRepository.EpgProgram> recent(String scope,String channel,long from,long now,int limit) {
+        long op=BlackBox.operation(),started=System.nanoTime();int count=0;boolean success=false;
+        try {List<EpgRepository.EpgProgram> result=recentMeasured(scope,channel,from,now,limit);count=result.size();success=true;return result;}
+        finally {BlackBox.event(BlackBoxStore.Event.CATCHUP_STRIP,op,BlackBox.elapsed(started),count,success?0:1);}
+    }
+    private List<EpgRepository.EpgProgram> recentMeasured(String scope,String channel,long from,long now,int limit) {
         List<EpgRepository.EpgProgram> out=new ArrayList<>();
         try(Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM programs WHERE scope=? AND channel=? AND start<=? AND end>=? ORDER BY start DESC,id LIMIT ?",new String[]{scope,channel,Long.toString(now),Long.toString(from),Integer.toString(Math.min(40,Math.max(1,limit)))})) {
             while(c.moveToNext())try{out.add(decode(new JSONObject(c.getString(0))));}catch(org.json.JSONException ignored){}
         }return out;
     }
-    synchronized void invalidate(String scope,String channel) {
+    void invalidate(String scope,String channel) { synchronized(writeLock) {
         getWritableDatabase().delete("catalog","scope=? AND channel=?",new String[]{scope,channel});
         getWritableDatabase().delete("programs","scope=? AND channel=? AND NOT EXISTS (SELECT 1 FROM saved s WHERE s.scope=programs.scope AND s.id=programs.id)",new String[]{scope,channel});
-    }
+    } }
     boolean fresh(String scope,String channel,long now) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT updated FROM catalog WHERE scope=? AND channel=?",new String[]{scope,channel})) {
             return c.moveToFirst() && now>=c.getLong(0) && now-c.getLong(0)<300000L;
         }
     }
-    synchronized void index(String scope,String channel,List<EpgRepository.EpgProgram> items) throws Exception { store(scope,channel,items,false); }
-    synchronized void write(String scope,String channel,List<EpgRepository.EpgProgram> items) throws Exception { store(scope,channel,items,true); }
+    void index(String scope,String channel,List<EpgRepository.EpgProgram> items) throws Exception { synchronized(writeLock) { store(scope,channel,items,false); } }
+    void write(String scope,String channel,List<EpgRepository.EpgProgram> items) throws Exception { synchronized(writeLock) { store(scope,channel,items,true); } }
     private void store(String scope,String channel,List<EpgRepository.EpgProgram> items,boolean refreshed) throws Exception {
-        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();
         try {
             for(EpgRepository.EpgProgram p:items)if(ArchiveWindow.retained(p.startTime,System.currentTimeMillis()))putProgram(db,scope,p);
             if(refreshed)db.execSQL("INSERT OR REPLACE INTO catalog VALUES(?,?,?,?)",new Object[]{scope,channel,System.currentTimeMillis(),"[]"});
@@ -146,27 +170,27 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
             db.setTransactionSuccessful();
         } finally {db.endTransaction();}
     }
-    synchronized void indexAll(String scope,java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception {
-        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+    void indexAll(String scope,java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception { synchronized(writeLock) {
+        SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();
         try {for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> channel:channels.entrySet())for(EpgRepository.EpgProgram p:channel.getValue())if(ArchiveWindow.retained(p.startTime,System.currentTimeMillis()))putProgram(db,scope,p);db.setTransactionSuccessful();}
         finally{db.endTransaction();}
-    }
-    synchronized void writeAll(String scope, java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception {
+    } }
+    void writeAll(String scope, java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception { synchronized(writeLock) {
         SQLiteDatabase db=getWritableDatabase();
-        db.beginTransaction();
+        db.beginTransactionNonExclusive();
         try {
             for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> channel:channels.entrySet())write(scope,channel.getKey(),channel.getValue());
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
-    }
+    } }
     boolean saved(String scope,String id) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM saved WHERE scope=? AND id=?",new String[]{scope,id})) { return c.moveToFirst(); }
     }
-    synchronized boolean toggle(String scope,EpgRepository.EpgProgram p,long expires) throws Exception {
+    boolean toggle(String scope,EpgRepository.EpgProgram p,long expires) throws Exception { synchronized(writeLock) {
         if(saved(scope,id(p))) { getWritableDatabase().delete("saved","scope=? AND id=?",new String[]{scope,id(p)}); return false; }
         putProgram(getWritableDatabase(),scope,p);
         getWritableDatabase().execSQL("INSERT INTO saved VALUES(?,?,?,?,?)",new Object[]{scope,id(p),p.channelId,expires,encode(p).toString()}); return true;
-    }
+    } }
     List<EpgRepository.EpgProgram> savedPrograms(String scope) {
         List<EpgRepository.EpgProgram> out=new ArrayList<>();
         try(Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM saved WHERE scope=? ORDER BY expires DESC LIMIT 500",new String[]{scope})) {

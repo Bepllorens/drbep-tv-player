@@ -12,6 +12,36 @@ import org.junit.Test;
 public class PlaybackRouteResolverTest {
     private final PlaybackRouteResolver resolver = new PlaybackRouteResolver("https://iptv.example.com");
 
+    @Test public void opaqueIsmLiveKeepsHlsRouteWithoutEvictedMetadata() {
+        PlayerController.PlaybackRequest r = new PlayerController.PlaybackRequest(
+                "42", "Channel", "Movistar ISM", "https://iptv.example.com/live/42",
+                "", PlaybackModeStore.MODE_AUTO, "", "", false, false, "server_live");
+        PlaybackRouteResolver.Decision d = resolver.buildDecision(r, false, null);
+        assertEquals("https://iptv.example.com/hls/ism/42/index.m3u8", d.targetUrl);
+        assertEquals(MimeTypes.APPLICATION_M3U8, d.mimeType);
+        assertFalse(d.allowCompatibilityFallback);
+    }
+
+    @Test public void opaqueArchiveIsNotRedirectedToLiveIsm() {
+        PlayerController.PlaybackRequest r = new PlayerController.PlaybackRequest(
+                "42", "Replay", "Movistar ISM", "https://iptv.example.com/live/42",
+                "", PlaybackModeStore.MODE_AUTO, "", "", false, true, "u7d_proxy");
+        assertFalse(resolver.buildDecision(r, false, null).targetUrl.contains("/hls/ism/"));
+    }
+
+    @Test public void opaqueOtherLiveAndExplicitDashAreNotAssumedIsm() {
+        PlayerController.PlaybackRequest r = new PlayerController.PlaybackRequest(
+                "42", "Channel", "Movistar HLS", "https://iptv.example.com/live/42",
+                "", PlaybackModeStore.MODE_AUTO, "", "", false, false, "server_live");
+        assertEquals(MimeTypes.VIDEO_MP2T, resolver.buildDecision(r, false, null).mimeType);
+        r = new PlayerController.PlaybackRequest(
+                "42", "Channel", "Movistar ISM", "https://iptv.example.com/live/42",
+                "", PlaybackModeStore.MODE_AUTO, "", "", false, false, "server_live");
+        PlayerController.StreamInfo info = new PlayerController.StreamInfo();
+        info.type = "dash";
+        assertEquals(MimeTypes.VIDEO_MP2T, resolver.buildDecision(r, false, info).mimeType);
+    }
+
     @Test
     public void disneyHlsKeepsNativeWidevineWithoutCompatibilityFallback() {
         String play = "https://iptv.example.com/api/vod/private/disneyplus/play/00000000-0000-4000-8000-000000000001/master.m3u8";

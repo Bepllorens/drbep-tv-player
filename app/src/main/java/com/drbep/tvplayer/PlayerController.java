@@ -483,6 +483,11 @@ final class PlayerController {
     private VlcDirectPlayController vlcDirectPlayController;
     private PlaybackRequest currentRequest;
     private boolean suspendedForMultiView;
+    private final long blackBoxWindow=BlackBox.operation();
+    private boolean blackBoxWindowClosed;
+    private void multiEvent(BlackBoxStore.Event type,long a,long b,long c){
+        if(host.isMultiViewPlayback())BlackBox.event(type,blackBoxWindow,a,b,c);
+    }
     private StreamInfo currentStreamInfo;
     private PlaybackRouteResolver.Decision currentPlaybackDecision;
     private final AtomicInteger playbackAttemptGeneration = new AtomicInteger();
@@ -690,7 +695,10 @@ final class PlayerController {
     private boolean homePreviewMode;
     private long lastPreviewMetricsMs;
     private long currentPrepareStartedMs;
+    private long blackBoxVideoSampleMs;
+    private long blackBoxSurfaceSwitchMs;
     private long currentReadyElapsedMs;
+    private long performanceAttemptStartedMs;
     private long currentBufferingStartedMs;
     private boolean currentBufferingIsRebuffer;
     private long lastBehindLiveWindowRecoveryMs;
@@ -737,6 +745,7 @@ final class PlayerController {
         this.ioExecutor = ioExecutor;
         this.uiHandler = uiHandler;
         this.host = host;
+        multiEvent(BlackBoxStore.Event.MULTI_OPEN,host.multiViewQualityRole(),0,0);
         this.httpClient = new HttpClient();
         this.prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.playbackRouteResolver = new PlaybackRouteResolver(baseUrl);
@@ -889,8 +898,19 @@ final class PlayerController {
                 .build(), shouldHandleSystemAudioFocus(multiViewPlayback));
         player.setHandleAudioBecomingNoisy(!multiViewPlayback);
         player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
-            @Override public void onVideoDecoderInitialized(EventTime eventTime,String decoderName,long initializedTimestampMs,long initializationDurationMs) { panelVideoDecoder=decoderName; }
+            @Override public void onVideoDecoderInitialized(EventTime eventTime,String decoderName,long initializedTimestampMs,long initializationDurationMs) { panelVideoDecoder=decoderName; perfStage("decoder initMs=" + initializationDurationMs); }
             @Override public void onVideoDecoderReleased(EventTime eventTime,String decoderName) { if(decoderName.equals(panelVideoDecoder))panelVideoDecoder=""; }
+            @Override public void onLoadCompleted(EventTime time,
+                    androidx.media3.exoplayer.source.LoadEventInfo info,
+                    androidx.media3.exoplayer.source.MediaLoadData data) {
+                if (firstFrameRenderedForCurrentItem || !"beta".equals(BuildConfig.UPDATE_CHANNEL)) return;
+                perfStage("load type=" + data.dataType + " track=" + data.trackType
+                        + " durationMs=" + info.loadDurationMs + " bytes=" + info.bytesLoaded);
+            }
+            @Override public void onDroppedVideoFrames(EventTime time, int count, long elapsedMs) {
+                if (homePreviewMode) perfStage("dropped count=" + count + " intervalMs=" + elapsedMs);
+            }
+
 
             @Override public void onVideoInputFormatChanged(EventTime time,Format format,
                     androidx.media3.exoplayer.DecoderReuseEvaluation reuse) {
@@ -927,6 +947,8 @@ final class PlayerController {
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
+                BlackBox.event(BlackBoxStore.Event.PLAY_ERROR,playbackAttemptGeneration.get(),error.errorCode,0,0);
+                multiEvent(BlackBoxStore.Event.MULTI_ERROR,error.errorCode,playbackAttemptGeneration.get(),0);
                 PlaybackRequest request = currentRequest;
                 PlaybackRouteResolver.Decision decision = currentPlaybackDecision;
                 Log.w(TAG, "onPlayerError channel=" + describeRequest(request)
@@ -962,6 +984,8 @@ final class PlayerController {
 
             @Override
             public void onPlaybackStateChanged(int playbackState) {
+                BlackBox.event(BlackBoxStore.Event.PLAY_STATE,playbackAttemptGeneration.get(),playbackState,0,0);
+                multiEvent(BlackBoxStore.Event.MULTI_STATE,playbackState,playbackAttemptGeneration.get(),0);
                 lastPlaybackState = playbackStateToString(playbackState);
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
                 Log.d(TAG, "playbackState=" + playbackStateToString(playbackState)
@@ -1081,6 +1105,7 @@ final class PlayerController {
             public void onRenderedFirstFrame() {
                 PlaybackRequest request = currentRequest;
                 boolean repeatedSurfaceFrame = firstFrameRenderedForCurrentItem;
+                perfStage("frame repeated=" + repeatedSurfaceFrame);
                 firstFrameRenderedForCurrentItem = true;
                 transitionPlaybackPhase("playing");
                 networkRecovery.onFirstFrame();
@@ -1088,6 +1113,11 @@ final class PlayerController {
                 resetPlaybackProgressBaseline();
                 schedulePlaybackProgressWatchdog();
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
+                if(!repeatedSurfaceFrame)BlackBox.event(BlackBoxStore.Event.PLAY_FRAME,playbackAttemptGeneration.get(),elapsedMs,startupPreviewAttached?1:0,0);
+                else if(blackBoxSurfaceSwitchMs>0)BlackBox.event(BlackBoxStore.Event.SURFACE_FRAME,playbackAttemptGeneration.get(),
+                    SystemClock.elapsedRealtime()-blackBoxSurfaceSwitchMs,startupPreviewAttached?1:0,0);
+                if(!repeatedSurfaceFrame)multiEvent(BlackBoxStore.Event.MULTI_FRAME,elapsedMs,playbackAttemptGeneration.get(),host.multiViewQualityRole());
+                blackBoxSurfaceSwitchMs=0;
                 Log.w(TAG, "playback surface-frame target=" + (startupPreviewAttached ? "home-preview" : "main-player")
                         + " repeated=" + repeatedSurfaceFrame + " sincePrepareMs=" + elapsedMs
                         + " previewSize=" + (activeStartupPreview == null ? "none" : activeStartupPreview.getWidth() + "x" + activeStartupPreview.getHeight())
@@ -1271,10 +1301,10 @@ final class PlayerController {
     }
 
     int startupPreviewLayout() {
-        // Keep protected output for licence-backed playback; composite ordinary
-        // previews inside the Compose dialog to avoid SurfaceView recreation delays.
+        // TV preview uses the compositor surface so UI/playlist parse bursts do
+        // not gate each video frame through TextureView. Keep the touch path intact.
         String drm = currentPlaybackDecision == null ? "" : currentPlaybackDecision.drmType;
-        return "widevine".equals(drm) || "playready".equals(drm)
+        return !host.isCompactTouchDeviceMode() || "widevine".equals(drm) || "playready".equals(drm)
                 ? R.layout.startup_preview_player : R.layout.startup_preview_texture;
     }
 
@@ -1288,6 +1318,7 @@ final class PlayerController {
         startupPreviewAttached = true;
         activeStartupPreview = previewView;
         Log.w(TAG, "playback surface-switch target=home-preview");
+        blackBoxSurfaceSwitchMs=SystemClock.elapsedRealtime();
         PlayerView.switchTargetView(player, playerView, previewView);
         return previewView.getPlayer() == player;
     }
@@ -1300,6 +1331,7 @@ final class PlayerController {
             return;
         }
         if (previewView != null && previewView.getPlayer() == player) {
+            blackBoxSurfaceSwitchMs=SystemClock.elapsedRealtime();
             PlayerView.switchTargetView(player, previewView, playerView);
         } else if (playerView.getPlayer() != player) {
             playerView.setPlayer(player);
@@ -1320,6 +1352,9 @@ final class PlayerController {
         lastPlaybackState = "BUFFERING";
         transitionPlaybackPhase("buffering");
         currentPrepareStartedMs = SystemClock.elapsedRealtime();
+        BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,playbackAttemptGeneration.get(),0,0,0);
+        multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
+        perfStage("prepare");
         currentReadyElapsedMs = -1L;
         controller.play(appendOfflineAccessToken(decision.targetUrl), resumePositionMs, autoPlay);
         Log.w(TAG, "VLC direct play selected channel=" + describeRequest(request)
@@ -1609,6 +1644,14 @@ final class PlayerController {
         int generation = beginPlaybackAttempt(request, "networkRestore");
         transitionPlaybackPhase("recovering_network");
         playChannelInternal(request, true, usingPlaybackFallback, currentStreamInfo, resumePositionMs, generation);
+    }
+
+    private void perfStage(String stage) {
+        if (!"beta".equals(BuildConfig.UPDATE_CHANNEL)) return;
+        Log.println(Log.INFO, TAG, "PlaybackPerf generation=" + playbackAttemptGeneration.get()
+                + " elapsedMs=" + (SystemClock.elapsedRealtime() - performanceAttemptStartedMs)
+                + " vod=" + (currentRequest != null && currentRequest.vod)
+                + " preview=" + homePreviewMode + " " + stage);
     }
 
     private void transitionPlaybackPhase(String phase) {
@@ -2112,6 +2155,13 @@ final class PlayerController {
                 activePlayer.getPlaybackState() == Player.STATE_READY
         );
         long nowMs = SystemClock.elapsedRealtime();
+        if(nowMs-blackBoxVideoSampleMs>=BlackBox.sampleInterval()){
+            blackBoxVideoSampleMs=nowMs;
+            androidx.media3.exoplayer.DecoderCounters counts=activePlayer.getVideoDecoderCounters();
+            if(counts!=null){counts.ensureUpdated();BlackBox.event(BlackBoxStore.Event.VIDEO_COUNTERS,
+                playbackAttemptGeneration.get(),counts.renderedOutputBufferCount,counts.droppedBufferCount,activePlayer.getTotalBufferedDuration());
+                multiEvent(BlackBoxStore.Event.MULTI_COUNTERS,counts.renderedOutputBufferCount,counts.droppedBufferCount,activePlayer.getTotalBufferedDuration());}
+        }
         if (homePreviewMode && "beta".equals(BuildConfig.UPDATE_CHANNEL) && nowMs - lastPreviewMetricsMs >= 5000L) {
             lastPreviewMetricsMs = nowMs;
             androidx.media3.exoplayer.DecoderCounters counters = activePlayer.getVideoDecoderCounters();
@@ -2772,6 +2822,7 @@ final class PlayerController {
     }
 
     void release() {
+        if(!blackBoxWindowClosed){multiEvent(BlackBoxStore.Event.MULTI_CLOSE,0,0,0);blackBoxWindowClosed=true;}
         vodDisplayRate.restore();
         resetPlaybackProgressWatchdog(true);
         uiHandler.removeCallbacks(adaptiveQualityStabilityRunnable);
@@ -3156,6 +3207,9 @@ final class PlayerController {
             + " streamInfo=" + describeStreamInfo(streamInfo)
             + " resumeMs=" + resumePositionMs);
         currentPrepareStartedMs = SystemClock.elapsedRealtime();
+        BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,playbackAttemptGeneration.get(),0,0,0);
+        multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
+        perfStage("prepare");
         currentReadyElapsedMs = -1L;
         player.setMediaItem(builder.build());
         if (resumePositionMs > 0L) {
@@ -3187,6 +3241,9 @@ final class PlayerController {
     }
 
     private int beginPlaybackAttempt(PlaybackRequest request, String origin) {
+        performanceAttemptStartedMs = SystemClock.elapsedRealtime();
+
+
         if(origin.startsWith("playChannel")){hlsDvrPreview=-1;uiHandler.removeCallbacks(hlsDvrCommit);lastLiveAnchor=null;pendingLiveAnchor=null;hlsDvrStart=0;hlsDvrEnd=0;hlsDvrAnchor=0;hlsDvrTarget=0;hlsDvrChecked=0;hlsDvrLoading=false;}
         hlsDvrLoading=false;hlsDvrChecked=0;
         int generation = playbackAttemptGeneration.incrementAndGet();

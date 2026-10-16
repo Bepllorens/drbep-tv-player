@@ -23,11 +23,13 @@ internal data class MovieFilter(val source: String="",val group: String="",val g
 internal data class MovieShelf(val name: String,val items: List<ImportedMovie>,val filter:MovieFilter=MovieFilter(),val continuing:Boolean=false,val nextOffset:Int=0,val more:Boolean=false)
 internal data class MoviePage(val shelves: List<MovieShelf>,val sources: List<Pair<String,String>>,val groups: List<String>,val genres: List<String>,val more: Boolean,val identified:Int=0,val total:Int=0)
 
-internal class ImportedMovieRepository @JvmOverloads constructor(context: Context,private val controller: PersonalPlaylistController,
-    private val base: String,private val headers: Map<String,String>,private val allowed: (ChannelItem)->Boolean,val series:Boolean=false) {
+internal class ImportedMovieRepository @JvmOverloads constructor(context: Context,private val controller: PersonalPlaylistController?,
+    private val base: String,private val headers: Map<String,String>,private val allowed: (ChannelItem)->Boolean,val series:Boolean=false,database:PlaylistDatabase?=null) {
+    private val indexPrefs=context.getSharedPreferences("metadata-index",Context.MODE_PRIVATE)
+    fun indexRevision()=indexPrefs.getLong("revision",0)
     val kind get()=if(series) "series" else "movie"
     val label get()=if(series) "series" else "películas"
-    private val db=PlaylistDatabase.getInstance(context)
+    private val db=database?:PlaylistDatabase.getInstance(context)
     private fun Cursor.s(name:String)=getString(getColumnIndexOrThrow(name)).orEmpty()
     private val episodeFrom=" FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation LEFT JOIN preferences p ON p.source=e.source AND p.identity=e.identity AND p.occurrence=e.occurrence "
     private val from get()=if(!series) episodeFrom+" LEFT JOIN movie_added a ON a.source=e.source AND a.identity=e.identity AND a.occurrence=e.occurrence LEFT JOIN movie_match mm ON mm.source=e.source AND mm.identity=e.identity AND mm.occurrence=e.occurrence LEFT JOIN movie_metadata md ON md.query=mm.query " else
@@ -63,7 +65,7 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
         db.readableDatabase.rawQuery("SELECT e.*,s.name AS provider,${progressColumn} AS progress,mm.query AS meta_query,md.json AS meta_json"+from+where+" ORDER BY $order,e.source,e.position LIMIT ? OFFSET ?",args.toTypedArray()).use {c->
             while(c.moveToNext()) {
                 count++
-                val item=controller.item(c,c.s("provider"));if(!allowed(item))continue
+                val item=PersonalPlaylistController.item(c,c.s("provider"));if(!allowed(item))continue
                 val meta=runCatching{JSONObject(c.s("meta_json")).optJSONObject("movie")}.getOrNull()
                 result+=ImportedMovie(item,c.s("source"),c.s("identity"),c.getInt(c.getColumnIndexOrThrow("occurrence")),c.s("group_name"),c.s("provider"),c.s("meta_query").ifBlank {query(if(series)c.s("series") else item.name)},meta,c.getLong(c.getColumnIndexOrThrow("progress")),if(series)c.s("series") else "")
             }
@@ -112,11 +114,22 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
     }
     private fun link(item:ImportedMovie,key:String,manual:Boolean=false) {
         if(series) {
-            db.writableDatabase.execSQL("INSERT OR REPLACE INTO series_match(source,series,query,manual) VALUES(?,?,?,?)",arrayOf(item.source,item.seriesName,key,if(manual)1 else 0));return
+            val sql=db.writableDatabase
+            sql.execSQL("INSERT OR IGNORE INTO series_match(source,series,query,manual) VALUES(?,?,?,?)",arrayOf(item.source,item.seriesName,key,if(manual)1 else 0))
+            sql.execSQL("UPDATE series_match SET query=?,manual=MAX(manual,?) WHERE source=? AND series=? AND (manual=0 OR ?=1)",arrayOf(key,if(manual)1 else 0,item.source,item.seriesName,if(manual)1 else 0));return
         }
-        db.writableDatabase.execSQL("INSERT OR REPLACE INTO movie_match(source,identity,occurrence,query,manual) VALUES(?,?,?,?,?)",arrayOf(item.source,item.identity,item.occurrence,key,if(manual)1 else 0))
+        val sql=db.writableDatabase
+        sql.execSQL("INSERT OR IGNORE INTO movie_match(source,identity,occurrence,query,manual) VALUES(?,?,?,?,?)",arrayOf(item.source,item.identity,item.occurrence,key,if(manual)1 else 0))
+        sql.execSQL("UPDATE movie_match SET query=?,manual=MAX(manual,?) WHERE source=? AND identity=? AND occurrence=? AND (manual=0 OR ?=1)",arrayOf(key,if(manual)1 else 0,item.source,item.identity,item.occurrence,if(manual)1 else 0))
     }
-    fun resolve(item:ImportedMovie,overrideId:Int=0):ImportedMovie {
+    @JvmOverloads fun resolve(item:ImportedMovie,overrideId:Int=0,strict:Boolean=false):ImportedMovie {
+        if(!strict)foregroundAt=android.os.SystemClock.elapsedRealtime()
+        val key=if(overrideId>0) "$kind:id:$overrideId" else item.query
+        val gate=synchronized(metadataLocks){metadataLocks.getOrPut(key){MetadataGate()}.also{it.users++}}
+        try { return synchronized(gate){resolveLocked(item,overrideId,strict)} }
+        finally { synchronized(metadataLocks){gate.users--;if(gate.users==0)metadataLocks.remove(key)} }
+    }
+    private fun resolveLocked(item:ImportedMovie,overrideId:Int,strict:Boolean):ImportedMovie {
         val key=if(overrideId>0)JSONObject().put("tmdb_id",overrideId).apply{if(series)put("kind","tv")}.toString() else item.query
         val now=System.currentTimeMillis()
         var cached:JSONObject?=null;var updated=0L
@@ -125,13 +138,18 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
         val ttl=if(cached?.optBoolean("matched")==true)30L*86400000 else 86400000L
         val data=if(cached!=null&&now-updated<ttl) cached!! else {
             try {
+                if(strict) {
+                    val wait=1000-(android.os.SystemClock.elapsedRealtime()-lastBackgroundRequest)
+                    if(wait>0)Thread.sleep(wait)
+                    lastBackgroundRequest=android.os.SystemClock.elapsedRealtime()
+                }
                 val fresh=request(JSONObject(key))
                 // Only valid metadata responses are cached; transport failures remain retryable.
                 if(!fresh.has("matched")||(series&&fresh.optString("kind")!="tv"))throw IllegalStateException("Metadata unavailable")
                 val movie=fresh.optJSONObject("movie")
                 val values=ContentValues().apply{put("query",key);put("json",fresh.toString());put("updated",now);put("release_date",movie?.optString("release_date").orEmpty());put("rating",movie?.optDouble("rating")?:0.0);put("genres",movie?.optJSONArray("genres")?.let{a->(0 until a.length()).joinToString("|",prefix="|",postfix="|"){a.getString(it)}}.orEmpty())}
                 db.writableDatabase.insertWithOnConflict("movie_metadata",null,values,android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE);fresh
-            }catch(e:Exception){if(cached==null)return item else cached!!}
+            }catch(e:Exception){if(strict)throw e; if(cached==null)return item else cached!!}
         }
         link(item,key,overrideId>0)
         return item.copy(query=key,metadata=data.optJSONObject("movie"))
@@ -140,10 +158,30 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
         val result=mutableListOf<ImportedMovie>()
         db.readableDatabase.rawQuery("SELECT e.*,s.name AS provider,${progressColumn} AS progress,mm.query AS meta_query,md.json AS meta_json"+from+" WHERE e.kind='$kind' AND COALESCE(p.hidden,0)=0 AND (?='' OR e.source=?) AND (md.updated IS NULL OR md.updated<?) ORDER BY e.source,e.position LIMIT 8",arrayOf(source,source,(System.currentTimeMillis()-30L*86400000).toString())).use{c->
             while(c.moveToNext()) {
-                val item=controller.item(c,c.s("provider"));if(!allowed(item))continue
+                val item=PersonalPlaylistController.item(c,c.s("provider"));if(!allowed(item))continue
                 result+=ImportedMovie(item,c.s("source"),c.s("identity"),c.getInt(c.getColumnIndexOrThrow("occurrence")),c.s("group_name"),c.s("provider"),c.s("meta_query").ifBlank{query(if(series)c.s("series") else item.name)},null,c.getLong(c.getColumnIndexOrThrow("progress")),if(series)c.s("series") else "")
             }
         };return result
+    }
+
+    companion object {
+        private class MetadataGate { var users=0 }
+        private val metadataLocks=HashMap<String,MetadataGate>()
+        @Volatile private var lastBackgroundRequest=0L
+        @Volatile private var foregroundAt=0L
+        fun foregroundBusy()=android.os.SystemClock.elapsedRealtime()-foregroundAt<1500
+    }
+    fun queueIndex() {
+        db.writableDatabase.execSQL("INSERT OR IGNORE INTO metadata_index(kind,source,generation,identity,occurrence,series,state) SELECT ?,e.source,e.generation,e.identity,e.occurrence,e.series,'pending'"+from+" WHERE e.kind=? AND COALESCE(p.hidden,0)=0",arrayOf(kind,kind))
+    }
+    fun indexItem(source:String,generation:String,identity:String,occurrence:Int):ImportedMovie? {
+        val matchJoin=if(series) " LEFT JOIN series_match mm ON mm.source=e.source AND mm.series=e.series " else " LEFT JOIN movie_match mm ON mm.source=e.source AND mm.identity=e.identity AND mm.occurrence=e.occurrence "
+        db.readableDatabase.rawQuery("SELECT e.*,s.name AS provider,mm.query AS meta_query"+episodeFrom+matchJoin+" WHERE e.kind=? AND e.source=? AND e.generation=? AND e.identity=? AND e.occurrence=? AND COALESCE(p.hidden,0)=0 LIMIT 1",arrayOf(kind,source,generation,identity,occurrence.toString())).use { c->
+            if(!c.moveToFirst())return null
+            val item=PersonalPlaylistController.item(c,c.s("provider"))
+            if(!allowed(item))return null
+            return ImportedMovie(item,source,identity,occurrence,c.s("group_name"),c.s("provider"),c.s("meta_query").ifBlank{query(if(series)c.s("series") else item.name)},null,0,if(series)c.s("series") else "")
+        }
     }
     fun seasons(item:ImportedMovie):List<Pair<Int,Int>> {
         val result=mutableListOf<Pair<Int,Int>>()
@@ -153,7 +191,7 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
     fun episodes(item:ImportedMovie,season:Int,offset:Int,limit:Int=40):List<Pair<ChannelItem,Long>> {
         val result=mutableListOf<Pair<ChannelItem,Long>>()
         db.readableDatabase.rawQuery("SELECT e.*,s.name AS provider,COALESCE(p.resume_ms,0) AS progress"+episodeFrom+" WHERE e.kind='series' AND e.source=? AND e.series=? AND e.season=? AND COALESCE(p.hidden,0)=0 ORDER BY e.episode,e.position LIMIT ? OFFSET ?",arrayOf(item.source,item.seriesName,season.toString(),limit.coerceIn(1,100).toString(),offset.toString())).use{c->while(c.moveToNext()){
-            val channel=controller.item(c,c.s("provider"));if(allowed(channel))result+=channel to c.getLong(c.getColumnIndexOrThrow("progress"))
+            val channel=PersonalPlaylistController.item(c,c.s("provider"));if(allowed(channel))result+=channel to c.getLong(c.getColumnIndexOrThrow("progress"))
         }}
         return result
     }

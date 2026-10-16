@@ -14,15 +14,9 @@ final class U7dChannelPolicy {
         if (channel == null || channel.isVod || clean(channel.name).isEmpty()) {
             return false;
         }
-        String platform = clean(channel.platformName);
-        String identity = platform
-                + " " + clean(channel.group)
-                + " " + clean(channel.playUrl)
-                + " " + clean(channel.fallbackPlayUrl);
-        return channel.platformId == 1
-                || channel.platformId == 13
-                || identity.contains("movistar")
-                || identity.contains("movistarplus");
+        if (channel.platformId == 1 || channel.platformId == 13) return true;
+        return contains(channel.platformName, "movistar") || contains(channel.group, "movistar")
+                || contains(channel.playUrl, "movistar") || contains(channel.fallbackPlayUrl, "movistar");
     }
 
     static boolean isMovistarIsmChannel(ChannelItem channel) {
@@ -47,22 +41,21 @@ final class U7dChannelPolicy {
         if (channel == null || channel.isVod) {
             return false;
         }
-        String identity = clean(channel.platformName)
-                + " " + clean(channel.group)
-                + " " + clean(channel.playUrl)
-                + " " + clean(channel.fallbackPlayUrl);
-        return channel.platformId == 2 || identity.contains("tivify");
+        return channel.platformId == 2 || contains(channel.platformName, "tivify")
+                || contains(channel.group, "tivify") || contains(channel.playUrl, "tivify")
+                || contains(channel.fallbackPlayUrl, "tivify");
     }
 
     static boolean isOrangeChannel(ChannelItem channel) {
         if (channel == null || channel.isVod) {
             return false;
         }
-        String identity = clean(channel.platformName)
-                + " " + clean(channel.group)
-                + " " + clean(channel.playUrl)
-                + " " + clean(channel.fallbackPlayUrl);
-        return identity.contains("orange") || identity.contains("/api/orange/manifest/");
+        return contains(channel.platformName, "orange") || contains(channel.group, "orange")
+                || contains(channel.playUrl, "orange") || contains(channel.fallbackPlayUrl, "orange");
+    }
+
+    private static boolean contains(String value, String marker) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(marker);
     }
 
     private static String clean(String value) {

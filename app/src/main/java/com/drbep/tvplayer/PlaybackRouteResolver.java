@@ -619,7 +619,7 @@ final class PlaybackRouteResolver {
         return value.contains(".isml/manifest") || value.contains(".ism/manifest");
     }
 
-    private static boolean isMovistarIsmRequest(PlayerController.PlaybackRequest request, PlayerController.StreamInfo streamInfo) {
+    private boolean isMovistarIsmRequest(PlayerController.PlaybackRequest request, PlayerController.StreamInfo streamInfo) {
         if (request == null) {
             return false;
         }
@@ -628,6 +628,14 @@ final class PlaybackRouteResolver {
         String url = safeLower(request.playUrl);
         String streamType = streamInfo == null ? "" : safeLower(streamInfo.type);
         boolean looksSmooth = "smooth".equals(streamType) || looksLikeSmooth(url);
-        return looksSmooth && groupOrChannel.contains("movistar") && groupOrChannel.contains("ism");
+        // The full catalogue can use an opaque /live URL, unlike the cached
+        // startup item. Low-memory eviction of StreamInfo must not turn this
+        // explicitly labelled ISM live channel into a TS probe and retry.
+        boolean opaqueIsmLive = !request.vod
+                && !"u7d_proxy".equals(safeLower(request.playbackProfile))
+                && platform.contains("movistar ism")
+                && isBackendLiveUrl(request.playUrl)
+                && (streamType.isEmpty() || "smooth".equals(streamType));
+        return opaqueIsmLive || (looksSmooth && groupOrChannel.contains("movistar") && groupOrChannel.contains("ism"));
     }
 }

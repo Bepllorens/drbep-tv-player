@@ -72,6 +72,16 @@ public class U7dChannelPolicyTest {
         assertTrue(U7dChannelPolicy.supportsRecordingStartOver(tivifyHls));
     }
 
+    @Test public void metadataAndUrlFallbacksKeepCaseInsensitiveMatching() {
+        assertTrue(U7dChannelPolicy.isMovistarChannel(channel("a","Canal",99," MOVISTAR HLS ","")));
+        assertTrue(U7dChannelPolicy.isMovistarChannel(channel("a","Canal",99,"Other","https://example.test/MOVISTARPLUS/live")));
+        assertTrue(U7dChannelPolicy.isOrangeChannel(channel("a","Canal",99,"Other","https://example.test/API/ORANGE/manifest/1")));
+        assertTrue(U7dChannelPolicy.isTivifyChannel(channel("a","Canal",99," TIVIFY ","")));
+        assertTrue(U7dChannelPolicy.isMovistarChannel(channel("a","Canal",13,"Other","")));
+        assertFalse(U7dChannelPolicy.isMovistarChannel(channel("a"," ",13,"Movistar","")));
+        assertFalse(U7dChannelPolicy.supports(null));
+    }
+
     private static ChannelItem channel(String id, String name, int platformId, String platform, String url) {
         return new ChannelItem(
                 id,

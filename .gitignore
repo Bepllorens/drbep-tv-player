@@ -15,3 +15,7 @@ __pycache__/
 *.apk
 *.apk.idsig
 /device-*.png
+
+# Sources of the Media3 build instrumentation (not generated build output).
+!buildSrc/src/main/java/com/drbep/build/
+!buildSrc/src/main/java/com/drbep/build/*.java

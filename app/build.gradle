@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 749
-        versionName "2.0.749-beta-metadata-jobs"
+        versionCode 750
+        versionName "2.0.750-beta-pes-reader"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {
@@ -198,4 +198,16 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:core:1.6.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
+}
+
+// Beta-only workaround for Media3 1.11.1 PesReader re-parsing PTS bytes at HLS EOF.
+// Retains real malformed-header diagnostics and all stream/codec selection logic.
+if (updateChannel == 'beta') {
+    androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+        variant.instrumentation.transformClassesWith(
+            com.drbep.build.PesReaderFixFactory,
+            com.android.build.api.instrumentation.InstrumentationScope.ALL) {}
+        variant.instrumentation.setAsmFramesComputationMode(
+            com.android.build.api.instrumentation.FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS)
+    }
 }

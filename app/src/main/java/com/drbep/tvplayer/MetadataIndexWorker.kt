@@ -17,6 +17,13 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
         fun active()=!isStopped && synchronized(lock){prefs(ctx).getBoolean("enabled",false)&&prefs(ctx).getString("generation","")==generation}
         if(!active())return Result.success()
         try {
+            // Wait before opening/indexing the catalogue as well as between titles.
+            val quietDeadline=android.os.SystemClock.elapsedRealtime()+15000
+            while(active() && BackgroundWorkBudget.busy()) {
+                if(android.os.SystemClock.elapsedRealtime()>=quietDeadline)return Result.retry()
+                Thread.sleep(250)
+            }
+            if(!active())return Result.success()
             val session=CatalogSnapshotStore(ctx)
             val endpoint=session.getSourceUrl(BuildConfig.OFFLINE_BASE_URL).toHttpUrlOrNull()
             val token=session.accessToken
@@ -50,7 +57,7 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
                 // Give focused titles priority and keep a modest maximum request rate.
                 Thread.sleep(50)
                 if(!active())return Result.success()
-                if(ImportedMovieRepository.foregroundBusy())continue
+                if(ImportedMovieRepository.foregroundBusy() || BackgroundWorkBudget.busy()) { Thread.sleep(200); continue }
                 if(session.accessToken!=token) {
                     synchronized(lock){if(active())prefs(ctx).edit().putBoolean("enabled",false).putString("state","account").commit()}
                     return Result.success()

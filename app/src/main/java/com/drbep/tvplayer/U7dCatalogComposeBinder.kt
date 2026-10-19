@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.*
@@ -58,17 +60,26 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     }
     var firstDayEffect by remember { mutableStateOf(true) }
     LaunchedEffect(s.day) { if(firstDayEffect)firstDayEffect=false else if(s.day.isNotBlank())refresh.run() }
+    val pageReady=s.presentationKey==ArchivePageIdentity.key(s.day,s.channel,s.genre,s.query,s.savedOnly,s.offset)
+    val publishedDay=s.publishedDay
     val entries=s.entries
     val visible=remember(entries,s.pageIds) { entries.filter { it.id in s.pageIds }.sortedWith(compareByDescending<U7dCatalogEntry> { it.start }.thenBy { it.id }) }
+    var submittedFilters by remember { mutableStateOf<List<Any>?>(null) }
+    fun filters(): List<Any> = listOf(s.day,s.channel,s.genre,s.query,s.savedOnly)
     LaunchedEffect(s.day,s.channel,s.genre,s.query,s.savedOnly) {
-        s.offset=0
-        if(s.query.isNotBlank())delay(250)
-        s.queryPage.run()
+        if (submittedFilters != filters()) {
+            s.offset=0
+            if(s.query.isNotBlank())delay(250)
+            submittedFilters=filters()
+            s.queryPage.run()
+        }
     }
+    val cellSlots=remember { ArchiveGridSlots() }
+    // Use the published page identity, not the pending filter: old results stay visible while loading.
+    val gridKeys=remember(visible,s.presentationKey) { cellSlots.assign(s.presentationKey,visible.map { it.id }) }
     var picker by remember { mutableStateOf("") }
     var pickerQuery by remember { mutableStateOf("") }
     var detail by remember { mutableStateOf(false) }
-    val selected=visible.firstOrNull { it.id==s.selectedId } ?: visible.firstOrNull()
     val listState=rememberLazyGridState()
     val initial=remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
@@ -85,8 +96,8 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     val genreFocus=remember { FocusRequester() }
     var returnToGrid by remember { mutableStateOf(false) }
     var pendingGridFocus by remember { mutableStateOf(false) }
-    LaunchedEffect(visible,pendingGridFocus,s.querying) {
-        if(!s.querying && pendingGridFocus && visible.isNotEmpty()) {
+    LaunchedEffect(visible,pendingGridFocus,s.querying,pageReady) {
+        if(pageReady && !s.querying && pendingGridFocus && visible.isNotEmpty()) {
             listState.scrollToItem(0)
             val target=visible.first().id
             repeat(12) {
@@ -123,7 +134,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
             Column {
                 Text("Catchup · Últimos 7 días",24,true)
-                Text("${s.total} programas · ${s.status}",11)
+                ArchiveStatus(s,pageReady)
             }
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 Button("Movistar: ${s.format}") { s.format=when(s.format){"Auto"->"HLS";"HLS"->"MPEG-TS";else->"Auto"} }
@@ -134,7 +145,16 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         LazyRow(modifier=Modifier.focusProperties { down=channelFocus },horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             items(days,key={it}) { d ->
                 val label=when(d) { today.toString()->"Hoy";today.minusDays(1).toString()->"Ayer";else->LocalDate.parse(d).format(DateTimeFormatter.ofPattern("EEE d",java.util.Locale.getDefault())) }
-                Button(label,if(d==days.first()) Modifier.focusRequester(initial) else Modifier,active=d==s.day,tint=dayAccent(d)) { s.day=d;s.savedOnly=false;detail=false }
+                Button(label,if(d==days.first()) Modifier.focusRequester(initial) else Modifier,active=d==s.day,tint=dayAccent(d)) {
+                    if(s.day!=d)ArchivePageTrace.begin(d)
+                    val changed=s.day!=d || s.savedOnly
+                    s.day=d;s.savedOnly=false;detail=false
+                    if(changed) {
+                        s.offset=0
+                        submittedFilters=filters()
+                        s.queryPage.run()
+                    }
+                }
             }
             item { Button(if(s.savedOnly) "★ Guardados ✓" else "★ Guardados",active=s.savedOnly,tint=archiveSavedColor) { s.savedOnly=!s.savedOnly;detail=false } }
         }
@@ -158,33 +178,25 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                 items(options.filter { it.second.contains(pickerQuery,true) }) { (id,name) -> Button(name) { if(picker=="Canales")s.channel=id else s.genre=id;picker="";detail=false } }
             }
         } else Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
-            if(!detail) {
-                if(visible.isEmpty()) Text(if(s.loading) "Cargando programas del día…" else if(s.savedOnly) "No hay programas guardados con estos filtros." else "No hay programas disponibles con estos filtros.",16)
-                LazyVerticalGrid(columns=GridCells.Adaptive(160.dp),state=listState,modifier=Modifier.fillMaxSize(),
+            if(!detail) Box(Modifier.fillMaxSize()) {
+                if(pageReady && visible.isEmpty()) Text(if(s.loading) "Cargando programas del día…" else if(s.savedOnly) "No hay programas guardados con estos filtros." else "No hay programas disponibles con estos filtros.",16)
+                LazyVerticalGrid(columns=GridCells.Adaptive(160.dp),state=listState,modifier=Modifier.fillMaxSize().graphicsLayer { alpha=if(pageReady)1f else 0f }.onPreviewKeyEvent {
+                        !pageReady && it.nativeKeyEvent.keyCode!=android.view.KeyEvent.KEYCODE_BACK
+                    }.drawWithContent { drawContent();if(pageReady)ArchivePageTrace.drawn(publishedDay) },
                     horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=8.dp)) {
-                    items(visible,key={it.id}) { e ->
-                        var focus by remember { mutableStateOf(false) }
+                    itemsIndexed(visible,key={index,_->gridKeys[index]}) { _,e ->
                         val requester=remember(e.id) { FocusRequester() }
                         DisposableEffect(e.id) { entryFocus[e.id]=requester;onDispose { entryFocus.remove(e.id) } }
-                        Column(Modifier.fillMaxWidth()
-                            .focusRequester(requester)
-                            .onFocusChanged { focus=it.isFocused;if(focus)s.selectedId=e.id }
-                            .border(2.dp,if(focus)Color.White else Color.Transparent,RoundedCornerShape(8.dp))
-                            .clickable { s.selectedId=e.id;detail=true }.padding(4.dp)) {
-                            Box(Modifier.fillMaxWidth().aspectRatio(4f/3f).clip(RoundedCornerShape(7.dp))) {
-                                ArchiveArtwork(e,Modifier.fillMaxSize())
-                                if(e.start<=now && e.end>now) Box(Modifier.padding(6.dp).background(Color(0xE6297051),RoundedCornerShape(4.dp)).padding(horizontal=6.dp)) { Text("EN EMISIÓN",10,true) }
-                                if(e.saved) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color(0xDD11151F),RoundedCornerShape(4.dp)).padding(horizontal=5.dp)) { Text("★",11,color=archiveSavedColor) }
-                                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(Color(android.graphics.Color.parseColor(ProgrammePresentation.color(e.genre)))))
-                            }
-                            Text(e.title,14,true)
-                            Text("${time(e.start)}–${time(e.end)} · ${e.channel}",11,color=dayAccent(e.day))
-                            Text(if(e.expires<=now) "Caducado" else e.subtitle.ifBlank { e.genre },11,color=Color(0xFFB9C1CD))
-                        }
+                        ArchiveGridCard(e,now,requester,
+                            onFocused={ s.selectedId=e.id },
+                            onOpen={ if(pageReady) { s.selectedId=e.id;detail=true } })
                     }
                 }
+                if(!pageReady) Box(Modifier.fillMaxSize().focusProperties { canFocus=false }.clickable { },contentAlignment=Alignment.TopStart) {
+                    Text("Cargando programas…",16,color=Color(0xFFCFD7E4))
+                }
             }
-            if(detail) selected?.let { e ->
+            if(detail) (visible.firstOrNull { it.id==s.selectedId } ?: visible.firstOrNull())?.let { e ->
                 Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
                     ArchiveArtwork(e,Modifier.weight(.8f).fillMaxHeight())
                 Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -208,14 +220,64 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
                 }
             }
         }
-        if(!detail && picker.isEmpty() && s.total>60) Row(horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-            if(s.offset>0)Button("← Anteriores") { s.offset=(s.offset-60).coerceAtLeast(0);s.queryPage.run();pendingGridFocus=true }
+        if(!detail && picker.isEmpty() && s.total>60) Row(modifier=Modifier.graphicsLayer { alpha=if(pageReady)1f else 0f },horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+            if(s.offset>0)Button("← Anteriores") { if(pageReady) { s.offset=(s.offset-60).coerceAtLeast(0);s.queryPage.run();pendingGridFocus=true } }
             Text("${s.offset+1}–${(s.offset+visible.size).coerceAtMost(s.total)} de ${s.total}",12)
-            if(s.offset+60<s.total)Button("Siguientes →") { s.offset+=60;s.queryPage.run();pendingGridFocus=true }
+            if(s.offset+60<s.total)Button("Siguientes →") { if(pageReady) { s.offset+=60;s.queryPage.run();pendingGridFocus=true } }
         }
         Text("Días y filtros arriba · OK: ficha · Atrás: volver",11)
     }
 }
+
+@Composable private fun ArchiveStatus(s:U7dCatalogState,pageReady:Boolean) {
+    Text(if(pageReady) "${s.total} programas · ${s.status}" else "Preparando la selección…",11)
+}
+
+@Immutable private data class ArchiveCardVisual(
+    val id:String,val title:String,val channel:String,val genre:String,val day:String,
+    val start:Long,val end:Long,val saved:Boolean,val subtitle:String,val schedule:String,
+    val artworkKey:String,val hasProgramArtwork:Boolean,val live:Boolean,val expired:Boolean)
+
+@Composable private fun ArchiveGridCard(e:U7dCatalogEntry, now:Long, requester:FocusRequester,
+    onFocused:()->Unit, onOpen:()->Unit) {
+    // Fresh actions are retained without making them part of visual equality.
+    val latestEntry=rememberUpdatedState(e)
+    val latestFocused=rememberUpdatedState(onFocused)
+    val latestOpen=rememberUpdatedState(onOpen)
+    val bind=remember { java.util.function.Consumer<ImageView> { latestEntry.value.artwork.accept(it) } }
+    val focused=remember { { latestFocused.value.invoke() } }
+    val open=remember { { latestOpen.value.invoke() } }
+    val visual=ArchiveCardVisual(e.id,e.title,e.channel,e.genre,e.day,e.start,e.end,e.saved,
+        e.subtitle,e.schedule,e.artworkKey,e.hasProgramArtwork,e.start<=now && e.end>now,e.expires<=now)
+    ArchiveCardBody(visual,requester,bind,focused,open)
+}
+
+/** Focus invalidates this card only, not the whole catalogue or its neighbours. */
+@Composable private fun ArchiveCardBody(e:ArchiveCardVisual, requester:FocusRequester, bind:java.util.function.Consumer<ImageView>,
+    onFocused:()->Unit, onOpen:()->Unit) {
+    android.os.Trace.beginSection("Archive.cardCompose")
+    val schedule=remember(e.schedule,e.start,e.end,e.channel) { e.schedule.ifEmpty { "${time(e.start)}–${time(e.end)} · ${e.channel}" } }
+    val accent=remember(e.day) { dayAccent(e.day) }
+    val genreColor=remember(e.genre) { Color(android.graphics.Color.parseColor(ProgrammePresentation.color(e.genre))) }
+    var focus by remember(e.id) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()
+        .focusRequester(requester)
+        .onFocusChanged { focus=it.isFocused;if(focus)onFocused() }
+        .border(2.dp,if(focus)Color.White else Color.Transparent,RoundedCornerShape(8.dp))
+        .clickable(onClick=onOpen).padding(4.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(4f/3f).clip(RoundedCornerShape(7.dp))) {
+            ArchiveArtworkView(e.id,e.artworkKey,e.channel,e.hasProgramArtwork,bind,Modifier.fillMaxSize())
+            if(e.live) Box(Modifier.padding(6.dp).background(Color(0xE6297051),RoundedCornerShape(4.dp)).padding(horizontal=6.dp)) { Text("EN EMISIÓN",10,true) }
+            if(e.saved) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color(0xDD11151F),RoundedCornerShape(4.dp)).padding(horizontal=5.dp)) { Text("★",11,color=archiveSavedColor) }
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(genreColor))
+        }
+        Text(e.title,14,true)
+        Text(schedule,11,color=accent)
+        Text(if(e.expired) "Caducado" else e.subtitle.ifBlank { e.genre },11,color=Color(0xFFB9C1CD))
+    }
+    android.os.Trace.endSection()
+}
+
 @Composable private fun Text(text:String,size:Int,bold:Boolean=false,max:Int=1,color:Color=Color.White) {
     BasicText(text,Modifier.padding(vertical=3.dp),style=TextStyle(color,size.sp,if(bold)FontWeight.Bold else FontWeight.Normal),maxLines=max,overflow=TextOverflow.Ellipsis)
 }
@@ -252,14 +314,41 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     }
 }
 
-/** Keep source aspect ratio. A missing programme image is a compact channel identity, not a poster. */
+/** A recycled view must cancel its former request before binding another programme. */
+private class ArchiveImageView(context:android.content.Context):ImageView(context) {
+    var boundId:String?=null
+    var boundArtwork:String?=null
+    fun clearBinding() {
+        com.bumptech.glide.Glide.with(this).clear(this)
+        setImageDrawable(null)
+        tag=null
+        boundId=null
+        boundArtwork=null
+    }
+}
+
+/** Keep aspect ratio and reuse image views when lazy-grid items leave the viewport. */
 @Composable private fun ArchiveArtwork(e:U7dCatalogEntry,modifier:Modifier=Modifier) {
+    ArchiveArtworkView(e.id,e.artworkKey,e.channel,e.hasProgramArtwork,e.artwork,modifier)
+}
+
+@Composable private fun ArchiveArtworkView(id:String,artworkKey:String,channel:String,hasProgramArtwork:Boolean,bind:java.util.function.Consumer<ImageView>,modifier:Modifier=Modifier) {
     Box(modifier.background(Color(0xFF111C29)),contentAlignment=Alignment.Center) {
-        key(e.id,e.artworkKey) {
-            AndroidView(factory={c->ImageView(c).apply { e.artwork.accept(this) }},
-                modifier=if(e.hasProgramArtwork) Modifier.fillMaxSize() else Modifier.size(46.dp).padding(3.dp))
-        }
-        if(!e.hasProgramArtwork) BasicText(e.channel,Modifier.align(Alignment.BottomCenter).padding(5.dp),
+        AndroidView(factory={c->
+            android.os.Trace.beginSection("Archive.imageCreate")
+            try { ArchiveImageView(c) } finally { android.os.Trace.endSection() }
+        }, onReset={it.clearBinding()}, onRelease={it.clearBinding()}, update={view->
+            if(view.boundId!=id || view.boundArtwork!=artworkKey) {
+                android.os.Trace.beginSection("Archive.imageBind")
+                try {
+                    view.clearBinding()
+                    view.boundId=id
+                    view.boundArtwork=artworkKey
+                    bind.accept(view)
+                } finally { android.os.Trace.endSection() }
+            }
+        }, modifier=if(hasProgramArtwork) Modifier.fillMaxSize() else Modifier.size(46.dp).padding(3.dp))
+        if(!hasProgramArtwork) BasicText(channel,Modifier.align(Alignment.BottomCenter).padding(5.dp),
             style=TextStyle(Color(0xFFADB9C9),10.sp),maxLines=1,overflow=TextOverflow.Ellipsis)
     }
 }

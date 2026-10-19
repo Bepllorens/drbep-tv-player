@@ -2526,6 +2526,7 @@ final class PlayerController {
     }
 
     void playChannel(PlaybackRequest request, boolean autoPlay, StreamInfo streamInfo, long resumePositionMs) {
+        BackgroundWorkBudget.startup();
         Log.d(TAG, "playChannel request=" + describeRequest(request)
                 + " autoPlay=" + autoPlay
                 + " initialStreamInfo=" + describeStreamInfo(streamInfo)

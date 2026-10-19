@@ -8,6 +8,7 @@ public final class U7dCatalogEntry {
     public boolean hasProgramArtwork;
     public String artworkKey="";
     public String subtitle="";
+    public String schedule="";
     public final java.util.function.Consumer<android.widget.ImageView> artwork;
     public final Runnable play,live,save;
     public U7dCatalogEntry(String id,String channelId,String channel,String title,String genre,String description,

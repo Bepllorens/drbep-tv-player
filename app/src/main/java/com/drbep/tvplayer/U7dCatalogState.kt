@@ -3,6 +3,8 @@ package com.drbep.tvplayer
 import androidx.compose.runtime.*
 
 class U7dCatalogState {
+    var publishedDay = ""
+    var presentationKey by mutableStateOf("")
     var entries by mutableStateOf<List<U7dCatalogEntry>>(emptyList())
     var pageIds by mutableStateOf<Set<String>>(emptySet())
     var querying by mutableStateOf(false)

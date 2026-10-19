@@ -71,8 +71,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 750
-        versionName "2.0.750-beta-pes-reader"
+        versionCode 771
+        versionName "2.0.771-beta-catchup-genres"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {

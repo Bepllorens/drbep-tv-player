@@ -460,10 +460,14 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        if ((!discovery.restoreLiveFocus || section != "En directo") && (section != "Inicio" || discovery.homeFocusedChannel.isBlank())) runCatching { initialFocus.requestFocus() }
+        if (!(section == "Inicio" && !touchLayout && discovery.startupPreviewFocusPending && model.currentLive != null) && (!discovery.restoreLiveFocus || section != "En directo") && (section != "Inicio" || discovery.homeFocusedChannel.isBlank())) runCatching { initialFocus.requestFocus() }
     }
     val openSection: (String) -> Unit = { section = it; discovery.section = it; discovery.restoreLiveFocus = false; discovery.refreshHome?.run() }
-    Box(Modifier.fillMaxSize().focusRestorer().focusGroup().tvPanelBackHandler(Runnable { (discovery.cancelLiveOrder ?: model.onBack)?.run() })
+    Box(Modifier.fillMaxSize().onPreviewKeyEvent {
+        // Do not steal focus when a late startup channel arrives after navigation.
+        if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) discovery.startupPreviewFocusPending = false
+        false
+    }.focusRestorer().focusGroup().tvPanelBackHandler(Runnable { (discovery.cancelLiveOrder ?: model.onBack)?.run() })
         .background(if (section == "Inicio" || model.livePlaybackError) OfflineTvTheme.Colors.backdrop else Color.Transparent)
         .background(CachedMenuFade.horizontal(0f to Color(0xFA09121C), 0.38f to Color(0xE009121C), 0.75f to Color(0x7509121C), 1f to Color.Transparent))) {
         Box(Modifier.fillMaxSize().background(CachedMenuFade.vertical(0f to Color(0x1809121C), 0.45f to Color.Transparent, 1f to Color(0xF009121C))))
@@ -620,6 +624,16 @@ private fun DiscoveryLibrary(model: StartupHomeHubUiModel, artwork: StartupHomeH
 private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHubArtworkBinder?, browse: () -> Unit) {
     val discovery = model.discovery ?: return
     val live = model.currentLive
+    val previewFocus = remember { FocusRequester() }
+    val television = (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    LaunchedEffect(live != null) {
+        if (television && live != null && (discovery.startupPreviewFocusPending || discovery.homeFocusedChannel == "@preview")) {
+            withFrameNanos { }; withFrameNanos { }
+            if (discovery.startupPreviewFocusPending || discovery.homeFocusedChannel == "@preview") {
+                runCatching { previewFocus.requestFocus() }
+            }
+        }
+    }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val requesters = remember { mutableMapOf<String, FocusRequester>() }
     val groupFocus = remember { FocusRequester() }
@@ -667,8 +681,9 @@ private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHu
                 if(live!=null) {
                     var focused by remember { mutableStateOf(false) }
                     Box(Modifier.fillMaxHeight().aspectRatio(16f/9f,true)
+                        .focusRequester(previewFocus)
                         .border(2.dp,if(focused) Color.White else Color.Transparent,RoundedCornerShape(6.dp))
-                        .onFocusChanged { focused=it.isFocused }
+                        .onFocusChanged { focused=it.isFocused; if(it.isFocused) { discovery.startupPreviewFocusPending=false; discovery.homeFocusedChannel="@preview" } }
                         .tvButtonSemantics(true,"Ver ${live.title} a pantalla completa")
                         .clickable { live.onClick?.run() }) {
                         DiscoveryLivePreview(live,artwork,Modifier.fillMaxSize())

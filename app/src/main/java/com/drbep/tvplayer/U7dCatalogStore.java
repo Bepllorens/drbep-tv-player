@@ -15,8 +15,11 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
     // SQLiteOpenHelper uses this monitor to open/read the database. Never hold it
     // across a batch write: readers must be able to acquire WAL connections.
     private final Object writeLock=new Object();
+    private final Object savedLock=new Object();
+    private volatile long savedRevision;
+    long savedRevision() { return savedRevision; }
     U7dCatalogStore(Context context) { this(context,"u7d-index.db",context.getDatabasePath("u7d-catalog.db")); }
-    U7dCatalogStore(Context context,String name,java.io.File legacy) { super(context.getApplicationContext(),name,null,2);legacyFile=legacy;setWriteAheadLoggingEnabled(true); }
+    U7dCatalogStore(Context context,String name,java.io.File legacy) { super(context.getApplicationContext(),name,null,4);legacyFile=legacy;setWriteAheadLoggingEnabled(true); }
 
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE catalog(scope TEXT, channel TEXT, updated INTEGER, payload TEXT, PRIMARY KEY(scope,channel))");
@@ -43,6 +46,7 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
     }
     @Override public void onUpgrade(SQLiteDatabase db, int old, int next) {
         createPrograms(db);
+        if(old>=2)return; // v3/v4 only add query indexes; do not replay legacy metadata.
         // SQLiteOpenHelper wraps the migration in a transaction. Keep legacy rows for rollback.
         try (Cursor c=db.rawQuery("SELECT scope,payload FROM catalog",null)) {
             while(c.moveToNext()) { try { JSONArray a=new JSONArray(c.getString(1));
@@ -57,7 +61,11 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
     private void createPrograms(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS programs(scope TEXT NOT NULL,id TEXT NOT NULL,channel TEXT NOT NULL,day TEXT NOT NULL,start INTEGER NOT NULL,end INTEGER NOT NULL,genre TEXT NOT NULL,search TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(scope,id))");
         db.execSQL("CREATE INDEX IF NOT EXISTS programs_day ON programs(scope,day,start DESC,id)");
+        // Count eligible rows without fetching thousands of full programme payloads.
+        db.execSQL("CREATE INDEX IF NOT EXISTS programs_page ON programs(scope,day,start DESC,id,channel,end,genre)");
         db.execSQL("CREATE INDEX IF NOT EXISTS programs_channel ON programs(scope,channel,day,start DESC)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS programs_strip ON programs(scope,channel,start DESC,id)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS programs_genres ON programs(scope,genre)");
         db.execSQL("CREATE INDEX IF NOT EXISTS programs_time ON programs(scope,start)");
         db.execSQL("CREATE INDEX IF NOT EXISTS programs_genre ON programs(scope,day,genre,start DESC)");
     }
@@ -92,9 +100,11 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         long stage=System.nanoTime();
         SQLiteDatabase db=getReadableDatabase();String[] values=args.toArray(new String[0]);
         BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_OPEN,op,BlackBox.elapsed(stage),0,0);
+        ArchivePageTrace.cost("open",BlackBox.elapsed(stage));
         stage=System.nanoTime();
         try(Cursor c=db.rawQuery("SELECT count(*) FROM programs p WHERE "+where,values)){if(c.moveToFirst())page.total=c.getInt(0);}
         BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_COUNT,op,BlackBox.elapsed(stage),page.total,0);
+        ArchivePageTrace.cost("count",BlackBox.elapsed(stage));
         stage=System.nanoTime();long decodeNanos=0;
         int size=Math.max(1,Math.min(240,limit));page.offset=Math.min(Math.max(0,offset),Math.max(0,((page.total-1)/size)*size));
         try(Cursor c=db.rawQuery("SELECT p.payload FROM programs p WHERE "+where+" ORDER BY p.start DESC,p.id LIMIT "+size+" OFFSET "+page.offset,values)){
@@ -105,7 +115,9 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
             }
         }
         BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_FETCH,op,Math.max(0,(System.nanoTime()-stage-decodeNanos)/1000000),page.programs.size(),0);
+        ArchivePageTrace.cost("fetch",Math.max(0,(System.nanoTime()-stage-decodeNanos)/1000000));
         BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_DECODE,op,decodeNanos/1000000,page.programs.size(),0);
+        ArchivePageTrace.cost("decode",decodeNanos/1000000);
         return page;
     }
     long nextChange(String scope,long now) {
@@ -113,8 +125,20 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
             if(c.moveToFirst()&&!c.isNull(0))return c.getLong(0);
         }return Long.MAX_VALUE;
     }
+    private final ArchiveGenreCache genreCache=new ArchiveGenreCache();
+    List<String> cachedGenres(String scope,boolean allowExpired) {
+        return allowExpired?genreCache.peek(scope):genreCache.get(scope,android.os.SystemClock.elapsedRealtime());
+    }
     List<String> genres(String scope) {
-        List<String> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT DISTINCT genre FROM programs WHERE scope=? AND genre<>'' ORDER BY genre",new String[]{scope})){while(c.moveToNext())out.add(c.getString(0));}return out;
+        long now=android.os.SystemClock.elapsedRealtime();
+        List<String> cached=genreCache.get(scope,now);
+        if(cached!=null)return cached;
+        List<String> out=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT DISTINCT genre FROM programs WHERE scope=? AND genre<>'' ORDER BY genre",new String[]{scope})) {
+            while(c.moveToNext())out.add(c.getString(0));
+        }
+        genreCache.put(scope,now,out);
+        return out;
     }
     EpgRepository.EpgProgram find(String scope,String id) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM programs WHERE scope=? AND id=?",new String[]{scope,id})){
@@ -137,6 +161,19 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         try (Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM programs WHERE scope=? AND channel=? ORDER BY start",new String[]{scope,channel})) {
             while(c.moveToNext())out.add(decode(new JSONObject(c.getString(0))));
         } catch(org.json.JSONException ignored) { }
+        return out;
+    }
+    /** Read only the days needed by the visible archive window, using programs_channel. */
+    List<EpgRepository.EpgProgram> readDays(String scope,String channel,java.util.Set<String> days) {
+        List<EpgRepository.EpgProgram> out=new ArrayList<>();
+        if(days.isEmpty())return out;
+        List<String> args=new ArrayList<>();args.add(scope);args.add(channel);
+        StringBuilder sql=new StringBuilder("SELECT payload FROM programs WHERE scope=? AND channel=? AND day IN (");
+        for(String day:days){if(args.size()>2)sql.append(',');sql.append('?');args.add(day);}
+        sql.append(") ORDER BY start");
+        try(Cursor c=getReadableDatabase().rawQuery(sql.toString(),args.toArray(new String[0]))) {
+            while(c.moveToNext())out.add(decode(new JSONObject(c.getString(0))));
+        }catch(org.json.JSONException ignored){}
         return out;
     }
     List<EpgRepository.EpgProgram> recent(String scope,String channel,long from,long now,int limit) {
@@ -186,16 +223,26 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
     boolean saved(String scope,String id) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM saved WHERE scope=? AND id=?",new String[]{scope,id})) { return c.moveToFirst(); }
     }
-    boolean toggle(String scope,EpgRepository.EpgProgram p,long expires) throws Exception { synchronized(writeLock) {
-        if(saved(scope,id(p))) { getWritableDatabase().delete("saved","scope=? AND id=?",new String[]{scope,id(p)}); return false; }
-        putProgram(getWritableDatabase(),scope,p);
-        getWritableDatabase().execSQL("INSERT INTO saved VALUES(?,?,?,?,?)",new Object[]{scope,id(p),p.channelId,expires,encode(p).toString()}); return true;
-    } }
-    List<EpgRepository.EpgProgram> savedPrograms(String scope) {
+    void setSaved(String scope,EpgRepository.EpgProgram p,long expires,boolean desired) throws Exception {
+        synchronized(savedLock) { synchronized(writeLock) {
+            if(saved(scope,id(p))==desired)return;
+            SQLiteDatabase db=getWritableDatabase();
+            db.beginTransactionNonExclusive();
+            try {
+                if(desired) {
+                    putProgram(db,scope,p);
+                    db.execSQL("INSERT OR REPLACE INTO saved VALUES(?,?,?,?,?)",new Object[]{scope,id(p),p.channelId,expires,encode(p).toString()});
+                } else db.delete("saved","scope=? AND id=?",new String[]{scope,id(p)});
+                db.setTransactionSuccessful();
+            } finally { db.endTransaction(); }
+            savedRevision++;
+        } }
+    }
+    List<EpgRepository.EpgProgram> savedPrograms(String scope) { synchronized(savedLock) {
         List<EpgRepository.EpgProgram> out=new ArrayList<>();
         try(Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM saved WHERE scope=? ORDER BY expires DESC LIMIT 500",new String[]{scope})) {
             while(c.moveToNext()) out.add(decode(new JSONObject(c.getString(0))));
         } catch(Exception ignored) { }
-        return out;
-    }
+        return new ArchiveSavedSnapshot<>(savedRevision,out);
+    } }
 }

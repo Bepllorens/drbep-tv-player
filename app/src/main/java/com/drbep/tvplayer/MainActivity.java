@@ -758,6 +758,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        BackgroundWorkBudget.startup();
         BlackBox.init(getApplicationContext());
         BlackBox.event(BlackBoxStore.Event.ACTIVITY,0,0,0,0);
         TimelineProgrammeDetails.initialize(getCacheDir());
@@ -1843,6 +1844,7 @@ public class MainActivity extends FragmentActivity {
                 overlaySurfaceState.setVisible(OfflineOverlayState.Surface.TOUCH_CONTROLS, visible);
                 if (visible) {
                     overlaySurfaceState.focusSurface(OfflineOverlayState.Surface.TOUCH_CONTROLS);
+                    scheduleArchivePresentation();
                 }
             }
 
@@ -5784,6 +5786,8 @@ public class MainActivity extends FragmentActivity {
     private final java.util.concurrent.ExecutorService archiveExecutor = java.util.concurrent.Executors.newFixedThreadPool(2);
     private final java.util.concurrent.ExecutorService archiveStorageExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final java.util.concurrent.ExecutorService archivePresentationExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private final java.util.concurrent.ExecutorService archiveGenreExecutor=java.util.concurrent.Executors.newSingleThreadExecutor();
+    private boolean archiveGenresLoading;
     private final java.util.Set<String> archiveErrors = new java.util.HashSet<>();
     private final U7dCatalogState archiveState = new U7dCatalogState();
     private final java.util.Set<String> prefetchedArchiveArtwork=new java.util.HashSet<>();
@@ -5796,14 +5800,21 @@ public class MainActivity extends FragmentActivity {
     private Dialog archiveDialog;
     private volatile int archiveGeneration;
     private volatile int archivePublishRevision;
+    private volatile int archivePageRequest;
+    private List<EpgRepository.EpgProgram> archiveKnownSaved; // UI-thread snapshot, scoped to the active account.
     private void queryArchivePage() {
         if(archiveDialog==null)return;
         final String scope=archiveScope;final int generation=archiveGeneration;
+        ArchivePageTrace.mark(ArchivePageTrace.capture(archiveState.getDay()),0,"requested");
         // Invalidate queued presentation immediately; never publish an old filter over a new one.
-        archivePublishRevision++;archiveState.setQuerying(true);
+        archivePageRequest++;archivePublishRevision++;archiveState.setQuerying(true);
+        if(archiveKnownSaved!=null) {
+            publishArchiveEntries(archiveKnownSaved,true);
+            return;
+        }
         archivePresentationExecutor.execute(()->{
             List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
-            postUiIfAlive(()->{if(generation==archiveGeneration && archiveDialog!=null)publishArchiveEntries(saved);});
+            postUiIfAlive(()->{if(generation==archiveGeneration && archiveDialog!=null)publishArchiveEntries(saved,true);});
         });
     }
     private int archiveLastPublishedRevision;
@@ -5840,7 +5851,8 @@ public class MainActivity extends FragmentActivity {
         if(archiveAvailability==null)archiveAvailability=new ArchiveAvailability(getSharedPreferences("archive_availability",MODE_PRIVATE));
         String scope = catalogSnapshotStore.getUserScope();
         if (!scope.equals(archiveScope)) {
-            archiveScope=scope;
+            archiveScope=scope;archiveKnownSaved=null;
+            archiveState.setGenres(java.util.Collections.emptyList());
             archiveState.setFormat(prefs.getString("u7d_transport_"+android.net.Uri.encode(scope),"Auto"));
             archiveGeneration++; pendingMovistarGuideChannels.clear(); archiveWindowKey="";archiveWindowLoading=false;archivePrograms.clear();archiveLoading.clear();archiveErrors.clear();
             archiveState.setEntries(java.util.Collections.emptyList()); archiveState.setQuery("");
@@ -5927,7 +5939,7 @@ public class MainActivity extends FragmentActivity {
             for(ChannelItem c:snapshot) {
                 if(generation!=archiveGeneration || windowRevision!=archiveWindowRevision || Thread.currentThread().isInterrupted())return;
                 // Movistar has its own compact daily cache; avoid decoding the legacy full-week JSON.
-                cached.put(c.id,ArchiveWindow.filter(archiveStore.read(scope,c.id),windowDays));
+                cached.put(c.id,archiveStore.readDays(scope,c.id,windowDays));
                 if(cached.size()>=24) {
                     java.util.Map<String,List<EpgRepository.EpgProgram>> batch=new java.util.LinkedHashMap<>(cached);cached.clear();
                     postUiIfAlive(()->{if(generation==archiveGeneration && windowRevision==archiveWindowRevision){
@@ -6076,7 +6088,45 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private final DeferredArchiveRefresh archiveRefresh = new DeferredArchiveRefresh();
+    private boolean archiveRefreshPosted;
+    private final Runnable archivePresentationDelivery = () -> {
+        archiveRefreshPosted = false;
+        archiveRefresh.drain(isArchivePresentationVisible());
+    };
+    private boolean isArchivePresentationVisible() {
+        return (archiveDialog != null && archiveDialog.isShowing())
+                || (touchControlsBar != null && touchControlsBar.getVisibility() == View.VISIBLE);
+    }
+    private void scheduleArchivePresentation() {
+        boolean visible = isArchivePresentationVisible();
+        if (!visible || archiveRefreshPosted || !archiveRefresh.pending()) return;
+        archiveRefreshPosted = true;
+        uiHandler.postDelayed(archivePresentationDelivery, 250);
+    }
     private void publishArchiveEntries(List<EpgRepository.EpgProgram> saved) {
+        publishArchiveEntries(saved, false);
+    }
+    private void publishArchiveEntries(List<EpgRepository.EpgProgram> saved, boolean immediate) {
+        final int generation = archiveGeneration;
+        // A guide/availability callback may carry saved state read before a click.
+        // Retain the newest accepted snapshot without another database round trip.
+        if (!ArchiveSavedSnapshot.current(saved, archiveStore.savedRevision())) {
+            if (!ArchiveSavedSnapshot.current(archiveKnownSaved, archiveStore.savedRevision())) return;
+            saved = archiveKnownSaved;
+        }
+        final List<EpgRepository.EpgProgram> snapshot = saved;
+        archiveKnownSaved=snapshot;
+        archiveRefresh.request(() -> { if (generation == archiveGeneration) publishArchiveEntriesNow(snapshot); });
+        // A requested page should not wait behind the background coalescing delay.
+        // Replace pending work and cancel its timer so it cannot drain a later batch early.
+        if (immediate) {
+            uiHandler.removeCallbacks(archivePresentationDelivery);
+            archiveRefreshPosted = false;
+            archiveRefresh.drain(isArchivePresentationVisible());
+        } else scheduleArchivePresentation();
+    }
+    private void publishArchiveEntriesNow(List<EpgRepository.EpgProgram> saved) {
         java.util.Set<String> ids=new java.util.HashSet<>();for(EpgRepository.EpgProgram p:saved)ids.add(U7dCatalogStore.id(p));
         List<ChannelItem> available=new ArrayList<>(archiveEligible);
         java.util.Set<String> availableIds=new java.util.HashSet<>();for(ChannelItem c:available)availableIds.add(c.id);
@@ -6085,21 +6135,28 @@ public class MainActivity extends FragmentActivity {
             if(c!=null && supportsU7d(c) && availableIds.add(c.id))available.add(c);
         }
         java.util.Map<String,List<EpgRepository.EpgProgram>> snapshot=new java.util.LinkedHashMap<>(archivePrograms);
-        int generation=archiveGeneration;int revision=++archivePublishRevision;
+        int generation=archiveGeneration;int revision=++archivePublishRevision;final int pageRequest=archivePageRequest;
         final String availabilityScope=archiveScope;
         final String queryDay=archiveState.getDay(),queryChannel=archiveState.getChannel(),queryGenre=archiveState.getGenre(),queryText=archiveState.getQuery();
+        final int pageTrace=ArchivePageTrace.capture(queryDay);
+        ArchivePageTrace.mark(pageTrace,revision,"scheduled");
+        final boolean queryCatalog=archiveDialog!=null && archiveDialog.isShowing();
+        if(queryCatalog)refreshArchiveGenres(availabilityScope,generation);
         final boolean querySaved=archiveState.getSavedOnly();final int queryOffset=archiveState.getOffset();
         ChannelItem playing=currentPlaybackU7dChannel!=null?currentPlaybackU7dChannel:getCurrentPlaybackChannelItem();
         final String stripChannel=playing==null?"":playing.id;
         if(archiveAvailability!=null)for(ChannelItem c:available)if(!isOrangeChannel(c))archiveAvailability.schedule(availabilityScope,c,()->postUiIfAlive(()->{if(generation==archiveGeneration)publishArchiveEntries(saved);}));
         archivePresentationExecutor.execute(()->{
         if(generation!=archiveGeneration || revision!=archivePublishRevision)return;
+        ArchivePageTrace.mark(pageTrace,revision,"queryStart");
         long queryStarted=android.os.SystemClock.elapsedRealtime();
         List<String> allowedIds=new ArrayList<>();java.util.Map<String,String> channelOptions=new java.util.LinkedHashMap<>();
         for(ChannelItem c:available)if(querySaved || archiveAvailability==null || !archiveAvailability.unavailable(availabilityScope,c)){
             allowedIds.add(c.id);channelOptions.put(c.id,displayName(c));
         }
-        U7dCatalogStore.Page page=archiveStore.page(availabilityScope,allowedIds,queryDay,queryChannel,queryGenre,queryText,querySaved,queryOffset,60,System.currentTimeMillis());
+        U7dCatalogStore.Page page=queryCatalog ? archiveStore.page(availabilityScope,allowedIds,queryDay,queryChannel,queryGenre,queryText,querySaved,queryOffset,60,System.currentTimeMillis()) : new U7dCatalogStore.Page();
+        ArchivePageTrace.mark(pageTrace,revision,"pageReady");
+        if(generation!=archiveGeneration || pageRequest!=archivePageRequest)return;
         java.util.Set<String> pageIds=new java.util.LinkedHashSet<>();
         java.util.Map<String,List<EpgRepository.EpgProgram>> presented=new java.util.LinkedHashMap<>();
         for(EpgRepository.EpgProgram p:page.programs){pageIds.add(U7dCatalogStore.id(p));presented.computeIfAbsent(p.channelId,k->new ArrayList<>()).add(p);}
@@ -6108,51 +6165,112 @@ public class MainActivity extends FragmentActivity {
             long now=System.currentTimeMillis();
             presented.computeIfAbsent(stripChannel,k->new ArrayList<>()).addAll(archiveStore.recent(availabilityScope,stripChannel,now-2L*86400000,now,40));
         }
-        List<String> genreOptions=archiveStore.genres(availabilityScope);
+        ArchivePageTrace.mark(pageTrace,revision,"stripReady");
+        if(generation!=archiveGeneration || pageRequest!=archivePageRequest)return;
+        // Genre refresh runs independently; never hold a ready page for its scan.
+        ArchivePageTrace.mark(pageTrace,revision,"genresReady");
+        if(generation!=archiveGeneration || pageRequest!=archivePageRequest)return;
         long nextChange=archiveStore.nextChange(availabilityScope,System.currentTimeMillis());
+        final long dataReady=android.os.SystemClock.elapsedRealtime();
+        ArchivePageTrace.mark(pageTrace,revision,"dataReady");
         List<U7dCatalogEntry> entries=new ArrayList<>();
         java.util.Set<String> emitted=new java.util.HashSet<>();
         SimpleDateFormat dayFormat=new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT);
-        for(ChannelItem c:available)for(EpgRepository.EpgProgram p:presented.getOrDefault(c.id,java.util.Collections.emptyList())) {
-            if(generation!=archiveGeneration || Thread.currentThread().isInterrupted())return;
+        SimpleDateFormat cardTimeFormat=new SimpleDateFormat("HH:mm",Locale.getDefault());
+        final long modelNow=System.currentTimeMillis();
+        for(ChannelItem c:available) {
+        List<EpgRepository.EpgProgram> channelPrograms=presented.get(c.id);
+        if(channelPrograms==null || channelPrograms.isEmpty())continue;
+        final String channelDisplay=displayName(c);
+        final String repairedDisplay=ArchiveText.repair(channelDisplay);
+        final boolean unavailable=archiveAvailability!=null && archiveAvailability.unavailable(availabilityScope,c);
+        final boolean officialChannel=U7dChannelPolicy.isMovistarChannel(c);
+        final String provider=archiveAvailability==null?c.tvgId:archiveAvailability.provider(availabilityScope,c);
+        final String officialChannelName=archiveAvailability==null?"":archiveAvailability.officialName(availabilityScope,c,"");
+        for(EpgRepository.EpgProgram p:channelPrograms) {
+            if(generation!=archiveGeneration || pageRequest!=archivePageRequest || Thread.currentThread().isInterrupted())return;
             long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);
             if(start<=0||end<=start)continue;
             String id=U7dCatalogStore.id(p);if(!emitted.add(id))continue;
-            if(archiveAvailability!=null && archiveAvailability.unavailable(availabilityScope,c) && !ids.contains(id))continue;
-            long now=System.currentTimeMillis();
-            if(start>now || (end+7L*86400000<now && !ids.contains(id)))continue;
+            if(unavailable && !ids.contains(id))continue;
+            if(start>modelNow || (end+7L*86400000<modelNow && !ids.contains(id)))continue;
             String day=dayFormat.format(new Date(start));
-            String fanart=MovistarGuideRepository.officialImage(p.icon)?p.icon:archiveFanart==null?null:archiveFanart.find(ArchiveText.repair(displayName(c)),p.tvgId,start,p.title);
+            String fanart=MovistarGuideRepository.officialImage(p.icon)?p.icon:archiveFanart==null?null:archiveFanart.find(repairedDisplay,p.tvgId,start,p.title);
             String[] presentation=ArchiveText.sports(p.title,p.category);
-            U7dCatalogEntry entry=new U7dCatalogEntry(id,c.id,ArchiveText.channel(displayName(c),archiveAvailability==null?p.channelName:archiveAvailability.officialName(availabilityScope,c,p.channelName)),presentation[0],p.category,p.description,day,start,end,ids.contains(id),
+            U7dCatalogEntry entry=new U7dCatalogEntry(id,c.id,ArchiveText.channel(channelDisplay,officialChannelName.isEmpty()?p.channelName:officialChannelName),presentation[0],p.category,p.description,day,start,end,ids.contains(id),
                 image->bindMovistarArchiveArtwork(image,c,p,fanart),
                 ()->runArchiveAction(c,()->playMovistarIsmU7dProgram(c,p)),
                 ()->runArchiveAction(c,()->tuneChannelById(c.id)),
-                ()->toggleArchiveSaved(p,end+7L*86400000));
-            entry.programmeMetadata=programmeMetadata(c,p);
+                ()->setArchiveSaved(p,end+7L*86400000,!ids.contains(id)));
+            entry.programmeMetadata=new ProgrammeMetadataUiModel(p,officialChannel,
+                provider==null||provider.isEmpty()?(p.tvgId==null?"":p.tvgId):provider);
+            entry.schedule=cardTimeFormat.format(new Date(start))+"–"+cardTimeFormat.format(new Date(end))+" · "+entry.channel;
             entry.hasProgramArtwork=fanart!=null || (!ProgramArtworkResolver.resolve(p.icon, "").isEmpty() && !p.icon.equals(c.logoUrl));
-            String official=movistarArtwork==null||archiveAvailability==null?"":movistarArtwork.cached(archiveAvailability.provider(archiveScope,c),start,p.title);
+            String official=movistarArtwork==null||archiveAvailability==null?"":movistarArtwork.cached(provider,start,p.title);
             entry.artworkKey=!official.isEmpty()?official:fanart!=null?fanart:ProgramArtworkResolver.resolve(p,c);
             if(!official.isEmpty())entry.hasProgramArtwork=true;
             entry.subtitle=presentation[1];
             entries.add(entry);
         }
+        }
+        final long modelsReady=android.os.SystemClock.elapsedRealtime();
+        ArchivePageTrace.mark(pageTrace,revision,"modelsReady");
         postUiIfAlive(()->{
-            if(generation==archiveGeneration && revision>archiveLastPublishedRevision
+            if(generation==archiveGeneration && ArchiveSavedSnapshot.current(saved,archiveStore.savedRevision()) && revision>archiveLastPublishedRevision
                     && queryDay.equals(archiveState.getDay()) && queryChannel.equals(archiveState.getChannel())
                     && queryGenre.equals(archiveState.getGenre()) && queryText.equals(archiveState.getQuery())
-                    && querySaved==archiveState.getSavedOnly() && queryOffset==archiveState.getOffset()) {
-                archiveLastPublishedRevision=revision;archiveState.setEntries(entries);
+                    && querySaved==archiveState.getSavedOnly() && queryOffset==archiveState.getOffset()
+                    && queryCatalog==(archiveDialog!=null && archiveDialog.isShowing())) {
+                Log.i(TAG,"ArchiveCost queryMs="+(dataReady-queryStarted)+" modelsMs="+(modelsReady-dataReady)+" deliveryMs="+(android.os.SystemClock.elapsedRealtime()-modelsReady)+" cards="+entries.size());
+                ArchivePageTrace.published(pageTrace,revision);
+                archiveState.setPublishedDay(queryDay);
+                archiveLastPublishedRevision=revision;
+                archiveState.setPresentationKey(ArchivePageIdentity.key(queryDay,queryChannel,queryGenre,queryText,querySaved,page.offset));
+                archiveState.setEntries(entries);
                 archiveState.setQuerying(false);archiveState.setNextChange(nextChange);
-                archiveState.setPageIds(pageIds);archiveState.setTotal(page.total);archiveState.setOffset(page.offset);
-                archiveState.setChannels(channelOptions);archiveState.setGenres(genreOptions);
-                Log.i(TAG,"CatchupPage total="+page.total+" offset="+page.offset+" cards="+entries.size()+" ms="+(android.os.SystemClock.elapsedRealtime()-queryStarted));
+                if(queryCatalog) {
+                    archiveState.setPageIds(pageIds);archiveState.setTotal(page.total);archiveState.setOffset(page.offset);
+                    archiveState.setChannels(channelOptions);
+                }
+                Log.i(TAG,"CatchupPage catalog="+queryCatalog+" total="+page.total+" offset="+page.offset+" cards="+entries.size()+" ms="+(android.os.SystemClock.elapsedRealtime()-queryStarted));
                 prefetchMovistarArchiveArtwork(entries);
                 // The player model is a snapshot, unlike the catalog's Compose
                 // state. Publish newly loaded programmes to visible controls too.
                 if (isTouchControlsVisibleForRemote()) refreshTouchControlsBar();
             }
         });
+        });
+    }
+
+    // Called on UI only. Keep the last filter list while its replacement loads;
+    // the database scan never queues ahead of a programme page.
+    private void refreshArchiveGenres(String scope,int generation) {
+        if(archiveStore==null || archiveDialog==null || !archiveDialog.isShowing())return;
+        List<String> fresh=archiveStore.cachedGenres(scope,false);
+        List<String> visible=fresh!=null?fresh:archiveStore.cachedGenres(scope,true);
+        if(visible!=null && !visible.equals(archiveState.getGenres()))archiveState.setGenres(visible);
+        if(fresh!=null || archiveGenresLoading)return;
+        archiveGenresLoading=true;
+        final U7dCatalogStore store=archiveStore;
+        archiveGenreExecutor.execute(()->{
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            List<String> result=null;
+            long started=android.os.SystemClock.elapsedRealtime();
+            android.os.Trace.beginSection("Archive.genresRefresh");
+            try { result=store.genres(scope); }
+            catch(Exception error) { Log.w(TAG,"Catchup genre refresh failed"); }
+            finally { android.os.Trace.endSection(); }
+            final List<String> loaded=result;
+            Log.i(TAG,"ArchiveGenres backgroundMs="+(android.os.SystemClock.elapsedRealtime()-started));
+            postUiIfAlive(()->{
+                archiveGenresLoading=false;
+                if(archiveDialog==null || !archiveDialog.isShowing())return;
+                if(generation!=archiveGeneration || !scope.equals(archiveScope)) {
+                    refreshArchiveGenres(archiveScope,archiveGeneration);
+                    return;
+                }
+                if(loaded!=null && !loaded.equals(archiveState.getGenres()))archiveState.setGenres(loaded);
+            });
         });
     }
 
@@ -6164,10 +6282,14 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void toggleArchiveSaved(EpgRepository.EpgProgram p,long expires) {
+        setArchiveSaved(p,expires,null);
+    }
+
+    private void setArchiveSaved(EpgRepository.EpgProgram p,long expires,Boolean desired) {
         final String scope=archiveScope;final int generation=archiveGeneration;
         archiveStorageExecutor.execute(()->{
             try {
-                archiveStore.toggle(scope,p,expires);List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
+                archiveStore.setSaved(scope,p,expires,desired!=null?desired:!archiveStore.saved(scope,U7dCatalogStore.id(p)));List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
                 postUiIfAlive(()->{if(generation==archiveGeneration){publishArchiveEntries(saved);archiveState.setRevision(archiveState.getRevision()+1);}});
             }catch(Exception e){postUiIfAlive(()->showStatus("No se pudo guardar el programa"));}
         });
@@ -6199,9 +6321,24 @@ public class MainActivity extends FragmentActivity {
         refreshTouchControlsBar();scheduleTouchControlsAutoHide();return true;
     }
 
+    private String archiveStripRequestedKey="";
     private List<U7dCatalogEntry> archiveStrip() {
+        scheduleArchivePresentation();
         ChannelItem c=currentPlaybackU7dChannel!=null?currentPlaybackU7dChannel:getCurrentPlaybackChannelItem();
         if(c==null||!supportsU7d(c)||findAllowedHomeLiveChannel(c.id)==null)return java.util.Collections.emptyList();
+        // A tune can reuse a guide preload already in progress. Read the cached strip
+        // independently; otherwise the previous channel's presentation can remain empty.
+        if(archiveStore!=null) {
+            String key=archiveScope+"|"+archiveGeneration+"|"+c.id;
+            if(!key.equals(archiveStripRequestedKey)) {
+                archiveStripRequestedKey=key;
+                final String scope=archiveScope; final int generation=archiveGeneration;
+                archivePresentationExecutor.execute(()->{
+                    List<EpgRepository.EpgProgram> saved=archiveStore.savedPrograms(scope);
+                    postUiIfAlive(()->{if(generation==archiveGeneration && key.equals(archiveStripRequestedKey))publishArchiveEntries(saved);});
+                });
+            }
+        }
         long from=java.time.LocalDate.now().minusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
         List<U7dCatalogEntry> out=new ArrayList<>();
         for(U7dCatalogEntry e:archiveState.getEntries())if(e.channelId.equals(c.id)&&e.start>=from)out.add(e);
@@ -10136,7 +10273,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     @SuppressLint("RestrictedApi")
     public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
-        if (event.getAction() == KeyEvent.ACTION_DOWN) lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime();
+        if (event.getAction() == KeyEvent.ACTION_DOWN) { lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime(); BackgroundWorkBudget.interaction(); }
         if (handleSearchShortcut(event)) return true;
         if (handleRemoteMessageKeyEvent(event)) {
             return true;
@@ -10146,6 +10283,12 @@ public class MainActivity extends FragmentActivity {
             return true;
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public void onUserInteraction() {
+        BackgroundWorkBudget.interaction();
+        super.onUserInteraction();
     }
 
     @Override
@@ -10245,7 +10388,7 @@ public class MainActivity extends FragmentActivity {
     @Override
     protected void onDestroy() {
         timelineLoadGeneration++; timelineDownloads.shutdownNow(); timelineCacheExecutor.shutdownNow();
-        archiveGeneration++; movistarGuideExecutor.shutdownNow(); archiveExecutor.shutdownNow(); archiveStorageExecutor.shutdownNow(); archivePresentationExecutor.shutdownNow();archiveFanartExecutor.shutdownNow();if(archiveAvailability!=null)archiveAvailability.close();if(movistarArtwork!=null)movistarArtwork.close();if(movistarGuide!=null)movistarGuide.close();
+        archiveGeneration++; movistarGuideExecutor.shutdownNow(); archiveExecutor.shutdownNow(); archiveStorageExecutor.shutdownNow(); archivePresentationExecutor.shutdownNow();archiveGenreExecutor.shutdownNow();archiveFanartExecutor.shutdownNow();if(archiveAvailability!=null)archiveAvailability.close();if(movistarArtwork!=null)movistarArtwork.close();if(movistarGuide!=null)movistarGuide.close();
         uiHandler.removeCallbacks(playlistImportTick);
         playlistStatusExecutor.shutdownNow();
         PlaylistImportIndicator.update("");
@@ -19700,7 +19843,7 @@ public class MainActivity extends FragmentActivity {
         uiHandler.postDelayed(homeEpgTick, 30000L);
         dialog.setOnKeyListener((ignored, keyCode, event) -> {
             // Dialog keys bypass Activity.dispatchKeyEvent; include them in the hydration idle gate.
-            if (event.getAction() == KeyEvent.ACTION_DOWN) lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime();
+            if (event.getAction() == KeyEvent.ACTION_DOWN) { lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime(); BackgroundWorkBudget.interaction(); }
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                     || keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 lastHomeNavigation[0] = android.os.SystemClock.uptimeMillis();
@@ -25489,15 +25632,23 @@ public class MainActivity extends FragmentActivity {
         if(preview!=null&&preview.channelId.equals(channel)&&preview.start==start&&!url.equals(preview.artworkKey)){preview.artworkKey=url;preview.hasProgramArtwork=true;if(isTouchControlsVisibleForRemote())refreshTouchControlsBar();}
     }
 
+    private final ArchivePreloadBudget archivePreloadBudget = new ArchivePreloadBudget(256, 60_000);
+
+    private void preloadArchiveImage(String url) {
+        if (!archivePreloadBudget.acquire(url, android.os.SystemClock.elapsedRealtime())) return;
+        Glide.with(getApplicationContext()).load(url).fitCenter()
+            .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC).override(dp(320),dp(180)).preload();
+    }
+
     private void prefetchMovistarArchiveArtwork(List<U7dCatalogEntry> entries) {
         if(movistarArtwork==null)movistarArtwork=new MovistarArtworkRepository(getCacheDir());
         if(prefetchedArchiveArtwork.size()>1000)prefetchedArchiveArtwork.clear();
         String today=java.time.LocalDate.now().toString();int count=0;
         List<U7dCatalogEntry> visible=new ArrayList<>(entries);visible.sort((a,b)->Long.compare(b.start,a.start));
-        for(U7dCatalogEntry e:visible){if(!e.day.equals(today)||count>=12)continue;if(MovistarGuideRepository.officialImage(e.artworkKey)){count++;Glide.with(getApplicationContext()).load(e.artworkKey).diskCacheStrategy(DiskCacheStrategy.ALL).override(dp(320),dp(180)).preload();continue;}ChannelItem c=findAllowedHomeLiveChannel(e.channelId);if(c==null||isOrangeChannel(c))continue;
+        for(U7dCatalogEntry e:visible){if(!e.day.equals(today)||count>=12)continue;if(MovistarGuideRepository.officialImage(e.artworkKey)){count++;preloadArchiveImage(e.artworkKey);continue;}ChannelItem c=findAllowedHomeLiveChannel(e.channelId);if(c==null||isOrangeChannel(c))continue;
             String provider=archiveAvailability==null?"":archiveAvailability.provider(archiveScope,c);if(provider.isEmpty())continue;count++;
             if(!prefetchedArchiveArtwork.add(archiveScope+"|"+e.id))continue;
-            movistarArtwork.request(provider,e.start,e.title,url->postUiIfAlive(()->{if(url.isEmpty())return;publishOfficialArchiveArtwork(e.channelId,e.start,url);Glide.with(getApplicationContext()).load(url).diskCacheStrategy(DiskCacheStrategy.ALL).override(dp(320),dp(180)).preload();}));
+            movistarArtwork.request(provider,e.start,e.title,url->postUiIfAlive(()->{if(url.isEmpty())return;publishOfficialArchiveArtwork(e.channelId,e.start,url);preloadArchiveImage(url);}));
         }
     }
 

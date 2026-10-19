@@ -38,6 +38,7 @@ public final class StartupHomeHubUiModel {
         public final java.util.Map<String, String> selectedLiveChannels = new java.util.HashMap<>();
         public String liveQuery = "";
         public String homeFocusedChannel = "";
+        public boolean startupPreviewFocusPending = true;
         public Runnable cancelLiveOrder;
         public String librarySelectedId = "";
         public Runnable dismissLibraryActions;

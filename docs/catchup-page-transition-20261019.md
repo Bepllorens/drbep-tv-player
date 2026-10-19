@@ -148,3 +148,14 @@ Validación final en Fire:
 - 589 entradas de contenido iguales, firma de prueba existente verificada.
 - Evidencia /srv/drbep-dev/artifacts/catchup-genres-771/.
 - Beta 771 instalada, sin publicar, commit/push ni modificaciones de producción.
+
+### Publicación autorizada, 19 de octubre
+- Código e informes subidos en 98fe865 a qoder/disneyplus-vod-582.
+- Publicada beta 771 universal ARM32/ARM64 con el APK release preservado,
+  sin recompilar; mismo SHA256 documentado arriba.
+- Respaldados estado de beta/stable y APK anterior (750), hash verificado.
+- Preflight de firma, SHA y versión correcto. Excepción administrativa por
+  sesiones activas conforme a la autorización previa del usuario; sin reinicio.
+- Aviso público beta 771 confirmado; APK descargada tras publicar coincide
+  exactamente con el artefacto. Stable 582 conserva metadata y ruta.
+- Evidencia privada: /srv/drbep-dev/artifacts/beta771-publication/.

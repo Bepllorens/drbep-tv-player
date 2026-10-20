@@ -1,0 +1,27 @@
+TMDB: indexación por lista y tipo — 20/10/2026
+
+Panel > Actividad > Completar metadatos permite todas las listas o una lista
+concreta, y películas, series o ambos. Completar guarda la selección en las
+preferencias del trabajo. Continuar y Reintentar usan la selección guardada,
+no los selectores que el usuario haya cambiado mientras está pausado.
+El panel muestra esa selección por separado. Mientras hay un trabajo activo
+no se permite cambiar los selectores ni iniciar otro; se conserva la cola única.
+
+La selección se aplica a preparación, siguiente candidato, comprobación de
+pendientes, reintento de errores y contadores. Los candidatos de otras listas
+permanecen en la cola y no se procesan. El arranque sin parámetros conserva
+el alcance global anterior. Una lista concreta inexistente no inicia trabajo.
+Sin cambios de esquema ni borrado de metadatos, coincidencias manuales o
+progreso. El filtrado de adultos y ocultos existente sigue vigente.
+Los campos SQL se parametrizan; no se concatenan nombres o IDs al SQL.
+
+La deduplicación por serie sigue en ImportedMovieRepository. No se incorpora
+selección por grupo, organización reversible ni acciones separadas de imágenes
+en este paso. La preparación de series conserva la consulta agrupada existente;
+no se afirma que sea más rápida.
+
+Validación .185: pruebas Java de parámetros y autenticación HTTP, SQLite con
+datos sintéticos para selección/reintento/contadores y preservación de otras
+listas, suite Android, compilación debug y sintaxis JS.
+Pendiente prueba real WorkManager pausa/reanudación/reinicio y panel visual
+en Fire/tablet. No se ejecutaron consultas TMDB reales ni se instaló/publicó.

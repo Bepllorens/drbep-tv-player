@@ -1,0 +1,27 @@
+Catchup: ensayo reproducible de lecturas con escritura concurrente
+
+Herramienta: tools/benchmark-catchup-contention.py
+Base temporal sintetica, esquema extraido del codigo vigente, WAL, un lector
+y un escritor con conexiones separadas. 180 canales, 8 dias, 48 eventos/dia:
+69.120 programas con payload de aproximadamente 1 KiB. Una pagina de 60.
+El escritor modifica search realmente por lotes de 48, dejando payload y orden
+de la consulta constantes. Cada lectura comprueba hash de resultados.
+No usa catalogos, sesiones, archivos o bases de produccion/Fire.
+
+Resultado principal: docs/benchmarks/catchup-contention-metadata-20261020.json
+50 muestras: reposo mediana 0,048/p95 0,059 ms; escritor mediana 0,043/p95
+0,372 ms. 7 commits durante el recorrido; escritura mediana 3,044/p95 8,471 ms.
+El informe catchup-contention-20261020.json es un ensayo preliminar de escritura
+del mismo valor, no el resultado principal ni equivalente a una importacion.
+
+Limites: Linux SQLite 3.40.1, cache caliente, planificacion variable, un caso
+de pagina por dia sin filtros de acceso/busqueda ni parseo JSON/UI. No reproduce
+toda la actualizacion EPG, mezcla de consultas, Android ni duraciones reales.
+No interpretar como mejora implementada ni ausencia de tirones en Fire.
+No cambiar WAL, indices o politica del reproductor basandose solo en este caso.
+
+Validacion: 2 tests nuevos (ejecuciones con escritor y resultados estables;
+huella distingue resultados diferentes) + 5 existentes del workload.
+7 tests superados; git diff --check correcto. No cambios al codigo de la app,
+por lo que no se recompila/publica APK en este bloque.
+Pendiente: ampliar escenarios si evidencia real lo requiere y medir en Fire.

@@ -1,0 +1,39 @@
+Analizador offline de caja negra - 20/10/2026
+
+Uso desde .185:
+python3 tools/report-playback-evidence.py /ruta/exportacion.zip
+python3 tools/test_playback_evidence.py
+
+Lee solo events-*.jsonl de ZIP o JSONL suelto. No extrae archivos al disco.
+Limites: 8 MiB descomprimidos entre entradas/archivos, linea 64 KiB, 64 entradas
+por ZIP, 50.000 eventos relevantes, 512 grupos y 100 detalles por grupo.
+No consulta dispositivos, servicios ni bases reales. Informe solo numerico:
+no copia session, nombres de canales, URLs, credenciales ni campos arbitrarios.
+Los identificadores se usan internamente para separar sesiones/version/intento.
+
+Ordena y elimina duplicados de exportaciones superpuestas. Usa elapsed
+(monotonico) si existe, y separa grupos de registros antiguos con solo at.
+No correlaciona muestras separadas mas de 90 s o menos de 1 s. Retrocesos y
+saltos grandes se muestran separados. Pausa solicitada o supresion no cuentan
+como periodo estacionario sospechoso. Clasifica posicion sin avance por
+estado no listo, buffer bajo (ambos <=500 ms), buffer presente (ambos >=3000 ms)
+o mixto. Umbrales descriptivos; no modifican ni diagnostican el reproductor.
+
+Relaciona counters con muestra a <=1 s; decrementos/reset y faltantes se
+representan con null, nunca como cero. Los counters son acumulados.
+Si hay eventos MULTI_OPEN/STATE/COUNTERS en una sesion/version se omite su
+clasificacion: los contadores de intento pueden coincidir entre ventanas.
+Una exportacion parcial sin contexto multipantalla puede no revelar esa
+ambiguedad; usar registros de una sola ventana para este analizador.
+
+Limitaciones: el muestreo no muestra pausas/seeks entre muestras, ni garantiza
+sonido audible o video visible. Buffer no demuestra la causa de un fallo.
+No analiza incident-*.jsonl por separado; puede faltar contexto en ZIP recortado.
+Sin muestras nuevas devuelve grupos vacios, no una conclusion de ausencia de fallos.
+
+10 pruebas sinteticas: pausa/supresion, avance/retroceso/gaps, counters/reset,
+ausentes, duplicados/orden/aislamiento, datos invalidos, buffering, ZIP/limites,
+reloj ajustado y multipantalla. No se ha usado un registro real en este bloque.
+No cambia codigo Android, por lo que no requiere recompilar ni instalar.
+Pendiente Fire: recoger una reproduccion real y contrastar observaciones con
+imagen/sonido. Sin publicar ni tocar produccion.

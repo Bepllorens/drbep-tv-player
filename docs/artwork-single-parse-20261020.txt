@@ -1,0 +1,22 @@
+Miniaturas: un unico analisis JSON por carga valida — 20/10/2026
+
+ArtworkGridDiskCache.Payload conserva el texto original y el JSONArray validado.
+La lectura de disco y la descarga devuelven ese resultado. El repositorio usa
+el mismo array para construir filas; antes volvia a analizar el texto.
+La escritura conserva el texto original, sin reserializar ni alterar campos.
+No cambia el criterio de seleccion, canal, tiempo, titulo ni ambiguedad.
+
+Se mantienen: limite de 4 MiB, frescura de 4 horas, fallback validado sin renovar
+timestamp y resultado de red utilizable aunque no se pueda escribir en disco.
+El array es temporal a la carga; la cache de memoria conserva solo filas.
+Se evita una construccion redundante del arbol JSON por carga valida. No se
+ha medido ahorro temporal o de memoria en Android: no extrapolar a la UI.
+
+Tres pruebas nuevas: campos y texto original preservados, fallback sin renovar
+fecha e invalidos rechazados, validacion compartida para datos de red.
+Se ejecutan tambien las pruebas existentes de seleccion y cache.
+Log: /srv/drbep-dev/reviews/artwork-single-parse-validation.log.
+Pendiente Fire: primera carga con disco/red/fallback y miniaturas correctas.
+
+Sin cambio de endpoints, reproductores ni formato persistido.
+No instalado/publicado; produccion intacta.

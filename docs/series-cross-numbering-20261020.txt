@@ -1,0 +1,24 @@
+Series M3U: numeracion 1x02 - 20/10/2026
+
+M3uStreamReader acepta 1x02, 01x02, 0X123 como fallback SOLO en type=series.
+Prefiere siempre el patron S/T...E existente. Maximo 2 digitos de temporada
+y 2-3 de episodio; limites de palabra Unicode y sin decimal adyacente.
+No interpreta 16x9 ni 1920x1080 ni numeros pegados a letras.
+No clasifica peliculas/canales como series basandose en el nombre.
+
+Conserva serie-title/tvg-serie explicitos. Sin ellos deriva nombre del prefijo,
+igual que con S01E02. Titulo, URL, atributos y directivas no se reescriben.
+PlaylistDatabase.identity mantiene su regla historica, con prueba de que el
+nuevo reconocimiento no cambia identidad al refrescar: preferencias/progreso
+asociados a esa identidad se conservan.
+No hay migracion de base ni repaso automatico del catalogo existente.
+Efecto solo al importar o refrescar una lista. Una agrupacion derivada puede
+cambiar al refrescar (antes cada titulo desconocido figuraba como serie).
+No se modifica la migracion historica de formatos S/T.
+
+Ocho tests JVM: agrupacion, especiales, titulo explicito, prioridad S/T,
+peliculas/directo/desconocidos, dimensiones/limites Unicode, metadatos intactos,
+identidad antes/despues. Compilar APK no sustituye prueba visual.
+Pendiente Fire/tablet: lista de prueba, temporadas, orden, foco y volver;
+actualizar lista con favorito/progreso y verificar conservacion.
+Sin instalar/publicar ni tocar produccion, listas reales o reproduccion.

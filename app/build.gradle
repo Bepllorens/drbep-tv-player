@@ -68,11 +68,17 @@ android {
     compileSdk 36
 
     defaultConfig {
+        buildConfigField "boolean", "BOUNDED_ARTWORK_REQUESTS", (updateChannel == "beta" && (project.findProperty("boundedArtworkRequests") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "COOPERATIVE_IMPORTS", (updateChannel == "beta" && (project.findProperty("cooperativeImports") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "COOPERATIVE_METADATA", (updateChannel == "beta" && (project.findProperty("cooperativeMetadata") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "CATCHUP_SEARCH_INDEX", (updateChannel == "beta" && (project.findProperty("catchupSearchIndex") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "COALESCE_REMOTE_ZAP", (updateChannel == "beta" && (project.findProperty("coalesceRemoteZap") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "FAST_HLS_STARTUP", (updateChannel == "beta" && (project.findProperty("fastHlsStartup") ?: "false").toString().toBoolean()).toString()
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 771
-        versionName "2.0.771-beta-catchup-genres"
+        versionCode 772
+        versionName "2.0.772-beta-catchup-pause"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (fireAbiOnly) {
@@ -179,6 +185,8 @@ dependencies {
     implementation 'androidx.compose.runtime:runtime:1.7.8'
     implementation 'androidx.compose.ui:ui:1.7.8'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    testImplementation files(rootProject.file('buildSrc/build/libs/buildSrc.jar'))
+    testImplementation 'org.ow2.asm:asm:9.8'
     implementation 'androidx.media3:media3-exoplayer:1.11.1'
     implementation 'androidx.media3:media3-exoplayer-dash:1.11.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'

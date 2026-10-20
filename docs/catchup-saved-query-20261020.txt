@@ -1,0 +1,38 @@
+Guardados: consulta acotada - 20/10/2026
+
+U7dCatalogStore.pageMeasured:
+Se consultan hasta 513 IDs guardados del ambito actual. Con 512 o menos,
+se parte de saved y se busca cada programa por su clave primaria (scope,id).
+Se mantienen filtros de permisos, canal, genero, busqueda, orden y paginacion.
+Con mas de 512, se conserva EXISTS y el recorrido anterior; evita ordenar
+miles de candidatos para una primera pagina pequena. No cambia el esquema.
+El probe se ejecuta solo en Guardados, no en las paginas por dia ni en la tira.
+Los guardados sin programa siguen sin aparecer; no se recupera un payload
+de otro ambito ni se filtra por la columna channel posiblemente antigua de saved.
+
+Validacion sintetica .185:
+python3 tools/verify-saved-query.py
+1440 comparaciones equivalentes: vacio, pequeno, limite y grande; tres ambitos,
+permisos vacios/restringidos, filtros, conteo y offsets 0/60/240. Incluye huerfanos
+y datos del mismo ID en otra cuenta. Datos exclusivamente generados.
+69.120 programas; 30 muestras tras calentamiento; SQLite 3.40.1 en memoria.
+48 guardados:
+pagina mediana 41,495 -> 0,286 ms; p95 46,339 -> 0,359 ms.
+conteo mediana 13,784 -> 0,105 ms; p95 14,322 -> 0,134 ms.
+Con unos 9875 guardados se mantiene consulta anterior:
+pagina 0,634 -> 0,820 ms; conteo 21,097 -> 21,464 ms.
+Hay pequeno coste del probe, no se promete regresion cero. Las mediciones
+incluyen probe por consulta (la app lo realiza una sola vez por pagina).
+Informe: docs/benchmarks/saved-query-20261020.json.
+
+Se descarto IN porque su plan seguia recorriendo programas y empeoraba la
+primera pagina en conjuntos grandes. No se forzo JOIN para todos los tamanos.
+
+Se anade test Android para 48/512/513 guardados, aislamiento, permisos y segunda
+pagina. Compilacion de tests no equivale a ejecucion en Fire.
+Recorrido benchmark-catchup-workload actualizado para su fixture de 48 guardados;
+su comparador rechaza comparar contra el SQL antiguo: usar verify-saved-query
+para la equivalencia entre implementaciones y crear nueva referencia despues.
+
+Pendiente: tiempo real, foco y resultados en Fire/tablet. Sin instalar/publicar
+ni tocar produccion, rutas de reproduccion, claves, EPG o asociaciones.

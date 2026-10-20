@@ -1,0 +1,27 @@
+Catchup: renovación compartida de géneros — 20/10/2026
+
+Problema comprobado en código: U7dCatalogStore.genres comprobaba la caché
+y ejecutaba SELECT DISTINCT sin coordinar ambos pasos. La pantalla de catchup
+y el panel web podían consultar simultáneamente al caducar los 15 segundos.
+
+Cambio: ArchiveGenreCache.getOrLoad serializa las cargas con un monitor
+separado del de get/peek. Una petición pendiente comprueba de nuevo la caché
+y reutiliza el resultado no vacío de la primera. La vigencia empieza al acabar
+la consulta, no al iniciarla. La interfaz puede seguir leyendo la instantánea
+anterior durante SQL. No se modifica la consulta, índices, TTL, permisos,
+selección de canales, guardados, reproducción ni navegación.
+
+Al fallar SQL no se reemplaza la instantánea y el siguiente intento puede
+reintentarlo. El catálogo vacío sigue sin cachearse, como antes, para no
+retrasar su primera carga. No es una invalidación nueva por canal/día ni
+elimina el coste de la primera consulta; esos puntos siguen pendientes.
+La caché continúa limitada a una cuenta y a una lista de géneros.
+
+Pruebas: seis lectores concurrentes comparten una consulta correcta; lectura
+de instantánea durante carga; error y reintento; TTL desde finalización y
+separación entre cuentas. Compilación Android y suite completa en .185.
+No se han medido milisegundos de mejora en Fire ni instalado/publicado APK.
+
+Validación pendiente en Fire: abrir panel web y catchup simultáneamente,
+cambiar días después de caducar caché, verificar filtros y foco, refrescar guía
+y comprobar que aparecen géneros nuevos en la siguiente renovación.

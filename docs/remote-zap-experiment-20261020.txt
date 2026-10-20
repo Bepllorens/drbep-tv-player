@@ -1,0 +1,23 @@
+Zapeo agrupado: ensayo beta, 20-10-2026
+
+Activar con -PupdateChannel=beta -PcoalesceRemoteZap=true.
+Desactivado por defecto; el flag no puede activar el cambio en stable.
+No instala ni publica nada. Cambios existentes del aviso de denegacion y del
+ensayo HLS se conservan.
+
+RemoteZapQueue mantiene inmediata la primera pulsacion tras 1 segundo sin
+teclas de canal. Las siguientes conservan el destino acumulado y ejecutan
+solo el ultimo tras 250 ms sin nuevas pulsaciones. No crea reproductores
+ni abre rutas nuevas: entrega el indice a tuneToIndex existente.
+Un callback sustituido no ejecuta la seleccion. Antes de entregar verifica
+tamano del catalogo, identidad del objeto de destino e indice de origen.
+Cancelacion al pausar/destruir actividad, otra tecla, evento cancelado,
+seleccion explicita de contenido o apertura de grabacion.
+Multipantalla conserva comportamiento anterior; el callback vuelve a comprobarlo.
+Solo afecta a la ruta de mando CH/Page; tactil y panel web siguen directos.
+Los bloqueos parentales siguen pasando por playChannelItem.
+
+Tests: primera/aislada inmediata, rafaga primero+ultimo, wrap/cambio de
+direccion, callback obsoleto/cancelado, cambio de catalogo/seleccion y vaciado.
+Validacion audiovisual y comparacion de aperturas pendientes en la TV.
+Ver pruebas-tv-pendientes-20261020.txt. No declarar mejora medida todavia.

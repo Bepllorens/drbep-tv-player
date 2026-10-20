@@ -1,0 +1,43 @@
+Generos y busqueda - 20/10/2026, desarrollo .185
+
+Generos:
+ArchiveQuerySql.GENRES_SEEK salta entre valores distintos del indice scope/genre.
+Recorrido SQL unico (misma instantanea); maximo 257 resultados.
+Hasta 256 categorias devuelve esa lista ordenada. Si hay mas, o SQLite rechaza
+la consulta, se usa GENRES_ALL original. Conserva ambito y exclusion del vacio,
+orden binario y cache/TTL/coalescencia actuales. No cambia permisos de generos:
+como antes, el desplegable contiene categorias de todo el ambito.
+Sin nuevos indices para esta mejora.
+
+Busqueda:
+Indice adicional covering scope/day/start/id/channel/end/genre/search.
+Solo se crea con -PupdateChannel=beta -PcatchupSearchIndex=true.
+Desactivado por defecto. No cambia instr, normalizacion ni SQL de busqueda.
+Sin version nueva del esquema ni migracion de filas. Se crea una vez al abrir;
+la apertura posterior verifica IF NOT EXISTS. Fallo de creacion conserva las
+consultas existentes. El indice YA CREADO persiste al desactivar la opcion:
+SQLite puede seguir usandolo y manteniendolo. Para retirada completa hay que
+eliminar exclusivamente programs_search, en una operacion autorizada aparte.
+No se ha instalado esta variante ni creado indice en dispositivos de usuario.
+
+Ensayo: tools/verify-genre-search.py, SQL leido de constantes Java.
+69.120 programas; 21 casos de generos (vacios, Unicode, espacios, tamanos
+0/1/8/255/256/257/500, otros ambitos) y 120 de busqueda (permisos,
+genero, literalidad de % y _, Unicode, inexistentes, conteo y paginas).
+Resultados exactamente iguales; guardados y filas preservados; DDL idempotente.
+
+Mediana / p95, ms:
+Generos: 4,504 / 4,765 -> 0,013 / 0,017.
+Busqueda conteo: 2,664 / 2,785 -> 2,037 / 2,177.
+Busqueda pagina: 1,595 / 1,742 -> 0,960 / 1,103.
+Indice: 5.128.192 bytes (~4,9 MiB); creacion 72,102 ms.
+Actualizar 1000 textos en transaccion con rollback: 2,502 -> 6,999 ms.
+Son medidas SQLite Linux en memoria; no tiempos Android ni mejoras audiovisuales.
+Por el coste de escrituras/almacenamiento, el indice no se activa por defecto.
+
+Validacion Android: prueba de generos vacios, Unicode y fallback en base aislada,
+compilada junto a APK y suite JVM. No ejecutada en Fire aun.
+Informe docs/benchmarks/genre-search-20261020.json.
+Pendiente A/B Fire: apertura inicial, cambios de dia, filtros, busqueda,
+actualizacion EPG simultanea y espacio, con mismo catalogo.
+Sin produccion, reproduccion, asociaciones ni datos reales modificados.

@@ -1,0 +1,24 @@
+Catchup web: cola de imagenes y visibilidad — 20/10/2026
+
+observeCatchupImages captura la sesion de origen y no inicia peticiones si el
+documento esta oculto, la sesion cambio o el nodo ya no esta conectado.
+Al volver visible continua la cola hasta el limite existente de cuatro.
+Un WeakSet evita duplicar el mismo nodo si el observador lo notifica otra vez.
+No deduplica por programa: nodos distintos mantienen su comportamiento.
+
+La limpieza elimina el listener de visibilidad, desconecta el observador,
+vacia la cola, aborta solicitudes y revoca URLs de blobs.
+Respuestas tardias tras limpieza/cambio de sesion no crean nuevas URLs.
+Ocultar no aborta descargas ya iniciadas: pueden terminar y actualizar el nodo
+vigente, pero no sacan otra peticion de la cola mientras siga oculto.
+No cambia endpoint, autenticacion, seleccion, formato de imagen ni reproduccion.
+
+48 pruebas Node del panel superadas; seis nuevas:
+limite y reanudacion, pausa tras respuesta, duplicados del observador,
+limpieza con respuestas pendientes, sesion nueva y nodos retirados.
+assembleDebug beta ARM32 correcto; git diff --check correcto.
+Logs: /srv/drbep-dev/reviews/panel-artwork-queue-{tests,build}.log
+
+Pendiente navegador conectado: scroll, ocultar/mostrar, cambio de dia/pagina,
+reconexion y memoria tras salir de catchup. No prueba la carga nativa Android.
+Sin instalacion/publicacion ni acceso a produccion o dispositivo.

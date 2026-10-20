@@ -1,0 +1,230 @@
+DRBEP: PRUEBAS PENDIENTES CON TV ENCENDIDA
+Actualizado 20-10-2026. Desarrollo en .185; ningun resultado marcado sin prueba.
+Estado actual: pruebas audiovisuales pendientes. Fire despierto por ADB, pero
+ultima respuesta de TV por HDMI-CEC indica standby. No usar esa sesion como
+referencia de rendimiento de video. No hay una tarea programada de vigilancia.
+
+PREPARACION
+[ ] Confirmar TV encendida, entrada Fire y mando libre.
+[ ] Comprobar dispositivo/ABI/version/firma instalada y guardar APK de retorno.
+[ ] Compilar variantes firmadas compatibles; no instalar debug ni desinstalar.
+[ ] Registrar revision fuente, SHA APK, opciones y estado de indexacion/EPG.
+[ ] Mantener La 1/Vamos y asociaciones existentes; no desplegar backend sin
+    autorizacion especifica. La 1/Vamos son controles, no objetos de cambios.
+
+COMPARACION POR SEPARADO (NO ATRIBUIR MEJORA CON AMBOS CAMBIOS MEZCLADOS)
+A: fastHlsStartup=false, coalesceRemoteZap=false.
+B: fastHlsStartup=true, coalesceRemoteZap=false.
+C: fastHlsStartup=false, coalesceRemoteZap=true.
+D: ambos true, solo si B y C superan sus pruebas.
+Ambas opciones exigen updateChannel=beta y son false por defecto.
+
+1. ARRANQUE HLS
+[ ] Diez o mas aperturas por variante A/B del mismo conjunto de canales.
+[ ] Separar frio/caliente y red estable; comprobar fastHls=true en traza.
+[ ] Medir mediana/p95 seleccion/prepare -> primer fotograma y errores.
+[ ] Contar cortes durante 30 s y sesion prolongada; registrar calidad y memoria.
+[ ] B no debe empeorar estabilidad para ganar unas decimas de arranque.
+[ ] Ruta DVR Movistar, catchup, VOD, fallback, reanudacion y multiview excluidos
+    en este primer ensayo: confirmar fastHls=false en sus trazas.
+[ ] Repetir en Xiaomi cuando este disponible, sin extrapolar cifras del Fire.
+
+2. ZAPEO CON MANDO
+[ ] Pulsacion aislada CH+/CH- inmediata (sin espera artificial).
+[ ] Ráfaga/mantener tecla: primer canal inmediato y ultimo tras 250 ms sin entrada.
+[ ] Verificar sumatorio exacto de pulsaciones, direccion inversa y wrap.
+[ ] No abrir todos los canales intermedios ni nuevas sesiones innecesarias.
+[ ] Volver/Ajustes/otra seleccion/pasar a segundo plano cancela la cola.
+[ ] Cambiar catalogo o lista durante la espera no abre un canal diferente.
+[ ] Seleccion con OK, tactil y panel web conserva su comportamiento.
+[ ] Grupos protegidos/adultos no eluden comprobaciones ni se recuerdan.
+[ ] Multiview y navegacion de resultados/grabaciones no usan la cola nueva.
+
+3. SUPERFICIES Y ESTABILIDAD
+[ ] Inicio -> pantalla completa -> miniatura, con audio y video.
+[ ] Seleccionar el canal que ya sonaba de fondo no deja miniatura gris.
+[ ] Miniatura y recorrido rapido durante refresco de guia/indexacion TMDB.
+[ ] Dos/cuatro pantallas y cambio de vista/audio; no exceder memoria disponible.
+
+4. CATCHUP / TIMESHIFT / ERRORES ANTERIORES
+[ ] Acceso por mando a barra y carrusel, volver al directo sin otro canal.
+[ ] La 1 y Vamos: reproduccion de referencia sin modificar rutas.
+[ ] BBC Earth: reproduccion prolongada y ausencia de glitches/avisos TS repetidos.
+[ ] Star Channel: evento disponible equivalente a Yo, el halcon; arranque Fire
+    y avance/retroceso Fire+tablet. Si el original ha caducado, anotarlo.
+[ ] M+ Indie: seleccion correcta nunca entrega otro canal; no confundir aviso
+    de permisos con reparacion de acceso. Ruta autorizada HLS aun sin demostrar.
+[ ] Aviso explicito de denegacion y ausencia de bucles: requiere activar antes
+    backend y cliente preparados, con despliegue autorizado. No esta publicado.
+[ ] Seek en pausa conserva pausa, posicion y fuente; fallo tecnico no se etiqueta
+    como denegacion de cuenta por un 403 generico.
+
+5. UI Y REGRESIONES
+[ ] Cambio rapido de dias/generos con foco correcto; p95 y maximo con EPG activa.
+[ ] VOD continuar/desde inicio visible; retorno al menu de peliculas.
+[ ] Episodios/temporadas y pistas de audio/subtitulos sin duplicados.
+[ ] Tablet: gestos, arranque y seek; version universal y actualizador aparte.
+
+CRITERIO DE CIERRE
+Registrar por fila: version/opciones/dispositivo/fecha/pasos/resultado y enlace
+al informe privado sin secretos. Distinguir tests unitarios, instalacion y
+reproduccion observada. Publicacion y commit/push son operaciones separadas.
+No dar por terminados los bloques por compilar o por recibir HTTP 200.
+
+6. IMPORTACIONES COOPERATIVAS (experimento independiente)
+[ ] Comparar flags desactivados con solo cooperativeImports=true en beta.
+[ ] Importar M3U grande y XMLTV mientras se recorre TV/catchup y cambia canal.
+[ ] Medir p95/máximo de navegación, memoria y duración total de importación.
+[ ] Primeras entradas visibles y catálogo anterior conservado ante fallo;
+    repetir desde archivo, URL y servidor.
+[ ] Cancelar al inicio y entre lotes; comprobar estado sin espera indefinida.
+[ ] Guía adjunta: cancelar durante la pausa y comprobar estado del trabajo.
+[ ] Sin actividad reciente, no añadir esperas. Con navegación continua, máximo
+    15 s de pausas por ejecución (no incluye tiempo de red/SQL).
+[ ] Verificar que ningún hilo UI espera por las pausas del importador.
+
+7. GÉNEROS DEL CATCHUP
+[ ] Abrir panel web y catchup simultáneamente tras caducar caché.
+[ ] Verificar filtros/foco y que la lista anterior sigue visible al renovar.
+[ ] Actualizar guía y comprobar nuevos géneros tras la siguiente renovación.
+[ ] Comparar coste SQL y p95 con panel abierto/cerrado. La primera consulta
+    sigue teniendo su coste; no atribuirle la eliminación de duplicados.
+
+8. PANEL: EXPORTACIÓN POR PERIODO
+[ ] Diagnóstico > Caja negra: probar completo, 5/15 minutos y última hora.
+[ ] Confirmar ZIP legible y README con límites del reloj del dispositivo.
+[ ] Exportar no borra historial; volver a descargar completo para comprobarlo.
+[ ] Marcar problema y comprobar filtrado de las instantáneas de incidencia.
+[ ] Verificar diseño en móvil/ordenador y descarga durante reproducción.
+
+9. PANEL: HITOS DE ARRANQUE
+[ ] Diagnóstico: verificar últimos seis arranques, versión, fecha y milisegundos.
+[ ] Comparar ventana/reproductor/fotograma/catálogo con las trazas reales.
+[ ] Distinguir manualmente arranque frío de reapertura en el informe de pruebas.
+[ ] Verificar hitos ausentes, historial rotado, vista móvil y accesibilidad.
+
+10. TMDB POR LISTA Y TIPO
+[ ] Seleccionar una lista y solo películas; verificar cola y contadores.
+[ ] Pausar, cambiar los selectores y pulsar Continuar: conserva trabajo guardado.
+[ ] Reintentar errores: no afecta errores ni pendientes de otras listas.
+[ ] Reiniciar la app/dispositivo y confirmar selección persistente.
+[ ] Series: una consulta por serie, sin procesar cada episodio.
+[ ] Todas las listas/ambos tipos conserva el alcance anterior.
+[ ] Lista eliminada, sin red y cuenta caducada: comportamiento y mensajes.
+[ ] Correcciones manuales, adultos y ocultos siguen respetados.
+
+11. TMDB POR GRUPO
+[ ] Lista/tipo/grupo: contadores y candidatos limitados al grupo.
+[ ] Serie con episodios en varios grupos: una sola ficha/indexación.
+[ ] Pausar, reiniciar, continuar y reintentar conserva el grupo guardado.
+[ ] Fallo al cargar grupos no inicia accidentalmente Todas las listas/grupos.
+[ ] Catálogo reimportado y episodios ocultos no hacen coincidir filas antiguas.
+
+12. TMDB: REVISAR RESULTADOS
+[ ] Sin coincidencia / Error muestran solo el trabajo guardado.
+[ ] Páginas siguientes, reinicio de consulta y cambio de motivo.
+[ ] Resolver errores entre páginas no hace saltar el primer registro siguiente.
+[ ] No aparecen ocultos/adultos ni URLs o datos privados de reproducción.
+[ ] Cambiar trabajo descarta respuestas anteriores; lista eliminada o reimportada.
+
+13. PRESUPUESTO DE CONSULTAS DE IMÁGENES OFICIALES
+[ ] Comparar boundedArtworkRequests=false/true sin otras opciones experimentales.
+[ ] Recorrer muchos canales/días; observar miniaturas visibles, p95 y memoria.
+[ ] Rechazos ARTWORK_QUEUE_REJECT: conservar fallback y reintentar al volver.
+[ ] Cambiar de pantalla/cerrar con tareas pendientes no produce cierres.
+[ ] La imagen sigue correspondiendo al mismo canal/programa.
+[ ] Comparar latencia con caché fría/caliente y con cola saturada.
+
+14. CABECERAS PES FRAGMENTADAS
+[ ] Verificar APK beta con ambas correcciones PES, firma y versión.
+[ ] BBC Earth: reproducción prolongada y contadores Media3/MediaCodec.
+[ ] Star Channel: inicio y seek; no atribuir su fallo a PES sin evidencia.
+[ ] Zapeo, timeshift, retorno a miniatura y referencias La 1/Vamos.
+[ ] Comparar avisos TS, errores y fotogramas perdidos antes/después.
+
+15. Indexacion TMDB cooperativa (opcion cooperativeMetadata, beta).
+Comparar progreso con navegacion continua, prioridad de fichas, miniatura y mando;
+pausa/reanudacion y seleccion persistida. Ver tmdb-cooperative-budget-20261020.txt.
+
+16. Panel Actividad: foco de Cancelar estable entre refrescos, progreso, fin de tarea y reconexion. Ver panel-task-refresh-20261020.txt.
+
+17. Contrastar en Fire los puntos detectados por el recorrido SQL sintetico: Guardados, generos y busqueda. No extrapolar tiempos del .185.
+
+18. Guardados: vacio, filtros, permisos, segunda pagina y limite 512/513; comparar tiempos reales. Ver catchup-saved-query-20261020.txt.
+
+19. Generos/busqueda: A/B de tiempos y EPG concurrente; indice experimental ocupa ~4,9 MiB en fixture y persiste tras desactivar flag. Ver catchup-genre-search-20261020.txt.
+
+20. Fichas: cache durante descarga de otra ficha, cambios rapidos y cancelacion; identidad canal/hora correcta. Ver catchup-details-cache-20261020.txt.
+
+21. Series 1x02: importacion de prueba, agrupacion/orden/foco y refresco con favoritos/progreso; sin modificar listas reales para la prueba.
+
+22. Cache vacia de generos: recibir programas y ver generos en siguiente refresco; cambio de cuenta; escritura mientras carga. Ver catchup-empty-cache-20261020.txt.
+
+23. Caja negra: PLAYBACK_SAMPLE/AUDIO_COUNTERS durante pausa, carga, seek y zapeo; contadores no demuestran sonido audible. Ver playback-state-evidence-20261020.txt.
+
+24. Exportar caja negra nueva y ejecutar report-playback-evidence.py; contrastar observaciones con imagen/sonido en una sola ventana.
+
+25. Ilustraciones: carga normal, red fallida con copia local, reinicio/recuperacion; confirmar identidad de imagen. Ver artwork-disk-cache-20261020.txt.
+
+26. Presion de memoria: liberar parrillas de ilustraciones, conservar imagen visible y recargar desde disco; medir memoria real. Ver artwork-memory-trim-20261020.txt.
+
+27. Panel TMDB: pausa/continuar y desconexion/reconexion con consultas pendientes; progreso y seleccion correctos. Ver panel-metadata-response-order-20261020.txt.
+
+28. Resumen Actividad: importacion+TMDB simultaneas, pausa, errores, reconexion y legibilidad. Ver panel-task-overview-20261020.txt.
+
+29. Miniaturas: titulos normalizados reutilizados
+Comprobar primera carga y consultas repetidas, imagen correcta por canal/programa,
+memoria tras trim y fluidez. El ensayo JVM no mide latencia ni memoria del Fire.
+
+30. Vida de bloqueos de miniaturas
+Recorrer dias y canales prolongadamente; comprobar imagen correcta, cache tras
+trim, ausencia de descargas duplicadas y fluidez. Variante de cola limitada intacta.
+
+31. Analisis unico de parrilla de imagenes
+Comprobar carga de red, cache fresca y fallback; mismas miniaturas y tiempos de
+primera carga. No se ha medido ahorro temporal/memoria en Android.
+
+32. Revision TMDB desde panel
+Consultar sin coincidencia/errores, avanzar y retroceder; cortar conexion y
+reintentar sin perder pagina. Cambiar motivo/trabajo/sesion limpia historial.
+Comprobar foco y botones en navegador movil y escritorio.
+
+33. Coherencia de filtros TMDB
+Cambiar rapidamente lista/tipo, actualizar trabajo desde otra sesion y verificar
+que los grupos corresponden; progreso sin cambios no debe borrar seleccion manual.
+
+34. Panel oculto
+Ocultar durante refresco y volver: consultas posteriores se posponen, estado se
+actualiza al regresar y trabajos TMDB/importacion continuan en dispositivo.
+
+35. Mando web
+Comprobar titulo y capacidades, pausa/seek/directo, cambio de vista y reconexion;
+respuestas antiguas no deben sobrescribir estado reciente.
+
+36. Series en panel web
+Cambiar listas/series rapido, salir y volver, reconectar. Un detalle anterior no
+debe reabrirse; temporadas, paginacion y acciones siguen disponibles.
+
+37. Imagenes catchup web
+Scroll y cambio de pagina/dia; ocultar y volver, salir/reconectar. Comprobar
+reanudacion y limpieza de blobs, sin imagenes de una sesion anterior.
+
+38. Captura diagnostica web
+Activar/desactivar, salir/regresar, ocultar y reconectar: no reaparece captura
+antigua ni queda blob retenido tras apagar vista.
+
+39. Peticiones y reconexion del panel
+Reconectar durante respuesta lenta/error de red: no aplicar datos ni indicador
+de otra sesion; verificar que un 401 vigente sigue cerrando acceso.
+
+40. Catchup con actualizacion activa
+Contrastar lecturas/p95 con guia actualizandose en Fire; ensayo Linux WAL solo
+es referencia sintetica de una pagina, no prueba de fluidez ni sync completo.
+
+41. Generos e invalidacion por ambito
+Actualizar mismo ambito y otro durante carga; generos propios se renuevan y
+escrituras ajenas no fuerzan repeticion. Medir p95 en dispositivo.
+
+42. Limpieza de retencion por lote
+Actualizar varios canales, comprobar guardados/caducados y rollback ante fallo
+en Android; medir consultas durante escritura. Esquema y retencion intactos.

@@ -1,0 +1,24 @@
+Fichas catchup: acceso inmediato a cache - 20/10/2026
+
+TimelineProgrammeDetails.loadMetadata ya serializaba todas las consultas:
+no habia descargas simultaneas duplicadas. El problema era que tambien una
+ficha cacheada esperaba el monitor de otra descarga, potencialmente lenta.
+
+Cambio: validacion de identidad/cancelacion y peek antes del monitor.
+Solo los fallos de cache entran al cargador sincronizado, que vuelve a comprobar
+la cache. No cambia la identidad canal/hora, TTL, limite de 64 fichas, cache de
+guia, disco, destinos permitidos, numero de peticiones simultaneas ni contenidos.
+No se alteran reproduccion, rutas de catchup, claves ni asociaciones.
+
+Pruebas JVM con el monitor REAL bloqueado por otro hilo:
+- un acierto de cache termina mientras el cargador sigue bloqueado;
+- identidad invalida termina sin red ni esperar al cargador;
+- cancelacion tiene prioridad incluso ante un acierto de cache;
+- un fallo inicial en espera reutiliza el resultado cacheado antes de entrar
+  al cargador, sin repetir la consulta de red.
+Fixtures sinteticos, sin llamadas de red ni datos de usuarios.
+No se ha medido una mejora de latencia de red; se elimina una espera concreta.
+
+Pendiente Fire: abrir ficha ya visitada mientras otra consulta esta activa,
+cambiar rapido de canal/programa y volver; no mostrar sinopsis de otra identidad.
+Sin instalar, publicar ni modificar produccion.

@@ -1,0 +1,21 @@
+Panel series: respuestas ligadas a seleccion y sesion — 20/10/2026
+
+Al recargar fuentes se invalida tambien la consulta pendiente de episodios.
+Catalogo y episodios comprueban secuencia, vista, sesion y lista antes de
+aplicar respuestas; episodios comprueba tambien la serie seleccionada.
+Errores de consultas obsoletas no se muestran sobre otra seleccion.
+Sin cambio en API, paginacion, marcado visto, historial ni comandos de play.
+No cancela peticiones iniciadas; descarta su resultado si ya no corresponde.
+
+42 tests Node del panel superados; cinco nuevos:
+- detalle pendiente no reabre tras reiniciar fuentes;
+- cambio de serie sin nueva consulta descarta respuesta vieja;
+- cambio de lista descarta catalogo previo;
+- error de sesion anterior no se muestra;
+- detalle vigente sigue mostrando temporadas/paginacion.
+assembleDebug beta ARM32 correcto. Sin ordenes reales al dispositivo.
+Logs: /srv/drbep-dev/reviews/panel-series-scope-{tests,build}.log
+
+Pendiente navegador conectado: cambio rapido de listas/series, salida y regreso
+a la seccion y reconexion. No valida la navegacion nativa Android ni reproduccion.
+No instalado, publicado ni desplegado.

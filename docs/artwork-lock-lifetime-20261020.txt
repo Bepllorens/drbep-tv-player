@@ -1,0 +1,28 @@
+Miniaturas: vida limitada de bloqueos por canal/dia — 20/10/2026
+
+El registro anterior conservaba una entrada por cada clave consultada durante
+toda la vida del repositorio, incluso tras expulsar la parrilla de la cache.
+KeyedArtworkLocks cuenta tanto propietarios como llamadas esperando el bloqueo.
+La ultima salida elimina la entrada, tambien ante excepcion. El monitor del mapa
+solo protege altas/bajas; nunca contiene descarga, parseo ni espera de otro bloqueo.
+La exclusion por clave se mantiene mientras exista cualquier llamada pendiente.
+Claves distintas pueden continuar en paralelo.
+
+MovistarArtworkRepository usa el registro en la ruta normal. La variante beta
+boundedArtworkRequests conserva sus 64 bloqueos fijos y su cola limitada.
+La lectura con doble comprobacion y generacion de trim queda en loadCached.
+La seleccion de imagen se hace fuera del bloqueo de carga; las filas no se
+modifican despues de cargarse. Fuentes, TTL, permisos y reproductores intactos.
+
+Pruebas sinteticas:
+- 10.000 claves completadas: cero entradas retenidas al finalizar.
+- Excepcion libera entrada y permite siguiente llamada.
+- Otra clave completa mientras la primera permanece bloqueada.
+- Ocho hilos, 4.000 accesos a la misma clave: ninguna ejecucion solapada.
+Esto mide retencion de entradas y exclusion, no MiB ni rendimiento Fire.
+
+Validacion: suite JVM y assembleDebug beta ARM32.
+Log: /srv/drbep-dev/reviews/artwork-locks-validation.log.
+Pendiente Fire: recorrido prolongado entre dias/canales, cache tras trim,
+imagen correcta, ausencia de descargas duplicadas y fluidez.
+No instalado, publicado ni desplegado.

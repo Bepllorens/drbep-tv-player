@@ -21,6 +21,17 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
     U7dCatalogStore(Context context) { this(context,"u7d-index.db",context.getDatabasePath("u7d-catalog.db")); }
     U7dCatalogStore(Context context,String name,java.io.File legacy) { super(context.getApplicationContext(),name,null,4);legacyFile=legacy;setWriteAheadLoggingEnabled(true); }
 
+    @Override public void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        // Additive, opt-in beta index. No schema-version bump or data migration.
+        if(BuildConfig.CATCHUP_SEARCH_INDEX && !db.isReadOnly()) {
+            try { db.execSQL(ArchiveQuerySql.SEARCH_INDEX); }
+            catch(android.database.sqlite.SQLiteException unavailable) {
+                android.util.Log.w("CatchupDB","Optional search index unavailable; keeping existing queries");
+            }
+        }
+    }
+
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE catalog(scope TEXT, channel TEXT, updated INTEGER, payload TEXT, PRIMARY KEY(scope,channel))");
         createPrograms(db);
@@ -92,8 +103,7 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         List<String> args=new ArrayList<>();args.add(scope);
         StringBuilder where=new StringBuilder("p.scope=? AND p.channel IN (");
         for(String id:allowed){if(args.size()>1)where.append(',');where.append('?');args.add(id);}where.append(')');
-        if(savedOnly)where.append(" AND EXISTS (SELECT 1 FROM saved s WHERE s.scope=p.scope AND s.id=p.id)");
-        else {where.append(" AND p.day=? AND p.start<=? AND p.end>?");args.add(day);args.add(Long.toString(now));args.add(Long.toString(now-7L*86400000));}
+        if(!savedOnly) {where.append(" AND p.day=? AND p.start<=? AND p.end>?");args.add(day);args.add(Long.toString(now));args.add(Long.toString(now-7L*86400000));}
         if(!channel.isEmpty()){where.append(" AND p.channel=?");args.add(channel);}
         if(!genre.isEmpty()){where.append(" AND p.genre=?");args.add(genre);}
         if(!search.trim().isEmpty()){where.append(" AND instr(p.search,?)>0");args.add(search.trim().toLowerCase(java.util.Locale.ROOT));}
@@ -102,12 +112,25 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_OPEN,op,BlackBox.elapsed(stage),0,0);
         ArchivePageTrace.cost("open",BlackBox.elapsed(stage));
         stage=System.nanoTime();
-        try(Cursor c=db.rawQuery("SELECT count(*) FROM programs p WHERE "+where,values)){if(c.moveToFirst())page.total=c.getInt(0);}
+        String queryFrom="programs p";
+        if(savedOnly) {
+            // A bounded probe avoids scanning the entire programme grid for small saved sets.
+            // Large sets retain the original ordered scan, which is faster for their first page.
+            int savedCount=0;
+            try(Cursor c=db.rawQuery("SELECT id FROM saved WHERE scope=? LIMIT 513",new String[]{scope})) {
+                while(c.moveToNext())savedCount++;
+            }
+            if(savedCount<=512) {
+                queryFrom="saved s CROSS JOIN programs p";
+                where.append(" AND s.scope=p.scope AND s.id=p.id");
+            } else where.append(" AND EXISTS (SELECT 1 FROM saved s WHERE s.scope=p.scope AND s.id=p.id)");
+        }
+        try(Cursor c=db.rawQuery("SELECT count(*) FROM "+queryFrom+" WHERE "+where,values)){if(c.moveToFirst())page.total=c.getInt(0);}
         BlackBox.event(BlackBoxStore.Event.CATCHUP_DB_COUNT,op,BlackBox.elapsed(stage),page.total,0);
         ArchivePageTrace.cost("count",BlackBox.elapsed(stage));
         stage=System.nanoTime();long decodeNanos=0;
         int size=Math.max(1,Math.min(240,limit));page.offset=Math.min(Math.max(0,offset),Math.max(0,((page.total-1)/size)*size));
-        try(Cursor c=db.rawQuery("SELECT p.payload FROM programs p WHERE "+where+" ORDER BY p.start DESC,p.id LIMIT "+size+" OFFSET "+page.offset,values)){
+        try(Cursor c=db.rawQuery("SELECT p.payload FROM "+queryFrom+" WHERE "+where+" ORDER BY p.start DESC,p.id LIMIT "+size+" OFFSET "+page.offset,values)){
             while(c.moveToNext()) {
                 String payload=c.getString(0);long decoding=System.nanoTime();
                 try{page.programs.add(decode(new JSONObject(payload)));}catch(org.json.JSONException ignored){}
@@ -130,16 +153,23 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         return allowExpired?genreCache.peek(scope):genreCache.get(scope,android.os.SystemClock.elapsedRealtime());
     }
     List<String> genres(String scope) {
-        long now=android.os.SystemClock.elapsedRealtime();
-        List<String> cached=genreCache.get(scope,now);
-        if(cached!=null)return cached;
-        List<String> out=new ArrayList<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT DISTINCT genre FROM programs WHERE scope=? AND genre<>'' ORDER BY genre",new String[]{scope})) {
-            while(c.moveToNext())out.add(c.getString(0));
-        }
-        genreCache.put(scope,now,out);
-        return out;
+        return genreCache.getOrLoad(scope,android.os.SystemClock::elapsedRealtime,()-> {
+            List<String> out=new ArrayList<>();
+            SQLiteDatabase db=getReadableDatabase();
+            boolean fallback=false;
+            try(Cursor c=db.rawQuery(ArchiveQuerySql.GENRES_SEEK,new String[]{scope,scope})) {
+                while(c.moveToNext())out.add(c.getString(0));
+            } catch(android.database.sqlite.SQLiteException unsupported) { fallback=true; }
+            if(fallback || out.size()>256) {
+                out.clear();
+                try(Cursor c=db.rawQuery(ArchiveQuerySql.GENRES_ALL,new String[]{scope})) {
+                    while(c.moveToNext())out.add(c.getString(0));
+                }
+            }
+            return out;
+        });
     }
+
     EpgRepository.EpgProgram find(String scope,String id) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM programs WHERE scope=? AND id=?",new String[]{scope,id})){
             if(c.moveToFirst())return decode(new JSONObject(c.getString(0)));
@@ -190,6 +220,7 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
     void invalidate(String scope,String channel) { synchronized(writeLock) {
         getWritableDatabase().delete("catalog","scope=? AND channel=?",new String[]{scope,channel});
         getWritableDatabase().delete("programs","scope=? AND channel=? AND NOT EXISTS (SELECT 1 FROM saved s WHERE s.scope=programs.scope AND s.id=programs.id)",new String[]{scope,channel});
+        genreCache.invalidate(scope);
     } }
     boolean fresh(String scope,String channel,long now) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT updated FROM catalog WHERE scope=? AND channel=?",new String[]{scope,channel})) {
@@ -199,26 +230,36 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
     void index(String scope,String channel,List<EpgRepository.EpgProgram> items) throws Exception { synchronized(writeLock) { store(scope,channel,items,false); } }
     void write(String scope,String channel,List<EpgRepository.EpgProgram> items) throws Exception { synchronized(writeLock) { store(scope,channel,items,true); } }
     private void store(String scope,String channel,List<EpgRepository.EpgProgram> items,boolean refreshed) throws Exception {
+        store(scope,channel,items,refreshed,true);
+    }
+    private void pruneExpiredPrograms(SQLiteDatabase db,String scope) {
+        db.execSQL("DELETE FROM programs WHERE scope=? AND end<? AND NOT EXISTS (SELECT 1 FROM saved s WHERE s.scope=programs.scope AND s.id=programs.id)",new Object[]{scope,System.currentTimeMillis()-8L*86400000});
+    }
+    private void store(String scope,String channel,List<EpgRepository.EpgProgram> items,boolean refreshed,boolean prune) throws Exception {
         SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();
         try {
             for(EpgRepository.EpgProgram p:items)if(ArchiveWindow.retained(p.startTime,System.currentTimeMillis()))putProgram(db,scope,p);
             if(refreshed)db.execSQL("INSERT OR REPLACE INTO catalog VALUES(?,?,?,?)",new Object[]{scope,channel,System.currentTimeMillis(),"[]"});
-            db.execSQL("DELETE FROM programs WHERE scope=? AND end<? AND NOT EXISTS (SELECT 1 FROM saved s WHERE s.scope=programs.scope AND s.id=programs.id)",new Object[]{scope,System.currentTimeMillis()-8L*86400000});
+            if(prune)pruneExpiredPrograms(db,scope);
             db.setTransactionSuccessful();
         } finally {db.endTransaction();}
+        if(!db.inTransaction())genreCache.invalidate(scope);
     }
     void indexAll(String scope,java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception { synchronized(writeLock) {
         SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();
         try {for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> channel:channels.entrySet())for(EpgRepository.EpgProgram p:channel.getValue())if(ArchiveWindow.retained(p.startTime,System.currentTimeMillis()))putProgram(db,scope,p);db.setTransactionSuccessful();}
         finally{db.endTransaction();}
+        if(!db.inTransaction())genreCache.invalidate(scope);
     } }
     void writeAll(String scope, java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception { synchronized(writeLock) {
         SQLiteDatabase db=getWritableDatabase();
         db.beginTransactionNonExclusive();
         try {
-            for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> channel:channels.entrySet())write(scope,channel.getKey(),channel.getValue());
+            for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> channel:channels.entrySet())store(scope,channel.getKey(),channel.getValue(),true,false);
+            if(!channels.isEmpty())pruneExpiredPrograms(db,scope);
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
+        if(!db.inTransaction())genreCache.invalidate(scope);
     } }
     boolean saved(String scope,String id) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM saved WHERE scope=? AND id=?",new String[]{scope,id})) { return c.moveToFirst(); }
@@ -235,6 +276,7 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
                 } else db.delete("saved","scope=? AND id=?",new String[]{scope,id(p)});
                 db.setTransactionSuccessful();
             } finally { db.endTransaction(); }
+            if(desired && !db.inTransaction())genreCache.invalidate(scope);
             savedRevision++;
         } }
     }

@@ -33,8 +33,17 @@ final class TimelineProgrammeDetails {
         synchronized(CACHE) { CachedDescription hit=CACHE.get(key); return hit!=null&&hit.expires>System.currentTimeMillis()?hit.metadata:null; }
     }
     static String load(String code,String startTime)throws Exception { return loadMetadata(code,startTime,"").description; }
-    // One metadata request at a time; called exclusively on Dispatchers.IO after focus settles.
-    static synchronized ProgrammeMetadata loadMetadata(String code, String startTime, String suppliedFicha) throws Exception {
+    // Cached results must not queue behind an unrelated slow network request.
+    static ProgrammeMetadata loadMetadata(String code, String startTime, String suppliedFicha) throws Exception {
+        if(Thread.currentThread().isInterrupted())throw new InterruptedException();
+        if(code==null || !code.matches("[A-Za-z0-9_-]{1,32}") || EpgTimeCodec.parseEpochMillis(startTime)<=0)
+            return ProgrammeMetadata.EMPTY;
+        ProgrammeMetadata hit=peek(key(code,startTime));
+        if(hit!=null)return hit;
+        return loadMetadataSerialized(code,startTime,suppliedFicha);
+    }
+    // Preserve a single disk/network load, with a second cache check inside the lock.
+    private static synchronized ProgrammeMetadata loadMetadataSerialized(String code, String startTime, String suppliedFicha) throws Exception {
         if(Thread.currentThread().isInterrupted())throw new InterruptedException();
         long opened=System.nanoTime();
         if (code == null || !code.matches("[A-Za-z0-9_-]{1,32}")) return ProgrammeMetadata.EMPTY;

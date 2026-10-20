@@ -497,6 +497,36 @@ final class PlayerController {
     private String lastPlaybackState = "IDLE";
     private String lastPlaybackPhase = "idle";
     private final PlaybackSessionStateMachine playbackSessionState = new PlaybackSessionStateMachine();
+    public boolean isCatchupPermissionDenied() {
+        return CatchupFailurePolicy.DENIED_MESSAGE.equals(lastErrorSummary);
+    }
+
+    private boolean isCatchupPermissionError(Throwable error) {
+        if (currentRequest == null || !"u7d_proxy".equalsIgnoreCase(currentRequest.playbackProfile)) return false;
+        for (int depth=0; error!=null && depth<12; depth++, error=error.getCause()) {
+            if (error instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException http =
+                    (androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) error;
+                if (CatchupFailurePolicy.isEntitlementDenial(http.responseCode, http.headerFields)) return true;
+            }
+        }
+        return false;
+    }
+
+    private HlsStartupLoadControl hlsStartupLoadControl;
+    private final RemoteZapTrace remoteZapTrace = new RemoteZapTrace();
+    private static final class PlaybackAttemptTag {
+        final int generation;
+        PlaybackAttemptTag(int generation) { this.generation = generation; }
+    }
+    void noteRemoteZap(long operation, long pressMs, String channelId) {
+        if (!"beta".equals(BuildConfig.UPDATE_CHANNEL)) return;
+        long now = SystemClock.elapsedRealtime();
+        remoteZapTrace.requested(operation, pressMs, now, channelId);
+        BlackBox.event(BlackBoxStore.Event.ZAP_TUNE, operation, now - pressMs, 0, 0);
+    }
+    void finishRemoteZapDispatch() { remoteZapTrace.discardUnclaimed(); }
+
     private String lastErrorSummary;
     private String lastHdrBadgeChannelId;
     private boolean forceLiveEdgeOnNextReady;
@@ -702,6 +732,8 @@ final class PlayerController {
     private long currentBufferingStartedMs;
     private boolean currentBufferingIsRebuffer;
     private long lastBehindLiveWindowRecoveryMs;
+    private long pausedU7dPositionMs = -1L;
+    private boolean pausedU7dResumePending;
     private int currentBufferingCount;
     private long currentBufferingTotalMs;
     private final Runnable firstFrameRecoveryRunnable;
@@ -872,9 +904,7 @@ final class PlayerController {
         }
                 .setEnableDecoderFallback(true);
         diagnosticAllocator = new androidx.media3.exoplayer.upstream.DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE);
-        player = new ExoPlayer.Builder(context, renderersFactory)
-                .setTrackSelector(trackSelector)
-                .setLoadControl(new DefaultLoadControl.Builder()
+        hlsStartupLoadControl = new HlsStartupLoadControl(new DefaultLoadControl.Builder()
                         .setAllocator(diagnosticAllocator)
                         // Keep TV zapping fast, but hold a small extra cushion before
                         // resume to avoid short rebuffer loops on live HLS edges.
@@ -886,7 +916,10 @@ final class PlayerController {
                         .setTargetBufferBytes(PlaybackMemoryBudget.targetBytes(
                                 Runtime.getRuntime().maxMemory(), multiViewPlayback))
                         .setPrioritizeTimeOverSizeThresholds(false)
-                        .build())
+                        .build());
+        player = new ExoPlayer.Builder(context, renderersFactory)
+                .setTrackSelector(trackSelector)
+                .setLoadControl(hlsStartupLoadControl)
                 .setMediaSourceFactory(AppleNativePlayback.wrap(new DefaultMediaSourceFactory(dataSourceFactory)
                         .setDrmSessionManagerProvider(createDrmSessionManagerProvider()),dataSourceFactory))
                 .setSeekBackIncrementMs(TIMESHIFT_SEEK_STEP_MS)
@@ -898,6 +931,18 @@ final class PlayerController {
                 .build(), shouldHandleSystemAudioFocus(multiViewPlayback));
         player.setHandleAudioBecomingNoisy(!multiViewPlayback);
         player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
+            @Override public void onRenderedFirstFrame(EventTime time, Object output, long renderTimeMs) {
+                if (!"beta".equals(BuildConfig.UPDATE_CHANNEL) || time.windowIndex < 0
+                        || time.windowIndex >= time.timeline.getWindowCount()) return;
+                MediaItem item = time.timeline.getWindow(time.windowIndex, new Timeline.Window()).mediaItem;
+                Object tag = item.localConfiguration == null ? null : item.localConfiguration.tag;
+                if (!(tag instanceof PlaybackAttemptTag)) return;
+                RemoteZapTrace.Sample sample = remoteZapTrace.frame(
+                        ((PlaybackAttemptTag)tag).generation, renderTimeMs);
+                if (sample != null) BlackBox.event(BlackBoxStore.Event.ZAP_FRAME,
+                        sample.operation, sample.pressToFrameMs, sample.tuneToFrameMs, sample.generation);
+            }
+
             @Override public void onVideoDecoderInitialized(EventTime eventTime,String decoderName,long initializedTimestampMs,long initializationDurationMs) { panelVideoDecoder=decoderName; perfStage("decoder initMs=" + initializationDurationMs); }
             @Override public void onVideoDecoderReleased(EventTime eventTime,String decoderName) { if(decoderName.equals(panelVideoDecoder))panelVideoDecoder=""; }
             @Override public void onLoadCompleted(EventTime time,
@@ -958,6 +1003,13 @@ final class PlayerController {
                         + " message=" + safeLogValue(error.getMessage()), error);
                 lastErrorSummary=describePlaybackError(error);
                 recoveryEvent("Error detectado",lastErrorSummary);
+                if (isCatchupPermissionError(error)) {
+                    lastErrorSummary = CatchupFailurePolicy.DENIED_MESSAGE;
+                    transitionPlaybackPhase("error");
+                    host.showError(lastErrorSummary);
+                    host.recordPlaybackError(request, getPlaybackDiagnostics());
+                    return;
+                }
                 preserveLiveAnchor();
                 if (recoverVodAudioOutput(error)) {recoveryEvent("Reintento","Salida de audio");return;}
                 if (deferRecoveryUntilNetworkReturns(request, error)
@@ -1024,6 +1076,7 @@ final class PlayerController {
                 }
                 uiHandler.removeCallbacks(firstFrameRecoveryRunnable);
                 if (playbackState == Player.STATE_READY) {
+                    rememberPausedU7dPosition();
                     boolean recoveredFromStall = pendingStallRecovery;
                     pendingStallRecovery = false;
                     boolean firstReady = currentReadyElapsedMs < 0L;
@@ -1077,6 +1130,9 @@ final class PlayerController {
 
             @Override
             public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+                // Catch MediaSession as well as remote, touch and panel controls.
+                if (playWhenReady && resumeExpiredPausedU7d()) return;
+                if (!playWhenReady) rememberPausedU7dPosition();
                 audioFocusState.onPlayWhenReadyChanged(
                         playWhenReady,
                         reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
@@ -2157,6 +2213,17 @@ final class PlayerController {
         long nowMs = SystemClock.elapsedRealtime();
         if(nowMs-blackBoxVideoSampleMs>=BlackBox.sampleInterval()){
             blackBoxVideoSampleMs=nowMs;
+            long sampleBufferMs=activePlayer.getTotalBufferedDuration();
+            BlackBox.event(BlackBoxStore.Event.PLAYBACK_SAMPLE,playbackAttemptGeneration.get(),
+                activePlayer.getCurrentPosition(),sampleBufferMs,
+                PlaybackSampleFlags.encode(activePlayer.getPlaybackState(),activePlayer.getPlayWhenReady(),
+                    activePlayer.isPlaying(),activePlayer.isLoading(),activePlayer.getPlaybackSuppressionReason()!=Player.PLAYBACK_SUPPRESSION_REASON_NONE));
+            androidx.media3.exoplayer.DecoderCounters audio=activePlayer.getAudioDecoderCounters();
+            if(audio!=null) {
+                audio.ensureUpdated();
+                BlackBox.event(BlackBoxStore.Event.AUDIO_COUNTERS,playbackAttemptGeneration.get(),
+                    audio.renderedOutputBufferCount,audio.skippedOutputBufferCount,sampleBufferMs);
+            }
             androidx.media3.exoplayer.DecoderCounters counts=activePlayer.getVideoDecoderCounters();
             if(counts!=null){counts.ensureUpdated();BlackBox.event(BlackBoxStore.Event.VIDEO_COUNTERS,
                 playbackAttemptGeneration.get(),counts.renderedOutputBufferCount,counts.droppedBufferCount,activePlayer.getTotalBufferedDuration());
@@ -2698,6 +2765,7 @@ final class PlayerController {
             builder.setMimeType(mimeType);
         }
 
+        hlsStartupLoadControl.startup.cancel();
         currentRequest = null;
         vodDisplayRate.restore();
         currentStreamInfo = null;
@@ -2734,6 +2802,45 @@ final class PlayerController {
     }
 
     long getU7dBufferedPlaybackPosition() {
+        if (isBufferedU7dReplay() && pausedU7dPositionMs >= 0L
+                && (!player.getPlayWhenReady() || pausedU7dResumePending)) return pausedU7dPositionMs;
+        return rawU7dPlaybackPosition();
+    }
+
+    private void rememberPausedU7dPosition() {
+        if (isBufferedU7dReplay() && !player.getPlayWhenReady()
+                && player.getPlaybackState() == Player.STATE_READY
+                && pausedU7dPositionMs < 0L && !pausedU7dResumePending) {
+            pausedU7dPositionMs = rawU7dPlaybackPosition();
+        }
+    }
+
+    private boolean resumeExpiredPausedU7d() {
+        if (!isBufferedU7dReplay() || pausedU7dPositionMs < 0L) return false;
+        if (pausedU7dResumePending) {
+            player.pause();
+            return true;
+        }
+        long[] window = getU7dAvailableWindow();
+        if (U7dReplayRecoveryPolicy.pausedPositionExpired(pausedU7dPositionMs, window)) {
+            // Do not read evicted segments and only then try to recover from an HTTP error.
+            pausedU7dResumePending = true;
+            long position = pausedU7dPositionMs;
+            player.pause();
+            if (host.onU7dReplayWindowExpired(position)) {
+                Log.i(TAG, "U7D paused resume: reload at localMs=" + position);
+                return true;
+            }
+            pausedU7dResumePending = false;
+            pausedU7dPositionMs = -1L;
+            player.play();
+            return true;
+        }
+        pausedU7dPositionMs = -1L;
+        return false;
+    }
+
+    private long rawU7dPlaybackPosition() {
         if (!isBufferedU7dReplay()) return getCurrentPlaybackPosition();
         Timeline timeline = player.getCurrentTimeline();
         if (timeline.isEmpty()) return getCurrentPlaybackPosition();
@@ -2763,10 +2870,16 @@ final class PlayerController {
         Timeline.Window window = timeline.getWindow(player.getCurrentMediaItemIndex(), new Timeline.Window());
         long start = Math.max(0L, window.getPositionInFirstPeriodMs());
         if (!U7dBufferedSeekPolicy.contains(localTargetMs, start, player.getDuration())) return false;
+        // seekTo preserves playWhenReady, including an explicit user pause.
+        if (!player.getPlayWhenReady()) pausedU7dPositionMs = localTargetMs;
         player.seekTo(localTargetMs - start);
-        player.play();
         Log.i(TAG, "U7D buffered seek: reused current replay window");
         return true;
+    }
+
+    boolean shouldPlayAfterU7dSeek() {
+        // isPlaying is also false while buffering; preserve the user's intent instead.
+        return player != null && player.getPlayWhenReady();
     }
 
     boolean isPanelSeekable() { return !isVlcDirectPlayActive() && player != null && player.isCurrentMediaItemSeekable(); }
@@ -2811,6 +2924,9 @@ final class PlayerController {
     }
 
     void stopForSourceSwitch() {
+        pausedU7dPositionMs = -1L;
+        pausedU7dResumePending = false;
+        remoteZapTrace.cancel();
         vodDisplayRate.restore();
         suspendedForMultiView = false;
         resetPlaybackProgressWatchdog(true);
@@ -2823,6 +2939,7 @@ final class PlayerController {
     }
 
     void release() {
+        remoteZapTrace.cancel();
         if(!blackBoxWindowClosed){multiEvent(BlackBoxStore.Event.MULTI_CLOSE,0,0,0);blackBoxWindowClosed=true;}
         vodDisplayRate.restore();
         resetPlaybackProgressWatchdog(true);
@@ -3212,6 +3329,13 @@ final class PlayerController {
         multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
         perfStage("prepare");
         currentReadyElapsedMs = -1L;
+        boolean fastHls = HlsStartupPolicy.eligible(BuildConfig.FAST_HLS_STARTUP,
+                request.vod, "u7d_proxy".equalsIgnoreCase(request.playbackProfile),
+                host.isMultiViewPlayback(), useFallback, resumePositionMs > 0L || usesHlsDvr(),
+                decision.mimeType);
+        hlsStartupLoadControl.arm(fastHls, safeString(request.channelId));
+        perfStage("startup fastHls=" + fastHls + " initialMs=" + (fastHls ? 500 : 1500));
+        builder.setTag(new PlaybackAttemptTag(generation));
         player.setMediaItem(builder.build());
         if (resumePositionMs > 0L) {
             player.seekTo(resumePositionMs);
@@ -3242,12 +3366,15 @@ final class PlayerController {
     }
 
     private int beginPlaybackAttempt(PlaybackRequest request, String origin) {
+        pausedU7dPositionMs = -1L;
+        pausedU7dResumePending = false;
         performanceAttemptStartedMs = SystemClock.elapsedRealtime();
 
 
         if(origin.startsWith("playChannel")){hlsDvrPreview=-1;uiHandler.removeCallbacks(hlsDvrCommit);lastLiveAnchor=null;pendingLiveAnchor=null;hlsDvrStart=0;hlsDvrEnd=0;hlsDvrAnchor=0;hlsDvrTarget=0;hlsDvrChecked=0;hlsDvrLoading=false;}
         hlsDvrLoading=false;hlsDvrChecked=0;
         int generation = playbackAttemptGeneration.incrementAndGet();
+        remoteZapTrace.bind(request == null ? null : request.channelId, generation);
         String initialPhase = "playChannelAfterResolvingStreamInfo".equals(origin) ? "resolving_stream_info" : "starting";
         String nextChannelId = request == null || request.channelId == null ? "" : request.channelId.trim();
         if (!nextChannelId.equals(playbackSessionState.snapshot().channelId)) {

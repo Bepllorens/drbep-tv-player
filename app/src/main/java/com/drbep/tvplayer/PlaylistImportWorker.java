@@ -13,13 +13,27 @@ public final class PlaylistImportWorker extends Worker {
         Context app=getApplicationContext();PlaylistDatabase db=PlaylistDatabase.getInstance(app);String id=getId().toString();
         String source=getInputData().getString("source"),kind=getInputData().getString("kind"),filename=getInputData().getString("file");
         long[] count={0};
+        CooperativeWorkYield.Check cancellation=()->{
+            if(isStopped()||Thread.currentThread().isInterrupted())throw new InterruptedIOException();
+        };
+        CooperativeWorkYield cooperative=new CooperativeWorkYield(BackgroundWorkBudget::now,
+                Thread::sleep,cancellation,()->BackgroundWorkBudget.INSTANCE.remaining(BackgroundWorkBudget.now()),15000);
+        CooperativeWorkYield.Status status=new CooperativeWorkYield.Status(){
+            public void waiting(){PlaylistImportJobs.update(db,id,"running","Esperando brevemente para mantener la reproducción fluida",count[0]);}
+            public void resumed(){PlaylistImportJobs.update(db,id,"running","Procesando "+("guide".equals(kind)?"guía":"lista"),count[0]);}
+        };
         PlaylistDatabase.Progress progress=new PlaylistDatabase.Progress(){
-            public void check()throws Exception {if(isStopped()||Thread.currentThread().isInterrupted())throw new InterruptedIOException();}
+            public void check()throws Exception {cancellation.check();}
+            public void yieldControl()throws Exception {
+                check();
+                if(BuildConfig.COOPERATIVE_IMPORTS && !db.getWritableDatabase().inTransaction()) cooperative.yield(250,status);
+            }
             public void update(long n)throws Exception {check();count[0]=n;PlaylistImportJobs.update(db,id,"running","Procesando "+("guide".equals(kind)?"guía":"lista"),n);}
         };
         try {
             try(Cursor job=db.getReadableDatabase().rawQuery("SELECT state FROM import_jobs WHERE id=?",new String[]{id})) {if(!job.moveToFirst()||"cancelled".equals(job.getString(0)))return Result.failure();}
             progress.check();PlaylistImportJobs.update(db,id,"running","Preparando importación",0);
+            if(BuildConfig.COOPERATIVE_IMPORTS)cooperative.yield(8000,status);
             String message="Lista importada";
             if("guide".equals(kind))message=PlaylistGuideSync.refresh(db,source,progress);
             else {
@@ -39,12 +53,13 @@ public final class PlaylistImportWorker extends Worker {
                 if(!guide.isEmpty()) {
                     PlaylistImportJobs.update(db,id,"running","Lista disponible · actualizando guía",count[0]);
                     try {message="Lista importada · "+PlaylistGuideSync.refresh(db,source,progress);}
-                    catch(Exception e){progress.check();message="Lista importada · guía pendiente de actualizar";}
+                    catch(Exception e){if(e instanceof InterruptedException)Thread.currentThread().interrupt();progress.check();message="Lista importada · guía pendiente de actualizar";}
                 }
                 count[0]=importedCount;
             }
             progress.check();PlaylistImportJobs.update(db,id,"complete",message,count[0]);removeSpool(filename);return Result.success();
         } catch(Exception e) {
+            if(e instanceof InterruptedException)Thread.currentThread().interrupt();
             if(isStopped())return Result.retry();
             if(getRunAttemptCount()<2&&!(e instanceof FileNotFoundException)){
                 PlaylistImportJobs.update(db,id,"retry","Interrumpida · reintentando",count[0]);return Result.retry();

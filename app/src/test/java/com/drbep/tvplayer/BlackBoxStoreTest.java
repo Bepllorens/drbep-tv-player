@@ -80,4 +80,37 @@ public class BlackBoxStoreTest {
    assertEquals(0,summary.getLong("writeErrors"));
   }
  }
+
+ @Test public void intervalFiltersRingAndIncidentsWithoutChangingOriginals()throws Exception {
+  File dir=Files.createTempDirectory("blackbox-range").toFile();
+  String rows="{\"at\":99}\n{\"at\":100}\n{\"at\":200}\n{\"at\":201}\n{bad\n";
+  File ring=new File(dir,"events-1.jsonl"),incident=new File(dir,"incident-0.jsonl");
+  Files.write(ring.toPath(),rows.getBytes("UTF-8"));Files.write(incident.toPath(),rows.getBytes("UTF-8"));
+  try(BlackBoxStore box=new BlackBoxStore(dir,771)){
+   Map<String,String> zip=unzip(box.export(100,200));
+   for(String name:Arrays.asList("events-1.jsonl","incident-0.jsonl"))
+    assertEquals("{\"at\":100}\n{\"at\":200}\n",zip.get(name));
+   assertTrue(zip.get("README.txt").contains("100 to 200"));
+   assertEquals(rows,new String(Files.readAllBytes(incident.toPath()),"UTF-8"));
+   assertEquals(rows,new String(Files.readAllBytes(ring.toPath()),"UTF-8"));
+   assertEquals(rows,unzip(box.export()).get("incident-0.jsonl"));
+  }
+ }
+ @Test public void emptyIntervalAndInvalidBoundariesAreExplicit()throws Exception {
+  try(BlackBoxStore box=new BlackBoxStore(Files.createTempDirectory("blackbox-empty").toFile(),771)){
+   Map<String,String> zip=unzip(box.export(1,2));
+   for(Map.Entry<String,String> e:zip.entrySet())if(e.getKey().endsWith(".jsonl"))assertEquals("",e.getValue());
+   for(long[] range:new long[][]{{-1,2},{3,2}}){
+    try{box.export(range[0],range[1]);fail();}catch(IllegalArgumentException expected){}
+   }
+  }
+ }
+ private static Map<String,String> unzip(byte[] bytes)throws Exception {
+  Map<String,String> out=new HashMap<>();
+  try(ZipInputStream in=new ZipInputStream(new ByteArrayInputStream(bytes))){
+   ZipEntry e;byte[] buffer=new byte[1024];
+   while((e=in.getNextEntry())!=null){ByteArrayOutputStream b=new ByteArrayOutputStream();int n;
+    while((n=in.read(buffer))!=-1)b.write(buffer,0,n);out.put(e.getName(),b.toString("UTF-8"));}
+  }return out;
+ }
 }

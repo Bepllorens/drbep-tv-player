@@ -1,0 +1,45 @@
+VALIDACION FIRE - BUSCADOR Y AVANCE - 20/10/2026
+Entorno: desarrollo .185, Fire 192.168.93.190, TV encendida.
+No se ha modificado/desplegado backend, canales, claves o asociaciones.
+No se ha publicado beta ni stable. No se ha hecho commit/push.
+
+APK instalada: reviews/fire-validation-20261020/search-focus-fixed.apk
+Version 771, SHA256:
+999f2f20b61dae8ad7d4374b3a41de189e2d628ad275ad78435d0ae6fdcb9549
+Firma compatible con instalada. Instalacion -r, datos conservados.
+Rollback privado: /srv/drbep-dev/reviews/fire-validation-20261020/rollback-771.apk
+
+Cambios de esta sesion:
+app/src/main/java/com/drbep/tvplayer/U7dCatalogComposeBinder.kt
+- Editor nativo separado para busqueda; confirmar/cancelar.
+- Recuperacion de foco al volver la ventana; modo mando y foco del contenedor.
+- Botones con tvButtonSemantics igual que otros paneles.
+- Todos fuera del listado reciclado para tener destino de foco estable.
+app/src/main/java/com/drbep/tvplayer/MainActivity.java
+- Mantener barra U7D al recargar despues del salto (no HUD compacto).
+- Conservar foco de controles U7D al recargar.
+- Limite de salto con margen final de 1 segundo mediante helper existente.
+- Registro numerico de reinicio por seek, sin URLs ni credenciales.
+
+Validacion:
+826 pruebas JVM, 0 fallos, 0 errores, 0 omitidas.
+Busqueda de canales La 1 -> foco en Todos -> Abajo y OK -> LA 1, 10 programas.
+Cambio por mando a Ayer -> 26 programas -> Abajo hasta primera tarjeta: foco correcto.
+Ficha del programa accesible por OK.
+Avance de +60 segundos mediante panel: U7D activo, barra 01:01 / 1:55:00 visible.
+La vuelta al directo mantiene LA 1 y video observado.
+La validacion prolongada y la navegacion exacta por barra se documentan por separado.
+
+Incidencia durante desarrollo:
+Un candidato intermedio con EditText incrustado sufrio ANR y fue retirado.
+La APK final usa dialogo separado. No confundir ese candidato con la final.
+La ultima salida registrada de la final fue USER REQUESTED por reinicio de prueba.
+
+Pendiente:
+Prueba de seek en pausa, extremos y mando completa; tablet.
+BBC Earth prolongado, STAR y matriz de variantes HLS/zapeo.
+No considerar completados todos los bloques de pruebas-tv-pendientes-20261020.txt.
+Evidencias privadas en /srv/drbep-dev/reviews/fire-validation-20261020.
+No subir ZIP, logs privados ni sesiones del panel a Git.
+
+Continuidad final comprobada: operacion 6, posicion local 15829 -> 47828 ms en 32 s; fotogramas 229 -> 1029, descartados 0 en ambas muestras. Captura con video U7D. Salto +60 s solicitado por panel; no equivale a validar todos los recorridos de mando o tactil.

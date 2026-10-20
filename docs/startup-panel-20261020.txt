@@ -1,0 +1,21 @@
+Panel: gráfico de hitos de arranque — 20/10/2026
+
+El resumen de caja negra incorpora startups: hasta seis aperturas ACTIVITY
+identificadas en los archivos retenidos. Agrupa por sesión y apertura; usa
+el primer hito registrado WINDOW, PLAYER_READY, STARTUP_FRAME, CATALOG_READY.
+Los tiempos a ya medidos por MainActivity son acumulados desde onCreate.
+No se suman: catálogo e imagen pueden completarse en distinto orden.
+No clasifica frío/caliente ni atribuye causas a los tiempos.
+
+La lectura se realiza en la pasada existente de summary, no en un nuevo
+temporizador. Mantiene seis objetos pequeños y no lee datos de reproducción.
+El panel muestra fecha/versión y barras proporcionales dentro de cada apertura,
+con texto accesible en milisegundos. Las barras entre aperturas pueden usar
+escalas distintas: comparar cifras. No hay registro equivale a dato ausente,
+no a error. Si el anillo perdió ACTIVITY, no inventa un arranque.
+Una nueva SESSION corta la asociación anterior; recrear Activity la reinicia.
+
+Validación: primera aparición, hitos ausentes/negativos, eventos antiguos y de
+otra sesión, recreación, historial truncado y límite de seis; suite Android,
+compilación y sintaxis JavaScript. Pendiente validación visual en panel del
+Fire y comparación con trazas de arranque reales. No instalado ni publicado.

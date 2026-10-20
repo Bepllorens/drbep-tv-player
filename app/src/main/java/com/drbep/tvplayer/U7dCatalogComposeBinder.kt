@@ -15,7 +15,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.*
@@ -47,6 +46,7 @@ private fun dayAccent(day:String):Color = runCatching {
     archiveDayColors[Math.floorMod(LocalDate.parse(day).toEpochDay(),archiveDayColors.size.toLong()).toInt()]
 }.getOrDefault(archiveDayColors.first())
 private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ms))
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable private fun Catalog(s: U7dCatalogState, close: Runnable, refresh: Runnable) {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     // Only advance the visible clock. Network refresh remains explicit / on day change.
@@ -94,6 +94,22 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     LaunchedEffect(visible) { entryFocus.keys.retainAll(visible.map { it.id }.toSet()) }
     val channelFocus=remember { FocusRequester() }
     val genreFocus=remember { FocusRequester() }
+    val pickerResultsFocus=remember { FocusRequester() }
+    val searchInputMode=androidx.compose.ui.platform.LocalInputModeManager.current
+    val searchHostView=androidx.compose.ui.platform.LocalView.current
+    var searchReturn by remember { mutableStateOf(0) }
+    fun finishSearch(inPicker:Boolean) { searchReturn=if(inPicker)2 else 1 }
+    LaunchedEffect(windowFocused,searchReturn) {
+        if(windowFocused && searchReturn!=0) {
+            awaitFrame();awaitFrame()
+            val target=if(searchReturn==2 && picker.isNotEmpty())pickerResultsFocus else channelFocus
+            searchInputMode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
+            searchHostView.requestFocus()
+            awaitFrame()
+            target.requestFocus()
+            searchReturn=0
+        }
+    }
     var returnToGrid by remember { mutableStateOf(false) }
     var pendingGridFocus by remember { mutableStateOf(false) }
     LaunchedEffect(visible,pendingGridFocus,s.querying,pageReady) {
@@ -166,15 +182,16 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         },horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             Button(s.channels[s.channel] ?: "Todos los canales",Modifier.focusRequester(channelFocus)) { returnToFilter="Canales";picker="Canales";pickerQuery="" }
             Button(s.genre.ifBlank { "Géneros" },Modifier.focusRequester(genreFocus)) { returnToFilter="Géneros";picker="Géneros";pickerQuery="" }
-            BasicTextField(s.query,{ s.query=it;detail=false },Modifier.weight(1f).padding(10.dp).border(1.dp,Color.Gray).padding(8.dp),singleLine=true,
-                textStyle=TextStyle(Color.White,14.sp),decorationBox={ inner -> if(s.query.isEmpty()) Text("Buscar título o canal…",14);inner() })
+            ArchiveSearchField(s.query,{ s.query=it;detail=false },"Buscar título o canal…",
+                Modifier.weight(1f).padding(10.dp),{finishSearch(false)})
         }
         if(picker.isNotEmpty()) {
             Text("Filtrar: $picker",18,true)
-            BasicTextField(pickerQuery,{pickerQuery=it},Modifier.fillMaxWidth().padding(8.dp).border(1.dp,Color.Gray).padding(10.dp),singleLine=true,textStyle=TextStyle(Color.White,16.sp),decorationBox={inner->if(pickerQuery.isEmpty())Text("Buscar…",14);inner()})
+            ArchiveSearchField(pickerQuery,{pickerQuery=it},"Buscar…",
+                Modifier.fillMaxWidth().padding(8.dp),{finishSearch(true)})
             val options=if(picker=="Canales") s.channels.map { it.key to it.value }.sortedBy { it.second } else s.genres.map { it to it }
+            Button("Todos",Modifier.focusRequester(pickerResultsFocus)) { if(picker=="Canales")s.channel="" else s.genre="";picker="" }
             LazyColumn {
-                item { Button("Todos") { if(picker=="Canales")s.channel="" else s.genre="";picker="" } }
                 items(options.filter { it.second.contains(pickerQuery,true) }) { (id,name) -> Button(name) { if(picker=="Canales")s.channel=id else s.genre=id;picker="";detail=false } }
             }
         } else Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -285,7 +302,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
     var focus by remember { mutableStateOf(false) }
     Box(modifier.widthIn(max=180.dp).onFocusChanged{focus=it.isFocused}.border(2.dp,if(focus)OfflineTvTheme.Colors.focus else Color.Transparent)
         .background(if(active && tint!=null)tint.copy(alpha=.20f) else if(focus)OfflineTvTheme.Menu.selected else Color.Transparent)
-        .clickable(onClick=action).padding(8.dp)) {
+        .clickable(onClick=action).tvButtonSemantics(label=label).padding(8.dp)) {
         Column { Text(label,14,color=tint?:Color.White);if(tint!=null)Box(Modifier.width(38.dp).height(if(active)3.dp else 1.dp).background(tint)) }
     }
 }
@@ -364,5 +381,42 @@ private class ArchiveImageView(context:android.content.Context):ImageView(contex
             drawArc(Color.White.copy(alpha=.24f),-90f,360f,false,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
             drawArc(Color(0xFFFFAA4C),-90f,sweep,false,style=androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx(),cap=androidx.compose.ui.graphics.StrokeCap.Round))
         }
+    }
+}
+
+// Keep the editor in its own window: the Fire IME must not navigate the catalogue fields.
+@Composable private fun ArchiveSearchField(value:String,onValue:(String)->Unit,hint:String,
+    modifier:Modifier,onDone:()->Unit) {
+    val context=androidx.compose.ui.platform.LocalContext.current
+    var dialog by remember { mutableStateOf<android.app.AlertDialog?>(null) }
+    DisposableEffect(Unit) { onDispose { dialog?.setOnDismissListener(null);dialog?.dismiss() } }
+    Button(if(value.isBlank())hint else value,modifier) {
+        val edit=android.widget.EditText(context).apply {
+            setSingleLine(true)
+            inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions=android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            setText(value)
+            setSelection(text.length)
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.LTGRAY)
+            this.hint=hint
+        }
+        fun closeEditor(apply:Boolean) {
+            if(apply)onValue(edit.text.toString())
+            (context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                .hideSoftInputFromWindow(edit.windowToken,0)
+            dialog?.dismiss()
+        }
+        dialog=android.app.AlertDialog.Builder(context,android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+            .setTitle(hint).setView(edit)
+            .setPositiveButton("Buscar") { _,_->closeEditor(true) }
+            .setNegativeButton("Cancelar") { _,_->closeEditor(false) }.create()
+        dialog?.setOnDismissListener { dialog=null;onDone() }
+        edit.setOnEditorActionListener { _,action,_ ->
+            if(action==android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { closeEditor(true);true } else false
+        }
+        dialog?.show()
+        edit.requestFocus()
+        dialog?.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
     }
 }

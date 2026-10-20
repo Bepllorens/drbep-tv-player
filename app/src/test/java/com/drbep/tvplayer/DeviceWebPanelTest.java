@@ -38,7 +38,7 @@ public class DeviceWebPanelTest {
             String invalid="{\"command\":\"delete\"}";
             assertTrue(request(port,"POST","/metadata-index",auth,invalid,invalid.length()).startsWith("HTTP/1.1 400"));
             assertEquals(5,calls.get());
-            assertTrue(request(port,"POST","/metadata-index",auth,"",129).startsWith("HTTP/1.1 400"));
+            assertTrue(request(port,"POST","/metadata-index",auth,"",2049).startsWith("HTTP/1.1 400"));
         }
     }
     @Test public void sessionUploadAndTruncationAreBounded() throws Exception {
@@ -111,4 +111,94 @@ public class DeviceWebPanelTest {
             assertEquals(2,calls.get());
         }
     }
+
+ @Test public void intervalExportRequiresAuthenticationAndValidPreset()throws Exception {
+  AtomicInteger selected=new AtomicInteger();
+  DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+   public String status(){return "{}";}
+   public long importPlaylist(InputStream in){return 0;}
+   public byte[] blackBoxExport(int minutes){selected.set(minutes);return new byte[]{1};}
+  };
+  try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+   int port=panel.start();String body="{\"minutes\":5}";
+   assertTrue(request(port,"POST","/blackbox-export","",body,body.length()).startsWith("HTTP/1.1 401"));
+   assertEquals(0,selected.get());
+   String login=request(port,"POST","/session","",panel.pin(),6);
+   String auth="X-Panel-Token: "+new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token")+"\r\n";
+   for(int minutes:new int[]{5,15,60}){
+    body="{\"minutes\":"+minutes+"}";
+    assertTrue(request(port,"POST","/blackbox-export",auth,body,body.length()).startsWith("HTTP/1.1 200"));
+    assertEquals(minutes,selected.get());
+   }
+   for(String bad:new String[]{"{}","bad","{\"minutes\":-1}","{\"minutes\":0}","{\"minutes\":61}"}){
+    assertTrue(request(port,"POST","/blackbox-export",auth,bad,bad.length()).startsWith("HTTP/1.1 400"));
+   }
+   assertEquals(60,selected.get());
+   assertTrue(request(port,"POST","/blackbox-export",auth,"",65).startsWith("HTTP/1.1 400"));
+   assertTrue(request(port,"POST","/blackbox-export",auth+"Origin: http://other.test\r\n",body,body.length()).startsWith("HTTP/1.1 403"));
+  }
+ }
+
+ @Test public void metadataSelectionIsForwardedOnlyAfterAuthentication()throws Exception {
+  java.util.List<String> calls=new java.util.ArrayList<>();
+  DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+   public String status(){return "{}";}public long importPlaylist(InputStream in){return 0;}
+   public String metadataIndexSelection(String command,String source,String kind){calls.add(command+":"+source+":"+kind);return "{}";}
+  };
+  try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+   int port=panel.start();String body=new JSONObject().put("command","start").put("source","list-a").put("kind","series").toString();
+   assertTrue(request(port,"POST","/metadata-index","",body,body.length()).startsWith("HTTP/1.1 401"));
+   String login=request(port,"POST","/session","",panel.pin(),6);
+   String auth="X-Panel-Token: "+new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token")+"\r\n";
+   assertTrue(request(port,"POST","/metadata-index",auth,body,body.length()).startsWith("HTTP/1.1 200"));
+   assertEquals(java.util.Arrays.asList("start:list-a:series"),calls);
+   body=new JSONObject().put("command","start").put("kind","live").toString();
+   assertTrue(request(port,"POST","/metadata-index",auth,body,body.length()).startsWith("HTTP/1.1 400"));
+   assertEquals(1,calls.size());
+  }
+ }
+
+ @Test public void metadataGroupDiscoveryAndStartKeepTheSelectedGroup()throws Exception {
+  java.util.List<String> calls=new java.util.ArrayList<>();
+  DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+   public String status(){return "{}";}public long importPlaylist(InputStream in){return 0;}
+   public String metadataIndexGroups(String source,String kind){calls.add("groups:"+source+":"+kind);return "{\"groups\":[\"Drama\"]}";}
+   public String metadataIndexSelection(String command,String source,String kind,String group){calls.add(command+":"+source+":"+kind+":"+group);return "{}";}
+  };
+  try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+   int port=panel.start();String login=request(port,"POST","/session","",panel.pin(),6);
+   String auth="X-Panel-Token: "+new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token")+"\r\n";
+   for(String command:new String[]{"groups","start"}){
+    String body=new JSONObject().put("command",command).put("source","a").put("kind","series").put("group",command.equals("start")?"Drama":"").toString();
+    assertTrue(request(port,"POST","/metadata-index",auth,body,body.length()).startsWith("HTTP/1.1 200"));
+   }
+   assertEquals(java.util.Arrays.asList("groups:a:series","start:a:series:Drama"),calls);
+   String bad=new JSONObject().put("command","start").put("group","Drama").toString();
+   assertTrue(request(port,"POST","/metadata-index",auth,bad,bad.length()).startsWith("HTTP/1.1 400"));
+   assertEquals(2,calls.size());
+  }
+ }
+
+ @Test public void metadataReviewIsAuthenticatedAndValidatesReasonAndCursor()throws Exception {
+  java.util.List<String> calls=new java.util.ArrayList<>();
+  DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+   public String status(){return "{}";}public long importPlaylist(InputStream in){return 0;}
+   public String metadataIndexReview(String state,long after){calls.add(state+":"+after);return "{\"rows\":[]}";}
+  };
+  try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+   int port=panel.start();String body=new JSONObject().put("command","review").put("state","error").put("after",50).toString();
+   assertTrue(request(port,"POST","/metadata-index","",body,body.length()).startsWith("HTTP/1.1 401"));
+   String login=request(port,"POST","/session","",panel.pin(),6);
+   String auth="X-Panel-Token: "+new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token")+"\r\n";
+   assertTrue(request(port,"POST","/metadata-index",auth,body,body.length()).startsWith("HTTP/1.1 200"));
+   assertEquals(java.util.Arrays.asList("error:50"),calls);
+   for(String state:new String[]{"done","skipped","delete"}){
+    body=new JSONObject().put("command","review").put("state",state).toString();
+    assertTrue(request(port,"POST","/metadata-index",auth,body,body.length()).startsWith("HTTP/1.1 400"));
+   }
+   body=new JSONObject().put("command","review").put("state","error").put("after",-1).toString();
+   assertTrue(request(port,"POST","/metadata-index",auth,body,body.length()).startsWith("HTTP/1.1 400"));
+   assertEquals(1,calls.size());
+  }
+ }
 }

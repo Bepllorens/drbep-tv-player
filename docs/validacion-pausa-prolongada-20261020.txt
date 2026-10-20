@@ -1,0 +1,58 @@
+Pausa prolongada de catchup HLS — validación Fire 20/10/2026
+
+Entorno: desarrollo .185, /srv/drbep-dev/repos/drbep-tv-player.
+Rama qoder/disneyplus-vod-582; base 009d902771de32c57ef139cb2f09f9f82965ea12.
+Se conserva todo el trabajo pendiente previo. No se ha desplegado ni publicado.
+
+Problema reproducido anteriormente:
+La ventana HLS avanza durante la pausa. La posición relativa del reproductor acaba
+siendo negativa. Reanudar la sesión antigua intentaba usar segmentos caducados,
+con BehindLiveWindowException y posterior fallo HTTP 502 en recuperación.
+
+Corrección:
+PlayerController conserva la coordenada del programa al pausar.
+Al reanudar, comprueba si esa coordenada está fuera del inicio de la ventana.
+En ese caso mantiene pausada la sesión anterior y usa el callback existente para
+recargar desde el punto conservado, antes de solicitar los segmentos caducados.
+La comprobación en el listener cubre los controles que pasan por MediaSession.
+El avance en pausa actualiza esa coordenada; el cambio de fuente la limpia.
+Las pausas cortas que siguen dentro de ventana reutilizan el reproductor.
+El comportamiento de directo y otros formatos no se modifica.
+
+Archivos:
+app/src/main/java/com/drbep/tvplayer/PlayerController.java
+app/src/main/java/com/drbep/tvplayer/U7dReplayRecoveryPolicy.java
+app/src/test/java/com/drbep/tvplayer/U7dReplayRecoveryPolicyTest.java
+
+Compilación: assembleRelease y testDebugUnitTest, 827 pruebas sin fallos.
+APK de prueba instalada conservando datos y certificado anterior:
+ /srv/drbep-dev/reviews/fire-validation-20261020/long-pause-fixed.apk
+SHA256 feeeb2b744f7295f5044e294d54543978b5eb9a9dbd68caeac45f6a8a988de1d
+versionCode 771. No es una nueva publicación del canal.
+
+Prueba real en Fire 192.168.93.190:5555 con TV visible:
+BBC Earth — La familia elefante y yo, Episodio 2.
+- Pausa en aproximadamente 00:12 durante más de dos minutos.
+- Operación 2: 274 fotogramas constantes; coordenada relativa pasa de +11911
+  a -77568 ms por avance de la ventana, mientras la posición del programa
+  permanece guardada en aproximadamente 11895 ms.
+- Al reanudar se crea operación 3, sin error previo.
+- Primer fotograma de la sesión recuperada: 2709 ms desde prepare.
+- Tras la recuperación, fotogramas 274 -> 1074 -> 1874 -> 2555, sin descartes.
+- Se supera el primer tramo de vídeo recuperado y continúa reproduciendo.
+- Pausa corta y avance mediante mando: playing=false; Play: playing=true,
+  conservando operación 3.
+- Retorno al directo BBC Earth: playing=true, live=true.
+- Retorno a Inicio: miniatura con vídeo confirmada visualmente.
+- Cero PLAY_ERROR en caja negra desde el inicio de esta prueba.
+- No se observaron errores BehindLiveWindow ni HTTP 502 en la prueba corregida.
+
+Respaldo de fuentes anteriores y evidencias privadas:
+ /srv/drbep-dev/reviews/fire-validation-20261020/long-pause-before
+ /srv/drbep-dev/reviews/fire-validation-20261020
+APK anterior disponible: paused-seek-fixed.apk.
+Los registros privados no se incorporan a Git.
+
+Alcance de la evidencia: el caso probado es BBC Earth HLS en el Fire; no equivale
+a una prueba de todos los canales ni de cortes de red externos.
+No se modificaron producción, claves, asociaciones, La 1, Vamos ni el canal stable.

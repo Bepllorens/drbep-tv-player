@@ -136,6 +136,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
     public interface Progress {
         void check() throws Exception;
         void update(long count) throws Exception;
+        default void yieldControl() throws Exception { check(); }
     }
     private static final Progress NO_PROGRESS = new Progress(){public void check() throws Exception {if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();} public void update(long count) {}};
     public long importSharedGuide(String key,String url,InputStream input,Progress progress) throws Exception {
@@ -150,7 +151,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
                     new XmltvStreamReader().read(input,p -> {
                         progress.check();insert.bindString(3,p.channel);insert.bindLong(4,p.start);insert.bindLong(5,p.end);
                         insert.bindString(6,p.title);insert.bindString(7,p.description);insert.bindString(8,p.metadata());insert.executeInsert();coverage[0]=Math.max(coverage[0],p.end);
-                        if(++count[0]%1000==0){db.setTransactionSuccessful();db.endTransaction();progress.update(count[0]);db.beginTransaction();}
+                        if(++count[0]%1000==0){db.setTransactionSuccessful();db.endTransaction();progress.update(count[0]);progress.yieldControl();db.beginTransaction();}
                     },(channel,name) -> {
                         progress.check();ContentValues v=new ContentValues();v.put("feed",key);v.put("generation",generation);v.put("channel",channel);v.put("name",guideName(name));db.insertWithOnConflict("guide_channels",null,v,SQLiteDatabase.CONFLICT_IGNORE);
                     });
@@ -245,7 +246,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
                 if (++count[0] % 500 == 0) {
                     ContentValues preview=new ContentValues();preview.put("preview",generation);
                     db.update("sources",preview,"id=? AND active IS NULL",new String[]{source});
-                    db.setTransactionSuccessful();db.endTransaction();progress.update(count[0]);db.beginTransaction();
+                    db.setTransactionSuccessful();db.endTransaction();progress.update(count[0]);progress.yieldControl();db.beginTransaction();
                 }
             });
             if (result.imported == 0 || result.rejected > 0) throw new IOException("Incomplete or empty playlist; previous catalogue retained");

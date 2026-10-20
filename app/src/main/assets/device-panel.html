@@ -18,11 +18,12 @@
 <section id="view-remote" class="view" hidden><div class="eyebrow">Tu televisión desde el móvil</div><h1>Control remoto</h1><h2 id="remoteTitle">Sin reproducción</h2><div class="actions" id="remoteControls"><button data-command="previous">Anterior</button><button data-command="pause" class="primary">Pausar / reproducir</button><button data-command="next">Siguiente</button><button data-command="stop">Detener</button><button data-command="seek" data-delta="-30000">−30 s</button><button data-command="seek" data-delta="30000">+30 s</button><button data-command="live">Volver al directo</button></div><p class="section-note">Elige un título en Mis listas o un programa en Catchup y pulsa Reproducir para verlo en este dispositivo.</p><button data-go="library">Elegir contenido</button></section>
 <section id="view-series" class="view" hidden><div class="eyebrow">Biblioteca personal</div><h1>Series y episodios</h1><div class="toolbar"><select id="seriesSource" aria-label="Lista de series"></select><input id="seriesQuery" placeholder="Buscar serie…" maxlength="200"><button id="seriesSearch">Buscar</button></div><div id="seriesRows" class="content-list"></div><div class="pagination"><button id="seriesPrevious">Anterior</button><span id="seriesPage"></span><button id="seriesNext">Siguiente</button></div><div id="episodePanel" hidden><h2 id="episodeTitle"></h2><div class="toolbar"><select id="episodeSeason" aria-label="Temporada"></select><label class="check"><input type="checkbox" id="hideWatched">Ocultar vistos</label><label class="check"><input type="checkbox" id="seasonDescending">Temporadas inversas</label><label class="check"><input type="checkbox" id="episodeDescending">Episodios inversos</label><button id="clearSeriesHistory" class="quiet">Borrar historial de esta serie</button></div><div id="episodeRows" class="content-list"></div><div class="pagination"><button id="episodePrevious">Anterior</button><span id="episodePage"></span><button id="episodeNext">Siguiente</button></div></div></section>
 <section id="view-catchup" class="view" hidden><div class="eyebrow">Últimos siete días</div><h1>Catchup</h1><div class="toolbar"><select id="catchupDay" aria-label="Día"></select><select id="catchupChannel" aria-label="Canal"></select><select id="catchupGenre" aria-label="Género"></select><input id="catchupQuery" placeholder="Buscar programa o canal…" maxlength="200"><button id="catchupSearch">Buscar</button><label class="check"><input id="catchupSaved" type="checkbox">Guardados</label></div><p id="catchupStatus" role="status"></p><div id="catchupRows" class="catchup-grid"></div><div class="pagination"><button id="catchupPrevious">Anterior</button><span id="catchupPage"></span><button id="catchupNext">Siguiente</button></div></section>
-<section id="view-tasks" class="view" hidden><div class="section-heading"><div><div class="eyebrow">En segundo plano</div><h1>Actividad</h1><p>Consulta el progreso de las importaciones y las actualizaciones.</p></div></div><section class="glass" style="margin-bottom:28px"><div class="eyebrow">Películas y series importadas</div><h2>Completar metadatos TMDB</h2><p>Procesa tus listas aunque salgas de Películas o Series. Conserva las fichas y las correcciones manuales. El dispositivo debe seguir encendido; Android puede aplazar el trabajo en reposo.</p><p id="metadataState" role="status" aria-live="polite">Consultando estado…</p><progress id="metadataProgress" value="0" max="1" style="width:100%;accent-color:var(--accent)"></progress><p id="metadataCounts" class="hint"></p><div class="actions" style="margin-top:20px"><button id="metadataStart" class="primary">Completar metadatos</button><button id="metadataPause">Pausar</button><button id="metadataResume">Continuar</button><button id="metadataRetry">Reintentar errores</button></div><p class="hint">Las series se identifican una vez, sin consultar cada episodio. Los títulos sin coincidencia y los errores se contabilizan por separado. No se procesa contenido marcado como adulto.</p></section><div id="jobs"></div></section>
+<section id="view-tasks" class="view" hidden><div class="section-heading"><div><div class="eyebrow">En segundo plano</div><h1>Actividad</h1><p>Consulta el progreso de las importaciones y las actualizaciones.</p></div></div><section class="glass" style="margin-bottom:28px" aria-label="Resumen de tareas"><h2>Estado de las tareas</h2><p id="taskImportsSummary">Importaciones: consultando…</p><p id="taskMetadataSummary">TMDB: consultando…</p><p class="hint">Los errores de importación y los títulos sin coincidencia se muestran por separado. Las tareas continúan en el dispositivo aunque cierres el panel.</p></section><section class="glass" style="margin-bottom:28px"><div class="eyebrow">Películas y series importadas</div><h2>Completar metadatos TMDB</h2><p>Procesa tus listas aunque salgas de Películas o Series. Conserva las fichas y las correcciones manuales. El dispositivo debe seguir encendido; Android puede aplazar el trabajo en reposo.</p><label for="metadataSource">Lista</label><select id="metadataSource"><option value="">Todas las listas</option></select><label for="metadataKind">Contenido</label><select id="metadataKind"><option value="">Películas y series</option><option value="movie">Solo películas</option><option value="series">Solo series</option></select><label for="metadataGroup">Grupo</label><select id="metadataGroup" disabled><option value="">Todos los grupos</option></select><p id="metadataGroupNote" class="hint">Elige una lista para seleccionar un grupo.</p><p id="metadataScope" class="hint"></p><p class="hint">Completar inicia la selección indicada. Continuar y Reintentar respetan la selección del trabajo guardado.</p><p id="metadataState" role="status" aria-live="polite">Consultando estado…</p><progress id="metadataProgress" value="0" max="1" style="width:100%;accent-color:var(--accent)"></progress><p id="metadataCounts" class="hint"></p><div class="actions" style="margin-top:20px"><button id="metadataStart" class="primary">Completar metadatos</button><button id="metadataPause">Pausar</button><button id="metadataResume">Continuar</button><button id="metadataRetry">Reintentar errores</button></div><h3>Revisar resultados del trabajo guardado</h3><label for="metadataReviewState">Motivo</label><select id="metadataReviewState"><option value="unmatched">Sin coincidencia</option><option value="error">Error de consulta</option></select><div class="actions"><button id="metadataReviewLoad">Consultar resultados</button><button id="metadataReviewPrevious" disabled>Anteriores</button><button id="metadataReviewNext" disabled>Siguientes</button></div><p id="metadataReviewNote" role="status" class="hint">Consulta manual de hasta 50 registros por página. No modifica las fichas.</p><div id="metadataReviewRows" class="content-list"></div><p class="hint">Las series se identifican una vez, sin consultar cada episodio. Los títulos sin coincidencia y los errores se contabilizan por separado. No se procesa contenido marcado como adulto.</p></section><div id="jobs"></div></section>
 <section id="view-diagnostics" class="view" hidden><div class="section-heading"><div><div class="eyebrow">Estado y rendimiento</div><h1>Diagnóstico</h1><p>Información del reproductor, la memoria y la conexión.</p></div><button id="report">Descargar informe</button></div><section class="glass" style="margin-bottom:28px"><h2>Caja negra</h2><p>Historial local de arranque, navegación y reproducción. Sin títulos, URLs ni credenciales. Hasta 6 MiB; los registros antiguos se sustituyen.</p>
+<label for="bbRange">Periodo del diagnóstico</label><select id="bbRange"><option value="0">Todo el historial conservado</option><option value="5">Últimos 5 minutos</option><option value="15">Últimos 15 minutos</option><option value="60">Última hora</option></select><p class="section-note">El periodo usa el reloj del dispositivo. Descargar no borra registros.</p>
 <div class="actions"><button id="bbRefresh">Actualizar</button><button id="bbMark" class="primary">Marcar problema</button><button id="bbExport">Exportar diagnóstico ZIP</button><button id="bbDetail">Detalle durante 10 minutos</button><button id="bbToggle">Pausar registro</button></div>
 <p id="bbStatus" role="status" style="margin-top:16px"></p><p class="section-note">Marcar conserva el contexto actual y lo completa 30 segundos después. Se guardan las dos últimas incidencias. Percentiles sobre las últimas 256 muestras de cada evento.</p>
-<div id="bbStats" class="stats"></div><h3 style="margin-top:24px">Últimos eventos</h3><div id="bbEvents" style="max-height:420px;overflow:auto"></div></section><section id="multiDiagnostics" hidden><h2>Multipantalla</h2><p id="multiLayout"></p><div id="multiWindows" class="content-list"></div><p class="section-note">Contadores acumulados de cada reproducción. Los cuadros perdidos no identifican por sí solos la causa de los tirones.</p></section><dl id="stats" class="stats"></dl><h2>Pantalla del dispositivo</h2><p>Vista de la ventana de DRBEP y del foco del mando. Se actualiza mientras este apartado está visible.</p><label class="check"><input id="screenLive" type="checkbox" checked> Actualizar cada 3 segundos</label><p id="screenStatus" role="status"></p><img id="screenImage" alt="Pantalla de DRBEP" style="width:100%;max-width:960px;border-radius:12px" hidden><div id="screenNodes" class="content-list"></div><p class="section-note">El informe no incluye credenciales ni direcciones de reproducción.</p></section>
+<h3>Últimos arranques</h3><p class="section-note">Tiempos acumulados desde la apertura, no sumables. Los hitos ausentes no implican un fallo. No distingue arranque frío de reapertura.</p><div id="bbStartups"></div><div id="bbStats" class="stats"></div><h3 style="margin-top:24px">Últimos eventos</h3><div id="bbEvents" style="max-height:420px;overflow:auto"></div></section><section id="multiDiagnostics" hidden><h2>Multipantalla</h2><p id="multiLayout"></p><div id="multiWindows" class="content-list"></div><p class="section-note">Contadores acumulados de cada reproducción. Los cuadros perdidos no identifican por sí solos la causa de los tirones.</p></section><dl id="stats" class="stats"></dl><h2>Pantalla del dispositivo</h2><p>Vista de la ventana de DRBEP y del foco del mando. Se actualiza mientras este apartado está visible.</p><label class="check"><input id="screenLive" type="checkbox" checked> Actualizar cada 3 segundos</label><p id="screenStatus" role="status"></p><img id="screenImage" alt="Pantalla de DRBEP" style="width:100%;max-width:960px;border-radius:12px" hidden><div id="screenNodes" class="content-list"></div><p class="section-note">El informe no incluye credenciales ni direcciones de reproducción.</p></section>
 </main></div>
 <div id="message" class="toast" role="status" aria-live="polite" hidden></div><dialog id="editor"><form id="editorForm"><h2 id="editorTitle"></h2><p id="editorDescription"></p><div id="editorFields"></div><div class="actions"><button id="editorCancel" type="button" class="quiet">Cancelar</button><button id="editorSave" class="primary">Guardar</button></div><p id="editorError" role="alert" class="danger-note" style="margin:14px 0 0"></p></form></dialog>
 <noscript>Activa JavaScript para usar el panel del dispositivo.</noscript>
@@ -33,8 +34,23 @@ let token='',timer,toastTimer,sources=[],sourceId='',offset=0,entryRequest=0,lis
 const text=(id,value)=>{$(id).textContent=value};
 function message(value,error=false){text('message',value);$('message').classList.toggle('error',error);$('message').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('message').hidden=true,error?10000:6000)}
 function connection(ok){connectionFailed=!ok;$('connection').classList.toggle('error',!ok);text('connectionText',ok?'Conectado':'Sin respuesta')}
-function disconnect(expired=false){guideSerial++;if($('guideDetail').open)$('guideDetail').close();$('guideCards').replaceChildren();clearScreen();disposeCatchupImages();catchupRevision++;seriesRevision++;episodeRevision++;token='';clearInterval(timer);entryRequest++;listRequest++;sourceId='';sources=[];offset=0;if(uploadXhr){uploadXhr.abort();uploadXhr=null}editorAction=null;$('editor').close();$('panel').hidden=true;$('loginShell').hidden=false;$('pin').value='';text('loginError',expired?'La sesión ha terminado. Abre de nuevo el panel en DRBEP.':'');$('pin').focus()}
-async function api(path,options={}){if(!token)throw Error('Conecta primero con el dispositivo.');const session=token;let r;try{r=await fetch(path,{...options,headers:{...options.headers,'X-Panel-Token':session},cache:'no-store'})}catch(e){connection(false);throw Error('No se puede contactar con el dispositivo. Comprueba la red local.')}if(session!==token)throw Error('La sesión ha cambiado.');if(r.status===401){disconnect(true);throw Error('La sesión ha terminado.')}if(!r.ok){let error;try{error=await r.json()}catch(e){}throw Error(error?.error||'No se pudo completar la operación. Comprueba la lista y la sesión.');}connection(true);return r.json()}
+function disconnect(expired=false){resetTaskOverview();resetMetadataSession();resetRemoteStatus();jobsRequest++;jobNodes.clear();$('jobs').replaceChildren();guideSerial++;if($('guideDetail').open)$('guideDetail').close();$('guideCards').replaceChildren();clearScreen();disposeCatchupImages();catchupRevision++;seriesRevision++;episodeRevision++;token='';clearInterval(timer);entryRequest++;listRequest++;sourceId='';sources=[];offset=0;if(uploadXhr){uploadXhr.abort();uploadXhr=null}editorAction=null;$('editor').close();$('panel').hidden=true;$('loginShell').hidden=false;$('pin').value='';text('loginError',expired?'La sesión ha terminado. Abre de nuevo el panel en DRBEP.':'');$('pin').focus()}
+async function api(path,options={}){
+ if(!token)throw Error('Conecta primero con el dispositivo.');
+ const session=token,checkSession=()=>{if(session!==token)throw Error('La sesión ha cambiado.')};
+ let r;
+ try{r=await fetch(path,{...options,headers:{...options.headers,'X-Panel-Token':session},cache:'no-store'})}
+ catch(e){checkSession();connection(false);throw Error('No se puede contactar con el dispositivo. Comprueba la red local.')}
+ checkSession();
+ if(r.status===401){disconnect(true);throw Error('La sesión ha terminado.')}
+ if(!r.ok){
+  let error;try{error=await r.json()}catch(e){}
+  checkSession();throw Error(error?.error||'No se pudo completar la operación. Comprueba la lista y la sesión.');
+ }
+ let data;
+ try{data=await r.json()}catch(e){checkSession();throw e}
+ checkSession();connection(true);return data;
+}
 const manage=(action,fields={})=>api('/manage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,source:sourceId,...fields})});
 function view(name){guideSerial++;if($("guideDetail").open)$("guideDetail").close();currentView=name;if(name==='guide')openGuide();if(name==='diagnostics')loadBlackBox();if(name!=="diagnostics")clearScreen();else setTimeout(loadScreen,0);document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='view-'+name);document.querySelectorAll('[data-view]').forEach(el=>{if(el.dataset.view===name)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current')});disposeCatchupImages();if(name==='library')entries();if(name==='remote')loadRemote();if(name==='series')loadSeriesSources();if(name==='catchup')loadCatchup();if(name==='tasks')jobs().catch(e=>message(e.message,true));window.scrollTo(0,0)}
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>view(b.dataset.go));
@@ -45,21 +61,164 @@ function empty(id,title,detail){const target=$(id);target.replaceChildren();cons
 function renderSources(){const wrap=$('sources');wrap.replaceChildren();text('listCount',sources.length);for(const s of sources){const b=document.createElement('button');b.type='button';b.setAttribute('aria-pressed',s.id===sourceId);const title=document.createElement('strong'),sub=document.createElement('span');title.textContent=s.name;sub.textContent=(originNames[s.origin]||'Lista personal')+(s.updated===0?' · Importando…':'');b.append(title,sub);b.onclick=()=>{if(sourceId===s.id)return;sourceId=s.id;offset=0;renderSources();entries()};wrap.append(b)}if(!sources.length){const p=document.createElement('p');p.textContent='Todavía no hay listas. Importa una para empezar.';wrap.append(p)}const s=sources.find(s=>s.id===sourceId);text('sourceName',s?s.name:'Tu biblioteca está vacía');text('sourceMeta',s?(originNames[s.origin]||'Lista personal')+(s.updated?' · Actualizada '+new Date(s.updated).toLocaleString('es-ES'):' · Importación en curso'):'Añade una lista desde Importar.');for(const id of ['configure','sync','guide','remove'])$(id).disabled=!s}
 async function lists(force=false){const request=++listRequest;const data=await manage('lists');if(request!==listRequest)return;const previous=sourceId,signature=JSON.stringify(sources);sources=data.sources||[];if(!sources.some(s=>s.id===sourceId)){sourceId=sources[0]?.id||'';offset=0}const changed=signature!==JSON.stringify(sources)||previous!==sourceId;if(changed||!$('sources').childElementCount)renderSources();if(currentView==='library'&&(force||changed))await entries()}
 async function entries(){const request=++entryRequest;if(!sourceId){$('entries').replaceChildren();empty('entryEmpty','Sin listas todavía','Importa una lista para organizar sus títulos.');$('previous').disabled=$('next').disabled=true;text('pageLabel','Sin contenido');return}const snapshot=sourceId;try{const data=await manage('entries',{query:$('query').value,kind:$('kind').value,offset,favorites:$('favorites').checked,hidden:$('showHidden').checked});if(request!==entryRequest||snapshot!==sourceId)return;const rows=data.entries||[];$('entries').replaceChildren();$('entryEmpty').hidden=rows.length>0;if(!rows.length)empty('entryEmpty','No hay resultados','Prueba otra búsqueda o cambia los filtros.');$('previous').disabled=offset===0;$('next').disabled=rows.length<50;text('pageLabel','Página '+(offset/50+1)+(rows.length?' · '+(offset+1)+'–'+(offset+rows.length):''));for(const row of rows){const li=document.createElement('li');li.className='entry'+(row.hidden?' hidden-entry':'');const title=document.createElement('div');title.className='entry-title';const strong=document.createElement('strong'),sub=document.createElement('span');strong.textContent=row.title;sub.textContent=(kindNames[row.kind]||'Contenido')+(row.favorite?' · Favorito':'')+(row.hidden?' · Oculto':'');title.append(strong,sub);const actions=document.createElement('div');actions.className='actions';if(!row.hidden&&row.kind!=='unknown'){actions.append(panelButton('Reproducir',()=>manage('play-entry',{source:snapshot,identity:row.identity,occurrence:row.occurrence,resume:true}).then(()=>message('Reproducción enviada al dispositivo.'))))}for(const [label,change] of [[row.favorite?'★ Favorito':'☆ Favorito',{favorite:!row.favorite}],[row.hidden?'Mostrar':'Ocultar',{hidden:!row.hidden}],['Editar',null]]){const button=document.createElement('button');button.className='small quiet';button.textContent=label;if(change?.favorite!==undefined)button.setAttribute('aria-pressed',row.favorite);button.onclick=async()=>{if(!change){editEntry(row,snapshot);return}button.disabled=true;try{await manage('preference',{source:snapshot,identity:row.identity,occurrence:row.occurrence,favorite:row.favorite,hidden:row.hidden,...change});if(sourceId===snapshot)await entries()}catch(e){message(e.message,true)}finally{button.disabled=false}};actions.append(button)}li.append(title,actions);$('entries').append(li)}}catch(e){if(request===entryRequest){message(e.message,true);$('previous').disabled=$('next').disabled=true}}}
+let taskOverviewImports=null,taskOverviewMetadata=null;
+function taskOverviewText(imports,metadata){
+ let importsText='Importaciones: estado no disponible';
+ if(imports!==null){
+  const count=states=>imports.filter(j=>states.includes(j.state)).length;
+  importsText='Importaciones: '+count(['running'])+' en curso · '+count(['queued','retry'])+' en cola o reintento · '+count(['completed','done'])+' completadas · '+count(['failed','error'])+' con error · '+count(['cancelled','canceled'])+' canceladas';
+ }
+ let metadataText='TMDB: estado no disponible';
+ if(metadata!==null){
+  const labels={idle:'listo para empezar',queued:'en cola',running:'en curso',paused:'en pausa',waiting:'esperando reintento',account:'requiere iniciar sesión',complete:'terminado'};
+  metadataText='TMDB: '+(labels[metadata.state]||'estado desconocido')+' · '+(metadata.done||0)+' con ficha · '+(metadata.unmatched||0)+' sin coincidencia · '+(metadata.error||0)+' errores';
+ }
+ return [importsText,metadataText];
+}
+function updateTaskOverview(){
+ const labels=taskOverviewText(taskOverviewImports,taskOverviewMetadata);
+ text('taskImportsSummary',labels[0]);text('taskMetadataSummary',labels[1]);
+}
+function resetTaskOverview(){taskOverviewImports=null;taskOverviewMetadata=null;updateTaskOverview();}
+let metadataSelectionLoaded=false,metadataSourcesSignature="",metadataGroupRequest=0,metadataGroupReady=true,metadataRunning=false;
+let metadataIndexRequest=0;
+function resetMetadataSession(){
+ metadataIndexRequest++;metadataGroupRequest++;metadataSelectionLoaded=false;
+ metadataSourcesSignature="";metadataGroupReady=true;metadataRunning=false;
+ clearMetadataReview();$('metadataReviewLoad').disabled=false;
+ text('metadataState','Consultando estado…');text('metadataCounts','');text('metadataScope','');
+ $('metadataProgress').value=0;
+}
+
+async function loadMetadataGroups(selected=''){
+ const request=++metadataGroupRequest,source=$('metadataSource').value,kind=$('metadataKind').value;
+ metadataGroupReady=false;$('metadataStart').disabled=true;$('metadataGroup').disabled=true;
+ options('metadataGroup',[['','Todos los grupos']],'');
+ try{
+  if(!source){metadataGroupReady=true;text('metadataGroupNote','Elige una lista para seleccionar un grupo.');return}
+  text('metadataGroupNote','Cargando grupos…');
+  const data=await api('/metadata-index',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'groups',source,kind})});
+  if(request!==metadataGroupRequest||source!==$('metadataSource').value||kind!==$('metadataKind').value)return;
+  const rows=[['','Todos los grupos'],...(data.groups||[]).map(g=>[g,g])];
+  if(selected&&!rows.some(r=>r[0]===selected))rows.push([selected,selected+' (trabajo guardado)']);
+  options('metadataGroup',rows,selected);
+  metadataGroupReady=true;
+  text('metadataGroupNote',data.truncated?'Se muestran los primeros 1000 grupos. Todos los grupos incluye también los restantes.':'Las series compartidas entre grupos se identifican una sola vez.');
+ }catch(e){if(request===metadataGroupRequest){text('metadataGroupNote','No se pudieron cargar los grupos. Vuelve a seleccionar la lista para reintentar.');message(e.message,true)}}
+ finally{if(request===metadataGroupRequest){$('metadataGroup').disabled=metadataRunning||!source||!metadataGroupReady;$('metadataStart').disabled=metadataRunning||!metadataGroupReady}}
+}
+$('metadataSource').onchange=()=>loadMetadataGroups();
+$('metadataKind').onchange=()=>loadMetadataGroups();
 async function loadMetadataIndex(){
- const s=await api('/metadata-index');
+ const request=++metadataIndexRequest;
+ let s;
+ try{s=await api('/metadata-index');}
+ catch(e){if(request===metadataIndexRequest){taskOverviewMetadata=null;updateTaskOverview();}throw e}
+ if(request!==metadataIndexRequest)return;
+ const previousSource=$('metadataSource').value,previousKind=$('metadataKind').value;
+ const firstSelection=!metadataSelectionLoaded;metadataRunning=!!s.enabled;
+ const selected=metadataSelectionLoaded&&!s.enabled?$('metadataSource').value:(s.source||'');
+ const rows=[['','Todas las listas'],...(s.sources||[]).map(x=>[x.id,x.name])],signature=JSON.stringify(rows);
+ if(signature!==metadataSourcesSignature){options('metadataSource',rows,selected);metadataSourcesSignature=signature}else if(s.enabled)$('metadataSource').value=selected;
+ if(!metadataSelectionLoaded||s.enabled)$('metadataKind').value=s.kind||'';
+ metadataSelectionLoaded=true;
+ $('metadataSource').disabled=$('metadataKind').disabled=!!s.enabled;
+ const scopeName=s.source?((s.sources||[]).find(x=>x.id===s.source)?.name||'Lista no disponible'):'Todas las listas';
+ text('metadataScope','Trabajo guardado: '+scopeName+' · '+({movie:'Películas',series:'Series'}[s.kind]||'Películas y series')+' · '+(s.group||'Todos los grupos'));
+ if(firstSelection||previousSource!==$('metadataSource').value||previousKind!==$('metadataKind').value)await loadMetadataGroups((firstSelection||s.enabled)?s.group||'':'');
+ if(request!==metadataIndexRequest)return;
+ $('metadataGroup').disabled=!!s.enabled||!$('metadataSource').value||!metadataGroupReady;
  const states={idle:'Listo para empezar',queued:'En cola · esperando a Android o a la red',running:'Completando metadatos en segundo plano',paused:'En pausa · progreso guardado',waiting:'Esperando para reintentar',account:'Inicia sesión en DRBEP y pulsa Continuar',complete:'Proceso terminado'};
  text('metadataState',states[s.state]||'En espera');
  const completed=(s.done||0)+(s.unmatched||0)+(s.error||0)+(s.skipped||0);
  $('metadataProgress').max=Math.max(1,s.total||0);$('metadataProgress').value=completed;
  text('metadataCounts',completed+' de '+(s.total||0)+' revisados · '+(s.done||0)+' con ficha · '+(s.unmatched||0)+' sin coincidencia · '+(s.error||0)+' errores · '+(s.skipped||0)+' omitidos');
- $('metadataStart').disabled=!!s.enabled;$('metadataPause').disabled=!s.enabled;
+ $('metadataStart').disabled=!!s.enabled||!metadataGroupReady;$('metadataPause').disabled=!s.enabled;
  $('metadataResume').disabled=!!s.enabled||!['paused','account','waiting'].includes(s.state);
  $('metadataRetry').disabled=!!s.enabled||!s.error;
+ taskOverviewMetadata=s;updateTaskOverview();
 }
 for(const [id,command] of [['metadataStart','start'],['metadataPause','pause'],['metadataResume','resume'],['metadataRetry','retry']]){
- $(id).onclick=async()=>{const button=$(id);button.disabled=true;try{await api('/metadata-index',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});await loadMetadataIndex()}catch(e){message(e.message,true);button.disabled=false}};
+ $(id).onclick=async()=>{metadataIndexRequest++;clearMetadataReview();$('metadataReviewLoad').disabled=false;const button=$(id);button.disabled=true;try{await api('/metadata-index',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,...(command==='start'?{source:$('metadataSource').value,kind:$('metadataKind').value,group:$('metadataGroup').value}:{})})});await loadMetadataIndex()}catch(e){message(e.message,true);button.disabled=false}};
 }
-async function jobs(){if(currentView==='tasks')await loadMetadataIndex();const data=await manage('jobs');const rows=data.jobs||[];text('taskCount',rows.filter(j=>activeStates.includes(j.state)).length||'');$('jobs').replaceChildren();if(!rows.length){const box=document.createElement('div');box.className='empty';const h=document.createElement('h3'),p=document.createElement('p');h.textContent='Todo tranquilo';p.textContent='Las importaciones y actualizaciones aparecerán aquí.';box.append(h,p);$('jobs').append(box)}for(const j of rows){const wrap=document.createElement('div');wrap.className='job '+j.state;const info=document.createElement('div'),state=document.createElement('span'),name=document.createElement('h3'),detail=document.createElement('p');state.className='state';state.textContent=stateNames[j.state]||j.state;name.textContent=j.name;detail.textContent=j.phase+' · '+Number(j.count).toLocaleString('es-ES')+' elementos';info.append(state,name,detail);wrap.append(info);if(activeStates.includes(j.state)){const cancel=document.createElement('button');cancel.className='small quiet';cancel.textContent='Cancelar';cancel.onclick=()=>openEditor('Cancelar importación','Se detendrá esta tarea. La lista anterior no se sustituirá por una importación incompleta.',[],async()=>{await manage('cancel-job',{job:j.id});await jobs()},'Cancelar tarea');wrap.append(cancel)}$('jobs').append(wrap)}}
+let metadataReviewCursor=0,metadataReviewRequest=0,metadataReviewAfter=0,metadataReviewHistory=[];
+function clearMetadataReview(){
+ metadataReviewRequest++;metadataReviewCursor=0;metadataReviewAfter=0;metadataReviewHistory=[];$('metadataReviewPrevious').disabled=true;$('metadataReviewRows').replaceChildren();
+ $('metadataReviewNext').disabled=true;text('metadataReviewNote','Pulsa Consultar resultados para revisar el trabajo guardado.');
+}
+async function reviewMetadata(reset,previous=false){
+ if(previous&&!metadataReviewHistory.length)return;
+ const request=++metadataReviewRequest,state=$('metadataReviewState').value;
+ const after=reset?0:previous?metadataReviewHistory[metadataReviewHistory.length-1]:metadataReviewCursor;
+ const hadNext=!$('metadataReviewNext').disabled,hadPrevious=!$('metadataReviewPrevious').disabled;
+ $('metadataReviewLoad').disabled=$('metadataReviewNext').disabled=$('metadataReviewPrevious').disabled=true;
+ try{
+  const data=await api('/metadata-index',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'review',state,after})});
+  if(request!==metadataReviewRequest)return;
+  const target=$('metadataReviewRows');target.replaceChildren();
+  for(const item of data.rows||[]){
+   const row=document.createElement('div'),title=document.createElement('strong'),detail=document.createElement('p');row.className='entry';
+   title.textContent=item.title;detail.textContent=item.provider+' · '+(item.kind==='series'?'Serie':'Película')+' · '+(state==='error'?'La consulta no se completó':'No se encontró una coincidencia');
+   row.append(title,detail);target.append(row);
+  }
+  if(reset)metadataReviewHistory=[];
+  else if(previous)metadataReviewHistory.pop();
+  else {metadataReviewHistory.push(metadataReviewAfter);if(metadataReviewHistory.length>100)metadataReviewHistory.shift();}
+  metadataReviewAfter=after;metadataReviewCursor=data.next;
+  $('metadataReviewPrevious').disabled=!metadataReviewHistory.length;
+  $('metadataReviewNext').disabled=!data.more;
+  text('metadataReviewNote',(data.rows||[]).length+' títulos visibles en esta página. '+(data.more?'Hay más registros.':'Fin de los resultados.')+' Los errores no indican necesariamente que el título no exista.');
+ }catch(e){if(request===metadataReviewRequest){message(e.message,true);$('metadataReviewNext').disabled=!hadNext;$('metadataReviewPrevious').disabled=!hadPrevious;text('metadataReviewNote','No se pudo cargar la página. Se conserva la anterior; puedes reintentar la navegación.');}}
+ finally{if(request===metadataReviewRequest)$('metadataReviewLoad').disabled=false}
+}
+$('metadataReviewLoad').onclick=()=>reviewMetadata(true);
+$('metadataReviewNext').onclick=()=>reviewMetadata(false);
+$('metadataReviewPrevious').onclick=()=>reviewMetadata(false,true);
+$('metadataReviewState').onchange=()=>{clearMetadataReview();$('metadataReviewLoad').disabled=false};
+let jobsRequest=0;
+const jobNodes=new Map();
+function renderJobs(rows){
+ const target=$('jobs'),present=new Set(rows.map(j=>String(j.id)));
+ for(const [id,node] of jobNodes){if(!present.has(id)){node.wrap.remove();jobNodes.delete(id)}}
+ if(!rows.length){
+  if(!target.querySelector('.empty')){
+   const box=document.createElement('div');box.className='empty';
+   const h=document.createElement('h3'),p=document.createElement('p');
+   h.textContent='Todo tranquilo';p.textContent='Las importaciones y actualizaciones aparecerán aquí.';
+   box.append(h,p);target.append(box);
+  }
+  return;
+ }
+ const placeholder=target.querySelector('.empty');if(placeholder)placeholder.remove();
+ rows.forEach((j,index)=>{
+  const id=String(j.id);let node=jobNodes.get(id);
+  if(!node){
+   const wrap=document.createElement('div'),info=document.createElement('div'),
+    state=document.createElement('span'),name=document.createElement('h3'),detail=document.createElement('p'),
+    cancel=document.createElement('button');
+   state.className='state';cancel.className='small quiet';cancel.textContent='Cancelar';
+   cancel.onclick=()=>openEditor('Cancelar importación','Se detendrá esta tarea. La lista anterior no se sustituirá por una importación incompleta.',[],async()=>{await manage('cancel-job',{job:id});await jobs()},'Cancelar tarea');
+   info.append(state,name,detail);wrap.append(info,cancel);
+   node={wrap,state,name,detail,cancel};jobNodes.set(id,node);
+  }
+  const set=(element,value)=>{if(element.textContent!==value)element.textContent=value};
+  const className='job '+j.state;if(node.wrap.className!==className)node.wrap.className=className;
+  set(node.state,stateNames[j.state]||j.state);set(node.name,j.name);
+  set(node.detail,j.phase+' · '+Number(j.count).toLocaleString('es-ES')+' elementos');
+  node.cancel.hidden=!activeStates.includes(j.state);
+  if(target.children[index]!==node.wrap)target.insertBefore(node.wrap,target.children[index]||null);
+ });
+}
+async function jobs(){
+ const request=++jobsRequest;
+ if(currentView==='tasks')try{await loadMetadataIndex();}catch(e){if(request===jobsRequest)message(e.message,true);}
+ if(request!==jobsRequest)return;
+ let data;
+ try{data=await manage('jobs');}catch(e){if(request===jobsRequest){taskOverviewImports=null;updateTaskOverview();}throw e}
+ if(request!==jobsRequest)return;
+ const rows=data.jobs||[];taskOverviewImports=rows;updateTaskOverview();text('taskCount',rows.filter(j=>activeStates.includes(j.state)).length||'');
+ renderJobs(rows);
+}
 function renderMultiDiagnostics(m){
  const windows=Array.isArray(m?.windows)?m.windows:[];
  $('multiDiagnostics').hidden=!m?.active;
@@ -76,8 +235,21 @@ function renderMultiDiagnostics(m){
  }
 }
 function status(s){renderMultiDiagnostics(s.multiview);text('railVersion',s['Versión']||'');text('deviceName',s['Dispositivo']||'DRBEP');const names={READY:'Reproduciendo',BUFFERING:'Cargando vídeo',IDLE:'En espera',ENDED:'Reproducción terminada',ready:'Reproduciendo',buffering:'Cargando vídeo',idle:'En espera'};text('playbackState',names[s['Reproductor']]||s['Reproductor']||'En espera');text('playbackDetail',[s['Resolución']&&s['Resolución']!=='0 × 0'?s['Resolución']:null,s['Códec de vídeo']!=='—'?s['Códec de vídeo']:null,s['Red']?'Red: '+s['Red']:null].filter(Boolean).join(' · ')||'Sin reproducción activa');const memory=String(s['Memoria de la app']||'').match(/(\d+)\s*MB\s*\/\s*(\d+)/);text('memoryValue',memory?memory[1]+' MB':'—');$('memoryMeter').style.width=memory?Math.min(100,Number(memory[1])/Number(memory[2])*100)+'%':'0%';const storage=Number.parseFloat(s['Espacio disponible']);text('storageValue',Number.isFinite(storage)?(storage>=1024?(storage/1024).toFixed(1)+' GB':storage+' MB'):'—');text('lastUpdate','Actualizado a las '+new Date().toLocaleTimeString('es-ES'));$('stats').replaceChildren();for(const [k,v] of Object.entries(s)){if(k==='Importaciones'||k==='multiview')continue;const wrap=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=Array.isArray(v)?(v.length?v.join('\n'):'Sin eventos recientes'):String(v);wrap.append(dt,dd);$('stats').append(wrap)}}
-async function refresh(){if(!token||refreshing)return;refreshing=true;try{status(await api('/status'));await jobs();await lists();if(currentView==='remote')await loadRemote();if(currentView==='catchup'&&Date.now()-catchupUpdated>60000)await loadCatchup()}catch(e){if(token)message(e.message,true)}finally{refreshing=false}}
-function poll(){clearInterval(timer);if(token&&!document.hidden)timer=setInterval(refresh,5000)}
+async function refresh(automatic=false){
+ if(!token||refreshing||(automatic===true&&document.hidden))return;
+ refreshing=true;
+ const session=token,canContinue=()=>token===session&&!!token&&!(automatic===true&&document.hidden);
+ try{
+  const data=await api('/status');if(!canContinue())return;status(data);
+  await jobs();if(!canContinue())return;
+  await lists();if(!canContinue())return;
+  if(currentView==='remote')await loadRemote();
+  if(!canContinue())return;
+  if(currentView==='catchup'&&Date.now()-catchupUpdated>60000)await loadCatchup();
+ }catch(e){if(canContinue())message(e.message,true)}
+ finally{refreshing=false}
+}
+function poll(){clearInterval(timer);if(token&&!document.hidden)timer=setInterval(()=>refresh(true),5000)}
 $('login').onsubmit=async e=>{e.preventDefault();$('connect').disabled=true;text('loginError','');try{const r=await fetch('/session',{method:'POST',body:$('pin').value});if(!r.ok)throw Error('PIN incorrecto o panel cerrado. Comprueba la televisión.');const data=await r.json();if(!data.token)throw Error('No se pudo iniciar la sesión.');token=data.token;$('pin').value='';$('loginShell').hidden=true;$('panel').hidden=false;connection(true);view('overview');poll();await refresh()}catch(e){text('loginError',e.message||'No se puede contactar con el dispositivo.')}finally{$('connect').disabled=false}};
 $('refresh').onclick=refresh;$('logout').onclick=$('logoutMobile').onclick=()=>disconnect();$('loadLists').onclick=()=>lists(true).catch(e=>message(e.message,true));$('filters').onsubmit=e=>{e.preventDefault();offset=0;entries()};for(const id of ['kind','favorites','showHidden'])$(id).onchange=()=>{offset=0;entries()};$('previous').onclick=()=>{offset=Math.max(0,offset-50);entries()};$('next').onclick=()=>{offset+=50;entries()};
 function openEditor(title,description,fields,action,saveLabel='Guardar'){text('editorTitle',title);text('editorDescription',description);text('editorSave',saveLabel);text('editorError','');$('editorFields').replaceChildren();$('editorSave').disabled=false;for(const f of fields){const div=document.createElement('div');div.className='field';const label=document.createElement('label'),input=document.createElement('input');input.id='edit-'+f.name;input.name=f.name;input.type=f.type||'text';label.htmlFor=input.id;label.textContent=f.label;if(input.type==='checkbox'){input.checked=!!f.value;label.className='check';label.prepend(input);div.append(label)}else{input.value=f.value||'';input.required=!!f.required;if(f.max)input.maxLength=f.max;if(f.type==='number'){input.min='-2147483648';input.max='2147483647';input.step='1'}div.append(label,input)}if(f.help){const help=document.createElement('small');help.textContent=f.help;div.append(help)}$('editorFields').append(div)}editorAction=action;$('editor').showModal()}
@@ -95,29 +267,82 @@ function clearScreen(){screenRevision++;if(screenUrl)URL.revokeObjectURL(screenU
 async function loadScreen(){
  if(screenBusy||!token||document.hidden||currentView!=='diagnostics'||!$('screenLive').checked)return;
  screenBusy=true;const session=token,revision=screenRevision;
+ const current=()=>session===token&&revision===screenRevision&&!document.hidden&&currentView==='diagnostics'&&$('screenLive').checked;
  try{
   const [response,ui]=await Promise.all([fetch('/screen',{headers:{'X-Panel-Token':session},cache:'no-store'}),api('/ui')]);
+  if(!current())return;
   if(response.status===401){disconnect(true);return}if(!response.ok)throw Error('La pantalla no está disponible ahora.');
-  const blob=await response.blob();if(session!==token||revision!==screenRevision||document.hidden||currentView!=='diagnostics')return;
+  const blob=await response.blob();if(!current())return;
   const url=URL.createObjectURL(blob);if(screenUrl)URL.revokeObjectURL(screenUrl);screenUrl=url;$('screenImage').src=url;$('screenImage').hidden=false;
   text('screenStatus',ui.dialog?'Diálogo abierto':'Pantalla principal');$('screenNodes').replaceChildren();
   for(const node of (ui.nodes||[]).filter(n=>n.focused||n.text).slice(0,60)){const row=document.createElement('p');row.textContent=(node.focused?'● Foco · ':'')+(node.text||node.type);$('screenNodes').append(row)}
- }catch(e){if(session===token&&revision===screenRevision)text('screenStatus',e.message)}finally{screenBusy=false}
+ }catch(e){if(current())text('screenStatus',e.message)}finally{screenBusy=false}
 }
-$('screenLive').onchange=()=>{if($('screenLive').checked)loadScreen()};setInterval(loadScreen,3000);
-document.addEventListener('visibilitychange',()=>{poll();if(!document.hidden&&token)refresh()});
+$('screenLive').onchange=()=>{if($('screenLive').checked)loadScreen();else clearScreen()};setInterval(loadScreen,3000);
+document.addEventListener('visibilitychange',()=>{poll();if(!document.hidden&&token)refresh(true)});
 
 let seriesOffset=0,episodeOffset=0,selectedSeries='',seriesRevision=0,episodeRevision=0,catchupOffset=0,catchupRevision=0,catchupUpdated=0;
 let disposeCatchupImages=()=>{};
 function panelButton(label,action){const b=document.createElement('button');b.className='small';b.textContent=label;b.onclick=async()=>{b.disabled=true;try{await action()}catch(e){message(e.message,true)}finally{b.disabled=false}};return b}
 function options(id,rows,value){const el=$(id);el.replaceChildren();for(const [key,label]of rows){const op=document.createElement('option');op.value=key;op.textContent=label;el.append(op)}if(rows.some(r=>String(r[0])===String(value)))el.value=value}
-async function loadRemote(){try{const data=await manage('remote-status');text('remoteTitle',data.title);for(const b of $('remoteControls').querySelectorAll('button')){b.disabled=!data.hasMedia||b.dataset.command==='seek'&&!data.seekable||b.dataset.command==='previous'&&!data.canPrevious||b.dataset.command==='next'&&!data.canNext||b.dataset.command==='live'&&!data.canLive}}catch(e){message(e.message,true)}}
-for(const b of $('remoteControls').querySelectorAll('button'))b.onclick=async()=>{b.disabled=true;try{await manage('remote-command',{command:b.dataset.command,delta:Number(b.dataset.delta||0)});await loadRemote()}catch(e){message(e.message,true);await loadRemote()}};
-async function loadSeriesSources(){const old=$('seriesSource').value;options('seriesSource',sources.map(s=>[s.id,s.name]),old||sourceId);selectedSeries='';$('episodePanel').hidden=true;seriesOffset=0;await loadSeries()}
-async function loadSeries(){const seq=++seriesRevision,source=$('seriesSource').value;if(!source){text('seriesRows','Importa una lista con series para ver sus temporadas.');return}try{const data=await manage('series',{source,query:$('seriesQuery').value,offset:seriesOffset});if(seq!==seriesRevision||currentView!=='series')return;$('seriesRows').replaceChildren();for(const row of (data.rows||[]).slice(0,50)){const div=document.createElement('div');div.className='entry';const title=document.createElement('strong');title.textContent=row.title+' · '+row.episodes+' episodios';div.append(title,panelButton('Ver episodios',async()=>{selectedSeries=row.title;episodeOffset=0;await loadEpisodes(true)}));$('seriesRows').append(div)}$('seriesPrevious').disabled=seriesOffset===0;$('seriesNext').disabled=(data.rows||[]).length<=50;text('seriesPage','Página '+(seriesOffset/50+1))}catch(e){message(e.message,true)}}
-async function loadEpisodes(reset=false){const seq=++episodeRevision,source=$('seriesSource').value,series=selectedSeries;if(!series)return;try{const params={source,series,offset:episodeOffset,hideWatched:$('hideWatched').checked,descending:$('episodeDescending').checked,seasonDescending:$('seasonDescending').checked};if(!reset)params.season=Number($('episodeSeason').value);const data=await manage('episodes',params);if(seq!==episodeRevision||currentView!=='series')return;options('episodeSeason',(data.seasons||[]).map(n=>[n,n===0?'Especiales':'Temporada '+n]),data.season);text('episodeTitle',series);$('episodePanel').hidden=false;$('episodeRows').replaceChildren();for(const ep of (data.rows||[]).slice(0,50)){const div=document.createElement('div');div.className='entry';const title=document.createElement('div'),name=document.createElement('strong'),progress=document.createElement('div');name.textContent=ep.title;progress.className='episode-progress';progress.textContent=ep.watched?'✓ Visto':ep.position>0?'Visto hasta '+Math.floor(ep.position/60000)+' min':'Episodio '+ep.episode;title.append(name,progress);const actions=document.createElement('div');actions.className='actions';const play=resume=>manage('play-entry',{source,identity:ep.identity,occurrence:ep.occurrence,resume}).then(()=>message('Reproducción enviada al dispositivo.'));if(ep.position>1000&&!ep.watched)actions.append(panelButton('Continuar',()=>play(true)));actions.append(panelButton('Desde el inicio',()=>play(false)),panelButton(ep.watched?'Marcar no visto':'Marcar visto',async()=>{await manage('watched',{source,identity:ep.identity,occurrence:ep.occurrence,watched:!ep.watched});await loadEpisodes()}));div.append(title,actions);$('episodeRows').append(div)}$('episodePrevious').disabled=episodeOffset===0;$('episodeNext').disabled=(data.rows||[]).length<=50;text('episodePage','Página '+(episodeOffset/50+1));if(!(data.rows||[]).length)text('episodeRows','No hay episodios con estos filtros.')}catch(e){message(e.message,true)}}
+let remoteStatusRequest=0;
+function resetRemoteStatus(){
+ remoteStatusRequest++;text('remoteTitle','Sin reproducción');
+ for(const button of $('remoteControls').querySelectorAll('button'))button.disabled=true;
+}
+async function loadRemote(){
+ const request=++remoteStatusRequest,session=token;
+ if(!session)return;
+ const current=()=>request===remoteStatusRequest&&session===token&&currentView==='remote';
+ try{
+  const data=await manage('remote-status');if(!current())return;
+  text('remoteTitle',data.title);
+  for(const b of $('remoteControls').querySelectorAll('button')){
+   b.disabled=!data.hasMedia||b.dataset.command==='seek'&&!data.seekable||b.dataset.command==='previous'&&!data.canPrevious||b.dataset.command==='next'&&!data.canNext||b.dataset.command==='live'&&!data.canLive;
+  }
+ }catch(e){if(current())message(e.message,true)}
+}
+async function sendRemoteCommand(button){
+ const session=token;if(!session)return;
+ remoteStatusRequest++;button.disabled=true;
+ try{await manage('remote-command',{command:button.dataset.command,delta:Number(button.dataset.delta||0)})}
+ catch(e){if(session===token&&currentView==='remote')message(e.message,true)}
+ if(session===token&&currentView==='remote')await loadRemote();
+}
+for(const b of $('remoteControls').querySelectorAll('button'))b.onclick=()=>sendRemoteCommand(b);
+async function loadSeriesSources(){episodeRevision++;const old=$('seriesSource').value;options('seriesSource',sources.map(s=>[s.id,s.name]),old||sourceId);selectedSeries='';$('episodePanel').hidden=true;seriesOffset=0;await loadSeries()}
+async function loadSeries(){const seq=++seriesRevision,source=$('seriesSource').value,session=token;const current=()=>seq===seriesRevision&&currentView==='series'&&session===token&&source===$('seriesSource').value;if(!source){text('seriesRows','Importa una lista con series para ver sus temporadas.');return}try{const data=await manage('series',{source,query:$('seriesQuery').value,offset:seriesOffset});if(!current())return;$('seriesRows').replaceChildren();for(const row of (data.rows||[]).slice(0,50)){const div=document.createElement('div');div.className='entry';const title=document.createElement('strong');title.textContent=row.title+' · '+row.episodes+' episodios';div.append(title,panelButton('Ver episodios',async()=>{selectedSeries=row.title;episodeOffset=0;await loadEpisodes(true)}));$('seriesRows').append(div)}$('seriesPrevious').disabled=seriesOffset===0;$('seriesNext').disabled=(data.rows||[]).length<=50;text('seriesPage','Página '+(seriesOffset/50+1))}catch(e){if(current())message(e.message,true)}}
+async function loadEpisodes(reset=false){const seq=++episodeRevision,source=$('seriesSource').value,series=selectedSeries,session=token;const current=()=>seq===episodeRevision&&currentView==='series'&&session===token&&source===$('seriesSource').value&&series===selectedSeries;if(!series||!source)return;try{const params={source,series,offset:episodeOffset,hideWatched:$('hideWatched').checked,descending:$('episodeDescending').checked,seasonDescending:$('seasonDescending').checked};if(!reset)params.season=Number($('episodeSeason').value);const data=await manage('episodes',params);if(!current())return;options('episodeSeason',(data.seasons||[]).map(n=>[n,n===0?'Especiales':'Temporada '+n]),data.season);text('episodeTitle',series);$('episodePanel').hidden=false;$('episodeRows').replaceChildren();for(const ep of (data.rows||[]).slice(0,50)){const div=document.createElement('div');div.className='entry';const title=document.createElement('div'),name=document.createElement('strong'),progress=document.createElement('div');name.textContent=ep.title;progress.className='episode-progress';progress.textContent=ep.watched?'✓ Visto':ep.position>0?'Visto hasta '+Math.floor(ep.position/60000)+' min':'Episodio '+ep.episode;title.append(name,progress);const actions=document.createElement('div');actions.className='actions';const play=resume=>manage('play-entry',{source,identity:ep.identity,occurrence:ep.occurrence,resume}).then(()=>message('Reproducción enviada al dispositivo.'));if(ep.position>1000&&!ep.watched)actions.append(panelButton('Continuar',()=>play(true)));actions.append(panelButton('Desde el inicio',()=>play(false)),panelButton(ep.watched?'Marcar no visto':'Marcar visto',async()=>{await manage('watched',{source,identity:ep.identity,occurrence:ep.occurrence,watched:!ep.watched});await loadEpisodes()}));div.append(title,actions);$('episodeRows').append(div)}$('episodePrevious').disabled=episodeOffset===0;$('episodeNext').disabled=(data.rows||[]).length<=50;text('episodePage','Página '+(episodeOffset/50+1));if(!(data.rows||[]).length)text('episodeRows','No hay episodios con estos filtros.')}catch(e){if(current())message(e.message,true)}}
 $('seriesSource').onchange=()=>{seriesRevision++;episodeRevision++;seriesOffset=0;selectedSeries='';$('episodePanel').hidden=true;loadSeries()};$('seriesSearch').onclick=()=>{seriesOffset=0;loadSeries()};$('seriesPrevious').onclick=()=>{seriesOffset=Math.max(0,seriesOffset-50);loadSeries()};$('seriesNext').onclick=()=>{seriesOffset+=50;loadSeries()};for(const id of ['hideWatched','episodeDescending','seasonDescending','episodeSeason'])$(id).onchange=()=>{episodeOffset=0;loadEpisodes()};$('episodePrevious').onclick=()=>{episodeOffset=Math.max(0,episodeOffset-50);loadEpisodes()};$('episodeNext').onclick=()=>{episodeOffset+=50;loadEpisodes()};$('clearSeriesHistory').onclick=()=>{const source=$('seriesSource').value,series=selectedSeries;openEditor('Borrar historial','Se borrarán el progreso y las marcas de visto de «'+series+'».',[],async()=>{await manage('clear-history',{source,series});await loadEpisodes()},'Borrar historial')};
-function observeCatchupImages(){let active=0,stopped=false;const queue=[],urls=new Set(),controllers=new Set();const pump=()=>{while(!stopped&&active<4&&queue.length){const img=queue.shift(),controller=new AbortController(),session=token;controllers.add(controller);active++;fetch('/artwork',{method:'POST',headers:{'X-Panel-Token':session,'Content-Type':'application/json'},body:JSON.stringify({id:img.dataset.programme}),signal:controller.signal}).then(r=>{if(!r.ok)throw Error('Sin imagen');return r.blob()}).then(blob=>{if(!stopped&&img.isConnected&&session===token){const url=URL.createObjectURL(blob);urls.add(url);img.src=url}}).catch(()=>{if(!stopped)img.hidden=true}).finally(()=>{active--;controllers.delete(controller);pump()})}};const observer=new IntersectionObserver(entries=>{for(const e of entries)if(e.isIntersecting){observer.unobserve(e.target);queue.push(e.target);pump()}},{rootMargin:'160px'});$('catchupRows').querySelectorAll('img').forEach(img=>observer.observe(img));return ()=>{stopped=true;observer.disconnect();queue.length=0;controllers.forEach(c=>c.abort());urls.forEach(u=>URL.revokeObjectURL(u))}}
+function observeCatchupImages(){
+ let active=0,stopped=false;
+ const session=token,queue=[],urls=new Set(),controllers=new Set(),queued=new WeakSet();
+ const pump=()=>{
+  while(!stopped&&!document.hidden&&session===token&&active<4&&queue.length){
+   const img=queue.shift();if(!img.isConnected)continue;
+   const controller=new AbortController();controllers.add(controller);active++;
+   fetch('/artwork',{method:'POST',headers:{'X-Panel-Token':session,'Content-Type':'application/json'},body:JSON.stringify({id:img.dataset.programme}),signal:controller.signal})
+    .then(r=>{if(!r.ok)throw Error('Sin imagen');return r.blob()})
+    .then(blob=>{if(!stopped&&img.isConnected&&session===token){const url=URL.createObjectURL(blob);urls.add(url);img.src=url}})
+    .catch(()=>{if(!stopped&&session===token&&img.isConnected)img.hidden=true})
+    .finally(()=>{active--;controllers.delete(controller);pump()});
+  }
+ };
+ const observer=new IntersectionObserver(entries=>{
+  if(stopped)return;
+  for(const e of entries)if(e.isIntersecting&&!queued.has(e.target)){
+   queued.add(e.target);observer.unobserve(e.target);queue.push(e.target);
+  }
+  pump();
+ },{rootMargin:'160px'});
+ const onVisibility=()=>{if(!document.hidden)pump()};
+ document.addEventListener('visibilitychange',onVisibility);
+ $('catchupRows').querySelectorAll('img').forEach(img=>observer.observe(img));
+ return ()=>{
+  stopped=true;observer.disconnect();document.removeEventListener('visibilitychange',onVisibility);
+  queue.length=0;controllers.forEach(c=>c.abort());urls.forEach(u=>URL.revokeObjectURL(u));urls.clear();
+ };
+}
 async function loadCatchup(){const seq=++catchupRevision;try{const data=await manage('catchup-list',{day:$('catchupDay').value,channel:$('catchupChannel').value,genre:$('catchupGenre').value,query:$('catchupQuery').value,saved:$('catchupSaved').checked,offset:catchupOffset});if(seq!==catchupRevision||currentView!=='catchup')return;catchupUpdated=Date.now();disposeCatchupImages();options('catchupDay',(data.days||[]).map(d=>[d,new Date(d+'T12:00:00').toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'})]),data.day);$('catchupDay').disabled=$('catchupSaved').checked;options('catchupChannel',[['','Todos los canales'],...(data.channels||[]).map(c=>[c.id,c.name])],$('catchupChannel').value);options('catchupGenre',[['','Todos los géneros'],...(data.genres||[]).map(g=>[g,g])],$('catchupGenre').value);$('catchupRows').replaceChildren();text('catchupStatus',data.loading?'Actualizando programas…':(data.rows||[]).length?'':'No hay programas con estos filtros.');for(const p of (data.rows||[]).slice(0,50)){const card=document.createElement('article');card.className='catchup-program';const img=document.createElement('img');img.alt='';img.dataset.programme=p.id;const title=document.createElement('h3');title.textContent=p.title;const meta=document.createElement('p');meta.textContent=p.channel+' · '+new Date(p.start).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(p.airing?' · En emisión':'');const actions=document.createElement('div');actions.className='actions';const play=panelButton(p.airing?'Desde el inicio':'Reproducir',()=>manage('catchup-play',{id:p.id}).then(()=>message('Reproducción enviada al dispositivo.')));play.disabled=!p.available;actions.append(play,panelButton(p.saved?'★ Guardado':'☆ Guardar',async()=>{await manage('catchup-save',{id:p.id});await loadCatchup()}),panelButton('Información',()=>openEditor(p.title,[p.channel,p.genre,p.description].filter(Boolean).join(' · '),[],()=>Promise.resolve(),'Cerrar')));card.append(img,title,meta,actions);$('catchupRows').append(card)}disposeCatchupImages=observeCatchupImages();$('catchupPrevious').disabled=catchupOffset===0;$('catchupNext').disabled=(data.rows||[]).length<=50;text('catchupPage','Página '+(catchupOffset/50+1))}catch(e){message(e.message,true)}}
 for(const id of ['catchupDay','catchupChannel','catchupGenre','catchupSaved'])$(id).onchange=()=>{catchupOffset=0;loadCatchup()};$('catchupSearch').onclick=()=>{catchupOffset=0;loadCatchup()};$('catchupPrevious').onclick=()=>{catchupOffset=Math.max(0,catchupOffset-50);loadCatchup()};$('catchupNext').onclick=()=>{catchupOffset+=50;loadCatchup()};
 
@@ -165,19 +390,36 @@ $('guideMode').onchange=async()=>{try{await manage('guide-policy',{source:$('gui
 
 
 let bbEnabled=true;
-const bbLabels={CATCHUP_DB_OPEN:'Catchup: acceso a BD',CATCHUP_DB_COUNT:'Catchup: contar resultados',CATCHUP_DB_FETCH:'Catchup: lectura SQL',CATCHUP_DB_DECODE:'Catchup: preparar objetos',EPG_LOAD:'Carga de EPG',GUIDE_LOAD:'Guía oficial completa',GUIDE_CACHE:'Caché de guía',GUIDE_HTTP:'Respuesta de guía',GUIDE_PARSE:'Leer y procesar guía',GUIDE_FALLBACK:'Guía: recuperación o fallo',CATCHUP_PAGE:'Página de catchup (BD)',CATCHUP_STRIP:'Carrusel de catchup (BD)',MULTI_OPEN:'Abrir ventana',MULTI_CLOSE:'Cerrar ventana',MULTI_PREPARE:'Preparar ventana',MULTI_STATE:'Estado de ventana',MULTI_FRAME:'Primera imagen de ventana',MULTI_ERROR:'Error de ventana',MULTI_COUNTERS:'Fotogramas de ventana',SESSION:'Sesión',ACTIVITY:'Arranque de pantalla',WINDOW:'Ventana inicial',PLAYER_READY:'Reproductor preparado',STARTUP_FRAME:'Primera imagen del arranque',CATALOG_READY:'Catálogo completo',HOME_MODEL:'Construir Inicio',NAV_HOME:'Abrir Inicio',NAV_SECTION:'Navegar sección',NAV_KEY:'Mando',PLAY_PREPARE:'Preparar reproducción',PLAY_STATE:'Estado del reproductor',PLAY_FRAME:'Primera imagen de reproducción',SURFACE_FRAME:'Cambio de superficie',PLAY_ERROR:'Error del reproductor',VIDEO_COUNTERS:'Fotogramas y búfer',MEMORY:'Memoria',MEMORY_PRESSURE:'Presión de memoria',UI_STALL:'Bloqueo de interfaz',CRASH:'Cierre inesperado',PROCESS_EXIT:'Salida del proceso',MARK:'Problema marcado',DETAIL:'Detalle temporal',ENABLED:'Registro activado',FOREGROUND:'App visible',BACKGROUND:'App en segundo plano'};
+const bbLabels={CATCHUP_DB_OPEN:'Catchup: acceso a BD',CATCHUP_DB_COUNT:'Catchup: contar resultados',CATCHUP_DB_FETCH:'Catchup: lectura SQL',CATCHUP_DB_DECODE:'Catchup: preparar objetos',EPG_LOAD:'Carga de EPG',GUIDE_LOAD:'Guía oficial completa',GUIDE_CACHE:'Caché de guía',GUIDE_HTTP:'Respuesta de guía',GUIDE_PARSE:'Leer y procesar guía',GUIDE_FALLBACK:'Guía: recuperación o fallo',CATCHUP_PAGE:'Página de catchup (BD)',CATCHUP_STRIP:'Carrusel de catchup (BD)',MULTI_OPEN:'Abrir ventana',MULTI_CLOSE:'Cerrar ventana',MULTI_PREPARE:'Preparar ventana',MULTI_STATE:'Estado de ventana',MULTI_FRAME:'Primera imagen de ventana',MULTI_ERROR:'Error de ventana',MULTI_COUNTERS:'Fotogramas de ventana',SESSION:'Sesión',ACTIVITY:'Arranque de pantalla',WINDOW:'Ventana inicial',PLAYER_READY:'Reproductor preparado',STARTUP_FRAME:'Primera imagen del arranque',CATALOG_READY:'Catálogo completo',HOME_MODEL:'Construir Inicio',NAV_HOME:'Abrir Inicio',NAV_SECTION:'Navegar sección',NAV_KEY:'Mando',PLAY_PREPARE:'Preparar reproducción',PLAY_STATE:'Estado del reproductor',PLAY_FRAME:'Primera imagen de reproducción',SURFACE_FRAME:'Cambio de superficie',PLAY_ERROR:'Error del reproductor',VIDEO_COUNTERS:'Fotogramas y búfer',AUDIO_COUNTERS:'Contadores de audio',PLAYBACK_SAMPLE:'Estado y posición',MEMORY:'Memoria',MEMORY_PRESSURE:'Presión de memoria',UI_STALL:'Bloqueo de interfaz',CRASH:'Cierre inesperado',PROCESS_EXIT:'Salida del proceso',MARK:'Problema marcado',DETAIL:'Detalle temporal',ENABLED:'Registro activado',FOREGROUND:'App visible',BACKGROUND:'App en segundo plano'};
 const bbTimed=new Set(['CATCHUP_DB_OPEN','CATCHUP_DB_COUNT','CATCHUP_DB_FETCH','CATCHUP_DB_DECODE','EPG_LOAD','GUIDE_LOAD','GUIDE_HTTP','GUIDE_PARSE','CATCHUP_PAGE','CATCHUP_STRIP','MULTI_FRAME','WINDOW','PLAYER_READY','STARTUP_FRAME','CATALOG_READY','CATALOG_APPLY','HOME_MODEL','PLAY_FRAME','SURFACE_FRAME','UI_STALL']);
+function renderStartupTimings(launches){
+ const box=$('bbStartups');box.replaceChildren();
+ if(!launches.length){const p=document.createElement('p');p.textContent='No hay arranques completos identificables en el historial conservado.';box.append(p);return}
+ for(const launch of launches.slice(-6).reverse()){
+  const section=document.createElement('section'),title=document.createElement('h4');
+  title.textContent=new Date(launch.at).toLocaleString()+' · versión '+launch.version;section.append(title);
+  const stages=launch.stages||{},names={WINDOW:'Ventana preparada',PLAYER_READY:'Reproductor preparado',STARTUP_FRAME:'Primer fotograma',CATALOG_READY:'Catálogo completo'};
+  const values=Object.values(stages).filter(v=>Number.isFinite(v)&&v>=0),max=Math.max(1,...values);
+  for(const [key,label] of Object.entries(names)){
+   const row=document.createElement('div'),text=document.createElement('span'),value=stages[key];
+   text.textContent=label+': '+(Number.isFinite(value)&&value>=0?value+' ms':'Sin registro');row.append(text);
+   if(Number.isFinite(value)&&value>=0){const bar=document.createElement('progress');bar.max=max;bar.value=value;bar.setAttribute('aria-label',label);bar.style.cssText='display:block;width:100%;height:8px;margin:6px 0 12px;accent-color:#a99bff';row.append(bar)}
+   section.append(row);
+  }
+  box.append(section);
+ }
+}
 async function loadBlackBox(){
  try{const s=await api('/blackbox');if(currentView!=='diagnostics')return;bbEnabled=s.enabled;
  text('bbStatus',(s.enabled?'Registrando':'Registro pausado')+(s.detailed?' · Detalle activo':'')+' · '+(s.bytes/1048576).toFixed(2)+' MiB · '+s.lost+' eventos descartados · '+s.writeErrors+' errores de escritura');
- text('bbToggle',s.enabled?'Pausar registro':'Activar registro');$('bbStats').replaceChildren();
+ renderStartupTimings(s.startups||[]);text('bbToggle',s.enabled?'Pausar registro':'Activar registro');$('bbStats').replaceChildren();
  for(const stat of s.stats||[]){if(!bbTimed.has(stat.event))continue;const row=document.createElement('div'),name=document.createElement('dt'),value=document.createElement('dd');name.textContent=bbLabels[stat.event]||stat.event;value.textContent='Mediana '+stat.p50+' ms · P95 '+stat.p95+' ms · Máx. '+stat.max+' ms · '+stat.count+' eventos';row.append(name,value);$('bbStats').append(row)}
- $('bbEvents').replaceChildren();for(const e of (s.events||[]).slice().reverse()){const row=document.createElement('div');row.className='entry';const label=bbLabels[e.event]||e.event;let detail=bbTimed.has(e.event)?e.a+' ms':'a='+e.a+' · b='+e.b+' · c='+e.c;if(e.event==='VIDEO_COUNTERS'||e.event==='MULTI_COUNTERS')detail=e.a+' dibujados · '+e.b+' descartados · búfer '+e.c+' ms';if(e.event==='MEMORY')detail=(e.a/1048576).toFixed(1)+' MiB usados';if(e.event==='PLAY_FRAME'||e.event==='SURFACE_FRAME')detail+=' · '+(e.b?'miniatura':'pantalla principal');if(['EPG_LOAD','GUIDE_LOAD','CATCHUP_PAGE','CATCHUP_STRIP'].includes(e.event))detail+=' · '+e.b+' resultados · '+(e.c===2?'parcial':e.c?'fallo':'completado');if(e.event==='GUIDE_CACHE')detail=e.a+' bloques vigentes · '+e.b+' a consultar · '+e.c+' programas en caché';if(e.event==='GUIDE_HTTP')detail+=' · HTTP '+e.b+' · '+e.c+' bloques';if(e.event==='GUIDE_FALLBACK')detail=e.a+' ms · '+(e.b?'caché conservada':'sin caché')+' · '+(e.c===2?'interrumpido':'fallo de consulta');row.textContent=new Date(e.at).toLocaleString('es-ES')+' · '+label+' · '+detail+' · sesión '+e.session.slice(0,8)+' / op '+e.op;$('bbEvents').append(row)}
+ $('bbEvents').replaceChildren();for(const e of (s.events||[]).slice().reverse()){const row=document.createElement('div');row.className='entry';const label=bbLabels[e.event]||e.event;let detail=bbTimed.has(e.event)?e.a+' ms':'a='+e.a+' · b='+e.b+' · c='+e.c;if(e.event==='VIDEO_COUNTERS'||e.event==='MULTI_COUNTERS')detail=e.a+' dibujados · '+e.b+' descartados · búfer '+e.c+' ms';if(e.event==='PLAYBACK_SAMPLE'){const f=Number(e.c),state={1:'Inactivo',2:'Preparando',3:'Listo',4:'Finalizado'}[f&7]||'Desconocido';detail=state+' · posición '+e.a+' ms · búfer '+e.b+' ms · '+((f&8)?'reproducción solicitada':'pausa solicitada')+' · '+((f&16)?'avanzando':'sin avance confirmado')+((f&32)?' · cargando':'')+((f&64)?' · reproducción suprimida':'')}if(e.event==='AUDIO_COUNTERS')detail=e.a+' buffers entregados · '+e.b+' omitidos · búfer '+e.c+' ms (no confirma sonido audible)';if(e.event==='MEMORY')detail=(e.a/1048576).toFixed(1)+' MiB usados';if(e.event==='PLAY_FRAME'||e.event==='SURFACE_FRAME')detail+=' · '+(e.b?'miniatura':'pantalla principal');if(['EPG_LOAD','GUIDE_LOAD','CATCHUP_PAGE','CATCHUP_STRIP'].includes(e.event))detail+=' · '+e.b+' resultados · '+(e.c===2?'parcial':e.c?'fallo':'completado');if(e.event==='GUIDE_CACHE')detail=e.a+' bloques vigentes · '+e.b+' a consultar · '+e.c+' programas en caché';if(e.event==='GUIDE_HTTP')detail+=' · HTTP '+e.b+' · '+e.c+' bloques';if(e.event==='GUIDE_FALLBACK')detail=e.a+' ms · '+(e.b?'caché conservada':'sin caché')+' · '+(e.c===2?'interrumpido':'fallo de consulta');row.textContent=new Date(e.at).toLocaleString('es-ES')+' · '+label+' · '+detail+' · sesión '+e.session.slice(0,8)+' / op '+e.op;$('bbEvents').append(row)}
  }catch(e){text('bbStatus',e.message)}
 }
 async function bbCommand(command){try{await api('/blackbox',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});if(command==='mark')message('Problema marcado. Espera 30 segundos antes de exportar para incluir el contexto posterior.');await loadBlackBox()}catch(e){message(e.message,true)}}
 $('bbRefresh').onclick=loadBlackBox;$('bbMark').onclick=()=>bbCommand('mark');$('bbDetail').onclick=()=>bbCommand('detail');$('bbToggle').onclick=()=>bbCommand(bbEnabled?'disable':'enable');
-$('bbExport').onclick=async()=>{const button=$('bbExport');button.disabled=true;try{const session=token;const r=await fetch('/blackbox-export',{headers:{'X-Panel-Token':session},cache:'no-store'});if(!r.ok||session!==token)throw Error('No se pudo exportar. Comprueba la sesión.');const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download='drbep-caja-negra-'+new Date().toISOString().replace(/[:.]/g,'-')+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){message(e.message,true)}finally{button.disabled=false}};
+$('bbExport').onclick=async()=>{const button=$('bbExport');button.disabled=true;try{const session=token,minutes=Number($('bbRange').value);const r=await fetch('/blackbox-export',{method:minutes?'POST':'GET',headers:{'X-Panel-Token':session,...(minutes?{'Content-Type':'application/json'}:{})},...(minutes?{body:JSON.stringify({minutes})}:{}),cache:'no-store'});if(!r.ok||session!==token)throw Error('No se pudo exportar. Comprueba la sesión.');const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download='drbep-caja-negra-'+(minutes?minutes+'min-':'')+new Date().toISOString().replace(/[:.]/g,'-')+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){message(e.message,true)}finally{button.disabled=false}};
 
 </script>
 </body></html>

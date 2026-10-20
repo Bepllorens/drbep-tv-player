@@ -1,0 +1,81 @@
+Plan TeVas: estado de avances en .185 — 20/10/2026
+
+Cambios preparados, sin publicar/instalar en esta fase:
+- Arranque HLS reducido: opción beta fastHlsStartup, pendiente A/B.
+- Cola de zapeo: coalesceRemoteZap, métricas y analizador; pendiente A/B.
+- Importaciones cooperativas: cooperativeImports, pendiente A/B con carga real.
+- Consultas concurrentes de géneros agrupadas; falta medir p95 en dispositivo.
+- Caja negra: ZIP por periodo y gráfico de hitos de arranque.
+- TMDB: selección por lista/tipo/grupo; revisión por motivo paginada.
+- Imágenes oficiales: boundedArtworkRequests; pendiente saturación/fluidez.
+- PES: fallo sintético de cabecera extendida fragmentada y guarda en beta.
+  No atribuirle los glitches reales sin repetir las pruebas audiovisuales.
+
+Pendientes principales del plan:
+- Validación Fire/tablet de todas las variantes y promociones separadas.
+- PCR/continuidad TS, Star Channel inicio/seek y BBC Earth sostenido.
+- Coordinación de guía/arte más amplia, invalidación por ámbito y baseline profiles.
+- TMDB imágenes/metadatos/géneros separados, previsualización/deshacer organización.
+- Plex incremental, portada configurable, atajos y búsqueda unificada.
+- Fuentes alternativas explícitas y funciones opcionales posteriores.
+
+No confundir estos avances con una release publicada. El checklist ejecutable
+por escenarios está en pruebas-tv-pendientes-20261020.txt.
+
+Bloque adicional: TMDB con presupuesto cooperativo acotado, beta opt-in.
+Evita aplazamientos ilimitados por mando; mantiene prioridad de fichas.
+Restauracion de prioridad del hilo al salir. Pendiente comparacion en Fire.
+
+Panel: filas de importacion reutilizadas y respuestas antiguas descartadas; pendiente navegador real.
+
+Recorrido SQL sintetico fijo: 10 escenarios, referencia/comparador y cinco tests. Guardados destaca como siguiente candidato; sin cambio de consultas de la app.
+
+Guardados: lookup por IDs hasta 512, consulta previa para conjuntos mayores; 1440 equivalencias sinteticas. Pendiente Fire.
+
+Generos: salto por indice con fallback; busqueda: indice opcional catchupSearchIndex beta, apagado por defecto por coste de escritura. 21+120 equivalencias; pendiente dispositivo.
+
+Fichas: aciertos de cache fuera del bloqueo de red; cargas siguen serializadas con doble comprobacion. Pruebas de concurrencia; pendiente Fire.
+
+Biblioteca: parser series admite 1x02 de forma conservadora en futuras importaciones; identidad estable, sin migracion. Pendiente prueba visual.
+
+Cache generos: resultados vacios compartidos, invalidacion tras commit por ambito y guarda contra cargas antiguas. Pendiente prueba Android/Fire.
+
+Diagnosticos: estado/posicion y contadores de audio en muestreo existente; no cambia recuperacion. Pendiente correlacion audiovisual.
+
+Analizador offline de PLAYBACK_SAMPLE/audio/video con reloj monotonico, deduplicacion y guardas de pausa/multipantalla. 10 tests sinteticos; pendiente registro real.
+
+Ilustraciones: cache de disco validada, fallback antiguo no renueva fecha y fallo de escritura no descarta red valida. Seis tests sinteticos; pendiente Fire.
+
+Ilustraciones: cache LRU de parrillas se libera con trim/lowMemory; generacion impide repoblacion por cargas antiguas. Cinco tests; pendiente memoria real Fire.
+
+Panel TMDB: descarta estados atrasados y limpia estado de sesion al desconectar; cuatro tests Node adicionales. Pendiente navegador real.
+
+Panel: resumen conjunto importaciones/TMDB con respuestas existentes y tolerancia a fallo parcial; 15 pruebas Node. Pendiente visual.
+
+Miniaturas: normalizacion de titulos reutilizada por fila; 13.160 equivalencias y ensayo JVM 69,45 -> 33,93 ms/10.000 consultas. 815 tests; pendiente coste inicial/memoria/Fire.
+
+Miniaturas: bloqueos por canal/dia se retiran al terminar todas sus llamadas; pruebas de concurrencia y excepciones. Pendiente Fire prolongado.
+
+Miniaturas: reutilizacion del JSONArray validado en disco/red; elimina segundo parseo por carga. Pendiente medir primera carga real Fire.
+
+Panel TMDB: retroceso por cursores (historial maximo 100), recuperacion de errores sin perder pagina. 20 tests Node; pendiente navegador conectado.
+
+Panel TMDB: grupos sincronizados ante cambios programaticos de lista/tipo y rechazo de respuestas de otro ambito; 25 tests Node, pendiente navegador real.
+
+Panel: refresco automatico se detiene entre etapas si se oculta o cambia sesion; 31 tests Node. No cancela trabajos del dispositivo; pendiente navegador real.
+
+Mando web: orden/sesion/vista protegen estado y finalizacion de comandos; 37 tests Node simulados. Pendiente dispositivo.
+
+Panel series: catalogo/episodios descartan respuestas de otra lista, serie o sesion; reiniciar fuentes invalida detalle pendiente. 42 tests Node; pendiente navegador.
+
+Catchup web: cola de imagenes pausada al ocultar, ligada a sesion y sin nodos duplicados; 48 tests Node. Pendiente navegador real.
+
+Diagnostico web: capturas invalidadas al apagar vista y respuesta /screen ligada a sesion; 54 tests Node. Pendiente navegador conectado.
+
+Panel API: verifica sesion tras JSON y fallos de red; evita estado de conexion heredado de otra sesion. 62 tests Node; pendiente navegador real.
+
+Catchup: ensayo WAL con escritor real de metadatos y hashes de resultados; 69.120 eventos, p95 sintetico 0,059/0,372 ms reposo/con escritura. 7 tests de herramientas. Sin cambio de app.
+
+Generos: invalidacion en vuelo limitada al ambito cargado; escrituras ajenas no fuerzan repeticion. Cuatro pruebas nuevas; pendiente Fire/p95.
+
+Catchup: writeAll limpia caducados una vez por lote dentro de transaccion; 150 equivalencias + 2 rollback sinteticos. Ensayo 100 canales 55,19 -> 21,55 ms; pendiente SQLite Android/Fire.

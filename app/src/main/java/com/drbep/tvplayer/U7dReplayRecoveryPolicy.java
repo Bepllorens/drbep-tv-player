@@ -4,6 +4,11 @@ package com.drbep.tvplayer;
 final class U7dReplayRecoveryPolicy {
     private U7dReplayRecoveryPolicy() {}
 
+    static boolean pausedPositionExpired(long position, long[] availableWindow) {
+        return position >= 0L && availableWindow != null && availableWindow.length >= 2
+                && position < availableWindow[0];
+    }
+
     static long windowPosition(long windowStart, long relativePosition) {
         // A paused position can be negative relative to an advancing live window.
         // Clamp the reconstructed position, not its individual coordinates.

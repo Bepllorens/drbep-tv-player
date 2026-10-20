@@ -6,6 +6,6 @@ public abstract class PesReaderFixFactory implements AsmClassVisitorFactory<Inst
         return data.getClassName().equals("androidx.media3.extractor.ts.PesReader");
     }
     @Override public ClassVisitor createClassVisitor(ClassContext context, ClassVisitor next) {
-        return new PesReaderFix(next);
+        return new PesReaderFix(new PesReaderFragmentFix(next));
     }
 }

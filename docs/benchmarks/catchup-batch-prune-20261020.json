@@ -1,0 +1,10 @@
+{
+  "equivalence_cases": 150,
+  "rollback_cases": 2,
+  "channels_per_batch": 100,
+  "initial_rows": 20000,
+  "repeats": 5,
+  "repeated_cleanup_median_ms": 55.188,
+  "single_cleanup_median_ms": 21.547,
+  "limits": "Synthetic SQLite subset schema, fixed cutoff, no Android transactions/UI. Same SQL retention predicate extracted from source."
+}

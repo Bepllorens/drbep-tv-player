@@ -1,0 +1,26 @@
+Catchup: limpieza de retencion una vez por lote — 20/10/2026
+
+writeAll antes llamaba write/store por canal, con DELETE de caducados del ambito
+tras cada canal. Ahora store permite omitir esa limpieza y writeAll la ejecuta
+una vez al final, antes de marcar exitosa la transaccion exterior.
+write/index individuales siguen limpiando como antes. indexAll no cambia.
+Lote vacio sigue sin borrar. Catalogo actualizado por canal y invalidacion de
+generos tras commit se conservan. Guardados excluidos por el mismo NOT EXISTS.
+No cambia esquema, periodo de retencion ni filtros. El corte temporal se toma
+al final del lote (como la ultima limpieza anterior), no al comienzo.
+
+Validacion: 150 casos SQLite sinteticos equivalentes con guardados, otros
+ambitos, IDs repetidos, limite temporal, lotes vacios y reemplazos.
+Dos casos de error inducido comprueban rollback del lote, incluida la limpieza.
+Fixture usa subconjunto de esquema y corte fijo: no valida SQLite Android.
+Benchmark 20.000 filas iniciales/100 canales, 5 repeticiones:
+primera tanda 50,027 -> 19,557 ms; repeticion guardada 55,188 -> 21,547 ms.
+No atribuir esta diferencia al tiempo total de EPG ni a fluidez real.
+
+Herramienta tools/verify-catchup-batch-prune.py
+Informe docs/benchmarks/catchup-batch-prune-20261020.json
+Suite JVM y compilacion beta en:
+ /srv/drbep-dev/reviews/catchup-batch-prune-validation.log
+
+Pendiente Fire: actualizacion por lotes, retencion, guardados, rollback Android
+ante error y p95 de consultas durante escritura. No instalado/publicado.

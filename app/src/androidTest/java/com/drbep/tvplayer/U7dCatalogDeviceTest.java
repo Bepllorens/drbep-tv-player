@@ -13,25 +13,26 @@ public class U7dCatalogDeviceTest {
     @Test public void metadataAndSavedArePersistentAndAccountIsolated() throws Exception {
         Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
         String scope="test:"+System.nanoTime();
-        EpgRepository.EpgProgram p=new EpgRepository.EpgProgram("test-channel","Canal de prueba","tvg","Programa","","Sinopsis","2026-10-09T12:00:00Z","2026-10-09T13:00:00Z","Cine",0);
-        try(U7dCatalogStore db=new U7dCatalogStore(c)) {
+        String file="test-catalog-"+System.nanoTime()+".db";long now=System.currentTimeMillis();
+        EpgRepository.EpgProgram p=new EpgRepository.EpgProgram("test-channel","Canal de prueba","tvg","Programa","","Sinopsis",java.time.Instant.ofEpochMilli(now-60000).toString(),java.time.Instant.ofEpochMilli(now+3600000).toString(),"Cine",0);
+        try(U7dCatalogStore db=new U7dCatalogStore(c,file,null)) {
             try {
                 db.write(scope,p.channelId,Collections.singletonList(p));
                 assertTrue(db.fresh(scope,p.channelId,System.currentTimeMillis()));
                 assertEquals("Programa",db.read(scope,p.channelId).get(0).title);
                 assertTrue(db.read(scope+"other",p.channelId).isEmpty());
-                assertTrue(db.toggle(scope,p,123));
+                db.setSaved(scope,p,123,true);
                 assertTrue(db.saved(scope,U7dCatalogStore.id(p)));
                 assertTrue(db.savedPrograms(scope+"other").isEmpty());
-                try(U7dCatalogStore reopened=new U7dCatalogStore(c)) {
+                try(U7dCatalogStore reopened=new U7dCatalogStore(c,file,null)) {
                     assertEquals("Cine",reopened.savedPrograms(scope).get(0).category);
                 }
-                assertFalse(db.toggle(scope,p,123));assertTrue(db.savedPrograms(scope).isEmpty());
+                db.setSaved(scope,p,123,false);assertFalse(db.saved(scope,U7dCatalogStore.id(p)));assertTrue(db.savedPrograms(scope).isEmpty());
             } finally {
                 db.getWritableDatabase().delete("catalog","scope=?",new String[]{scope});
                 db.getWritableDatabase().delete("saved","scope=?",new String[]{scope});
             }
-        }
+        } finally {c.deleteDatabase(file);}
     }
     @Test public void catalogOpensAndBackKeepsActivityAlive() throws Exception {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {

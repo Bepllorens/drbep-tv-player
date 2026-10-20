@@ -1,0 +1,34 @@
+Medicion de zapeo, 20-10-2026
+
+Caja negra beta: eventos numericos ZAP_PRESS, ZAP_TUNE y ZAP_FRAME.
+op es un contador local de pulsaciones, separado por sesion de caja negra.
+ZAP_TUNE.a: espera desde la pulsacion hasta la entrega a sintonizacion.
+ZAP_FRAME.a: pulsacion -> primer fotograma real.
+ZAP_FRAME.b: entrega -> primer fotograma.
+ZAP_FRAME.c: generacion del intento.
+
+Un tag del MediaItem identifica la generacion en el AnalyticsListener de Media3.
+No se usa solo el canal actual: callbacks de un MediaItem anterior no pueden
+completar la medicion nueva, ni siquiera si ambos corresponden al mismo canal.
+Una nueva generacion/reintento invalida la muestra anterior. Una peticion no
+reclamada tras entregar la accion se descarta; no medir dialogos parentales como
+si fueran arranque de video. VLC no tiene este callback y queda sin muestra.
+No se registran IDs de canal, titulos, URLs ni credenciales en estos eventos.
+Una falta de ZAP_FRAME no equivale por si sola a error: puede ser cancelacion,
+contenido ya reproduciendose, VLC, captura incompleta o sustitucion del intento.
+
+tools/report-zap-timing.py acepta archivos events-*.jsonl o un ZIP de caja negra.
+Agrupa por sesion/version, deduplica exports repetidos y exige PRESS+TUNE+FRAME
+coherentes antes de calcular mediana y p95 (rango mas cercano).
+Muestra grupos numericos, no el identificador de sesion. Informa muestras
+rechazadas e incompletas. No compara distintas condiciones automaticamente.
+Ejemplo: python3 tools/report-zap-timing.py /ruta/privada/caja-negra.zip
+
+Pruebas sinteticas Android: intento equivocado, reintento, cancelacion,
+misma identidad de canal con generaciones distintas y una sola primera imagen.
+Pruebas Python: sesiones separadas, duplicados, huerfanos, incoherencias, p95.
+Pendiente validacion audiovisual y recogida A/B, ver lista de pruebas TV.
+
+Ademas se cancela el zapeo aplazado al tocar la pantalla o abrir guia,
+catchup, grabaciones o ajustes, incluso si se abre desde otra via que el mando.
+Sin publicar, instalar ni modificar produccion.

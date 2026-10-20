@@ -1,0 +1,22 @@
+Panel web: exportación de caja negra por periodo — 20/10/2026
+
+Diagnóstico > Caja negra ofrece historial conservado completo (predeterminado),
+últimos 5 minutos, últimos 15 minutos y última hora. El corte usa el reloj del
+dispositivo al solicitar la exportación, no el del navegador. No borra archivos.
+El ZIP incluye README con límites inclusivos UTC en milisegundos. Un intervalo
+sin registros produce archivos vacíos. Una operación puede quedar incompleta
+si su inicio o final cae fuera del intervalo. Las incidencias pueden duplicar
+eventos del anillo, igual que en la descarga completa.
+
+GET /blackbox-export conserva el contrato de exportación completa.
+POST /blackbox-export acepta JSON minutes=5,15,60 y cuerpo de hasta 64 bytes.
+Se conservan PIN, token de sesión, validación Host/Origin y caducidad existentes.
+El filtrado se ejecuta en el escritor de diagnóstico, fuera del hilo UI,
+solo sobre archivos propios acotados; no consulta producción ni proveedores.
+Las líneas incompletas se omiten solo en exportaciones filtradas.
+No cambian registro, retención, muestreo ni reproducción.
+
+Validación en .185: tests HTTP autenticación/origen/límites; ZIP con límites
+temporales y snapshots de incidencia, intervalo vacío, originales intactos;
+suite Android y compilación debug; comprobación de sintaxis JavaScript.
+Pendiente comprobación visual y descarga real desde Fire/tablet. No publicado.

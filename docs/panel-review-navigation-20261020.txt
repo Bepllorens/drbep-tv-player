@@ -1,0 +1,27 @@
+Panel: navegacion de resultados TMDB — 20/10/2026
+
+Se añade Anteriores a la revision manual de resultados del trabajo TMDB.
+El historial conserva hasta 100 cursores numericos, nunca paginas ni imagenes.
+Volver consulta la pagina con el mismo filtro y cursor original; el backend
+mantiene paginacion keyset de hasta 50 registros. Consultar resultados reinicia
+el historial solo cuando la respuesta llega correctamente.
+
+Un error de red conserva filas, cursor e historial de la pagina actual y restaura
+los botones que estaban disponibles. Se puede reintentar avance o retroceso sin
+volver a empezar. Cambiar motivo, trabajo o sesion invalida respuestas pendientes
+mediante el contador existente y vacia el historial.
+El limite implica que tras mas de 100 avances solo se pueden retroceder los
+ultimos 100; Consultar resultados permite volver al inicio.
+
+No se altera indexacion, fichas, seleccion del trabajo ni API. Solo se consulta
+al pulsar; no hay precarga ni nuevas peticiones automaticas.
+La lista puede cambiar si el trabajo progresa: el historial no es una instantanea
+de resultados y volver puede mostrar datos actualizados.
+
+Validacion .185: 20 pruebas Node del panel, incluyendo cinco nuevas:
+avance/retroceso/reinicio, error al avanzar, error al retroceder, invalidacion
+de respuesta tardia e historial limitado. Compilacion debug beta ARM32.
+Logs: /srv/drbep-dev/reviews/panel-review-navigation-{tests,build}.log
+
+Pendiente navegador real conectado al dispositivo: controles, foco y vista
+movil; probar perdida y recuperacion de conexion. No instalado ni publicado.

@@ -1,0 +1,23 @@
+TMDB: selección por grupo dentro de una lista — 20/10/2026
+
+El panel permite elegir lista, tipo y grupo. Grupo vacío significa todos;
+los contenidos sin grupo siguen incluidos en Todos. Elegir un grupo exige
+una lista concreta, para no mezclar grupos homónimos de proveedores distintos.
+Los grupos se consultan al elegir lista/tipo, no en el sondeo periódico.
+Máximo 1000 opciones, con aviso si hay más. Todos sigue incluyendo el resto.
+Un error de carga bloquea iniciar una selección nueva, evitando ampliar a
+Todos por accidente. Continuar/reintentar conserva el trabajo guardado.
+
+El grupo persiste junto a lista/tipo. Preparación, consumo, progreso y reintento
+usan el mismo predicado parametrizado. Películas: identidad y ocurrencia
+exactas. Series: pertenencia si cualquier episodio visible de la generación
+activa está en el grupo; no depende del representante. La cola conserva su
+clave única y las coincidencias/metadatos comunes, no duplica una serie por
+grupo. Se conservan los controles existentes sobre adultos y ocultos.
+No hay migración, cambios de reproducción ni consultas TMDB de validación.
+
+Pruebas: Java validación/parametrización, HTTP grupos/inicio/sesión, SQLite
+sintético con episodio representante en otro grupo, episodios duplicados,
+ocultos, generaciones antiguas, grupos vacíos y reintentos aislados.
+Pendiente validar WorkManager y aspecto en el dispositivo, incluido pausar,
+reiniciar y continuar. No instalado, publicado ni desplegado.

@@ -1,0 +1,22 @@
+Panel: resumen conjunto de tareas - 20/10/2026
+
+Actividad incluye Estado de las tareas con dos lineas:
+Importaciones: en curso, cola/reintento, completadas, con error y canceladas.
+TMDB: estado del trabajo, con ficha, sin coincidencia y errores.
+Son conteos de los trabajos devueltos por el endpoint existente, no historico
+ilimitado. No se mezclan titulos no identificados con errores de importacion.
+
+Reutiliza respuestas existentes. No nuevos endpoints, sondeos, temporizadores
+ni consultas a base. Estado no disponible cuando no hay respuesta conocida;
+una desconexion elimina ambas instantaneas. Un fallo de estado TMDB permite
+continuar la lectura de importaciones. No cambia las acciones ni workers.
+El resumen es texto para evitar recrear botones y mantener la estetica actual.
+
+Pruebas Node: cuatro casos de resumen (sin datos, estados, errores vs no
+coincidencia, reinicio de sesion), mas test de fallo independiente TMDB y
+pruebas previas de importaciones/estado. DOM simulado; visual pendiente.
+Sintaxis JS y empaquetado de beta. No compilacion funcional nueva de Android.
+
+Pendiente navegador del Fire: actividad simultanea de importacion y TMDB,
+pausa/reintento, reconexion y fallo parcial; comprobar legibilidad y acciones.
+Sin instalar/publicar, produccion, listas reales ni reproduccion modificadas.

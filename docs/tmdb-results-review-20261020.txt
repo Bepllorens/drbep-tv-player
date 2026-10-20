@@ -1,0 +1,22 @@
+Panel TMDB: revisar resultados por motivo — 20/10/2026
+
+Actividad permite consultar Sin coincidencia y Error de consulta dentro del
+trabajo guardado (lista/tipo/grupo), no de selectores todavía no aplicados.
+Cada fila muestra título o serie, lista, tipo y motivo genérico. No expone URL,
+credenciales, argumentos de red ni texto de excepciones. Ocultos se filtran en
+SQL y adultos con la política existente de ChannelItem. Filas corruptas se
+omiten. No escribe en SQLite ni ejecuta consultas TMDB.
+
+Consulta manual, sin sondeo ni carga al arranque. Lee hasta 51 registros:
+procesa 50 y usa el siguiente para indicar más. Puede haber menos de 50 filas
+visibles si se omiten adultos/corruptos. Cursor por rowid: resolver registros
+anteriores no desplaza la página siguiente como con OFFSET. El catálogo puede
+cambiar durante una revisión; Consultar resultados reinicia el recorrido.
+Las generaciones antiguas y listas eliminadas se excluyen.
+Sin ficha no se presenta como error técnico; un error tampoco confirma que
+el título no exista. Este paso no añade edición masiva ni deshacer organización.
+
+Validación: tests Java/HTTP de parámetros y autenticación, SQLite sintético
+con selección, ocultos, generaciones activas y cambios entre páginas;
+suite Android, compilación debug y sintaxis JavaScript. Pendiente validar
+panel real y datos reales del dispositivo. Sin instalación ni publicación.

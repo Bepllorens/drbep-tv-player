@@ -1,0 +1,27 @@
+Caja negra: contexto de reproduccion y audio - 20/10/2026
+
+Se aprovecha checkLivePlaybackProgress y su intervalo existente:
+30 s normal / 5 s con detalle. No se crean timers, consultas de red ni reintentos.
+Eventos nuevos asociados a playbackAttemptGeneration:
+PLAYBACK_SAMPLE: a posicion ms; b buffer ms; c flags:
+estado Media3 bits 0..2; playWhenReady 8; isPlaying 16; isLoading 32;
+supresion (focus audio, etc.) 64.
+AUDIO_COUNTERS si hay decoder counters: a renderedOutputBufferCount;
+b skippedOutputBufferCount; c buffer ms. Contadores acumulados, pueden reiniciarse
+al cambiar decoder. No medir sonido audible ni sincronizacion A/V con ellos.
+No se guardan contenido, URLs, claves, tokens ni nombres de programas.
+
+Panel Diagnostico muestra etiquetas y valores legibles. README del ZIP documenta
+el formato. Los eventos previos se mantienen. No son eventos de duracion.
+Muestras sucesivas permiten comparar posicion, buffer y contadores, evitando
+confundir pausa solicitada con fallo; no se atribuye automaticamente una causa.
+Buffer bajo no prueba fallo de red; buffer alto con contadores sin variar no
+prueba fallo de decoder. isPlaying es estado Media3, no confirmacion visual.
+No hay muestreo de estas rutas si el watchdog sale antes (idle/ended, ruta VLC
+o recuperacion de red que difiere comprobacion).
+
+Pruebas: 64 combinaciones de flags, pausa, carga solicitada y supresion.
+Sintaxis del panel; suite JVM y APK. No prueba real de glitch.
+Pendiente Fire: pausa/reanudacion, buffering, seek y cambio de canal; comparar
+caja negra con observacion audiovisual. Verificar intervalo y coste.
+Sin instalar, publicar, produccion ni cambios de recuperacion/reproduccion.

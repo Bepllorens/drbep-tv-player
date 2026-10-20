@@ -1,0 +1,26 @@
+Imágenes oficiales: presupuesto de trabajo experimental — 20/10/2026
+
+Activación: -PupdateChannel=beta -PboundedArtworkRequests=true.
+Desactivado por defecto y no habilitable en stable mediante este parámetro.
+
+Hallazgo: MovistarArtworkRepository usaba un pool fijo de cuatro trabajadores
+con cola ilimitada y un mapa de bloqueos por proveedor/día sin eliminación.
+La caché de parrillas ya estaba limitada a 32 entradas y la caché en disco
+a 32 MiB; se conservan ambas. No es el cargador Glide de picones ni pósteres.
+
+Con el experimento: cuatro trabajadores, máximo 64 peticiones pendientes,
+rechazo inmediato del exceso, nunca trabajo de red en el hilo que solicita.
+El callback recibe imagen vacía y conserva su fallback. Una precarga rechazada
+no queda marcada como hecha; puede reintentarse al recorrer de nuevo la vista.
+No hay reintentos automáticos nuevos ni deduplicación de toda la cola.
+64 bloqueos compartidos por hash reemplazan el mapa creciente. Colisiones entre
+claves pueden serializar tareas: medir el impacto, no asumir mejora de latencia.
+ARTWORK_QUEUE_REJECT registra saturación sin nombres, URLs ni otros datos.
+El código de emparejar imagen con canal/programa no se cambia.
+
+Pruebas: saturación y recuperación, no ejecutar tarea rechazada en llamante,
+rechazo tras cierre, registro de bloqueos acotado y parámetros inválidos.
+Suite Android y compilación de la variante beta experimental.
+No se contactó con proveedores. No se instaló/publicó ni cambió producción.
+Pendiente A/B Fire: navegación rápida, imágenes que faltan, p95, memoria,
+rechazos y vuelta a vistas. No hay mejora medida en dispositivo todavía.

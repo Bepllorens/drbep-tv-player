@@ -27,9 +27,67 @@ public class U7dIndexedStoreDeviceTest {
             assertEquals(1,db.page("one",Arrays.asList("a"),day,"","","Título 174",false,0,60,now).total);
             assertEquals(0,db.page("one",Arrays.asList("forbidden"),day,"","","",false,0,60,now).total);
             assertEquals(1,db.page("two",Arrays.asList("a"),day,"","","",false,0,60,now).total);
-            assertTrue(db.toggle("one",items.get(0),now+1000));
+            db.setSaved("one",items.get(0),now+1000,true);assertTrue(db.saved("one",U7dCatalogStore.id(items.get(0))));
             assertEquals(1,db.page("one",Arrays.asList("a"),"any","","","",true,0,60,now).total);
             db.invalidate("one","a");assertEquals(1,db.read("one","a").size());assertFalse(db.fresh("one","a",now));assertEquals(1,db.savedPrograms("one").size());
+        }finally{c.deleteDatabase(file);}
+    }
+    @Test public void savedLookupSmallAndLargeKeepPermissionsAndPages() throws Exception {
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String file="test-saved-lookup-"+System.nanoTime()+".db";long now=System.currentTimeMillis();
+        try(U7dCatalogStore db=new U7dCatalogStore(c,file,null)) {
+            List<EpgRepository.EpgProgram> items=new ArrayList<>();
+            for(int i=0;i<513;i++)items.add(programme("a",i,now));
+            db.index("one","a",items);db.index("other","a",items);
+            for(int i=0;i<513;i++) {
+                db.setSaved("one",items.get(i),now+3600000,true);
+                if(i==47||i==511||i==512) {
+                    U7dCatalogStore.Page page=db.page("one",Arrays.asList("a"),"ignored","","","",true,0,60,now);
+                    assertEquals(i+1,page.total);assertEquals(Math.min(60,i+1),page.programs.size());
+                    assertEquals(U7dCatalogStore.id(items.get(0)),U7dCatalogStore.id(page.programs.get(0)));
+                    assertEquals(0,db.page("other",Arrays.asList("a"),"","","","",true,0,60,now).total);
+                    assertEquals(0,db.page("one",Arrays.asList("forbidden"),"","","","",true,0,60,now).total);
+                }
+            }
+            U7dCatalogStore.Page second=db.page("one",Arrays.asList("a"),"","","","",true,60,60,now);
+            assertEquals(U7dCatalogStore.id(items.get(60)),U7dCatalogStore.id(second.programs.get(0)));
+        }finally{c.deleteDatabase(file);}
+    }
+    @Test public void genreSeekAndFallbackMatchOriginalSql() throws Exception {
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String file="test-genres-"+System.nanoTime()+".db";
+        try(U7dCatalogStore store=new U7dCatalogStore(c,file,null)) {
+            SQLiteDatabase db=store.getWritableDatabase();
+            for(int size:new int[]{0,8,256,257,500}) {
+                String scope="genres-"+size;
+                for(int i=0;i<size;i++)db.execSQL("INSERT INTO programs VALUES(?,?,?,?,?,?,?,?,?)",
+                    new Object[]{scope,""+i,"0","0",i,i+1,i==0?"":i==1?"Niños":String.format(java.util.Locale.ROOT,"g%04d",i),"x","{}"});
+                List<String> expected=new ArrayList<>();
+                try(android.database.Cursor cur=db.rawQuery(ArchiveQuerySql.GENRES_ALL,new String[]{scope})) {
+                    while(cur.moveToNext())expected.add(cur.getString(0));
+                }
+                assertEquals(expected,store.genres(scope));
+            }
+            assertTrue(store.genres("missing").isEmpty());
+        }finally{c.deleteDatabase(file);}
+    }
+    @Test public void committedWritesInvalidateEmptyAndExistingGenres() throws Exception {
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String file="test-genre-invalidation-"+System.nanoTime()+".db";long now=System.currentTimeMillis();
+        try(U7dCatalogStore db=new U7dCatalogStore(c,file,null)) {
+            assertTrue(db.genres("one").isEmpty());assertNotNull(db.cachedGenres("one",false));
+            db.index("one","a",Collections.singletonList(programme("a",0,now)));
+            assertNull(db.cachedGenres("one",false));assertEquals(Arrays.asList("Cine"),db.genres("one"));
+            db.write("other","a",Collections.singletonList(programme("a",1,now)));
+            assertEquals(Arrays.asList("Cine"),db.cachedGenres("one",false));
+            Map<String,List<EpgRepository.EpgProgram>> batch=new HashMap<>();
+            batch.put("a",Collections.singletonList(programme("a",1,now)));db.writeAll("one",batch);
+            assertNull(db.cachedGenres("one",false));assertEquals(Arrays.asList("Cine","Series"),db.genres("one"));
+            db.invalidate("one","a");assertNull(db.cachedGenres("one",false));assertTrue(db.genres("one").isEmpty());
+            db.setSaved("one",programme("a",0,now),now+1000,true);
+            assertNull(db.cachedGenres("one",false));assertEquals(Arrays.asList("Cine"),db.genres("one"));
+            batch.put("b",Collections.singletonList(programme("b",1,now)));db.indexAll("one",batch);
+            assertNull(db.cachedGenres("one",false));assertEquals(Arrays.asList("Cine","Series"),db.genres("one"));
         }finally{c.deleteDatabase(file);}
     }
     @Test public void legacyMigrationKeepsSavedAndOriginalDatabase() throws Exception {

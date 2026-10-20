@@ -1,0 +1,101 @@
+{
+  "equivalence_cases": 1440,
+  "programs": 69120,
+  "sqlite": "3.40.1",
+  "timings_by_saved_stride": {
+    "1440": {
+      "page": {
+        "before": {
+          "median_ms": 41.495,
+          "p95_ms": 46.339,
+          "rows": 48,
+          "plan": [
+            "SEARCH p USING INDEX programs_time (scope=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=? AND id=?)",
+            "USE TEMP B-TREE FOR RIGHT PART OF ORDER BY"
+          ]
+        },
+        "after": {
+          "median_ms": 0.286,
+          "p95_ms": 0.359,
+          "rows": 48,
+          "plan": [
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_programs_1 (scope=? AND id=?)",
+            "USE TEMP B-TREE FOR ORDER BY"
+          ]
+        }
+      },
+      "count": {
+        "before": {
+          "median_ms": 13.784,
+          "p95_ms": 14.322,
+          "rows": 1,
+          "plan": [
+            "SEARCH p USING COVERING INDEX programs_strip (scope=? AND channel=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=? AND id=?)"
+          ]
+        },
+        "after": {
+          "median_ms": 0.105,
+          "p95_ms": 0.134,
+          "rows": 1,
+          "plan": [
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_programs_1 (scope=? AND id=?)"
+          ]
+        }
+      }
+    },
+    "7": {
+      "page": {
+        "before": {
+          "median_ms": 0.634,
+          "p95_ms": 0.701,
+          "rows": 60,
+          "plan": [
+            "SEARCH p USING INDEX programs_time (scope=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=? AND id=?)",
+            "USE TEMP B-TREE FOR RIGHT PART OF ORDER BY"
+          ]
+        },
+        "after": {
+          "median_ms": 0.82,
+          "p95_ms": 0.927,
+          "rows": 60,
+          "plan": [
+            "SEARCH p USING INDEX programs_time (scope=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=? AND id=?)",
+            "USE TEMP B-TREE FOR RIGHT PART OF ORDER BY"
+          ]
+        }
+      },
+      "count": {
+        "before": {
+          "median_ms": 21.097,
+          "p95_ms": 24.658,
+          "rows": 1,
+          "plan": [
+            "SEARCH p USING COVERING INDEX programs_strip (scope=? AND channel=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=? AND id=?)"
+          ]
+        },
+        "after": {
+          "median_ms": 21.464,
+          "p95_ms": 22.953,
+          "rows": 1,
+          "plan": [
+            "SEARCH p USING COVERING INDEX programs_strip (scope=? AND channel=?)",
+            "CORRELATED SCALAR SUBQUERY 1",
+            "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=? AND id=?)"
+          ]
+        }
+      }
+    }
+  }
+}

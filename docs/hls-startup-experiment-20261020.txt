@@ -1,0 +1,42 @@
+Ensayo de arranque HLS, primer bloque del plan TeVas (20-10-2026)
+
+Estado: desarrollo .185. Sin instalar, publicar ni desplegar.
+Activacion explicita: -PupdateChannel=beta -PfastHlsStartup=true.
+La opcion esta desactivada por defecto y no se activa en stable.
+
+HlsStartupLoadControl envuelve el DefaultLoadControl existente. Delega
+asignacion de memoria, carga, precarga y recuperacion. Una politica de un solo
+uso permite comenzar con 500 ms en vez del umbral inicial normal de 1500 ms.
+Solo HLS identificado por MIME, directo, sin fallback, sin reanudacion,
+sin multipantalla y fuera de la ruta DVR Movistar. Esa exclusion inicial
+permite ensayar primero una ruta sencilla antes de extender a timeshift.
+La identidad del elemento se comprueba contra la linea temporal para evitar
+consumir el permiso con callbacks del canal anterior.
+Una aprobacion normal o rapida consume el permiso. Los seeks posteriores
+conservan las reglas normales. Un rebuffer desactiva tambien el permiso.
+La pausa y velocidades distintas de 1 no aprovechan el umbral reducido.
+No se modifican rutas, proveedores, asociaciones, claves ni licencias.
+
+PlaybackPerf registra por generacion: startup fastHls e initialMs, ademas de las
+etapas ya existentes de descarga, decoder y primer fotograma. No contiene URLs
+ni sesiones en la nueva traza.
+La opcion experimental no establece una mejora demostrada: falta comparar
+tiempo al primer fotograma y cortes durante los 30 s posteriores en dispositivo.
+
+Plan de comparacion:
+1. Preparar dos APK beta firmadas compatibles, referencia y ensayo, conservando
+el mismo codigo salvo fastHlsStartup. No usar APK debug para sustituir la app.
+2. Fire encendido con television HDMI activa y mando libre; comprobar estado,
+version y firma antes de instalar. Conservar APK de retorno.
+3. Mismo conjunto de canales HLS elegibles, al menos diez aperturas por variante,
+separando frio/caliente, conexiones y estado de guia.
+4. Comparar mediana/p95 de primer fotograma, errores, cortes de los primeros
+30 s, calidad elegida y memoria. Verificar exclusion de DVR, catchup, VOD y
+multipantalla y vuelta a miniatura.
+5. Si no mejora o aumentan cortes, mantener desactivado y estudiar la etapa
+dominante. No ampliar a DVR ni publicar hasta validar.
+La agrupacion de pulsaciones de zapeo es el siguiente incremento, aun pendiente.
+
+Intento ADB: KEYCODE_WAKEUP dejo Fire Awake; KEYCODE_HOME no obtuvo confirmacion
+CEC de TV encendida. Ultima respuesta observada de TV 08:90:01 (standby).
+Por tanto no se considera disponible una comparacion audiovisual fiable.

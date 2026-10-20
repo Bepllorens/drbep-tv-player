@@ -1,0 +1,22 @@
+Diagnostico web: ciclo de vida de captura — 20/10/2026
+
+loadScreen comprueba sesion, revision, vista, visibilidad y screenLive antes
+de procesar la respuesta de /screen y otra vez tras obtener el blob.
+Un 401 de /screen anterior a una nueva sesion no la cierra.
+Un 401 vigente mantiene la desconexion habitual. No se cambia api('/ui').
+Apagar screenLive llama clearScreen, invalidando capturas pendientes,
+revocando el blob y quitando la imagen y nodos. No aborta HTTP ya iniciado.
+Los errores tardios fuera de la vista vigente no reemplazan el estado mostrado.
+
+54 tests Node del panel superados; seis nuevos:
+apagado antes de respuesta, 401 de otra sesion, 401 vigente, apagado mientras
+se obtiene blob, reemplazo/liberacion de URLs y ausencia de consultas oculto.
+Respuestas simuladas; no captura real ni ordenes al Fire.
+Compilacion debug beta ARM32; logs:
+ /srv/drbep-dev/reviews/panel-screen-state-tests.log
+ /srv/drbep-dev/reviews/panel-screen-state-build.log
+
+Pendiente navegador real: activar/desactivar captura, salir y volver a
+Diagnostico, ocultar pestaña, reconectar y observar memoria del navegador.
+Sin cambios en reproductor, frecuencia de captura ni endpoints.
+No instalado, publicado o desplegado.

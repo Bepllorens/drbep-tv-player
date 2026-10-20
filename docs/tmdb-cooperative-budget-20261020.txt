@@ -1,0 +1,31 @@
+Coordinacion de indexacion TMDB - 2026-10-20
+
+Estado: experimento de beta, desactivado por defecto. Activacion de compilacion:
+-PupdateChannel=beta -PcooperativeMetadata=true. Stable ignora la opcion.
+
+Problema observado en codigo:
+La actividad continua renueva BackgroundWorkBudget. El indexador podia reintentar
+con backoff antes de abrir el catalogo y volver a leer el mismo pendiente cada
+250 ms mientras esperaba entre titulos.
+
+Cambio:
+Espera inicial maxima de 8 s y cesiones entre titulos de hasta 250 ms, con
+presupuesto acumulado de 15 s por trabajo. Agotar el presupuesto de interaccion
+permite avanzar; no elimina la prioridad de una ficha consultada en primer plano.
+Esa prioridad sigue pudiendo aplazar el indexador si se consultan fichas sin parar.
+Se comprueba antes de leer la fila pendiente y otra vez antes de resolverla.
+Se conservan los limites de 20 titulos / 90 s, los filtros persistidos, la
+cancelacion, los permisos y las comprobaciones de sesion existentes.
+El hilo del ejecutor recupera su prioridad original al terminar, incluso si falla.
+
+Validacion:
+Pruebas con reloj simulado para renovacion continua del periodo de calma y
+cancelacion con presupuesto agotado, ademas de la suite JVM y compilacion beta.
+Estas pruebas no demuestran mejora de fluidez ni tiempos reales de TMDB.
+
+Pendiente Fire/tablet:
+Comparar experimento apagado/encendido con mismo catalogo de prueba.
+Iniciar indexacion en panel, navegar canales durante 30 s y comprobar progreso,
+latencia de mando y miniatura. Abrir fichas y verificar su prioridad.
+Pausar, reanudar y cambiar seleccion; verificar ausencia de trabajo antiguo.
+Sin publicacion, instalacion ni cambios en produccion.

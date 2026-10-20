@@ -1,0 +1,24 @@
+Catchup: invalidacion de generos durante carga por ambito — 20/10/2026
+
+ArchiveGenreCache conserva un unico snapshot, TTL de 15 s y carga serializada.
+Antes incrementaba su revision ante cualquier escritura. Una escritura del
+ambito B durante la consulta de A impedia cachear A y provocaba otra consulta.
+Ahora registra loadingScope mientras ejecuta el loader, y solo incrementa la
+revision si la escritura corresponde a ese ambito. Se limpia en finally.
+La expiracion de un snapshot ya guardado sigue limitada al changedScope.
+
+Las escrituras del mismo ambito siguen impidiendo publicar un resultado viejo
+como fresco; peek conserva el snapshot anterior como antes. No hay mapas
+nuevos, mas snapshots, cambios SQL ni cambios en datos/permisos.
+No mantiene varias cuentas en cache ni cambia la serializacion de consultas.
+Los llamadores y los puntos de invalidacion tras commit son los mismos.
+
+Cuatro pruebas nuevas: 100 lecturas con escritura ajena durante carga requieren
+una sola consulta; escritura propia entre ajenas invalida; fallo de loader no
+arrastra el ambito; escritor ajeno concurrente con loader bloqueado por latch.
+Se mantienen los tests previos de invalidez del mismo ambito, TTL y snapshot.
+Log: /srv/drbep-dev/reviews/genre-scope-invalidation-validation.log.
+
+Pendiente Fire: p95 de generos durante actualizacion y navegacion, con cambios
+en el mismo ambito y otros. El test cuenta consultas, no mide mejora de UI.
+Sin despliegue, instalacion, publicacion ni acceso a datos reales.

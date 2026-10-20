@@ -1,0 +1,173 @@
+{
+  "fixture": {
+    "version": 1,
+    "channels": 180,
+    "days": 8,
+    "programs_per_day": 48,
+    "payload_padding": 1000
+  },
+  "fixture_sha256": "11965ecf69fab6c08d7f0bbb708df2ce3685ab1f2b5334ad0f2729c5e343a033",
+  "sqlite": "3.40.1",
+  "machine": "x86_64",
+  "source_sha256": "7be5a84b07dd20582a0145d771987bb9791cb30192f8d6ac8a0841d93ac8d6c5",
+  "samples": 30,
+  "database_bytes": 111599616,
+  "cases": {
+    "count_day": {
+      "first_query_ms": 2.277,
+      "median_ms": 1.514,
+      "p95_ms": 1.698,
+      "rows": 1,
+      "result_sha256": "427ca1ed6610e100d999ff35182f96a1fafe9603e7225e563a232dc447d8ea1b",
+      "query_sha256": "f0f4e264124bda1cedbd4a6de1152363d3766dbcc3c892c80fbeb67060b43241",
+      "plan": [
+        "SEARCH p USING COVERING INDEX programs_page (scope=? AND day=? AND start<?)"
+      ]
+    },
+    "page_first": {
+      "first_query_ms": 0.427,
+      "median_ms": 0.098,
+      "p95_ms": 0.112,
+      "rows": 60,
+      "result_sha256": "84f7ef615968739a781aa48e7a50dc53892bb98035c75652fd084b02d6eabaa6",
+      "query_sha256": "66f127c797cbd4c12d2a54ffff1516b6da238721d8c8d75cc32b0ad1d03fee40",
+      "plan": [
+        "SEARCH p USING INDEX programs_page (scope=? AND day=? AND start<?)"
+      ]
+    },
+    "page_next": {
+      "first_query_ms": 0.443,
+      "median_ms": 0.111,
+      "p95_ms": 0.136,
+      "rows": 60,
+      "result_sha256": "cfb40eb719ad2c3555dcaf3d34f28f58ab1e97c2415eb904dc0b87853a9e1573",
+      "query_sha256": "f3ca60b1a4854db443a52a54b2495706afddd4e0552f7778b1e5587d0bc586ba",
+      "plan": [
+        "SEARCH p USING INDEX programs_page (scope=? AND day=? AND start<?)"
+      ]
+    },
+    "page_deep": {
+      "first_query_ms": 0.472,
+      "median_ms": 0.192,
+      "p95_ms": 0.231,
+      "rows": 60,
+      "result_sha256": "c015019d6fbb17df066b8a99bdc47b9093daf5110a03a4b21a566174cb81cd07",
+      "query_sha256": "1070ab3a2dffd77d1bfa7ed71fb6e82aa1a3b67f0909c1cbaa2b26243e96bd32",
+      "plan": [
+        "SEARCH p USING INDEX programs_page (scope=? AND day=? AND start<?)"
+      ]
+    },
+    "day_previous": {
+      "first_query_ms": 0.347,
+      "median_ms": 0.099,
+      "p95_ms": 0.108,
+      "rows": 60,
+      "result_sha256": "cc07dce0a10bc9a6e8ab7bf39cac2934d8db9fee8fe9d43b3e03424553eff87b",
+      "query_sha256": "abcea62c5de7fd35e07bd4feb300a30d6b2533523ee0956bb2a33b3b140a7bfc",
+      "plan": [
+        "SEARCH p USING INDEX programs_page (scope=? AND day=? AND start<?)"
+      ]
+    },
+    "search": {
+      "first_query_ms": 3.88,
+      "median_ms": 3.466,
+      "p95_ms": 3.985,
+      "rows": 60,
+      "result_sha256": "87720650a2b7c681dec3811e9ec3186184dcb2ea7d4edbec7b477c076edd9571",
+      "query_sha256": "c349a88b10121e9781d0f38350a7b05543025b39e569b7f75ebb54afd1097eb3",
+      "plan": [
+        "SEARCH p USING INDEX programs_page (scope=? AND day=? AND start<?)"
+      ]
+    },
+    "genre": {
+      "first_query_ms": 0.424,
+      "median_ms": 0.215,
+      "p95_ms": 0.249,
+      "rows": 60,
+      "result_sha256": "c5c4188b9495e12db01b925a84e450ae91c95a206db32b91308b03f0ea59d4f2",
+      "query_sha256": "0808450299a11b83e57b8a2d5eb7a856e2801c81af1caa827789f9f703c51c57",
+      "plan": [
+        "SEARCH p USING INDEX programs_page (scope=? AND day=? AND start<?)"
+      ]
+    },
+    "saved": {
+      "first_query_ms": 84.284,
+      "median_ms": 77.587,
+      "p95_ms": 87.947,
+      "rows": 48,
+      "result_sha256": "a6048edd693953e86c1d67006151a09dbfca2510c4fcd58af49d4112155391ae",
+      "query_sha256": "180518b9633ca15ea88f7cd088ca0e6b4fc619a30df9896c95f1408e4bc748d5",
+      "plan": [
+        "SEARCH p USING INDEX programs_time (scope=?)",
+        "CORRELATED SCALAR SUBQUERY 1",
+        "SEARCH s USING COVERING INDEX sqlite_autoindex_saved_1 (scope=? AND id=?)",
+        "USE TEMP B-TREE FOR RIGHT PART OF ORDER BY"
+      ]
+    },
+    "genres": {
+      "first_query_ms": 5.366,
+      "median_ms": 4.479,
+      "p95_ms": 4.666,
+      "rows": 8,
+      "result_sha256": "8cb3bd09a3253c1c9a9f40915d15ac1041e3c2b21cbad1a3a1db1ba415851a91",
+      "query_sha256": "9491ba6b916130fbe226d70bb7c5fe95ca1b54cda27beab45a221f161cb039b6",
+      "plan": [
+        "SEARCH programs USING COVERING INDEX programs_genres (scope=?)"
+      ]
+    },
+    "strip": {
+      "first_query_ms": 0.095,
+      "median_ms": 0.031,
+      "p95_ms": 0.04,
+      "rows": 40,
+      "result_sha256": "e44b22fdd8f28cb9d94558027b98cc0220fb254b0438a9b2597c5effa4bec85d",
+      "query_sha256": "589b0fec2b98a6596d0ca3b619f4846a28a0cb5d0c7375f4c9e5d255cdb76176",
+      "plan": [
+        "SEARCH programs USING INDEX programs_strip (scope=? AND channel=? AND start<?)"
+      ]
+    }
+  },
+  "limits": "Synthetic desktop SQLite; first query is NOT cold OS cache; no UI/network/decode measurements.",
+  "comparison": {
+    "count_day": {
+      "median_delta_ms": -0.06,
+      "p95_delta_ms": -0.597
+    },
+    "page_first": {
+      "median_delta_ms": -0.013,
+      "p95_delta_ms": -0.02
+    },
+    "page_next": {
+      "median_delta_ms": -0.007,
+      "p95_delta_ms": -0.01
+    },
+    "page_deep": {
+      "median_delta_ms": -0.044,
+      "p95_delta_ms": -0.033
+    },
+    "day_previous": {
+      "median_delta_ms": 0.002,
+      "p95_delta_ms": -0.016
+    },
+    "search": {
+      "median_delta_ms": -0.153,
+      "p95_delta_ms": -0.061
+    },
+    "genre": {
+      "median_delta_ms": 0.003,
+      "p95_delta_ms": -0.013
+    },
+    "saved": {
+      "median_delta_ms": -1.475,
+      "p95_delta_ms": 5.079
+    },
+    "genres": {
+      "median_delta_ms": -0.11,
+      "p95_delta_ms": -0.095
+    },
+    "strip": {
+      "median_delta_ms": -0.002,
+      "p95_delta_ms": -0.003
+    }
+  }
+}

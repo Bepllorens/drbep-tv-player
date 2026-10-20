@@ -63,6 +63,10 @@ final class BlackBox {
     static long sampleInterval(){BlackBoxStore s=store;return s!=null&&s.detailed()?5000:30000;}
     static String summary()throws Exception{return store.summary();}
     static byte[] export()throws Exception{return store.export();}
+    static byte[] export(int minutes)throws Exception {
+        if(minutes!=5 && minutes!=15 && minutes!=60)throw new IllegalArgumentException();
+        long to=System.currentTimeMillis();return store.export(Math.max(0,to-minutes*60000L),to);
+    }
     static String command(String command)throws Exception{
         switch(command){
             case "mark":return store.mark();

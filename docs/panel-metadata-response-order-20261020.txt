@@ -1,0 +1,23 @@
+Panel: respuestas de estado TMDB - 20/10/2026
+
+loadMetadataIndex valida un numero de solicitud despues del HTTP y despues
+de esperar grupos iniciales. Una consulta anterior no puede sobrescribir el
+progreso/controles de una consulta posterior. Iniciar una accion invalida las
+lecturas previas a esa accion. No se cambia la frecuencia ni el numero de
+consultas ni se cancela trabajo de Android.
+
+disconnect reinicia seleccion cargada, firma de opciones, revision de grupos,
+estado/progreso y revision/resultados de revision manual. Al reconectar se
+consulta la seleccion real del trabajo y se cargan sus grupos de nuevo.
+Consultas de la sesion previa no completan el render de estado nuevo.
+
+Cuatro pruebas Node sobre funciones reales extraidas del HTML con DOM simulado:
+HTTP fuera de orden, espera de grupos, desconexion con respuesta pendiente,
+reconexion que vuelve a cargar grupos. Se ejecutan junto a los seis tests de
+filas de importacion. Sin llamadas de red ni datos reales.
+No mide foco visual ni interaccion real de navegador.
+
+Pendiente navegador conectado a Fire: abrir Actividad, pausar/continuar,
+desconectar/reconectar durante carga, revisar progreso y seleccion conservada.
+No modifica MetadataIndexWorker, importaciones, biblioteca o reproduccion.
+Sin instalar/publicar ni modificar produccion.

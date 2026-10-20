@@ -1,0 +1,21 @@
+Panel: refresco automatico consciente de visibilidad — 20/10/2026
+
+El temporizador y el evento visibilitychange llaman refresh(true).
+El refresco automatico comprueba visibilidad al entrar y entre etapas:
+estado, tareas, listas, mando y catchup. Si la pestaña se oculta, no inicia
+la siguiente etapa. El boton manual mantiene su comportamiento.
+La respuesta de estado solo se aplica si sigue vigente la misma sesion.
+No muestra errores del ciclo automatico si ya esta oculto o cambio de sesion.
+finally libera la guarda de refresco incluso cuando se interrumpe la cadena.
+
+Alcance: no aborta una peticion HTTP ya iniciada ni las consultas internas
+de una etapa en curso. No cancela importaciones, TMDB o tareas del dispositivo.
+No añade timers ni reintentos; el intervalo existente sigue siendo 5 segundos.
+Al volver visible, visibilitychange solicita la actualizacion como antes.
+
+31 tests Node del panel superados. Seis nuevos cubren entrada oculta,
+ocultacion durante estado/tareas, vuelta visible, sesion cambiada, fallo oculto
+y refresco manual sin solapamientos. assembleDebug beta ARM32 correcto.
+Logs: /srv/drbep-dev/reviews/panel-visibility-{tests,build}.log.
+Pendiente navegador conectado: ocultar/mostrar pestaña, continuar tareas,
+sesion caducada y actualizacion al regresar. No instalado/publicado.

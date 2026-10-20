@@ -9,6 +9,7 @@ public final class M3uStreamReader {
     private static final int MAX_LINE = 256 * 1024;
     private static final Pattern ATTRIBUTE = Pattern.compile("([\\w-]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s,]+))");
     static final Pattern EPISODE = Pattern.compile("(?i)\\b[ST](\\d{1,4})[\\s._-]*E(\\d{1,4})\\b");
+    private static final Pattern CROSS_EPISODE = Pattern.compile("(?i)(?<![\\p{L}\\p{N}_.])(\\d{1,2})x(\\d{2,3})(?![\\p{L}\\p{N}_.])");
     public interface Sink { void accept(Entry entry) throws Exception; }
     public static final class Entry {
         public String title = "", url = "", kind = "unknown", series = "";
@@ -48,10 +49,15 @@ public final class M3uStreamReader {
                 else if (type.equals("live") || type.equals("tv")) pending.kind = "live";
                 pending.series = pending.attributes.getOrDefault("serie-title", "").trim();
                 if (pending.series.isEmpty()) pending.series = pending.attributes.getOrDefault("tvg-serie", "").trim();
-                Matcher ep = EPISODE.matcher(pending.title);
-                if (pending.kind.equals("series") && ep.find()) {
-                    pending.season = Integer.parseInt(ep.group(1)); pending.episode = Integer.parseInt(ep.group(2));
-                    if (pending.series.isEmpty()) pending.series = pending.title.substring(0, ep.start()).replaceFirst("[\\s-]+$", "");
+                if (pending.kind.equals("series")) {
+                    Matcher ep = EPISODE.matcher(pending.title);
+                    boolean found=ep.find();
+                    // Prefer existing explicit S/T notation; accept 1x02 only as a fallback.
+                    if(!found){ep=CROSS_EPISODE.matcher(pending.title);found=ep.find();}
+                    if(found) {
+                        pending.season = Integer.parseInt(ep.group(1)); pending.episode = Integer.parseInt(ep.group(2));
+                        if (pending.series.isEmpty()) pending.series = pending.title.substring(0, ep.start()).replaceFirst("[\\s-]+$", "");
+                    }
                 }
                 if (pending.kind.equals("series") && pending.series.isEmpty()) pending.series = pending.title;
             } else if (pending != null && line.startsWith("#EXTGRP:")) {

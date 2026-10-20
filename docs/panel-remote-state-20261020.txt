@@ -1,0 +1,22 @@
+Mando web: respuestas ordenadas y vinculadas a sesion — 20/10/2026
+
+loadRemote usa numero de peticion, sesion capturada y vista actual antes de
+aplicar titulo/capacidades o mostrar errores. Una respuesta antigua no sustituye
+otra mas reciente. Desconectar invalida peticiones y limpia titulo/botones.
+Enviar una orden invalida consultas anteriores; al terminar solo solicita estado
+si sigue en la misma sesion y vista del mando. Se conserva el refresco tras error.
+No modifica comandos, permisos, deltas ni reproductor.
+
+Alcance: no cancela una orden ya enviada ni serializa todas las ordenes.
+Las consultas iniciadas durante una orden pueden terminar mientras sigue pendiente;
+el refresco tras finalizar vuelve a consultar. No se afirma exclusion de comandos.
+
+37 tests Node superados, seis nuevos para respuestas invertidas, desconexion,
+errores fuera de vista, invalidacion previa a orden, cambio de sesion durante
+orden y recuperacion de controles tras error. Sin red ni comandos reales.
+assembleDebug beta ARM32; logs:
+ /srv/drbep-dev/reviews/panel-remote-state-tests.log
+ /srv/drbep-dev/reviews/panel-remote-state-build.log
+
+Pendiente navegador conectado: titulo/capacidades, pausa, seek y retorno al
+directo, cambios de pantalla y reconexion. No instalado/publicado/desplegado.

@@ -1,0 +1,38 @@
+Cabeceras PES fragmentadas: regresión sintética — 20/10/2026
+
+Hallazgo reproducible en Media3 extractor 1.11.1 sin modificar: una cabecera
+PES con extensión de 20 bytes, cortada después de los primeros 10 bytes de
+extensión (posición 19 del paquete), puede iniciar el cuerpo antes de recibir
+la extensión restante. continueRead devolvía true cuando no quedaban bytes
+de entrada, aunque bytesRead todavía era menor que la longitud solicitada.
+El cuerpo podía recibir relleno de cabecera como datos de vídeo.
+
+PesReaderFragmentFix añade una guarda: sin entrada y con cabecera pendiente,
+devolver false. No altera el resto de continueRead, tamaños, PTS/DTS, payload
+ni selección de pistas. Se encadena con PesReaderFix, conservando su reparación
+previa de relectura de scratch PTS/DTS al fin de segmento. Ambos solo se aplican
+mediante la instrumentación Gradle de beta; stable no los aplica.
+El transformador falla si desaparece la firma esperada en una nueva Media3.
+
+Pruebas locales con el lector REAL de la dependencia: transformación de sus
+bytes mediante los mismos visitantes que usa la APK, cargador aislado y
+ElementaryStreamReader de prueba que recoge bytes. No hay red ni decodificador.
+Se usa la opción oficial setShouldEnforceLimitOnLegacyMethods(true) para evitar
+la detección Android del entorno JVM y reforzar comprobación de límites; se
+restaura después. No se simula el método continueRead.
+
+Casos: distintas divisiones de cabecera/cuerpo, extensiones 0/3/20, entrada de
+un byte, paquetes consecutivos, seek tras cabecera parcial, PES acotado truncado,
+comparación antes/después y timestamps PTS/DTS con relleno.
+Pruebas buildSrc separadas cubren cache de validez al EOF, reinicio en seek,
+cabecera inválida y guardas frente a cambios de contrato.
+
+Estos datos NO demuestran que este fallo causara los glitches de BBC Earth
+o Star Channel. PCR, continuidad de paquetes TS y decodificación audiovisual
+completa siguen requiriendo cobertura adicional y prueba real.
+No se tocaron backend, canales, credenciales o rutas. No instalado/publicado.
+
+Validación complementaria: se actualizaron dos pruebas Android antiguas que
+todavía llamaban a toggle, retirado en favor de setSaved. La prueba sintética
+de persistencia usa ahora base temporal propia y fechas relativas para evitar
+fallos por caducidad. Compilarlas no equivale a ejecutarlas en el Fire.

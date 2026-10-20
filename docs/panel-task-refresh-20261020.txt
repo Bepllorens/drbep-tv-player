@@ -1,0 +1,17 @@
+Panel: refresco selectivo de importaciones - 2026-10-20
+
+Las filas se conservan por ID. El progreso, estado y nombre se actualizan
+sin recrear el boton Cancelar. Solo se insertan, eliminan o reordenan filas
+si cambia la lista. Un trabajo terminado oculta su boton.
+Respuestas antiguas no sustituyen una consulta posterior; desconectar invalida
+las consultas pendientes y limpia los nodos. No se cambian endpoints, frecuencia
+de consulta, permisos ni ejecucion de importaciones/indexacion.
+No se anaden peticiones ni temporizadores.
+
+Validacion: node --test tools/test-panel-jobs.cjs (6 casos con DOM simulado),
+sintaxis del script completo y empaquetado APK debug beta.
+La simulacion comprueba identidad de nodos, no foco real de navegador.
+Pendiente: abrir Actividad, enfocar Cancelar con Tab, esperar varios refrescos
+durante una importacion, comprobar foco y dialogo; completar otra tarea,
+desconectar/reconectar y comprobar que no queden datos anteriores.
+No se ha publicado ni instalado ni cambiado produccion.

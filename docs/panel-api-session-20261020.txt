@@ -1,0 +1,22 @@
+Panel: sesion vigente durante lectura de respuesta — 20/10/2026
+
+api ya verificaba la sesion despues de fetch. Ahora tambien la comprueba
+ante fallo de red y tras leer el JSON, tanto en exito como error HTTP.
+Un fallo de una sesion antigua no cambia el indicador de conexion actual.
+Una respuesta que termina de analizarse tras reconectar no se devuelve como
+resultado valido. El indicador Conectado solo se actualiza tras JSON valido.
+El 401 vigente sigue desconectando; el anterior a otra sesion no lo hace.
+
+No modifica autenticacion, endpoints, cuerpos, permisos ni operaciones
+del servidor. No aborta ni deshace una operacion ya enviada. El llamador sigue
+recibiendo un error de cambio de sesion; sus guardas de vista siguen aplicando.
+
+62 tests Node del panel superados, ocho nuevos: red antigua, JSON tardio
+correcto/error, peticion vigente, fallo de red actual, 401 actual/antiguo
+y JSON invalido. Sin credenciales ni red real en fixtures.
+Compilacion debug beta ARM32; logs:
+ /srv/drbep-dev/reviews/panel-api-session-tests.log
+ /srv/drbep-dev/reviews/panel-api-session-build.log
+
+Pendiente navegador real: desconectar/reconectar durante consultas lentas,
+caducidad real y red interrumpida. No instalado/publicado/desplegado.

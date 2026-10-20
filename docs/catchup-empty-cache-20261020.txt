@@ -1,0 +1,25 @@
+Cache de generos: vacios e invalidacion - 20/10/2026
+
+Un resultado vacio se conserva durante los mismos 15 segundos que uno no vacio.
+Evita SQL repetido al entrar sin programas. Al completar index/write/indexAll/
+writeAll, borrar programas de un canal o guardar un programa nuevo se invalida
+la frescura del ambito afectado. No se invalida la cache de otra cuenta.
+Las transacciones anidadas de writeAll invalidan despues del commit exterior.
+La instantanea previa sigue disponible para dibujar mientras se consulta otra.
+
+Revision interna: si ocurre una escritura durante una consulta, esa consulta
+puede devolver su instantanea pero no publicarla como cache fresca. La siguiente
+peticion vuelve a consultar. No se anaden reintentos en bucle ni temporizadores.
+Una escritura de otro ambito tambien impide cachear una carga en curso, de modo
+conservador; una instantanea ya almacenada de otro ambito sigue siendo valida.
+TTL sigue siendo respaldo ante modificaciones por otras instancias/procesos.
+
+Pruebas JVM: 100 lecturas vacias ejecutan el loader una sola vez; caducidad,
+invalidation tras datos nuevos, aislamiento y escritura durante consulta.
+Prueba Android preparada: index/writeAll/indexAll/invalidate/setSaved sobre
+base aislada. Compilarla no equivale a ejecutarla en dispositivo.
+No se cambian consultas de programas, permisos, reproduccion ni datos existentes.
+
+Pendiente Fire: abrir catalogo inicialmente vacio, recibir datos, desplegable
+actualizado en siguiente refresco; cambiar cuenta y comprobar que no se mezcla.
+Sin instalacion, publicacion o cambios de produccion.

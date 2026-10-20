@@ -1,0 +1,24 @@
+Importaciones cooperativas — experimento beta, 20/10/2026
+
+Activación: -PupdateChannel=beta -PcooperativeImports=true.
+Desactivado por defecto; stable no puede activarlo mediante este parámetro.
+
+Objetivo: reducir la competencia de las importaciones M3U/XMLTV con la
+actividad interactiva registrada en BackgroundWorkBudget. No cambia la
+sincronización de la guía oficial Movistar ni las rutas de reproducción.
+
+Espera solo si hay actividad prioritaria reciente: hasta 8 s antes de importar
+y hasta 250 ms entre lotes. Presupuesto acumulado máximo: 15 s por ejecución.
+Comprueba cancelación cada 50 ms durante la espera.
+M3U: cada 500 entradas. XMLTV: cada 1000 programas. Las pausas entre lotes
+ocurren después de cerrar la transacción SQLite y antes de abrir la siguiente.
+No altera tamaño de lote, esquema ni selección de generaciones.
+Conserva la exclusión entre importadores; no cambia la prioridad del hilo
+compartido de WorkManager. Propaga interrupciones incluso durante la
+actualización de la guía asociada a una lista ya importada.
+
+Validación: pruebas unitarias de presupuesto, espera nula, límites,
+cancelación e interrupción. Compilación debug con opciones beta.
+La mejora real de fluidez y el comportamiento SQLite/WorkManager requieren
+validación en dispositivo; los tests puros no prueban estos componentes.
+No instalado ni publicado. Producción sin cambios.

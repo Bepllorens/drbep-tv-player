@@ -1,0 +1,23 @@
+Ilustraciones: liberar cache de consulta en memoria - 20/10/2026
+
+MovistarArtworkRepository conserva hasta 32 parrillas para resolver imagenes.
+Ahora usa ArtworkMemoryCache, mismo limite y politica LRU.
+MainActivity libera esa cache en el mismo bloque de trim que libera logos
+(TRIM_MEMORY_RUNNING_LOW o superior), y en onLowMemory. close tambien la libera.
+No se tocan archivos, cache Glide/disco, identificacion ni reproductores.
+
+Cada carga captura la generacion de cache antes de leer. Tras trim, una carga
+anterior puede completar y entregar su imagen al consumidor vigente, pero no
+reinsertar la parrilla en cache. Peticiones nuevas si pueden cachear resultados.
+La limpieza toma solo el monitor del mapa; no espera al bloqueo de descarga.
+Los objetos que aun use una carga se liberaran cuando termine y actue el GC.
+No se promete liberacion inmediata de una cantidad concreta de MiB.
+
+Cinco pruebas JVM: LRU, limite, resultado tardio tras trim, resultado nuevo
+protegido frente a uno viejo, trims repetidos y capacidad valida.
+Compilacion Android y suite JVM. No se ha inyectado presion en un Fire real.
+Pendiente: memoria antes/despues de trim, imagenes visibles intactas,
+recarga desde disco y navegacion fluida; sin confundir imagen con otro programa.
+
+Sin nuevas peticiones automaticas, timers, cancelaciones ni cambios de
+reproduccion/multiview. No se instala/publica ni se toca produccion.

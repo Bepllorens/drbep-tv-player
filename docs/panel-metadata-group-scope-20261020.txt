@@ -1,0 +1,21 @@
+Panel TMDB: coherencia de grupos con lista/tipo — 20/10/2026
+
+loadMetadataIndex compara lista y tipo antes/despues de aplicar el estado
+recibido. Si cambia alguno, recarga los grupos de esa seleccion. Antes solo
+los cargaba en la primera respuesta o mediante onchange del usuario.
+Mientras se cargan, Completar permanece deshabilitado.
+Una respuesta de grupos comprueba tanto su numero de peticion como los
+valores actuales de lista/tipo antes de aplicarse.
+Si el progreso cambia sin cambiar lista/tipo no se hace otra consulta ni se
+descarta el grupo que esta preparando el usuario.
+
+No modifica trabajos, fichas ni API; solo sincroniza selectores del navegador.
+25 pruebas Node del panel, incluyendo cambio programatico de lista/tipo,
+respuestas invertidas, resultado de ambito antiguo, seleccion sin lista y
+conservacion de la seleccion manual cuando solo cambia el progreso.
+assembleDebug beta ARM32 correcto; git diff --check correcto.
+Logs: /srv/drbep-dev/reviews/panel-group-scope-{tests,build}.log
+
+Pendiente navegador real: cambio rapido de listas y tipos, cambio de trabajo
+desde otra sesion, lista retirada y progreso sin alterar seleccion manual.
+No instalado, publicado ni desplegado; no se accede a produccion.

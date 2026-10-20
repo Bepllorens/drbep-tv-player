@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Explicit, short-lived LAN session. No filesystem browsing or playback credentials are exposed. */
 final class DeviceWebPanel implements AutoCloseable {
-    interface Host { default String metadataIndex(String command)throws Exception{throw new IOException();}  default String blackBox()throws Exception{return "{}";} default byte[] blackBoxExport()throws Exception{throw new IOException();} default String blackBoxCommand(String command)throws Exception{throw new IOException();} default byte[] screen()throws Exception{throw new IOException("Unavailable");} default String ui()throws Exception{throw new IOException("Unavailable");} default byte[] artwork(String id)throws Exception {throw new IOException("Unavailable");} String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
+    interface Host { default String metadataIndexReview(String state,long after)throws Exception{throw new IOException();}  default String metadataIndexGroups(String source,String kind)throws Exception{throw new IOException();} default String metadataIndexSelection(String command,String source,String kind,String group)throws Exception{if(!group.isEmpty())throw new IOException();return metadataIndexSelection(command,source,kind);}  default String metadataIndexSelection(String command,String source,String kind)throws Exception {if(!source.isEmpty()||!kind.isEmpty())throw new IOException();return metadataIndex(command);}  default String metadataIndex(String command)throws Exception{throw new IOException();}  default String blackBox()throws Exception{return "{}";} default byte[] blackBoxExport()throws Exception{throw new IOException();} default byte[] blackBoxExport(int minutes)throws Exception{throw new IOException();} default String blackBoxCommand(String command)throws Exception{throw new IOException();} default byte[] screen()throws Exception{throw new IOException("Unavailable");} default String ui()throws Exception{throw new IOException("Unavailable");} default byte[] artwork(String id)throws Exception {throw new IOException("Unavailable");} String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
     static final class PanelError extends IOException { PanelError(String message){super(message);} }
     private final Host host;
     private final byte[] page;
@@ -66,10 +66,20 @@ final class DeviceWebPanel implements AutoCloseable {
             if(path.equals("/metadata-index")){
                 try{
                     if(method.equals("GET"))reply(out,200,"application/json",host.metadataIndex(""));
-                    else if(method.equals("POST")&&length>0&&length<=128){
-                        String command=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8)).getString("command");
-                        if(!Arrays.asList("start","pause","resume","retry").contains(command)){reply(out,400,"text/plain","Invalid command");return;}
-                        reply(out,200,"application/json",host.metadataIndex(command));
+                    else if(method.equals("POST")&&length>0&&length<=2048){
+                        org.json.JSONObject data=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8));
+                        String command=data.getString("command");
+                        if(!Arrays.asList("start","pause","resume","retry","groups","review").contains(command)){reply(out,400,"text/plain","Invalid command");return;}
+                        if(command.equals("review")){
+                            String state=data.optString("state","");
+                            long after;
+                            try {after=data.has("after")?data.getLong("after"):0;MetadataIndexReview.validate(state,after);}
+                            catch(Exception invalid){reply(out,400,"text/plain","Invalid review");return;}
+                            reply(out,200,"application/json",host.metadataIndexReview(state,after));return;
+                        }
+                        String source=data.optString("source",""),kind=data.optString("kind",""),group=data.optString("group","");
+                        try {new MetadataIndexSelection(source,kind,group);}catch(IllegalArgumentException invalid){reply(out,400,"text/plain","Invalid selection");return;}
+                        reply(out,200,"application/json",command.equals("groups")?host.metadataIndexGroups(source,kind):host.metadataIndexSelection(command,source,kind,group));
                     }else reply(out,400,"text/plain","Invalid request");
                 }catch(Exception e){reply(out,503,"text/plain","Indexación no disponible");}
                 return;
@@ -78,6 +88,13 @@ final class DeviceWebPanel implements AutoCloseable {
                 try{
                     if(method.equals("GET")&&path.equals("/blackbox"))reply(out,200,"application/json",host.blackBox());
                     else if(method.equals("GET")&&path.equals("/blackbox-export"))reply(out,200,"application/zip",host.blackBoxExport());
+                    else if(method.equals("POST")&&path.equals("/blackbox-export")&&length>0&&length<=64){
+                        int minutes;
+                        try {minutes=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8)).getInt("minutes");}
+                        catch(Exception invalid){reply(out,400,"text/plain","Invalid interval");return;}
+                        if(minutes!=5 && minutes!=15 && minutes!=60){reply(out,400,"text/plain","Invalid interval");return;}
+                        reply(out,200,"application/zip",host.blackBoxExport(minutes));
+                    }
                     else if(method.equals("POST")&&path.equals("/blackbox")&&length>0&&length<=128){
                         String command=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8)).getString("command");
                         reply(out,200,"application/json",host.blackBoxCommand(command));

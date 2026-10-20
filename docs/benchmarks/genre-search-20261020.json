@@ -1,0 +1,76 @@
+{
+  "genre_cases": 21,
+  "search_cases": 120,
+  "rows": 69120,
+  "sqlite": "3.40.1",
+  "genres": {
+    "before": {
+      "median_ms": 4.504,
+      "p95_ms": 4.765,
+      "rows": 8,
+      "plan": [
+        "SEARCH programs USING COVERING INDEX programs_genres (scope=?)"
+      ]
+    },
+    "after": {
+      "median_ms": 0.013,
+      "p95_ms": 0.017,
+      "rows": 8,
+      "plan": [
+        "CO-ROUTINE g",
+        "SETUP",
+        "SEARCH programs USING COVERING INDEX programs_genres (scope=? AND genre>?)",
+        "RECURSIVE STEP",
+        "SCAN g",
+        "CORRELATED SCALAR SUBQUERY 2",
+        "SEARCH programs USING COVERING INDEX programs_genres (scope=? AND genre>?)",
+        "SCAN g",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    }
+  },
+  "search": {
+    "before": {
+      "count": {
+        "median_ms": 2.664,
+        "p95_ms": 2.785,
+        "rows": 1,
+        "plan": [
+          "SEARCH p USING INDEX programs_channel (scope=? AND channel=? AND day=? AND start<?)"
+        ]
+      },
+      "page": {
+        "median_ms": 1.595,
+        "p95_ms": 1.742,
+        "rows": 60,
+        "plan": [
+          "SEARCH p USING INDEX programs_page (scope=? AND day=? AND start<?)"
+        ]
+      }
+    },
+    "after": {
+      "count": {
+        "median_ms": 2.037,
+        "p95_ms": 2.177,
+        "rows": 1,
+        "plan": [
+          "SEARCH p USING COVERING INDEX programs_search (scope=? AND day=? AND start<?)"
+        ]
+      },
+      "page": {
+        "median_ms": 0.96,
+        "p95_ms": 1.103,
+        "rows": 60,
+        "plan": [
+          "SEARCH p USING INDEX programs_search (scope=? AND day=? AND start<?)"
+        ]
+      }
+    }
+  },
+  "update_1000_rollback_ms": {
+    "before": 2.502,
+    "after": 6.999
+  },
+  "index_create_ms": 72.102,
+  "added_bytes": 5128192
+}

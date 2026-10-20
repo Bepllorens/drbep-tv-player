@@ -1,0 +1,25 @@
+Ilustraciones: validacion y antiguedad de cache local - 20/10/2026
+
+Problema: la ruta de error HTTP reutilizaba el JSON antiguo y luego lo escribia
+de nuevo. Renovaba su fecha como si hubiera habido una descarga reciente.
+Un JSON local corrupto vigente tambien evitaba llegar a una descarga nueva.
+
+Cambio:
+ArtworkGridDiskCache valida array JSON y limite de 4 MiB. Archivo corrupto,
+inexistente o demasiado grande equivale a miss. Fecha futura no es cache fresca.
+La red se valida antes de guardar. Si falla o devuelve JSON invalido, se puede
+leer una copia local valida aunque caducada, sin reescribirla ni cambiar fecha.
+Solo respuesta nueva valida renueva el archivo. Fallo de escritura local no
+descarta la respuesta de red valida; se limpia el temporal si es posible.
+
+Sin cambios de dominio, matching canal/hora/titulo, seleccion horizontal,
+colas, TTL 4 h, limite disco 32 MiB, retencion de 9 dias o cache en memoria.
+La cache en memoria sigue conservando sus grids: esta correccion no promete
+refresco de una cuadricula ya cargada durante la misma instancia.
+
+Seis pruebas con TemporaryFolder: contenido exacto, expiracion/mtime intacto,
+JSON corrupto/objeto/truncado, fecha futura, exceso de tamano y archivo ausente.
+No consultas reales. No se mide velocidad de red ni mejoras audiovisuales.
+Pendiente Fire: carga normal, error de red con cache, reinicio y recuperacion;
+verificar que las imagenes conservan el programa/canal correcto.
+Sin instalar, publicar ni tocar produccion o reproduccion.

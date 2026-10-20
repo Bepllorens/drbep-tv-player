@@ -3,6 +3,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class U7dReplayRecoveryPolicyTest {
+    @Test public void pausedResumeReloadsOnlyEvictedPositions() {
+        assertTrue(U7dReplayRecoveryPolicy.pausedPositionExpired(90000, new long[]{120000, 180000}));
+        assertFalse(U7dReplayRecoveryPolicy.pausedPositionExpired(120000, new long[]{120000, 180000}));
+        assertFalse(U7dReplayRecoveryPolicy.pausedPositionExpired(150000, new long[]{120000, 180000}));
+        assertFalse(U7dReplayRecoveryPolicy.pausedPositionExpired(200000, new long[]{120000, 180000}));
+        assertFalse(U7dReplayRecoveryPolicy.pausedPositionExpired(-1, new long[]{120000, 180000}));
+        assertFalse(U7dReplayRecoveryPolicy.pausedPositionExpired(90000, null));
+    }
+
     @Test public void retainsPositionBehindAdvancingWindow() {
         assertEquals(90000L, U7dReplayRecoveryPolicy.windowPosition(120000, -30000));
     }

@@ -1,0 +1,33 @@
+Catchup: recorrido sintetico fijo - 2026-10-20
+
+Ejecutar solo en desarrollo .185:
+python3 tools/test-catchup-workload.py
+python3 tools/benchmark-catchup-workload.py --output /tmp/catchup-new.json
+python3 tools/benchmark-catchup-workload.py --baseline docs/benchmarks/catchup-workload-baseline-20261020.json --output /tmp/catchup-compare.json
+El archivo de salida debe ser nuevo; no se sobrescriben referencias.
+
+180 canales x 8 fechas x 48 programas = 69.120 registros sinteticos.
+Permisos: el ultimo canal se excluye de las paginas; generos consulta todo el
+ambito igual que la app. 48 guardados del canal 0. Ventana temporal de siete dias.
+Esquema e indices extraidos del codigo vigente. SQL de los escenarios reflejado
+manualmente de U7dCatalogStore; revisar esta correspondencia si cambia el codigo.
+La paginacion mide SQL, no el ajuste de offset, parseo de modelos ni interfaz.
+
+10 escenarios: total, primera pagina, siguiente, profunda, otro dia, busqueda,
+genero, guardados, lista de generos y tira. 30 muestras tras primera ejecucion.
+SHA del codigo, fixture, consultas y resultados; planes de SQLite.
+Comparacion rechaza distinto conjunto, motor/arquitectura, consulta o resultado.
+No impone umbrales de tiempo fragiles; comparar varias tandas en la misma maquina.
+
+Datos de la segunda tanda, mediana / p95 (ms):
+total 1,514 / 1,698; primera pagina 0,098 / 0,112;
+pagina profunda 0,192 / 0,231; busqueda 3,466 / 3,985;
+guardados 77,587 / 87,947; generos 4,479 / 4,666;
+tira 0,031 / 0,040. Base sintetica 111.599.616 bytes.
+Los resultados entre ambas tandas coinciden. No son mejoras antes/despues.
+Guardados es candidato para proxima investigacion, no se modifica ahora.
+
+Limites: SQLite Linux y cache del sistema; primera consulta NO equivale a
+arranque en frio. Sin red, Android, mando, decodificacion ni renderizado.
+Fixtures temporales eliminados al cerrar. No lee ninguna base de usuario.
+Cinco pruebas del comparador correctas. No requiere recompilar APK ni desplegar.

@@ -1,0 +1,63 @@
+VALIDACION DE MANDO Y REPRODUCCION PROLONGADA - 20/10/2026
+
+Desarrollo .185; Fire .190, TV encendida y mando autorizado.
+APK de prueba instalada conservando datos: remote-seek-fixed.apk
+Version 771; SHA256 cbffc5888ca15ab761ff41ee96c5f6b806a6906dd6400d824958b49f2d8a34a3
+826 pruebas JVM, 0 fallos y 0 errores.
+No publicacion, no commit/push ni cambios en backend .223, stable, rutas, claves o asociaciones.
+
+FALLO REPRODUCIDO Y CORREGIDO
+Con controles ocultos, Arriba durante U7D podia cambiar al canal anterior.
+RemoteInputRouter consultaba isVodPlayback; la actividad resolvia el canal de
+directo original y devolvia false. El ajuste en MainActivity.java hace que
+isVodPlayback devuelva true si isCurrentU7dPlayback. Solo afecta al enrutamiento
+de teclas; no cambia getCurrentPlaybackChannelItem ni la seleccion de fuentes.
+Copia previa privada: MainActivity-before-remote-check.java en carpeta de revision.
+
+PRUEBAS CON MANDO POR ADB
+La 1, Directo al grano T3 E207:
+- Controles ocultos -> Arriba -> Derecha: barra 00:30 / 1:55:00, sigue U7D.
+- Izquierda: retroceso a 00:10 (incluye tiempo transcurrido), sin cambiar canal.
+- Arriba hasta carrusel, izquierda: foco visible en Informativo territorial 2.
+- Abajo -> Derecha: regresa a la barra y avanza; sigue el mismo programa.
+STAR, Tracker episodio 4 Monte Shasta, evento vigente del 19/10:
+- Arranque con imagen; avance por mando a 00:45 y posteriormente 00:47.
+- Muestras de la misma operacion: 11809 -> 72220 ms (incluye salto de 30 s);
+  fotogramas 256 -> 1049, descartados 0.
+- Abajo -> OK sobre Volver al directo: STAR Channel, live=true, playing=true.
+- Atras -> portada: miniatura con imagen verificada por captura.
+
+INCIDENCIA PENDIENTE
+Al pausar con MEDIA_PAUSE y adelantar desde la barra, el video vuelve a reproducir.
+Estado verificado false antes y true despues, permaneciendo en U7D.
+No corregido en esta tanda: conservar pausa requiere revisar tanto seek dentro
+del buffer como reinicio de fuente, y validarlos por separado.
+No declarar validada la conservacion de pausa ni los extremos del programa.
+
+BBC EARTH PROLONGADO
+La familia elefante y yo, episodio 2 del 19/10.
+Captura de avisos durante 330 s. Se mantuvo reproduccion mas de cinco minutos.
+Entre las muestras de 1792507513414 y 1792507865473 (352 s):
+- misma operacion 8, sin reemplazo de fuente;
+- fotogramas renderizados 76 -> 8872;
+- descartados 0 -> 5 (aprox. 0,057% de ese tramo);
+- ritmo medio aproximado de 25 fps, video comprobado en capturas;
+- ninguna linea de aviso/error de los filtros MediaCodec,
+  MediaCodecVideoRenderer, TsExtractor, PesReader, H264Reader,
+  ExoPlayerImplInternal ni AndroidRuntime en la captura.
+Memoria PSS observada: 175525 KiB; sin nuevo cierre de proceso durante la prueba.
+La posicion local del player pertenece a una ventana HLS deslizante y no es
+monotona en todo el tramo; no interpretar ese contador aislado como congelacion.
+No equivale a garantizar ausencia total de microcortes ni validar otras fuentes.
+
+EVIDENCIAS PRIVADAS
+/srv/drbep-dev/reviews/fire-validation-20261020/
+remote-seek-build.log, bbc-final-private.zip, bbc-final-codec-private.log,
+remote-carousel.png, bbc-final-middle.png, star-seek.png, final-preview.png.
+No incorporar ZIP privados, sesiones o registros sin redaccion a Git.
+
+SIGUE PENDIENTE
+Conservacion de pausa al saltar, extremos de seek y tablet.
+Matriz comparativa de flags HLS/zapeo, pruebas de otras superficies y sesiones
+mas largas descritas en pruebas-tv-pendientes-20261020.txt.
+No se han activado experimentos adicionales por esta validacion.

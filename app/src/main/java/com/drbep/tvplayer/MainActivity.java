@@ -482,6 +482,53 @@ public class MainActivity extends FragmentActivity {
     private ChannelActionsCoordinator channelActionsCoordinator;
     private ChannelOverlayCoordinator channelOverlayCoordinator;
     private RemoteInputRouter remoteInputRouter;
+    private RemoteZapQueue<ChannelItem> remoteZapQueue;
+    private boolean deliveringRemoteZap;
+    private long remoteZapSequence, remoteZapPressId, remoteZapPressedAt;
+    private void executeRemoteZap(int index) {
+        if (!isActivityReadyForUiWork() || channels.isEmpty()) { cancelRemoteZap(); return; }
+        if (playerController != null) playerController.noteRemoteZap(remoteZapPressId, remoteZapPressedAt, channels.get(index).id);
+        deliveringRemoteZap = true;
+        try { tuneToIndex(index, true); }
+        finally {
+            deliveringRemoteZap = false;
+            if (playerController != null) playerController.finishRemoteZapDispatch();
+        }
+    }
+
+    private void cancelRemoteZap() {
+        if (remoteZapQueue != null) remoteZapQueue.cancel();
+    }
+    private void tuneRelativeFromRemote(int delta) {
+        remoteZapPressId = ++remoteZapSequence;
+        remoteZapPressedAt = android.os.SystemClock.elapsedRealtime();
+        if ("beta".equals(BuildConfig.UPDATE_CHANNEL)) BlackBox.event(BlackBoxStore.Event.ZAP_PRESS, remoteZapPressId, delta, 0, 0);
+        if (isMultiViewVisible()) { cancelRemoteZap(); tuneRelative(delta); return; }
+        if (!BuildConfig.COALESCE_REMOTE_ZAP) {
+            cancelRemoteZap();
+            if (!channels.isEmpty()) {
+                int anchor = Math.max(0, overlayNavigationState.currentIndex);
+                executeRemoteZap(((anchor + delta) % channels.size() + channels.size()) % channels.size());
+            }
+            return;
+        }
+        if (remoteZapQueue == null) {
+            remoteZapQueue = new RemoteZapQueue<>(new RemoteZapQueue.Scheduler() {
+                public void post(Runnable r, long delay) { uiHandler.postDelayed(r, delay); }
+                public void remove(Runnable r) { uiHandler.removeCallbacks(r); }
+            }, new RemoteZapQueue.Host<ChannelItem>() {
+                public int size() { return channels.size(); }
+                public int currentIndex() { return overlayNavigationState.currentIndex; }
+                public ChannelItem item(int index) { return channels.get(index); }
+                public void tune(int index) {
+                    if (!isActivityReadyForUiWork() || isMultiViewVisible()) { cancelRemoteZap(); return; }
+                    executeRemoteZap(index);
+                }
+            });
+        }
+        remoteZapQueue.press(delta, android.os.SystemClock.elapsedRealtime());
+    }
+
     private TouchControlsController touchControlsController;
     private boolean compactPlaybackHud;
     private boolean modernPlaybackHud = true;
@@ -1107,6 +1154,7 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onPause() {
+        cancelRemoteZap();
         cancelPendingU7dSeek();
         if (playerController != null) {
             playerController.onHostPaused();
@@ -1577,7 +1625,7 @@ public class MainActivity extends FragmentActivity {
                 if (currentU7dRequest(request)) {
                     ChannelItem expected = currentPlaybackU7dItem;
                     postUiIfAlive(() -> {
-                        if (expected == currentPlaybackU7dItem) fallbackFromNativeU7d();
+                        if (expected == currentPlaybackU7dItem && !playerController.isCatchupPermissionDenied()) fallbackFromNativeU7d();
                     });
                 }
             }
@@ -2103,6 +2151,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void recoverU7dAt(long localPositionMs) {
+        if (playerController != null && playerController.isCatchupPermissionDenied()) return;
         if (fallbackFromNativeU7d()) return;
         if (!isCurrentU7dPlayback() || u7dPrompt != null || u7dContinuationLoading) return;
         long target = U7dContinuityPolicy.retryPosition(currentPlaybackU7dOffsetMs, localPositionMs, currentPlaybackU7dDurationMs);
@@ -2371,7 +2420,7 @@ public class MainActivity extends FragmentActivity {
             showStatus(getString(R.string.timeshift_status_unavailable));
             return;
         }
-        long offsetMs = Math.max(0L, Math.min(currentPlaybackU7dDurationMs, targetMs));
+        long offsetMs = U7dReplayRecoveryPolicy.absolutePosition(0L, targetMs, currentPlaybackU7dDurationMs);
         pendingU7dSeekTargetMs = offsetMs;
         pendingU7dSeekWaits = 0;
         int generation = ++pendingU7dSeekGeneration;
@@ -2408,11 +2457,14 @@ public class MainActivity extends FragmentActivity {
         }
         pendingU7dSeekTargetMs = -1L;
         pendingU7dSeekRunnable = null;
-        restartCurrentU7dPlaybackAt(offsetMs);
+        Log.i(TAG, "U7D seek restart targetMs=" + offsetMs);
+        boolean autoPlay = playerController != null && playerController.shouldPlayAfterU7dSeek();
+        restartCurrentU7dPlaybackAt(offsetMs, autoPlay);
     }
 
     // One attempt per programme: removing the opt-in also removes it from later seeks.
     private boolean fallbackFromNativeU7d() {
+        if (playerController != null && playerController.isCatchupPermissionDenied()) return false;
         if (!isCurrentU7dPlayback() || currentPlaybackU7dBaseUrl == null) return false;
         Uri uri = Uri.parse(currentPlaybackU7dBaseUrl);
         if (!"1".equals(uri.getQueryParameter("native_channel"))) return false;
@@ -2432,6 +2484,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void restartCurrentU7dPlaybackAt(long offsetMs) {
+        restartCurrentU7dPlaybackAt(offsetMs, true);
+    }
+
+    private void restartCurrentU7dPlaybackAt(long offsetMs, boolean autoPlay) {
         currentPlaybackU7dOffsetMs = offsetMs;
         ChannelItem source = currentPlaybackU7dItem;
         String seekUrl = buildU7dUrlWithOffset(currentPlaybackU7dBaseUrl, offsetMs);
@@ -2441,7 +2497,7 @@ public class MainActivity extends FragmentActivity {
         if (playerController != null) {
             playerController.stopForSourceSwitch();
         }
-        playChannelItemInternal(seekItem, true, 0L);
+        playChannelItemInternal(seekItem, autoPlay, 0L);
     }
 
     private void cancelPendingU7dSeek() {
@@ -2748,7 +2804,7 @@ public class MainActivity extends FragmentActivity {
                 }
             }
         }, touchControlsFocusState.actionIndex(), nowPlaying);
-        PlayerController.PlaybackSeekState integratedSeekState = modernPlaybackHud && !compactPlaybackHud
+        PlayerController.PlaybackSeekState integratedSeekState = modernPlaybackHud && (!compactPlaybackHud || isCurrentU7dPlayback())
                 ? getEffectivePlaybackSeekState()
                 : null;
         TimeshiftBarUiModel integratedTimeshift = integratedSeekState == null
@@ -3794,6 +3850,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void playChannelItem(ChannelItem ch, boolean autoPlay) {
+        if (!deliveringRemoteZap) cancelRemoteZap();
         if (ch == null) {
             return;
         }
@@ -3843,6 +3900,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void playChannelItemInternal(ChannelItem requestedChannel, boolean autoPlay, long resumePositionMs) {
+        if (!deliveringRemoteZap) cancelRemoteZap();
         HboNativeCapabilities.configureDisplay(this);
         final ChannelItem ch = catalogRepository == null ? requestedChannel : catalogRepository.withNativeHbomaxPlayback(requestedChannel);
         endedVodId = "";
@@ -5014,6 +5072,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openTimelineGuide(int anchorIndex, long windowStartMs) {
+        cancelRemoteZap();
         if (channels.isEmpty()) {
             return;
         }
@@ -5881,6 +5940,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openArchiveCatalog(ChannelItem initial, boolean savedOnly) {
+        cancelRemoteZap();
         ensureArchiveScope();
         if (archiveChannels().isEmpty()) { showStatus("No hay canales con U7D disponibles para esta cuenta");return; }
         if (archiveDialog != null) { archiveDialog.dismiss();archiveDialog=null; }
@@ -7761,6 +7821,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void openRecordingsBrowser() {
+        cancelRemoteZap();
         if (showOfflineRecordingsUnavailableIfNeeded()) {
             return;
         }
@@ -8004,11 +8065,13 @@ public class MainActivity extends FragmentActivity {
         long resumePositionMs = getRecordingResumePosition(item.id);
         Runnable startFromBeginning = () -> {
             clearRecordingResumePosition(item.id);
+            cancelRemoteZap();
             playerController.playRecording(buildRecordingTitle(item), url, 0L);
             hideRecordingsPanel();
             hideOverlay();
         };
         Runnable resumeFromSaved = () -> {
+            cancelRemoteZap();
             playerController.playRecording(buildRecordingTitle(item), url, resumePositionMs);
             hideRecordingsPanel();
             hideOverlay();
@@ -10005,6 +10068,8 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public boolean isVodPlayback() {
+                // U7D retains its live channel identity, but remote arrows control replay.
+                if (isCurrentU7dPlayback()) return true;
                 ChannelItem current = getCurrentPlaybackChannelItem();
                 return current != null && current.isVod;
             }
@@ -10176,7 +10241,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override
             public void tuneRelative(int delta) {
-                MainActivity.this.tuneRelative(delta);
+                MainActivity.this.tuneRelativeFromRemote(delta);
             }
 
             @Override
@@ -10271,8 +10336,19 @@ public class MainActivity extends FragmentActivity {
     }
 
     @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) cancelRemoteZap();
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
     @SuppressLint("RestrictedApi")
     public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+        int key = event.getKeyCode();
+        boolean channelKey = key == KeyEvent.KEYCODE_CHANNEL_UP || key == KeyEvent.KEYCODE_CHANNEL_DOWN
+                || key == KeyEvent.KEYCODE_PAGE_UP || key == KeyEvent.KEYCODE_PAGE_DOWN;
+        if (event.isCanceled() || (event.getAction() == KeyEvent.ACTION_DOWN && !channelKey)) cancelRemoteZap();
+
         if (event.getAction() == KeyEvent.ACTION_DOWN) { lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime(); BackgroundWorkBudget.interaction(); }
         if (handleSearchShortcut(event)) return true;
         if (handleRemoteMessageKeyEvent(event)) {
@@ -10387,6 +10463,7 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     protected void onDestroy() {
+        cancelRemoteZap();
         timelineLoadGeneration++; timelineDownloads.shutdownNow(); timelineCacheExecutor.shutdownNow();
         archiveGeneration++; movistarGuideExecutor.shutdownNow(); archiveExecutor.shutdownNow(); archiveStorageExecutor.shutdownNow(); archivePresentationExecutor.shutdownNow();archiveGenreExecutor.shutdownNow();archiveFanartExecutor.shutdownNow();if(archiveAvailability!=null)archiveAvailability.close();if(movistarArtwork!=null)movistarArtwork.close();if(movistarGuide!=null)movistarGuide.close();
         uiHandler.removeCallbacks(playlistImportTick);
@@ -10442,6 +10519,7 @@ public class MainActivity extends FragmentActivity {
                 + " closeForPressure=" + MultiviewMemoryPolicy.shouldClose(level));
         Glide.get(this).trimMemory(level);
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            if(movistarArtwork!=null)movistarArtwork.clearMemory();
             channelLogoCache.evictAll();
             streamInfoByChannelId.clear();
         }
@@ -10455,6 +10533,7 @@ public class MainActivity extends FragmentActivity {
     public void onLowMemory() {
         super.onLowMemory();
         Log.w(TAG, "memoryLow multiview=" + isMultiViewVisible());
+        if(movistarArtwork!=null)movistarArtwork.clearMemory();
         channelLogoCache.evictAll();
         streamInfoByChannelId.clear();
         Glide.get(this).clearMemory();
@@ -14404,6 +14483,7 @@ public class MainActivity extends FragmentActivity {
     private int settingsCategoryIndex;
 
     private void showSettingsCenterDialog(Runnable onBack) {
+        cancelRemoteZap();
         prepareModalSurface();
         final Dialog[] holder = new Dialog[1];
         ComposeView view = new ComposeView(this);
@@ -14558,9 +14638,14 @@ public class MainActivity extends FragmentActivity {
                     public String ui() throws Exception { return panelScreen.ui(); }
                     public byte[] artwork(String id)throws Exception{return devicePanelArtwork(id);}
                     public String status() { return devicePanelStatus; }
+                    public String metadataIndexReview(String state,long after)throws Exception{return MetadataIndexWorker.review(getApplicationContext(),state,after);}
+                    public String metadataIndexGroups(String source,String kind)throws Exception{return MetadataIndexWorker.groups(getApplicationContext(),source,kind);}
+                    public String metadataIndexSelection(String command,String source,String kind,String group)throws Exception{return MetadataIndexWorker.command(getApplicationContext(),command,source,kind,group);}
+                    public String metadataIndexSelection(String command,String source,String kind)throws Exception{return MetadataIndexWorker.command(getApplicationContext(),command,source,kind);}
                     public String metadataIndex(String command)throws Exception{return command.isEmpty()?MetadataIndexWorker.status(getApplicationContext()):MetadataIndexWorker.command(getApplicationContext(),command);}
                     public String blackBox()throws Exception{return BlackBox.summary();}
                     public byte[] blackBoxExport()throws Exception{return BlackBox.export();}
+                    public byte[] blackBoxExport(int minutes)throws Exception{return BlackBox.export(minutes);}
                     public String blackBoxCommand(String command)throws Exception{return BlackBox.command(command);}
                     public long importPlaylist(java.io.InputStream input) throws Exception { return importer.importWeb(input); }
                     public String enqueuePlaylist(java.io.InputStream input)throws Exception {
@@ -24760,8 +24845,8 @@ public class MainActivity extends FragmentActivity {
         ensureTouchControlsEpgPair(channelItem);
         logHudEpgState("showCompactPlaybackHud", channelItem);
         hideZapBanner();
-        compactPlaybackHud = true;
-        touchControlsFocusState.clear();
+        compactPlaybackHud = !isCurrentU7dPlayback();
+        if (!isCurrentU7dPlayback()) touchControlsFocusState.clear();
         refreshTouchControlsBar();
         if (touchControlsController != null) {
             touchControlsController.showTouchControlsTemporarily(COMPACT_PLAYBACK_HUD_HIDE_MS);
@@ -25647,8 +25732,10 @@ public class MainActivity extends FragmentActivity {
         List<U7dCatalogEntry> visible=new ArrayList<>(entries);visible.sort((a,b)->Long.compare(b.start,a.start));
         for(U7dCatalogEntry e:visible){if(!e.day.equals(today)||count>=12)continue;if(MovistarGuideRepository.officialImage(e.artworkKey)){count++;preloadArchiveImage(e.artworkKey);continue;}ChannelItem c=findAllowedHomeLiveChannel(e.channelId);if(c==null||isOrangeChannel(c))continue;
             String provider=archiveAvailability==null?"":archiveAvailability.provider(archiveScope,c);if(provider.isEmpty())continue;count++;
-            if(!prefetchedArchiveArtwork.add(archiveScope+"|"+e.id))continue;
-            movistarArtwork.request(provider,e.start,e.title,url->postUiIfAlive(()->{if(url.isEmpty())return;publishOfficialArchiveArtwork(e.channelId,e.start,url);preloadArchiveImage(url);}));
+            String preloadKey=archiveScope+"|"+e.id;
+            if(!prefetchedArchiveArtwork.add(preloadKey))continue;
+            boolean accepted=movistarArtwork.request(provider,e.start,e.title,url->postUiIfAlive(()->{if(url.isEmpty())return;publishOfficialArchiveArtwork(e.channelId,e.start,url);preloadArchiveImage(url);}));
+            if(!accepted)prefetchedArchiveArtwork.remove(preloadKey);
         }
     }
 

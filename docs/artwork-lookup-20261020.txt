@@ -1,0 +1,23 @@
+Miniaturas: reutilizar titulos normalizados — 20/10/2026
+
+MovistarArtworkRepository.Row calcula normalizedTitle una vez, al crear la
+fila de la parrilla. match reutiliza ese valor inmutable. Mantiene la misma
+normalizacion, canal, margen de 120 segundos y rechazo de imagenes ambiguas.
+No cambia las fuentes, peticiones, cache de disco ni seleccion de programas.
+Se conserva el titulo original; el coste es una cadena adicional por fila
+durante la vida de la cache, limitada a 32 parrillas y liberada con trim.
+La normalizacion se adelanta a la carga de filas, en trabajadores: no desaparece
+su coste inicial. No se ha medido memoria real ni tiempo total de primera carga.
+
+Validacion .185:
+- 13.160 comparaciones contra la implementacion anterior: mismas selecciones,
+  incluyendo limites temporales, acentos, nulos, canales y ambiguedad.
+- Ensayo sintetico JVM, 96 filas, 7 tandas de 10.000 consultas tras calentamiento:
+  mediana anterior 69,448899 ms; nueva 33,928779 ms.
+  Incluye aserciones identicas; no representa descarga, render ni latencia Fire.
+  El test informa tiempos pero no impone umbrales dependientes de la maquina.
+- 815 pruebas JVM, cero fallos; assembleDebug beta ARM32 correcto.
+- Log: /srv/drbep-dev/reviews/artwork-lookup-validation.log
+
+Pendiente Fire: primera carga, navegacion repetida, imagen correcta, memoria
+y fluidez. No instalado/publicado, sin cambios en produccion ni reproduccion.

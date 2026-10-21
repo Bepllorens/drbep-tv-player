@@ -79,3 +79,44 @@ Catchup: ensayo WAL con escritor real de metadatos y hashes de resultados; 69.12
 Generos: invalidacion en vuelo limitada al ambito cargado; escrituras ajenas no fuerzan repeticion. Cuatro pruebas nuevas; pendiente Fire/p95.
 
 Catchup: writeAll limpia caducados una vez por lote dentro de transaccion; 150 equivalencias + 2 rollback sinteticos. Ensayo 100 canales 55,19 -> 21,55 ms; pendiente SQLite Android/Fire.
+
+21/10/2026: transporte multimedia reutilizable, beta opt-in
+reusePlaybackTransport. Cache acotada por politica de conexion/timeout;
+licencias y opciones anteriores intactas. Pruebas de independencia de
+peticiones, cancelacion y concurrencia. Validacion Fire pendiente con TV encendida.
+Ver playback-transport-reuse-20261021.txt.
+
+Resultados zapeo Movistar HLS del 20/10: ver zap-movistar-hls-20261020.txt.
+67% menos sintonizaciones, pero 70 ms mas de mediana que referencia final.
+No activar de forma general; referencia conservada en Fire.
+
+21/10/2026: imagenes oficiales, tareas agrupadas por canal/dia mediante
+coalesceArtworkGrids, beta opt-in. Seguidores sin ocupar workers, limite total
+de 256, rechazo/cierre/reintento cubiertos. No cambia match ni fuentes.
+Ver artwork-singleflight-20261021.txt. Pendiente A/B audiovisual en Fire.
+
+21/10/2026: consultas de ambito TMDB especializadas, agregado global por tipo
+conserva camino anterior para evitar regresion. 45 equivalencias con 120.000
+filas sinteticas y 10 pruebas SQL de grupos/revision. Mejora Linux documentada
+en metadata-scope-query-20261021.txt; pendiente SQLite Android/panel real.
+
+21/10/2026: preparacion de cola TMDB sin joins visuales ni agregado de progreso.
+62 equivalencias de candidatos/estados sobre 24.000 entradas sinteticas,
+848 pruebas y compilacion. Ver metadata-queue-preparation-20261021.txt.
+Pendiente preparacion real y fluidez en Fire; filtro por grupo sin optimizar.
+
+21/10/2026: filtro por grupo TMDB especializado por tipo conocido, conserva
+predicado mixto. Equivalencia de candidatos/estados y generacion/ocultos.
+Ver metadata-group-filter-20261021.txt; validacion Android/Fire pendiente.
+
+21/10/2026: preparacion TMDB transaccional; limpieza y cola confirman juntas,
+marca de preferencias posterior e idempotencia de reintento. Pruebas de fallo,
+cancelacion y lectores WAL. Ver metadata-queue-atomic-20261021.txt.
+Pendiente bloqueo/fluidez y WorkManager en Fire.
+
+21/10/2026: plan aparcado por peticion del usuario para estudiar tipografia.
+Punto de continuacion: docs/ESTADO_PLAN_20261021.txt; pruebas Fire pendientes.
+
+21/10/2026: retomado plan. Series TMDB filtran source antes de agrupar;
+consulta todas/peliculas conservada. Equivalencia y benchmark sintetico en
+metadata-source-20261021.txt. Fire pendiente.

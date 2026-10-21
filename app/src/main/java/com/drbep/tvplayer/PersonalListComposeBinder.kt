@@ -151,8 +151,7 @@ private fun PersonalListPanelButton(label: String, primary: Boolean, modifier: M
             style = TextStyle(
                 color = if (focused || primary) OfflineTvTheme.Colors.focusInk else OfflineTvTheme.Colors.textSoft,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            ),
+                fontWeight = FontWeight.Bold),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -201,8 +200,7 @@ private fun PersonalListRow(item: PersonalListRowUiModel, focusRequester: FocusR
                 style = TextStyle(
                     color = if (focused) OfflineTvTheme.Colors.backdropAccent else OfflineTvTheme.Colors.textSoft,
                     fontSize = if (compact) 11.sp else 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                    fontWeight = FontWeight.Bold)
             )
         }
         Spacer(modifier = Modifier.width(if (compact) 10.dp else 12.dp))

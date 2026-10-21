@@ -112,7 +112,6 @@ internal fun TimelineHeaderAction(action: TimelineHeaderUiModel.TimelineHeaderAc
         style = TextStyle(
             color = Color.White,
             fontSize = if (compact) 11.sp else 12.sp,
-            fontWeight = FontWeight.Bold
-        )
+            fontWeight = FontWeight.Bold)
     )
 }

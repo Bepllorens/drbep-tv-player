@@ -172,9 +172,8 @@ internal class ImportedMovieRepository @JvmOverloads constructor(context: Contex
         fun foregroundBusy()=android.os.SystemClock.elapsedRealtime()-foregroundAt<1500
     }
     fun queueIndex(source:String="",group:String="") {
-        val groupSql=if(group.isEmpty()) "" else " AND "+MetadataIndexSelection.groupPredicate("e")
-        val args=if(group.isEmpty()) arrayOf(kind,kind,source,source) else arrayOf(kind,kind,source,source,group)
-        db.writableDatabase.execSQL("INSERT OR IGNORE INTO metadata_index(kind,source,generation,identity,occurrence,series,state) SELECT ?,e.source,e.generation,e.identity,e.occurrence,e.series,'pending'"+from+" WHERE e.kind=? AND COALESCE(p.hidden,0)=0 AND (?='' OR e.source=?)"+groupSql,args)
+        val args=MetadataIndexQueue.args(series,kind,source,group)
+        db.writableDatabase.execSQL(MetadataIndexQueue.sql(series,group.isNotEmpty(),source.isNotEmpty()),args)
     }
     fun indexItem(source:String,generation:String,identity:String,occurrence:Int):ImportedMovie? {
         val matchJoin=if(series) " LEFT JOIN series_match mm ON mm.source=e.source AND mm.series=e.series " else " LEFT JOIN movie_match mm ON mm.source=e.source AND mm.identity=e.identity AND mm.occurrence=e.occurrence "

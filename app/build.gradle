@@ -29,6 +29,11 @@ def emergencyBaseUrl = (project.findProperty('emergencyBaseUrl') ?: 'https://dir
 def updateChannel = (project.findProperty('updateChannel') ?: 'stable').toString()
 def dnsHealingRecoveryFirst = (project.findProperty('dnsHealingRecoveryFirst') ?: 'false').toString().toBoolean()
 def fireAbiOnly = (project.findProperty('fireAbiOnly') ?: 'false').toString().toBoolean()
+def emulatorAbiOnly = (project.findProperty('emulatorAbiOnly') ?: 'false').toString().toBoolean()
+if (emulatorAbiOnly && (fireAbiOnly || updateChannel != 'beta')) {
+    throw new GradleException('emulatorAbiOnly requires beta and fireAbiOnly=false')
+}
+
 def offlineSnapshotPublicKey = (project.findProperty('offlineSnapshotPublicKey') ?: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArIoIQfhLQG1NRNGVHHHRYJpJ1+epFzzIhXbP2J80kOLEcW57ruhXydBV1sBNpZrUoC2EAy2ISiN7suLTp8NJSD7EqnExg8vJnyhKcUzUYkBksJpuccWUqSuQhIe43TABw8OM2+OmTT9QgZBgbk9CbgP+zehssXzH1w0OL6RQ/vWMFsmxO9dieqKafdxn4IQLJEVZc7IDIPsk67HwlTfPT+1gmoCEsy7nn3gD8bs++Sz2e4mVwGgjqaqSHU4SJILleQJ17MC/I+DLI/EHLwIJ/5577c+foZS4rDPIRHf9puCcuhiXCTRMX92KsSj6FVhwgklVhFgyxjoKh8y7pUft/QIDAQAB').toString()
 def offlineSnapshotKeyId = (project.findProperty('offlineSnapshotKeyId') ?: 'offline-snapshot-rsa-20260520').toString()
 
@@ -72,16 +77,20 @@ android {
         buildConfigField "boolean", "COOPERATIVE_IMPORTS", (updateChannel == "beta" && (project.findProperty("cooperativeImports") ?: "false").toString().toBoolean()).toString()
         buildConfigField "boolean", "COOPERATIVE_METADATA", (updateChannel == "beta" && (project.findProperty("cooperativeMetadata") ?: "false").toString().toBoolean()).toString()
         buildConfigField "boolean", "CATCHUP_SEARCH_INDEX", (updateChannel == "beta" && (project.findProperty("catchupSearchIndex") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "COALESCE_ARTWORK_GRIDS", (updateChannel == "beta" && (project.findProperty("coalesceArtworkGrids") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "REUSE_PLAYBACK_TRANSPORT", (updateChannel == "beta" && (project.findProperty("reusePlaybackTransport") ?: "false").toString().toBoolean()).toString()
         buildConfigField "boolean", "COALESCE_REMOTE_ZAP", (updateChannel == "beta" && (project.findProperty("coalesceRemoteZap") ?: "false").toString().toBoolean()).toString()
         buildConfigField "boolean", "FAST_HLS_STARTUP", (updateChannel == "beta" && (project.findProperty("fastHlsStartup") ?: "false").toString().toBoolean()).toString()
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 772
-        versionName "2.0.772-beta-catchup-pause"
+        versionCode 773
+        versionName "2.0.773-beta-tv-guide"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            if (fireAbiOnly) {
+            if (emulatorAbiOnly) {
+                abiFilters 'x86_64'
+            } else if (fireAbiOnly) {
                 abiFilters 'armeabi-v7a'
             } else {
                 abiFilters 'armeabi-v7a', 'arm64-v8a'
@@ -112,6 +121,7 @@ android {
 
     buildTypes {
         debug {
+            if (emulatorAbiOnly) versionNameSuffix '-emulator-x86_64'
             manifestPlaceholders = [
                     appProfileable: ((project.findProperty("profileBeta") ?: "false").toString().toBoolean() && updateChannel == "beta").toString(),
                 appAllowBackup: "false",
@@ -217,5 +227,12 @@ if (updateChannel == 'beta') {
             com.android.build.api.instrumentation.InstrumentationScope.ALL) {}
         variant.instrumentation.setAsmFramesComputationMode(
             com.android.build.api.instrumentation.FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS)
+    }
+}
+
+// Emulator builds are development artifacts, never release-channel APKs.
+if (emulatorAbiOnly) {
+    androidComponents.beforeVariants(androidComponents.selector().withBuildType('release')) { variant ->
+        variant.enable = false
     }
 }

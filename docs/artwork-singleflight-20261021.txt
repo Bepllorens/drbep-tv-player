@@ -1,0 +1,48 @@
+Coordinacion de parrillas de imagenes — 21/10/2026
+
+Problema observado en codigo
+MovistarArtworkRepository encola una tarea por miniatura. Las tareas del mismo
+canal/dia se serializan por bloqueo; aunque comparten cache, pueden ocupar varios
+de los cuatro workers esperando el mismo resultado y retrasar otro canal.
+No afirmar que antes se descargaba sesenta veces: la cache ya evitaba duplicados.
+
+Cambio experimental
+ArtworkSingleFlight agrupa las solicitudes por la clave existente proveedor/dia.
+Encola una sola carga para cada clave en vuelo; los seguidores no ocupan workers.
+Cada seguidor conserva canal, inicio y titulo y usa el match existente.
+No cambia fuente, identidad, cache de disco, TTL, permisos ni reproduccion.
+Maximo 256 solicitudes pendientes, contando seguidores. Saturacion devuelve
+fallback; errores/rechazo liberan la clave y permiten reintento.
+Cierre descarta pendientes y no arranca tareas aun encoladas.
+Excepcion de un callback no impide entregar el resultado a los demas.
+Guardia de entrega evita duplicar callback al rechazar el executor.
+La cache mantiene su proteccion de generacion frente a trim/close.
+
+Activacion
+-PupdateChannel=beta -PcoalesceArtworkGrids=true
+Desactivado por defecto, no activable en stable. Puede combinarse con la cola
+limitada existente, pero comparar los cambios por separado inicialmente.
+
+Pruebas sinteticas
+60 solicitudes del mismo canal/dia: una tarea/carga, 60 resultados individuales.
+Claves distintas conservan resultados propios. Limite incluye seguidores.
+Fallo del cargador y rechazo del executor permiten reintentar.
+Cierre antes/durante carga no entrega resultados. Callback abandonado no bloquea
+otros; callback que solicita de nuevo la misma clave funciona.
+80 solicitudes concurrentes: una tarea, 80 entregas.
+No se envia trafico de red ni se usa una base de datos real.
+
+Pendiente Fire
+TV apagada por indicacion del usuario. No instalar ni medir video.
+Comparar A/B con el mismo catalogo en Movistar HLS, cache fria y caliente:
+tiempo de imagen visible y p95 del mando al recorrer varios canales/dias.
+Confirmar que las imagenes corresponden al programa, tambien al retroceder,
+cambiar filtros o cerrar la pantalla durante cargas. Saturacion, trim, reapertura.
+Comprobar tira catchup, acceso al timeshift, miniatura y retorno al directo.
+No hay ahorro de milisegundos ni memoria real del Fire demostrado.
+Produccion y rutas La 1/Vamos sin cambios.
+
+Validacion local: testDebugUnitTest + assembleDebug con opcion activa completados.
+{'tests': 844, 'failures': 0, 'errors': 0}
+APK debug sin instalar ni publicar. Registro privado:
+/srv/drbep-dev/reviews/artwork-singleflight-20261021.log

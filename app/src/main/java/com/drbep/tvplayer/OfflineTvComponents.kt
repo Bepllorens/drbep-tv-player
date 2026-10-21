@@ -106,8 +106,7 @@ fun TvActionChip(
             color = textColor,
             fontSize = actionFontSize,
             fontWeight = FontWeight.Bold,
-            textAlign = if (centered) TextAlign.Center else TextAlign.Start
-        ),
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start),
         maxLines = 2,
         overflow = TextOverflow.Ellipsis
     )

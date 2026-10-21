@@ -887,7 +887,8 @@ final class PlayerController {
 
         playbackCallFactory = new NetworkClients.PlaybackCallFactory(
                 PLAYBACK_CONNECT_TIMEOUT_MS,
-                PLAYBACK_READ_TIMEOUT_MS
+                PLAYBACK_READ_TIMEOUT_MS,
+                BuildConfig.REUSE_PLAYBACK_TRANSPORT
         );
         httpDataSourceFactory = new OkHttpDataSource.Factory(playbackCallFactory)
                 .setDefaultRequestProperties(buildPlaybackRequestHeaders());

@@ -284,8 +284,7 @@ private fun ZapActionChip(item: ZapActionItem, compact: Boolean, modifier: Modif
                 color = textColor,
                 fontSize = fontSize,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            ),
+                textAlign = TextAlign.Center),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = if (compact) 6.dp else 4.dp, vertical = 6.dp)

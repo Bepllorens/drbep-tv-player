@@ -55,6 +55,20 @@ object TimelineProgramDetailComposeBinder {
 internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imageBinder: TimelineProgramDetailImageBinder) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     val metadata=rememberProgrammeMetadata(model.programmeMetadata)
+    var imageUrl by remember(model) { mutableStateOf(model.imageUrl) }
+    LaunchedEffect(model) {
+        val loader = model.artworkLoader ?: return@LaunchedEffect
+        delay(350)
+        try {
+            val loaded = kotlinx.coroutines.runInterruptible(Dispatchers.IO) { loader.call() }
+            if (!loaded.isNullOrBlank()) imageUrl = loaded
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (_: Exception) { /* Keep the fallback without blocking navigation. */ }
+    }
+    val imageModel = remember(model, imageUrl) {
+        TimelineProgramDetailUiModel(model.title, model.meta, model.description, imageUrl)
+    }
+
     var description by remember(model) { mutableStateOf(model.description) }
     LaunchedEffect(model) {
         val loader = model.descriptionLoader ?: return@LaunchedEffect
@@ -73,7 +87,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
             .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Top
     ) {
-        if (model.imageUrl.isNotEmpty()) {
+        if (imageUrl.isNotEmpty() || model.artworkLoader != null) {
             AndroidView(
                 modifier = Modifier
                     .size(width = if (compact) 62.dp else 124.dp, height = if (compact) 88.dp else 76.dp)
@@ -95,7 +109,7 @@ internal fun TimelineProgramDetailCard(model: TimelineProgramDetailUiModel, imag
                 },
                 update = { frame ->
                     frame.isVisible = true
-                    imageBinder.bind(frame.getChildAt(0) as ImageView, model)
+                    imageBinder.bind(frame.getChildAt(0) as ImageView, imageModel)
                 }
             )
             Spacer(modifier = Modifier.size(if (compact) 10.dp else 12.dp))

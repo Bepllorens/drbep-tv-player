@@ -143,8 +143,7 @@ private fun OverlayChannelList(
                 style = TextStyle(
                     color = Color(0xFF9BAFC1),
                     fontSize = if (compact) 9.sp else 10.sp,
-                    fontWeight = FontWeight.Bold
-                ),
+                    fontWeight = FontWeight.Bold),
                 modifier = Modifier.padding(bottom = 6.dp)
             )
         }
@@ -209,8 +208,7 @@ private fun OverlayEmptyMessage(message: String, compact: Boolean) {
             style = TextStyle(
                 color = OfflineTvTheme.Colors.textSoft,
                 fontSize = if (compact) 13.sp else 14.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
     }
 }
@@ -229,8 +227,7 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
             style = TextStyle(
                 color = OfflineTvTheme.Colors.accentCyan,
                 fontSize = if (compact) 10.sp else 11.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.height(6.dp))
         Row(
@@ -254,8 +251,7 @@ private fun OverlayFilterSwitcher(model: OverlayChannelListUiModel, compact: Boo
                     style = TextStyle(
                         color = Color.White,
                         fontSize = if (compact) 13.sp else 14.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
+                        fontWeight = FontWeight.Bold),
                     maxLines = 1
                 )
             }
@@ -280,8 +276,7 @@ private fun FilterNavButton(label: String, accessibilityLabel: String, action: R
             style = TextStyle(
                 color = Color.White,
                 fontSize = if (compact) 18.sp else 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
     }
 }

@@ -83,8 +83,7 @@ private fun TvOptionsPanel(model: TvOptionsPanelUiModel) {
                 style = TextStyle(
                     color = Color.White,
                     fontSize = if (compact) 21.sp else 26.sp,
-                    fontWeight = FontWeight.Black
-                ),
+                    fontWeight = FontWeight.Black),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )

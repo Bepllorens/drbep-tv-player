@@ -39,7 +39,6 @@ private fun VodSectionText(model: VodSectionTextUiModel) {
             } else {
                 if (compact) 11.sp else 12.sp
             },
-            fontWeight = if (model.title) FontWeight.Bold else FontWeight.Normal
-        )
+            fontWeight = if (model.title) FontWeight.Bold else FontWeight.Normal)
     )
 }

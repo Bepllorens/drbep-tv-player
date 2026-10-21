@@ -6205,8 +6205,19 @@ public class MainActivity extends FragmentActivity {
         final boolean querySaved=archiveState.getSavedOnly();final int queryOffset=archiveState.getOffset();
         ChannelItem playing=currentPlaybackU7dChannel!=null?currentPlaybackU7dChannel:getCurrentPlaybackChannelItem();
         final String stripChannel=playing==null?"":playing.id;
-        if(archiveAvailability!=null)for(ChannelItem c:available)if(!isOrangeChannel(c))archiveAvailability.schedule(availabilityScope,c,()->postUiIfAlive(()->{if(generation==archiveGeneration)publishArchiveEntries(saved);}));
+        final ArchiveAvailability availability = archiveAvailability;
         archivePresentationExecutor.execute(()->{
+        if(generation!=archiveGeneration || revision!=archivePublishRevision)return;
+        // Per-channel preference/identity checks must not hold up remote input.
+        // Scheduling and subsequent availability reads stay ordered on this worker.
+        if(availability!=null)for(ChannelItem c:available)if(!isOrangeChannel(c)) {
+            try {
+                availability.schedule(availabilityScope,c,()->postUiIfAlive(()->{if(generation==archiveGeneration)publishArchiveEntries(saved);}));
+            } catch (java.util.concurrent.RejectedExecutionException closed) {
+                // The activity can close its availability worker while this batch is running.
+                return;
+            }
+        }
         if(generation!=archiveGeneration || revision!=archivePublishRevision)return;
         ArchivePageTrace.mark(pageTrace,revision,"queryStart");
         long queryStarted=android.os.SystemClock.elapsedRealtime();
@@ -19750,6 +19761,7 @@ public class MainActivity extends FragmentActivity {
             if ("Inicio".equals(discoveryHomeState.section)) showHomeExitConfirmation(dialogHolder[0]);
             else dialogHolder[0].dismiss();
         };
+        discoveryHomeState.requestExit = () -> showHomeExitConfirmation(dialogHolder[0]);
         final StartupHubState[] latestHomeState = { state };
         final long[] lastHomeNavigation = { 0L };
         StartupHomeHubUiModel model = buildStartupHomeHubModel(state, open, close);
@@ -19905,6 +19917,7 @@ public class MainActivity extends FragmentActivity {
             uiHandler.removeCallbacks(homeEpgTick);
             if (startupSummaryGate.close(dialogGeneration)) {
                 discoveryHomeState.refreshHome = null;
+                discoveryHomeState.requestExit = null;
                 startupSummaryUpdater = null;
                 if (startupSummaryRequests != null) {
                     int cancelled = startupSummaryRequests.activeRequestCount();
@@ -25919,6 +25932,20 @@ public class MainActivity extends FragmentActivity {
                 getString(R.string.timeline_program_action_hint)
         );
         model.programmeMetadata=programmeMetadata(channel,program);
+        if (channel != null && program != null && U7dChannelPolicy.isMovistarChannel(channel)
+                && (program.icon == null || program.icon.trim().isEmpty() || program.icon.equals(channel.logoUrl))) {
+            model.artworkLoader = () -> {
+                long start = parseIsoMillis(program.startTime);
+                if (start <= 0) return "";
+                String day = java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.of("Europe/Madrid")).toLocalDate().toString();
+                MovistarGuideRepository.Guide guide = directMovistarGuide().day(day, java.util.Collections.singletonList(channel));
+                JSONObject identity = guide.identity(channel);
+                for (EpgRepository.EpgProgram candidate : guide.programmes(channel, identity)) {
+                    if (parseIsoMillis(candidate.startTime) == start && MovistarGuideRepository.officialImage(candidate.icon)) return candidate.icon;
+                }
+                return "";
+            };
+        }
         return model;
     }
 

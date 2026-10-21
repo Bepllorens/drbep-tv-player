@@ -104,8 +104,7 @@ private fun TilePill(text: String, background: Color, foreground: Color) {
         style = TextStyle(
             color = foreground,
             fontSize = 10.sp,
-            fontWeight = FontWeight.Black
-        )
+            fontWeight = FontWeight.Black)
     )
 }
 
@@ -125,8 +124,7 @@ private fun TileText(
         style = TextStyle(
             color = color,
             fontSize = fontSize.sp,
-            fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium
-        )
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium)
     )
 }
 @Composable
@@ -141,7 +139,6 @@ private fun BoxScope.TileChip(text: String, color: Color, modifier: Modifier = M
         style = TextStyle(
             color = Color.White,
             fontSize = 13.sp,
-            fontWeight = FontWeight.Bold
-        )
+            fontWeight = FontWeight.Bold)
     )
 }

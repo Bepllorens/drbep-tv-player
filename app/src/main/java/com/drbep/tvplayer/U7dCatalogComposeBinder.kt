@@ -146,7 +146,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         listState.scrollToItem(0)
     }
     val back=Runnable { if(picker.isNotEmpty()) picker="" else if(detail) { returnToGrid=true;detail=false } else close.run() }
-    Column(Modifier.fillMaxSize().background(Color(0xD9090E16)).background(OfflineTvTheme.Menu.background).tvPanelBackHandler(back).padding(24.dp)) {
+    Column(Modifier.fillMaxSize().background(Color(0xD9090E16)).background(OfflineTvTheme.Menu.background).tvPanelBackHandler(back).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
             Column {
                 Text("Catchup · Últimos 7 días",24,true)
@@ -183,7 +183,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
             Button(s.channels[s.channel] ?: "Todos los canales",Modifier.focusRequester(channelFocus)) { returnToFilter="Canales";picker="Canales";pickerQuery="" }
             Button(s.genre.ifBlank { "Géneros" },Modifier.focusRequester(genreFocus)) { returnToFilter="Géneros";picker="Géneros";pickerQuery="" }
             ArchiveSearchField(s.query,{ s.query=it;detail=false },"Buscar título o canal…",
-                Modifier.weight(1f).padding(10.dp),{finishSearch(false)})
+                Modifier.weight(1f),{finishSearch(false)})
         }
         if(picker.isNotEmpty()) {
             Text("Filtrar: $picker",18,true)
@@ -197,7 +197,7 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
         } else Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
             if(!detail) Box(Modifier.fillMaxSize()) {
                 if(pageReady && visible.isEmpty()) Text(if(s.loading) "Cargando programas del día…" else if(s.savedOnly) "No hay programas guardados con estos filtros." else "No hay programas disponibles con estos filtros.",16)
-                LazyVerticalGrid(columns=GridCells.Adaptive(160.dp),state=listState,modifier=Modifier.fillMaxSize().graphicsLayer { alpha=if(pageReady)1f else 0f }.onPreviewKeyEvent {
+                LazyVerticalGrid(columns=GridCells.Adaptive(140.dp),state=listState,modifier=Modifier.fillMaxSize().graphicsLayer { alpha=if(pageReady)1f else 0f }.onPreviewKeyEvent {
                         !pageReady && it.nativeKeyEvent.keyCode!=android.view.KeyEvent.KEYCODE_BACK
                     }.drawWithContent { drawContent();if(pageReady)ArchivePageTrace.drawn(publishedDay) },
                     horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=8.dp)) {
@@ -296,13 +296,13 @@ private fun time(ms: Long) = java.text.SimpleDateFormat("HH:mm", java.util.Local
 }
 
 @Composable private fun Text(text:String,size:Int,bold:Boolean=false,max:Int=1,color:Color=Color.White) {
-    BasicText(text,Modifier.padding(vertical=3.dp),style=TextStyle(color,size.sp,if(bold)FontWeight.Bold else FontWeight.Normal),maxLines=max,overflow=TextOverflow.Ellipsis)
+    BasicText(text,Modifier.padding(vertical=2.dp),style=TextStyle(color,size.sp,if(bold)FontWeight.Bold else FontWeight.Normal),maxLines=max,overflow=TextOverflow.Ellipsis)
 }
 @Composable private fun Button(label:String,modifier:Modifier=Modifier,active:Boolean=false,tint:Color?=null,action:()->Unit) {
     var focus by remember { mutableStateOf(false) }
     Box(modifier.widthIn(max=180.dp).onFocusChanged{focus=it.isFocused}.border(2.dp,if(focus)OfflineTvTheme.Colors.focus else Color.Transparent)
         .background(if(active && tint!=null)tint.copy(alpha=.20f) else if(focus)OfflineTvTheme.Menu.selected else Color.Transparent)
-        .clickable(onClick=action).tvButtonSemantics(label=label).padding(8.dp)) {
+        .clickable(onClick=action).tvButtonSemantics(label=label).padding(horizontal=8.dp,vertical=5.dp)) {
         Column { Text(label,14,color=tint?:Color.White);if(tint!=null)Box(Modifier.width(38.dp).height(if(active)3.dp else 1.dp).background(tint)) }
     }
 }

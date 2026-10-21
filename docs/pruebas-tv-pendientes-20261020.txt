@@ -1,8 +1,10 @@
 DRBEP: PRUEBAS PENDIENTES CON TV ENCENDIDA
-Actualizado 20-10-2026. Desarrollo en .185; ningun resultado marcado sin prueba.
-Estado actual: pruebas audiovisuales pendientes. Fire despierto por ADB, pero
-ultima respuesta de TV por HDMI-CEC indica standby. No usar esa sesion como
-referencia de rendimiento de video. No hay una tarea programada de vigilancia.
+Actualizado 21-10-2026. TV apagada: usuario en el trabajo.
+No hacer pruebas audiovisuales ni usar resultados con HDMI apagado como referencia.
+Los checks originales siguen pendientes salvo evidencia explicitamente documentada.
+Comparaciones del 20/10 (TV encendida) en zap-movistar-hls-20261020.txt:
+revisar ese informe antes de repetir; Fire termina con APK de referencia.
+No hay vigilancia programada: esperar al aviso del usuario.
 
 PREPARACION
 [ ] Confirmar TV encendida, entrada Fire y mando libre.
@@ -31,7 +33,7 @@ Ambas opciones exigen updateChannel=beta y son false por defecto.
 
 2. ZAPEO CON MANDO
 [ ] Pulsacion aislada CH+/CH- inmediata (sin espera artificial).
-[ ] Ráfaga/mantener tecla: primer canal inmediato y ultimo tras 250 ms sin entrada.
+[ ] Ráfaga/mantener tecla: primer canal inmediato y ultimo tras 40-100 ms sin entrada (variante adaptativa).
 [ ] Verificar sumatorio exacto de pulsaciones, direccion inversa y wrap.
 [ ] No abrir todos los canales intermedios ni nuevas sesiones innecesarias.
 [ ] Volver/Ajustes/otra seleccion/pasar a segundo plano cancela la cola.
@@ -228,3 +230,77 @@ escrituras ajenas no fuerzan repeticion. Medir p95 en dispositivo.
 42. Limpieza de retencion por lote
 Actualizar varios canales, comprobar guardados/caducados y rollback ante fallo
 en Android; medir consultas durante escritura. Esquema y retencion intactos.
+
+43. Transporte multimedia reutilizable (21/10)
+[ ] TV encendida, entrada Fire y mando libre.
+[ ] A/B aislado con reusePlaybackTransport, fastHlsStartup/coalesceRemoteZap=false.
+[ ] Movistar HLS, no runtime: mismo conjunto, aperturas frias/calientes y rafagas.
+[ ] Primer frame, cortes, errores y memoria; distinguir ahorro de construccion
+    de clientes del pool de conexiones que ya se compartia anteriormente.
+[ ] Retorno a miniatura, VOD, catchup y multiview; recuperacion y cambios de timeout.
+[ ] Comprobar que cancelacion de un canal no cancela el siguiente.
+[ ] Licencias conservan su fabrica anterior; no cambiar rutas La 1/Vamos.
+[ ] Xiaomi por separado, cuando disponible.
+Ver playback-transport-reuse-20261021.txt. No instalar/publicar automaticamente.
+
+44. Parrillas de imagenes agrupadas (21/10)
+[ ] Comparar coalesceArtworkGrids=false/true, sin mezclar otras opciones nuevas.
+[ ] Mismos canales/dias, cache fria/caliente; imagen visible y p95 del mando.
+[ ] Muchos programas del mismo dia y varios canales: identidad de cada imagen.
+[ ] Cola saturada, error de red, fallback y reintento al volver.
+[ ] Cerrar pantalla, trim y reapertura con cargas pendientes.
+[ ] Tira catchup, acceso a timeshift, miniatura y retorno al directo intactos.
+Ver artwork-singleflight-20261021.txt. TV apagada: no validado en dispositivo.
+
+45. Consultas de progreso y pendientes TMDB (21/10)
+[ ] Comparar recuentos y siguiente titulo con todas/lista/tipo/grupo.
+[ ] Pausa, reanudar, reintentar y revision por paginas conservan el ambito.
+[ ] Series con episodios en varios grupos, ocultos y listas reimportadas.
+[ ] Medir SQLite Android y fluidez con reproduccion e indexacion simultaneas.
+[ ] Revisar especialmente recuento por tipo sin lista seleccionada.
+Ver metadata-scope-query-20261021.txt. Sin validacion Fire mientras TV apagada.
+
+46. Preparacion ligera de cola TMDB (21/10)
+[ ] Iniciar por todas/lista/tipo/grupo con peliculas y series.
+[ ] Totales, ocultos, representante visible y generaciones activos/preview.
+[ ] Cola existente: done/error/pending conservados al preparar de nuevo.
+[ ] Pausa/reanudar/reintentar y refresco del panel, sin mezclar selecciones.
+[ ] Medir preparacion y fluidez durante reproduccion; grupos por separado.
+Ver metadata-queue-preparation-20261021.txt. Pendiente con TV encendida.
+
+47. Filtro por grupo TMDB especializado (21/10)
+[ ] Peliculas/series/ambos, lista y grupo: mismos totales y candidatos.
+[ ] Series con representante en otro grupo, episodios ocultos y reimportacion.
+[ ] Revisar/reintentar resultados solo del ambito seleccionado.
+[ ] Comparar coste de preparacion y progreso en SQLite Android con video activo.
+Ver metadata-group-filter-20261021.txt. Pendiente con TV encendida.
+
+48. Preparacion TMDB transaccional (21/10)
+[ ] Listas grandes: preparar con video activo; medir escritor/fluidez.
+[ ] Pausa/cancelacion y reanudacion mientras se prepara, sin cola parcial.
+[ ] Panel ve cola anterior o completa; reintento conserva done y no duplica.
+[ ] Confirmar estados tras cerrar/reabrir y funcionamiento de WorkManager.
+Ver metadata-queue-atomic-20261021.txt. Pendiente con TV encendida.
+
+49. Inter en la interfaz (21/10)
+[ ] Revisar Inicio, TV, guia, catchup, peliculas/series, biblioteca y ajustes.
+[ ] Dialogos, teclado/buscador, mensajes, botones y controles: sin recortes.
+[ ] Acentos, simbolos, horas, pesos y foco visibles en Fire y tablet.
+[ ] Comparar miniatura, zapeo y tiempos de apertura con referencia.
+[ ] Preferencias de subtitulos e iconos conservados.
+No instalar hasta TV encendida; no publicar sin validacion.
+
+50. Lateral principal compacto (21/10)
+[ ] Inicio: foco inicial en miniatura y OK a pantalla completa.
+[ ] Navegacion lateral: etiquetas sin robo de foco ni desplazamiento de contenido.
+[ ] Seleccion cyan distinta del foco blanco; scroll en pantallas pequenas.
+[ ] Inicio/TV/biblioteca y accesos a peliculas/series/guia/catchup conservados.
+[ ] Ajustes y Salir accesibles; cancelar salida restaura navegacion.
+[ ] Tablet: objetivos tactiles y accesibilidad.
+Ver main-rail-20261021.txt. Sin pruebas Fire hasta TV encendida.
+
+51. Cola TMDB: lista de series antes de agrupacion (21/10)
+[ ] Todas/lista/grupo: mismos candidatos y progreso, ocultos/generaciones.
+[ ] Preparar lista grande con video activo; medir SQLite Android y fluidez.
+[ ] Pausa/reanudar y estado done conservados; peliculas sin regresion.
+Ver metadata-source-20261021.txt. Pendiente TV encendida.

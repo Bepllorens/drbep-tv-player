@@ -1,0 +1,36 @@
+DRBEP en Android TV Emulator — Windows Intel — 21/10/2026
+
+Compilacion exclusivamente en .185:
+source /srv/drbep-dev/env.sh
+cd /srv/drbep-dev/repos/drbep-tv-player
+bash ./gradlew --no-daemon --max-workers=1 :app:assembleDebug :app:testDebugUnitTest -PupdateChannel=beta -PemulatorAbiOnly=true -PfireAbiOnly=false
+
+La opcion emulatorAbiOnly selecciona x86_64 y deshabilita variantes release.
+Por defecto permanece desactivada; no altera builds normales ARM.
+APK debug con firma de desarrollo; no publicar en beta/stable.
+Contiene los cambios locales pendientes, no solo los commits de Git.
+
+En Windows:
+1. Android Studio > Device Manager > Create Virtual Device > TV.
+2. Elegir Android TV y una imagen x86_64 (API 30 o posterior).
+3. Descargar la imagen, terminar y arrancar el emulador.
+4. PowerShell, con acceso SSH propio autorizado al .185:
+scp drbep-dev@192.168.93.185:/srv/drbep-dev/artifacts/emulator-20261021/drbep-772-inter-rail-x86_64-debug.apk "$env:USERPROFILE/Downloads/"
+5. Arrastrar la APK descargada a la ventana del emulador.
+6. Abrir DRBEP. Usar controles direccionales de TV/teclado para navegar.
+Alternativa, con el emulador arrancado y un unico dispositivo:
+& "$env:LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe" install -r "$env:USERPROFILE/Downloads/drbep-772-inter-rail-x86_64-debug.apk"
+
+Si el SDK tiene otra ubicacion, usar la ruta indicada por SDK Manager.
+Si SSH pide acceso no disponible, autorizar la clave publica del PC o usar
+su conexion SFTP existente; no copiar claves privadas del Mac.
+
+No actualizar esta instalacion desde el canal beta: las APK publicadas son ARM
+y llevan firma release distinta. Instalar manualmente futuras builds x86_64.
+El emulador es una instalacion nueva; iniciar sesion/configurar normalmente.
+Entrar en la cuenta puede registrar un nuevo cliente como cualquier instalacion.
+No se incluyen credenciales en la APK.
+
+Sirve para revisar interfaz/foco; no prueba codecs, DRM, rendimiento ni HDMI
+del Fire. Las pruebas en Fire siguen pendientes hasta TV encendida.
+No se ha instalado ni ejecutado esta APK en el PC del usuario desde .185.

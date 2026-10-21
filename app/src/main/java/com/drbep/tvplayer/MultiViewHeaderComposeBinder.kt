@@ -49,8 +49,7 @@ private fun MultiViewHeader(model: MultiViewHeaderUiModel) {
             style = TextStyle(
                 color = Color.White,
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
         if (model.hint.isNotBlank()) {
             BasicText(
@@ -60,8 +59,7 @@ private fun MultiViewHeader(model: MultiViewHeaderUiModel) {
                 style = TextStyle(
                     color = OfflineTvTheme.Colors.textMuted,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                    fontWeight = FontWeight.Medium)
             )
         }
         Spacer(modifier = Modifier.width(2.dp))
@@ -77,8 +75,7 @@ private fun MultiViewHeader(model: MultiViewHeaderUiModel) {
             style = TextStyle(
                 color = Color.White,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
     }
 }

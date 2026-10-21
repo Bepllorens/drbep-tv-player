@@ -1,0 +1,87 @@
+Comparacion HLS y zapeo en Fire .190 — 20-10-2026
+
+Base Android: 3666e66, rama qoder/disneyplus-vod-582, version 772.
+Compilacion en .185. Pruebas ADB en Fire con TV encendida e imagen confirmada.
+Sin cambios en produccion, stable, rutas, asociaciones, claves o licencias.
+No se publica ni se activa por defecto ningun experimento.
+
+Variantes del MISMO codigo:
+A: fastHlsStartup=false; coalesceRemoteZap=false.
+B: fastHlsStartup=true; coalesceRemoteZap=false.
+C: fastHlsStartup=false; coalesceRemoteZap=true.
+APK ARM32 firmadas con la firma de pruebas ya instalada en el Fire.
+Instalacion con conservacion de datos. Al terminar se restaura A (beta 772).
+Estas APK no son el binario universal publicado: no promoverlas sin validar
+identidad de firma/ABI y autorizacion expresa.
+
+HLS
+Se descartaron las tandas A-hls/B-hls porque el reproductor resolvia DASH.
+PlutoTV usa fallback y tambien esta excluido del experimento.
+La comparacion valida A-runtime/B-runtime alterna Runtime Crimen (1110506)
+y Aguila Roja (1084170), 10 aperturas por variante, 32 s entre aperturas.
+B se midio primero, A despues; no es un ensayo aleatorizado ni permite
+atribuir toda diferencia a la politica de buffer.
+Son aperturas con la app ya arrancada, no diez arranques en frio.
+Se confirma fastHls=true en B y false en A; mismo canal final en cada par.
+
+Tiempo desde intento de reproduccion hasta primer fotograma:
+                       A normal       B HLS rapido
+Mediana                 1922 ms         1798,5 ms
+p95 (n=10; maximo)       3545 ms         2555 ms
+Errores                    0               0
+Rebuffer durante tandas    0               0
+
+Diferencia observada de mediana: -123,5 ms (-6,4%).
+Mediana desde ultimo manifiesto hasta imagen: A 330 ms, B 259,5 ms.
+El peor arranque A consume 3187 de sus 3545 ms hasta el ultimo manifiesto.
+Por tanto la carga de la fuente domina; no atribuir la reduccion del maximo
+al buffer de 500 ms. La muestra es pequena y solo incluye dos canales.
+PSS puntual: A/B segun archivos privados *memory.txt; no demuestra ahorro,
+pues B lleva mas navegacion y tiempo vivo. No comparar memoria causalmente.
+No se han extendido los criterios a Movistar DVR, catchup, fallback o VOD.
+
+Zapeo, ensayo separado
+A y C: mismo origen Aguila Roja, mismo orden de teclas.
+Dos pulsaciones aisladas, tres rafagas de seis (subir, bajar, mezcla)
+y cuatro pulsaciones seguidas de Atras para cancelar.
+La caja negra correlaciona ZAP_PRESS, ZAP_TUNE y ZAP_FRAME; cero rechazados.
+Los tiempos siguientes son de la ultima pulsacion correspondiente al
+fotograma final, no del primer pulso de toda la rafaga.
+
+                                A normal    C agrupado
+Sintonizaciones, 3 rafagas          18           6
+Mediana pulsacion->imagen         1809 ms     1936 ms
+Peor de las tres rafagas           3214 ms     2010 ms
+Espera agrupacion                  0-1 ms     250-251 ms
+Errores                              0            0
+
+Reduccion de sintonizaciones: 67%. Mediana +127 ms (+7%); no es
+una mejora uniforme de latencia. El maximo observado baja, pero tres
+rafagas no permiten una conclusion estadistica sobre los picos.
+Destinos iguales: Runtime Thriller, Aguila Roja, Aguila Roja.
+Pulsaciones aisladas: no se introduce espera de cola (0 ms en A y C).
+Tiempos aislados A: 2802/1710 ms; C: 2761/2336 ms.
+Atras: A inicia cuatro cambios; C inicia el primero y cancela el pendiente,
+quedando en Runtime Crimen. No se entrega despues un destino obsoleto.
+
+Decision
+Mantener ambos flags desactivados por defecto; comportamiento de referencia
+restaurado en Fire. La agrupacion reduce trabajo, pero su espera merece
+ajuste y una muestra mayor antes de activarla. HLS muestra una reduccion
+modesta que requiere repeticion intercalada A/B y mas fuentes.
+No se ha modificado codigo funcional durante esta comparacion.
+
+Evidencia privada en .185:
+ /srv/drbep-dev/reviews/hls-zap-ab-20261020/
+ A-runtime.json, B-runtime.json, hls-summary.json
+ A-zap.json, C-zap.json, zap-summary.json, stability.json
+ A.apk/B.apk/C.apk, runtime.png, *memory.txt
+ blackbox-private.zip y panel-*-private.* NO incorporar a Git.
+
+SHA256:
+ A ad25328c3983d035ced09fce1aa313b50befe8b97765abd717b65b15f7480630
+ B f9699b2aeab44022182b2a5728a529e4c35fa1aabc3acde354a3015beb078c2c
+ C cdcd743c5fc6d9c04819c1e44e0c5419a658ca9b9206f1ce1c0db578b5ed49da
+
+Cierre: A reinstalada correctamente, datos conservados. Imagen confirmada
+en miniatura despues de pantalla completa (final.png).

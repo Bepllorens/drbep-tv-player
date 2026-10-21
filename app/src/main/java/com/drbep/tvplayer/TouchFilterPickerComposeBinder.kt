@@ -85,8 +85,7 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel, artworkBinder: To
                         style = TextStyle(
                             color = Color.White,
                             fontSize = if (compact) 22.sp else 28.sp,
-                            fontWeight = FontWeight.Black
-                        )
+                            fontWeight = FontWeight.Black)
                     )
                     if (model.subtitle.isNotBlank()) {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -97,8 +96,7 @@ private fun TouchFilterPicker(model: TouchFilterPickerUiModel, artworkBinder: To
                             style = TextStyle(
                                 color = OfflineTvTheme.Colors.textSoft,
                                 fontSize = if (compact) 12.sp else 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                                fontWeight = FontWeight.Medium)
                         )
                     }
                 }
@@ -151,8 +149,7 @@ private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean, a
                 style = TextStyle(
                     color = titleColor,
                     fontSize = if (compact) 16.sp else 18.sp,
-                    fontWeight = FontWeight.Black
-                )
+                    fontWeight = FontWeight.Black)
             )
             if (row.subtitle.isNotBlank()) {
                 Spacer(modifier = Modifier.height(3.dp))
@@ -163,8 +160,7 @@ private fun TouchFilterRow(row: TouchFilterPickerRowUiModel, compact: Boolean, a
                     style = TextStyle(
                         color = subtitleColor,
                         fontSize = if (compact) 12.sp else 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                        fontWeight = FontWeight.Bold)
                 )
             }
         }
@@ -212,8 +208,7 @@ private fun TouchFilterLogo(
                 style = TextStyle(
                     color = textColor,
                     fontSize = if (compact) 12.sp else 13.sp,
-                    fontWeight = FontWeight.Black
-                )
+                    fontWeight = FontWeight.Black)
             )
         }
     }
@@ -231,7 +226,6 @@ private fun TouchFilterChip(text: String) {
         style = TextStyle(
             color = OfflineTvTheme.Colors.textSoft,
             fontSize = 11.sp,
-            fontWeight = FontWeight.Black
-        )
+            fontWeight = FontWeight.Black)
     )
 }

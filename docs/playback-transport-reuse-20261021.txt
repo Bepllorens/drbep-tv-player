@@ -1,0 +1,48 @@
+Transporte multimedia reutilizable — 21/10/2026
+
+Objetivo
+Evitar reconstruir OkHttpClient y su interceptor en cada peticion multimedia.
+No modifica buffers, URLs, cabeceras, DRM, autenticacion ni fuentes. Los clientes
+anteriores ya compartian el pool de conexiones: esto NO introduce una nueva
+reutilizacion de sockets, solo reduce construccion de objetos/configuracion.
+
+Implementacion
+NetworkClients.PlaybackCallFactory admite reuseTransport, false por defecto.
+Dos slots por fabrica (ruta protegida/normal), como maximo un cliente por slot.
+Cada slot se invalida si cambia connect/read timeout. Cliente publicado bajo
+bloqueo; las peticiones y Call se crean fuera del bloqueo. No se guarda Request.
+Llamadas en curso mantienen su cliente y timeout; siguientes usan la nueva
+configuracion. No se cancela el pool ni se comparte la cancelacion de Call.
+La fabrica de licencias sigue usando el constructor de dos argumentos: sin cache.
+PlayerController solo lo activa mediante BuildConfig.REUSE_PLAYBACK_TRANSPORT.
+Gradle: -PupdateChannel=beta -PreusePlaybackTransport=true.
+Apagado por defecto y no activable en stable. Flags HLS/zapeo independientes.
+
+Validacion sin red
+PlaybackTransportReuseTest cubre:
+- Reutilizacion del transporte, Call/cabeceras/cancelacion independientes.
+- Cambios de timeout sin alterar clientes en curso.
+- Rutas normal/protegida con tiempos propios, mismo pool/DNS/listener/retry.
+- Constructor anterior conserva comportamiento.
+- Cuarenta solicitudes concurrentes comparten transporte.
+NetworkClientsTest y LicenseNetworkTransportTest conservan sus comprobaciones.
+Ninguna prueba envia peticiones ni usa credenciales reales.
+
+Limites
+No hay medida de ahorro de milisegundos en Fire ni validacion audiovisual.
+La TV esta apagada por indicacion del usuario. No instalar ni probar video
+hasta que confirme disponibilidad. No publicar este cambio.
+La reduccion de construcciones no demuestra menor tiempo hasta la imagen.
+
+Proxima comparacion
+A: reusePlaybackTransport=false; B: true. Mantener fastHlsStartup y
+coalesceRemoteZap=false en ambas para aislar este cambio.
+Movistar HLS (no runtime): mismas aperturas/rafagas, frio y caliente.
+Medir primer frame, rebuffer, errores y memoria; variar timeout mediante
+recuperacion normal. Verificar retorno a miniatura, VOD, catchup y multiview.
+No modificar las rutas de La1/Vamos ni produccion.
+
+Resultado local 21/10: testDebugUnitTest + assembleDebug con la opcion activa
+completados correctamente. 835 tests, cero fallos/errores. APK debug solo de
+compilacion, no instalada ni publicable como release. Log privado en
+/srv/drbep-dev/reviews/transport-reuse-20261021-final.log.

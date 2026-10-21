@@ -1,5 +1,7 @@
 package com.drbep.tvplayer
 
+import kotlinx.coroutines.launch
+
 import kotlin.coroutines.resume
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -472,29 +474,37 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
         .background(CachedMenuFade.horizontal(0f to Color(0xFA09121C), 0.38f to Color(0xE009121C), 0.75f to Color(0x7509121C), 1f to Color.Transparent))) {
         Box(Modifier.fillMaxSize().background(CachedMenuFade.vertical(0f to Color(0x1809121C), 0.45f to Color.Transparent, 1f to Color(0xF009121C))))
         Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(if (section == "Inicio") 34.dp else 20.dp)) {
-            var navigationFocused by remember { mutableStateOf(false) }
-            val railWidth by androidx.compose.animation.core.animateDpAsState(if (navigationFocused || touchLayout) 146.dp else 66.dp, label = "homeRail")
-            Column(Modifier.width(railWidth).fillMaxHeight().onFocusChanged { navigationFocused = it.hasFocus }.focusGroup()
-                .background(OfflineTvTheme.Menu.background).padding(horizontal = 6.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(painterResource(R.drawable.drbep_menu_logo), model.brand, Modifier.size(if (navigationFocused || touchLayout) 72.dp else 50.dp))
-                Spacer(Modifier.height(8.dp))
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    DiscoveryNavItem("Buscar", "⌕", (navigationFocused || touchLayout), false, action = { model.onSearch?.run() })
-                    listOf("Inicio" to "⌂", "En directo" to "TV", "Mi biblioteca" to "☆").forEach { (name, icon) ->
-                        DiscoveryNavItem(name, icon, (navigationFocused || touchLayout), section == name,
+            Column(Modifier.width(68.dp).fillMaxHeight().focusGroup()
+                .background(CachedMenuFade.horizontal(0f to Color(0xE609121C), 0.72f to Color(0xC009121C), 1f to Color.Transparent),
+                    RoundedCornerShape(28.dp))
+                .padding(horizontal = 6.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(painterResource(R.drawable.drbep_menu_logo), model.brand, Modifier.size(48.dp))
+                Spacer(Modifier.height(10.dp))
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MainRailItem("Buscar", R.drawable.rail_search, false, action = { model.onSearch?.run() })
+                    listOf("Inicio" to R.drawable.rail_home, "En directo" to R.drawable.rail_tv,
+                        "Mi biblioteca" to R.drawable.rail_library).forEach { (name, icon) ->
+                        MainRailItem(name, icon, section == name,
                             modifier = if (name == discovery.section) Modifier.focusRequester(initialFocus) else Modifier,
                             action = { openSection(name) })
                     }
-                    listOf("Películas" to "▶", "Series" to "▤").forEach { (name, icon) ->
+                    listOf("Películas" to R.drawable.rail_movies, "Series" to R.drawable.rail_series).forEach { (name, icon) ->
                         model.primaryCards.firstOrNull { it.title == name }?.let { card ->
-                            DiscoveryNavItem(name, icon, (navigationFocused || touchLayout), false, action = { card.onClick?.run() })
+                            MainRailItem(name, icon, false, action = { card.onClick?.run() })
                         }
                     }
-                    model.onLiveGuide?.let { action -> DiscoveryNavItem("Guía", "▤", (navigationFocused || touchLayout), false, action = { action.run() }) }
-                    model.onLiveHistory?.let { action -> DiscoveryNavItem("Últimos 7 días", "↶", (navigationFocused || touchLayout), false, action = { action.run() }) }
-                    DiscoveryNavItem("Ajustes", "⚙", (navigationFocused || touchLayout), false, action = { model.onSettings?.run() })
+                    model.onLiveGuide?.let { action -> MainRailItem("Guía", R.drawable.rail_guide, false, action = { action.run() }) }
+                    model.onLiveHistory?.let { action -> MainRailItem("Últimos 7 días", R.drawable.rail_history, false, action = { action.run() }) }
                 }
-                BasicText("BETA ${AppBuildInfo.versionCode()}", Modifier.padding(top = 4.dp), style = TextStyle(Color(0xFF8094A8), 9.sp))
+                Spacer(Modifier.height(8.dp))
+                MainRailItem("Ajustes", R.drawable.rail_settings, false, action = { model.onSettings?.run() })
+                discovery.requestExit?.let { action ->
+                    MainRailItem("Salir", R.drawable.rail_power, false, action = { action.run() })
+                }
+                BasicText("BETA " + AppBuildInfo.versionCode(), Modifier.padding(top = 6.dp),
+                    style = TextStyle(Color(0xFF8094A8), 9.sp))
             }
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when (section) {
@@ -814,6 +824,11 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
     var selectedId by remember(provider) { mutableStateOf(discovery.selectedLiveChannels[provider] ?: discovery.selectedLiveChannel) }
     val selectedChannel = { channels.firstOrNull { it.channelId == selectedId } }
     val navigationCadence = remember(provider, query) { TvNavigationCadence() }
+    val channelNavigationScope = androidx.compose.runtime.rememberCoroutineScope()
+    val channelNavigationJob = remember(provider, query) { arrayOfNulls<kotlinx.coroutines.Job>(1) }
+    androidx.compose.runtime.DisposableEffect(channelNavigationJob) {
+        onDispose { channelNavigationJob[0]?.cancel() }
+    }
     val positionKey = "live:$provider:$query"
     val gridState = remember(positionKey) { androidx.compose.foundation.lazy.LazyListState(
         discovery.scrollPositions[positionKey] ?: 0, discovery.scrollPositions["$positionKey:offset"] ?: 0) }
@@ -954,9 +969,29 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                                 val key = event.nativeKeyEvent
                                 val down = key.action == android.view.KeyEvent.ACTION_DOWN
                                 val ok = key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || key.keyCode == android.view.KeyEvent.KEYCODE_ENTER
+                                if (down && key.keyCode != android.view.KeyEvent.KEYCODE_DPAD_UP && key.keyCode != android.view.KeyEvent.KEYCODE_DPAD_DOWN) channelNavigationJob[0]?.cancel()
                                 if (down && movingChannel == null &&
                                     (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP || key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN)) {
                                     navigationCadence.onNavigation(key.eventTime, key.repeatCount)
+                                    val targetIndex = index + if (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) -1 else 1
+                                    if (targetIndex in channels.indices) {
+                                        channelNavigationJob[0]?.cancel()
+                                        channelNavigationJob[0] = channelNavigationScope.launch {
+                                            val target = channels[targetIndex].channelId
+                                            val visible = gridState.layoutInfo.visibleItemsInfo
+                                            if (visible.none { it.index == targetIndex }) {
+                                                val first = if (targetIndex < index) targetIndex else
+                                                    (targetIndex - visible.size.coerceAtLeast(1) + 1).coerceAtLeast(0)
+                                                gridState.scrollToItem(first)
+                                            }
+                                            repeat(3) {
+                                                withFrameNanos { }
+                                                val requester = channelFocus[target]
+                                                if (requester != null && runCatching { requester.requestFocus(); true }.getOrDefault(false)) return@launch
+                                            }
+                                        }
+                                        return@onPreviewKeyEvent true
+                                    }
                                 }
                                 if (movingChannel != null) {
                                     val delta = when (key.keyCode) {

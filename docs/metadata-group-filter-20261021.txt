@@ -1,0 +1,40 @@
+Filtro de grupo TMDB especializado — 21/10/2026
+
+Problema
+El predicado comun por grupo mezclaba identidad de pelicula y nombre de serie
+mediante OR. Cuando el tipo ya es conocido puede impedir aprovechar la busqueda
+por identidad/ocurrencia y recorrer muchas entradas del grupo.
+
+Cambio
+MetadataIndexSelection.groupPredicate(alias,kind) mantiene exactamente el mismo
+EXISTS y sus controles de generacion, fuente, tipo, grupo y ocultacion.
+Para movie usa identidad+ocurrencia; para series usa nombre de serie.
+Tipo mixto conserva GROUP_SQL anterior. Alias/tipos se validan; el grupo sigue
+siendo parametro. MetadataIndexQueue usa el tipo conocido de cada repositorio.
+No modifica esquema, indices, fuentes, peticiones, resultados almacenados ni DRM.
+
+Pruebas
+14 pruebas SQLite de ambitos, grupos, reintento y revision: incluye comprobacion
+especializada antes/despues de ocultar episodios y cambiar generacion activa.
+Benchmark con 24.000 filas: 62 equivalencias de candidatos/estados existentes.
+El ensayo aislado compara misma cola ligera con filtro anterior/nuevo; las
+columnas before_ms y after_ms tambien comparan contra consulta visual historica.
+Usar queue_previous_group_ms contra after_ms para aislar este bloque.
+No extrapolar Linux en memoria a Android.
+
+Regresion y compilacion
+{'tests': 849, 'failures': 0, 'errors': 0}
+testDebugUnitTest + assembleDebug correctos. No se instala APK debug.
+Logs/evidencia privados en /srv/drbep-dev/reviews/metadata-group-20261021-*.
+
+Pendiente Fire
+Preparar y revisar peliculas/series por grupo; ocultar episodios, reimportar
+lista y cambiar seleccion durante indexacion. Totales y reintentos correctos.
+Medir preparacion/progreso/p95 con reproduccion activa en SQLite Android.
+Con ambos tipos conservar resultados. La TV esta apagada: no validado alli.
+Sin despliegue/publicacion ni acciones sobre Fire, stable o produccion.
+
+Medianas aisladas Linux con grupo Drama, misma cola ligera:
+movie: 537.361 -> 5.322 ms
+series: 124.182 -> 102.139 ms
+Sin grupo no cambia el SQL; diferencias de esas filas son variacion del ensayo.

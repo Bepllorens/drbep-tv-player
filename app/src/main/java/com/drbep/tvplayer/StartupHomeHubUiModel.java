@@ -43,6 +43,7 @@ public final class StartupHomeHubUiModel {
         public String librarySelectedId = "";
         public Runnable dismissLibraryActions;
         public Runnable refreshHome;
+        public Runnable requestExit;
         public java.util.function.Consumer<String> selectLiveProvider;
         public java.util.function.BiConsumer<String, java.util.List<String>> saveChannelOrder;
         public java.util.function.Consumer<java.util.List<String>> saveLiveOrder;

@@ -57,10 +57,18 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
             synchronized(lock) {
                 if(!active())return Result.success()
                 if(prefs(ctx).getBoolean("prepare",false)) {
-                    // Generation changes leave stale queue rows harmless; remove them before a new scan.
-                    db.execSQL("DELETE FROM metadata_index WHERE NOT EXISTS(SELECT 1 FROM sources s WHERE s.id=metadata_index.source AND COALESCE(s.active,s.preview)=metadata_index.generation)")
-                    repos.filter{selection.kind.isEmpty() || it.kind==selection.kind}.forEach{it.queueIndex(selection.source,selection.group)}
-                    prefs(ctx).edit().putBoolean("prepare",false).commit()
+                    val prepared=MetadataIndexQueue.prepare(object:MetadataIndexQueue.Transaction {
+                        override fun begin() { db.beginTransaction() }
+                        override fun successful() { db.setTransactionSuccessful() }
+                        override fun end() { db.endTransaction() }
+                    }, { active() }, {
+                        db.execSQL(MetadataIndexQueue.CLEAN_STALE)
+                        repos.filter{selection.kind.isEmpty() || it.kind==selection.kind}
+                            .forEach{it.queueIndex(selection.source,selection.group)}
+                    }, {
+                        check(prefs(ctx).edit().putBoolean("prepare",false).commit()) { "Queue marker unavailable" }
+                    })
+                    if(!prepared)return Result.success()
                 }
                 prefs(ctx).edit().putString("state","running").commit()
             }
@@ -188,7 +196,7 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
         @JvmStatic fun status(c:Context):String = synchronized(lock) {
             val p=prefs(c);val chosen=selection(c);val result=JSONObject().put("source",chosen.source).put("kind",chosen.kind).put("group",chosen.group).put("state",p.getString("state","idle")).put("enabled",p.getBoolean("enabled",false))
             var total=0
-            PlaylistDatabase.getInstance(c).readableDatabase.rawQuery("SELECT state,COUNT(*) FROM metadata_index WHERE "+chosen.where()+" GROUP BY state",chosen.args()).use{rows->
+            PlaylistDatabase.getInstance(c).readableDatabase.rawQuery("SELECT state,COUNT(*) FROM metadata_index WHERE "+chosen.countWhere()+" GROUP BY state",chosen.countArgs()).use{rows->
                 while(rows.moveToNext()){val count=rows.getInt(1);result.put(rows.getString(0),count);total+=count}
             }
             val sources=org.json.JSONArray()

@@ -3,7 +3,8 @@ package com.drbep.tvplayer;
 /** UI-thread queue: immediate first press, one trailing tune for a burst. */
 final class RemoteZapQueue<T> {
     static final long QUIET_MS = 1000;
-    static final long SETTLE_MS = 250;
+    static final long SETTLE_MS = 100;
+    static final long MIN_SETTLE_MS = 40;
     interface Scheduler {
         void post(Runnable task, long delayMs);
         void remove(Runnable task);
@@ -41,6 +42,11 @@ final class RemoteZapQueue<T> {
         int anchor = pendingIndex >= 0 ? pendingIndex : Math.max(0, host.currentIndex());
         int next = (int)((((long)anchor + delta) % count + count) % count);
         boolean immediate = lastPress == Long.MIN_VALUE || now < lastPress || now - lastPress >= QUIET_MS;
+        // Dense queued input needs less settling than a held key's slower repeats.
+        // Keep two intervals of margin, bounded by the tested 100 ms ceiling.
+        long interval = immediate ? SETTLE_MS : now - lastPress;
+        long settleMs = interval >= SETTLE_MS / 2
+                ? SETTLE_MS : Math.min(SETTLE_MS, Math.max(MIN_SETTLE_MS, interval * 2 + 10));
         lastPress = now;
         if (scheduled != null) scheduler.remove(scheduled);
         scheduled = null;
@@ -62,6 +68,6 @@ final class RemoteZapQueue<T> {
             }
         };
         scheduled = task;
-        scheduler.post(task, SETTLE_MS);
+        scheduler.post(task, settleMs);
     }
 }

@@ -1,0 +1,39 @@
+Fuente anterior, carteles EPG y lista TV — 21/10/2026
+
+Se retira la aplicacion de Inter de Compose, tema nativo, mensajes, buscador,
+Netflix y picons de iniciales. Se conserva el lateral nuevo y los cambios
+previos de rendimiento. Inter ya no se referencia desde estilos de la app;
+los recursos originales permanecen sin uso. Respaldo del cambio tipografico:
+/srv/drbep-dev/reviews/font-rollback-20261021.
+
+Catchup: la restauracion de fuente por si sola NO recuperaba dos filas.
+Cabecera/filtros/margenes compactados y minimo de columna 140dp. Fire 1080p:
+seis columnas y dos filas completas, incluida la tercera linea de cada tarjeta.
+Imagenes mantienen 4:3 sin estirarlas. Captura catchup-final.png.
+
+EPG: cache local con 3117 programas, 1856 con icono. El detalle mostraba logo
+cuando el programa no tenia icono; no habia recuperacion diferida del cartel.
+Se consulta la guia oficial del canal/dia solo al detenerse 350ms en el evento,
+en IO, cancelable; coincidencia de canal y comienzo exacto, sin buscar por
+parecidos ni cambiar asociaciones. Fallo conserva fallback. Verificado en
+Energy, Mentes criminales episodio 15: cartel y sinopsis visibles (epg-fixed.png).
+
+TV: traza de 18 pulsaciones revelo coste de UI, composicion/prefetch y modelos.
+Nueva navegacion por posicion pide foco al vecino y desplaza solo cuando no
+esta compuesto; se cancela al cambiar grupo/busqueda o salir de la fila.
+Recorrido Energy a M+ Deportes 3 anterior: mediana57/p95 300/p99 450ms.
+Recorrido inverso con cambio: mediana38/p95 133/p99 550ms.
+Es una comparacion preliminar, NO A/B controlado: cambia direccion, cache,
+emision y tiempos de carga. Persisten picos; no declarar totalmente fluido.
+Ambos bajo atrace gfx/view/sched, APK debug, Movistar HLS, Fire encendido.
+ADB roundtrip no se usa como latencia de interfaz. Sin cambios de backend,
+produccion, stable, publicacion ni commit/push.
+
+Validacion: 857 pruebas sin fallos para restauracion + EPG; compilaciones
+posteriores de layout y foco correctas. Evidencia privada en la ruta anterior.
+Pendiente: comparacion repetida misma direccion/canales, estabilidad prolongada,
+rapid-repeat, y tablet. El plan anterior permanece pendiente en sus documentos.
+
+APK final instalada conservando datos: fire-validated.apk
+SHA256 10abf3bec95964b569e2f65c178eb1f501dc9dc98f4e8f4e5e48bfbef515a78c
+Version visible sigue 772; compilacion local de pruebas, no publicada.

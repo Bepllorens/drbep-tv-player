@@ -55,8 +55,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
                 style = TextStyle(
                     color = Color(0xFF9BAFC1),
                     fontSize = if (compact) 9.sp else 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                    fontWeight = FontWeight.Bold)
             )
             Spacer(modifier = Modifier.weight(1f))
             if (model.contextLabel.isNotBlank()) {
@@ -97,8 +96,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
                                 style = TextStyle(
                                     color = Color.White,
                                     fontSize = if (compact) 7.sp else 8.sp,
-                                    fontWeight = FontWeight.Black
-                                )
+                                    fontWeight = FontWeight.Black)
                             )
                         }
                         Spacer(modifier = Modifier.width(5.dp))
@@ -108,8 +106,7 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
                         style = TextStyle(
                             color = OfflineTvTheme.Colors.textPrimary,
                             fontSize = if (compact) 9.sp else 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                            fontWeight = FontWeight.Bold)
                     )
                 }
             }
@@ -120,24 +117,21 @@ private fun OverlayNowPlayingCard(model: ChannelOverlayUi.NowPlayingModel, logoB
             style = TextStyle(
                 color = Color.White,
                 fontSize = if (compact) 12.sp else 13.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
         Spacer(modifier = Modifier.padding(top = 2.dp))
         BasicText(
             text = model.meta,
             style = TextStyle(
                 color = OfflineTvTheme.Colors.textSoft,
-                fontSize = if (compact) 9.sp else 10.sp
-            )
+                fontSize = if (compact) 9.sp else 10.sp)
         )
         Spacer(modifier = Modifier.padding(top = if (compact) 3.dp else 4.dp))
         BasicText(
             text = model.recent,
             style = TextStyle(
                 color = OfflineTvTheme.Colors.textMuted,
-                fontSize = if (compact) 9.sp else 10.sp
-            )
+                fontSize = if (compact) 9.sp else 10.sp)
         )
     }
 }

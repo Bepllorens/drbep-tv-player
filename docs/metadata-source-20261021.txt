@@ -1,0 +1,49 @@
+TMDB series: filtrar lista antes de agrupar — 21/10/2026
+
+Continuacion del bloque 48 de preparacion de cola, tras los cambios de interfaz.
+Solo cambia la preparacion cuando se selecciona una lista de series.
+La restriccion de source se aplica antes de MIN(rowid)/GROUP BY, evitando
+agrupar episodios de otras listas. El filtro exterior se conserva.
+Sin lista seleccionada y en peliculas se mantiene la consulta anterior.
+El grupo sigue comprobando cualquier episodio visible, no solo el representante.
+Parametros enlazados; sin interpolar nombres, migrar esquema o cambiar estados.
+Se conservan transaccion, generaciones activas/preview, ocultos y filas done.
+
+Prueba SQLite sintetica en .185: 24000 entradas, 91 comparaciones equivalentes en el conjunto completo.
+Incluye generaciones antiguas, preview, listas inexistentes, comillas en
+parametros, episodios ocultos y estado done preexistente.
+Comparacion aislada del nuevo filtro:
+[
+  {
+    "kind": "series-source-pushdown",
+    "source": "a",
+    "group": "",
+    "before_ms": 12.641,
+    "after_ms": 3.506
+  },
+  {
+    "kind": "series-source-pushdown",
+    "source": "a",
+    "group": "Drama",
+    "before_ms": 115.635,
+    "after_ms": 113.311
+  },
+  {
+    "kind": "series-source-pushdown",
+    "source": "b",
+    "group": "",
+    "before_ms": 11.597,
+    "after_ms": 3.339
+  }
+]
+Medidas de Linux, no rendimiento del Fire. Con grupo la diferencia observada
+es pequena y no se declara una mejora significativa. Sin grupo se evita
+aproximadamente el 72% del coste sintetico de preparacion de una lista.
+
+Pendiente Fire: listas grandes, todas/lista/grupo, mismos totales/candidatos,
+pausa/reanudar y progreso en panel con video activo. No instalar/publicar.
+Artefacto privado: /srv/drbep-dev/reviews/metadata-source-20261021.json
+
+Validacion: assembleDebug correcto; {'tests': 857, 'failures': 0, 'errors': 0}.
+Log: /srv/drbep-dev/reviews/metadata-source-20261021-build.log
+Sin instalacion, publicacion ni operaciones sobre produccion.

@@ -194,8 +194,7 @@ private fun QuickChannelActionChip(action: ZapActionItem, focusRequester: FocusR
             style = TextStyle(
                 color = textColor,
                 fontSize = if (compact) 12.sp else 14.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
     }
 }

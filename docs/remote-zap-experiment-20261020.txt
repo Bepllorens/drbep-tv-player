@@ -7,7 +7,7 @@ ensayo HLS se conservan.
 
 RemoteZapQueue mantiene inmediata la primera pulsacion tras 1 segundo sin
 teclas de canal. Las siguientes conservan el destino acumulado y ejecutan
-solo el ultimo tras 250 ms sin nuevas pulsaciones. No crea reproductores
+solo el ultimo tras 40-100 ms sin nuevas pulsaciones, segun la cadencia. No crea reproductores
 ni abre rutas nuevas: entrega el indice a tuneToIndex existente.
 Un callback sustituido no ejecuta la seleccion. Antes de entregar verifica
 tamano del catalogo, identidad del objeto de destino e indice de origen.
@@ -19,5 +19,14 @@ Los bloqueos parentales siguen pasando por playChannelItem.
 
 Tests: primera/aislada inmediata, rafaga primero+ultimo, wrap/cambio de
 direccion, callback obsoleto/cancelado, cambio de catalogo/seleccion y vaciado.
-Validacion audiovisual y comparacion de aperturas pendientes en la TV.
-Ver pruebas-tv-pendientes-20261020.txt. No declarar mejora medida todavia.
+Validacion y comparaciones en Fire documentadas en los informes enlazados.
+La activacion general sigue pendiente: no extrapolar una rafaga ADB a toda
+la navegacion ni atribuir la variacion del origen exclusivamente al cliente.
+
+Ensayo posterior en Fire: espera reducida de 250 a 100 ms.
+Ver zap-espera100-fire-20261020.txt: mantiene 67% menos sintonizaciones,
+pero no mejora la mediana de pulsacion a imagen. Flag sigue apagado.
+
+Ensayo posterior en Movistar HLS (no runtime): espera adaptativa 40-100 ms
+y comprobaciones de disponibilidad del archivo fuera del hilo de interfaz.
+Ver zap-movistar-hls-20261020.txt para resultados y limites.

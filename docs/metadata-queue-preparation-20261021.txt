@@ -1,0 +1,43 @@
+Preparacion ligera de cola TMDB — 21/10/2026
+
+Cambio en .185
+ImportedMovieRepository.queueIndex utiliza MetadataIndexQueue en lugar de la
+consulta visual del catalogo. No necesita movie_added/series_added, las
+coincidencias de TMDB ni movie_metadata; tampoco MAX(resume_ms) de las series.
+Conserva INSERT OR IGNORE y sus parametros, generacion activa/preview,
+preferencias de ocultacion y MIN(rowid) del episodio visible representativo.
+El grupo se filtra despues de elegir representante, como antes; cualquier
+episodio visible puede hacer que la serie pertenezca al grupo seleccionado.
+No cambia listas reales, esquema, permisos, fuentes, reproduccion ni peticiones.
+No reabre estados ya procesados: INSERT OR IGNORE conserva los existentes.
+
+Ensayo reproducible
+tools/benchmark-metadata-queue.py usa 24.000 entradas sinteticas, fuentes con
+active/preview distintos, generaciones antiguas, ocultos, peliculas y series,
+grupos y nombres literales. Usa los indices de entradas existentes.
+Compara candidatos completos y preservacion de estados done ya guardados.
+62 equivalencias exactas. Benchmark: 2 calentamientos y mediana de 7 inserciones
+en cola vacia en SQLite Linux en memoria. No incluye descargas TMDB.
+La consulta de referencia se extrae de la consulta visual que sigue en el repo.
+Se descarto el primer ensayo sin todos los indices y se repitio tras terminar
+compilacion/otros ensayos; usar solo metadata-queue-20261021-final.json.
+
+Validacion
+testDebugUnitTest + assembleDebug: 848 pruebas, cero fallos/errores, build correcto.
+No se instala el APK debug ni se publica.
+No medir ni prometer mejora de video con la TV apagada.
+
+Pendiente Fire
+Preparacion desde panel por lista/tipo/grupo, peliculas y series, listas grandes.
+Mismos totales, representante visible, reanudar y reintentar sin reabrir done.
+Medir tiempo de preparacion y fluidez de mando/video con SQLite Android.
+El filtro por grupo conserva su coste; no queda optimizado por este cambio.
+No hay despliegue, publicacion ni operacion sobre Fire o produccion.
+
+Medianas del ensayo final Linux, ms (no tiempos del Fire):
+movie, todas, sin grupo: 15.077 -> 11.215
+movie, a, sin grupo: 5.636 -> 4.184
+movie, a, Drama: 555.326 -> 533.237
+series, todas, sin grupo: 15.075 -> 12.897
+series, a, sin grupo: 11.916 -> 11.213
+series, a, Drama: 115.579 -> 113.373

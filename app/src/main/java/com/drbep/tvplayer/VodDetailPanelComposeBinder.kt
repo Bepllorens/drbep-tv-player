@@ -123,8 +123,7 @@ private fun VodTitle(model: VodDetailPanelUiModel, compact: Boolean) {
         style = TextStyle(
             color = Color.White,
             fontSize = if (compact) 20.sp else 24.sp,
-            fontWeight = FontWeight.Bold
-        )
+            fontWeight = FontWeight.Bold)
     )
     if (model.meta.isNotEmpty()) {
         Spacer(modifier = Modifier.height(if (compact) 5.dp else 7.dp))
@@ -135,8 +134,7 @@ private fun VodTitle(model: VodDetailPanelUiModel, compact: Boolean) {
             style = TextStyle(
                 color = OfflineTvTheme.Colors.accentCyan,
                 fontSize = if (compact) 13.sp else 15.sp,
-                fontWeight = FontWeight.Bold
-            )
+                fontWeight = FontWeight.Bold)
         )
     }
     Spacer(modifier = Modifier.height(if (compact) 12.dp else 18.dp))
@@ -202,8 +200,7 @@ private fun VodHeader(model: VodDetailPanelUiModel, posterBinder: VodPosterBinde
                         overflow = TextOverflow.Ellipsis,
                         style = TextStyle(
                             color = OfflineTvTheme.Colors.textSoft,
-                            fontSize = if (compact) 12.sp else 14.sp
-                        )
+                            fontSize = if (compact) 12.sp else 14.sp)
                     )
                 }
             }

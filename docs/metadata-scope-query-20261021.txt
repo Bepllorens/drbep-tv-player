@@ -1,0 +1,51 @@
+Consultas del indexador TMDB — 21/10/2026
+
+Alcance
+Optimizar seleccion de pendientes, recuento de progreso, reintentos y revision
+sin cambiar esquema, indices, metadatos ni catalogos. Solo desarrollo en .185.
+Los parametros siguen ligados, sin incorporar nombres/listas/grupos al SQL.
+
+Cambio
+MetadataIndexSelection.where/args emite solo filtros activos: lista, tipo o ambos.
+Sin filtros mantiene todos los registros (1=1). Predicado de grupo intacto:
+series por episodios visibles, generacion activa e identidad/ocurrencia de pelicula.
+Worker usa countWhere/countArgs para agregados. Cuando solo hay tipo conserva
+el predicado opcional anterior: el filtro directo hacia que SQLite eligiera
+un indice que obligaba a leer muchas filas para obtener el estado.
+Seleccion de pendientes y revision mantienen el filtro directo y el orden previo.
+
+Medicion y verificacion
+tools/benchmark-metadata-scope.py: 120.000 filas sinteticas, indices existentes,
+SQLite en memoria del .185, tres calentamientos y mediana de 15 repeticiones.
+45 comparaciones de resultados exactos: recuentos, siguiente pendiente y
+miembros de reintento; incluye sin filtro, listas ausentes y nombres hostiles.
+tools/test-metadata-index-scope.py: 10 pruebas de grupos, ocultos, generacion,
+reintentos, paginacion y resultados anteriores modificados.
+No hay acceso a red ni datos de produccion.
+
+Medianas Linux (ms; no equivalen a Fire):
+Todas / Ambos / counts: 7.7442 -> 4.1889
+Todas / Ambos / next: 2.3398 -> 1.452
+s0 / Ambos / counts: 10.8343 -> 7.5815
+s0 / Ambos / next: 2.2607 -> 1.7853
+Todas / movie / counts: 7.9218 -> 5.8218
+Todas / movie / next: 2.1322 -> 0.0012
+s0 / movie / counts: 9.5362 -> 1.1838
+s0 / movie / next: 2.2755 -> 0.0016
+s19 / series / counts: 9.9226 -> 1.2663
+s19 / series / next: 2.3019 -> 0.0028
+
+La primera variante empeoraba el recuento de todas las peliculas sin lista
+(~8 a 24 ms); se corrigio con el camino de agregado especifico antes de cerrar.
+La prueba Java de revision se actualizo de 7 a 5 parametros por eliminar
+duplicados; se conserva el estado y cursor despues de los filtros de ambito.
+
+Pendiente con TV encendida
+Progreso y seleccion TMDB en panel con todas/lista/tipo/grupo, pausa/reanudar,
+reintento y revision paginada. Verificar fluidez con indexacion y reproduccion.
+Medir consultas y p95 en SQLite Android, sin extrapolar este ensayo.
+No se ha instalado, publicado ni modificado produccion ni Fire.
+
+Validacion final: testDebugUnitTest + assembleDebug completados.
+{'tests': 846, 'failures': 0, 'errors': 0}
+Registro privado: /srv/drbep-dev/reviews/metadata-scope-20261021-final-build.log

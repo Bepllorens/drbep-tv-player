@@ -1,0 +1,88 @@
+Zapeo Movistar HLS: comparacion y perfil, 20-10-2026
+
+Alcance
+Desarrollo en .185, rama qoder/disneyplus-vod-582, base 3666e66.
+Pruebas autorizadas en Fire .190 con TV encendida. Sin modificar .223,
+sin publicar y sin tocar stable. Se conserva la ruta de reproduccion.
+Lista seleccionada Movistar HLS, no runtime. El cliente recibe video/mp2t
+por la ruta existente del servidor; no se ha cambiado a otra fuente.
+fastHlsStartup=false en todas estas comparaciones.
+
+Cambio
+RemoteZapQueue: primera pulsacion inmediata; agrupacion de las siguientes
+con espera adaptada a la cadencia de 40 a 100 ms (antes 250; ensayo previo100).
+Conserva comprobaciones de catalogo, destino, permisos y cancelacion.
+MainActivity.publishArchiveEntriesNow: trasladar las comprobaciones
+por canal de ArchiveAvailability.schedule al executor de presentacion
+existente, con controles de generacion/revision y cierre del executor.
+No cambia disponibilidad, solicitudes, claves, formatos ni reproduccion.
+
+Donde se pierde tiempo
+Perfil de muestreo separado de las mediciones: 27 segundos con rafagas.
+ArchiveAvailability.register acumulo ~120 ms de CPU inclusiva del hilo
+principal; refreshTouchControlsBar ~172 ms y updateTimeshiftBar ~130 ms.
+Son acumulados del perfil, no latencias por cambio y no se deben sumar.
+Una entrega de cola anterior tardo204 ms pese a una espera solicitada menor.
+Tras mover las comprobaciones, la entrega medida en H fue40-45 ms.
+La mayor parte restante es prepare->primer frame (mediana743 ms en H).
+La instrumentacion de esta ruta TS no separa descarga del primer dato,
+demultiplexado y decodificacion: no atribuir todo ese tiempo a la red.
+No se observo reinicializacion de decoder en las rafagas iniciales.
+
+Metodo
+Por variante: dos pulsaciones aisladas y nueve rafagas de seis teclas
+CH+/CH-, incluyendo inversiones. Misma secuencia desde La1; destinos
+finales La1/M+Deportes6. ADB envia los eventos, y los tiempos se obtienen
+de ZAP_PRESS/TUNE/FRAME dentro de la app, no del tiempo del comando ADB.
+Ocho segundos de observacion por prueba. Las series iniciadas accidentalmente
+en portada sin sintonizaciones se descartaron y repitieron completas.
+No equivale a una prueba prolongada ni a todas las cadencias de un mando real.
+
+Resultados de las nueve rafagas (medianas en ms)
+Variante             Sintonizaciones  Pulsacion-frame  Tune-frame  Cola  Max-frame
+A referencia antes          54               709          709       0       932
+E adaptativa inicial        20               883          840      41      1199
+A referencia intermedia     54               918          918       0      2683
+F adaptativa final          20               902          780      42      1082
+H adaptativa+worker          18               783          743      40       924
+A referencia final          54               713          713       0       843
+
+E tenia un limite de espera cerca del umbral corregido en F/H. No promover E.
+G no se instalo porque no incluia la ultima proteccion de cierre; H si.
+Las medianas de columnas no tienen por que sumar: provienen de muestras
+ordenadas independientemente.
+No hubo errores de reproduccion en estas series. Se registraron entradas
+en rebuffer: Aantes0, E1, Aintermedia3, F5, H2, Afinal1, en las nueve rafagas.
+No interpretar ausencia de errores como ausencia de pausas perceptibles.
+
+Conclusion
+H reduce54->18 sintonizaciones (66,7%) y mejora902->783 ms frente a F.
+Pero tarda70 ms mas que la referencia final, y74 mas que la inicial.
+No esta demostrado el objetivo de eliminar toda penalizacion hasta la imagen.
+La referencia intermedia muestra variabilidad considerable del origen/estado;
+no atribuir toda la mejora observada exclusivamente al traslado del trabajo.
+El flag de agrupacion sigue desactivado por defecto. No hay publicacion.
+
+Validacion funcional
+830 tests unitarios, cero fallos/errores, incluidos casos temporizados de
+rafagas densas, repeticion sostenida, cancelacion y limite de100 ms.
+En H, cuatro CH+ seguidos de Atras producen una sola sintonizacion: se
+cancela el destino pendiente. Destinos de las nueve rafagas correctos.
+Captura de H verifica video, controles y tira catchup de La1 con imagenes.
+No se ha modificado ni ensayado reproduccion de archivos catchup en este pase.
+No se afirma validacion tactil, multipantalla ni navegacion de todas las listas.
+
+Binarios y estado final
+Version local de ensayo772, firma de prueba preexistente del Fire; NO publicar
+estos APK como release oficial. Instalaciones -r, sin desinstalar ni borrar datos.
+H SHA256: 9ce7a0a8d08758274040cb092978c8a483bfb7314d126299ebc57b1f575264ff
+Referencia A SHA256: ad25328c3983d035ced09fce1aa313b50befe8b97765abd717b65b15f7480630
+Al terminar se conserva A en el Fire, sin agrupacion experimental.
+Codigo y pruebas quedan en el checkout .185, sin commit/push en esta tarea.
+
+Evidencias privadas (fuera de Git)
+/srv/drbep-dev/reviews/hls-zap-ab-20261020/
+MHLS-A.json, MHLS-E.json, MHLS-A-after.json, MHLS-F.json, MHLS-H.json,
+MHLS-H-cancel.json, MHLS-A-final.json y mhls-worker-summary.json.
+Exports privados blackboxMHLS*.zip y perfil privado; no publicarlos.
+h-hud.png verifica la tira del reproductor; build-H-worker.log verifica build.

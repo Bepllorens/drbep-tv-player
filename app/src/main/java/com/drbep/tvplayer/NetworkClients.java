@@ -72,8 +72,23 @@ final class NetworkClients {
     static final class PlaybackCallFactory implements Call.Factory {
         private final AtomicInteger readTimeoutMs;
         private final int connectTimeoutMs;
+        private final boolean reuseTransport;
+        private final TransportSlot[] transports = new TransportSlot[2];
+
+        private static final class TransportSlot {
+            final int connect, read;
+            final OkHttpClient client;
+            TransportSlot(int connect, int read, OkHttpClient client) {
+                this.connect=connect; this.read=read; this.client=client;
+            }
+        }
 
         PlaybackCallFactory(int connectTimeoutMs, int initialReadTimeoutMs) {
+            this(connectTimeoutMs, initialReadTimeoutMs, false);
+        }
+
+        PlaybackCallFactory(int connectTimeoutMs, int initialReadTimeoutMs, boolean reuseTransport) {
+            this.reuseTransport = reuseTransport;
             this.connectTimeoutMs = Math.max(1, connectTimeoutMs);
             this.readTimeoutMs = new AtomicInteger(Math.max(1, initialReadTimeoutMs));
         }
@@ -82,16 +97,29 @@ final class NetworkClients {
             readTimeoutMs.set(Math.max(1, value));
         }
 
-        @Override
-        public Call newCall(Request request) {
-            int effectiveConnectTimeoutMs = CloudflareRecoveryDns.isProtectedHost(request.url().host())
-                    ? Math.min(connectTimeoutMs, PROTECTED_HOST_CONNECT_TIMEOUT_MS)
+        // Slots contain transport configuration only, never requests or response bodies.
+        // Media and license factories remain separate. Each route retains at most one client.
+        synchronized OkHttpClient clientForRequest(Request request) {
+            boolean protectedHost = CloudflareRecoveryDns.isProtectedHost(request.url().host());
+            int connect = protectedHost ? Math.min(connectTimeoutMs, PROTECTED_HOST_CONNECT_TIMEOUT_MS)
                     : connectTimeoutMs;
-            return NetworkClients.withTimeouts(effectiveConnectTimeoutMs, readTimeoutMs.get())
+            int read = readTimeoutMs.get();
+            int index = protectedHost ? 1 : 0;
+            TransportSlot slot = transports[index];
+            if (reuseTransport && slot != null && slot.connect == connect && slot.read == read) {
+                return slot.client;
+            }
+            OkHttpClient client = NetworkClients.withTimeouts(connect, read)
                     .newBuilder()
                     .addNetworkInterceptor(chain -> chain.proceed(disneyMediaRequest(chain.request())))
-                    .build()
-                    .newCall(disneyMediaRequest(request));
+                    .build();
+            if (reuseTransport) transports[index] = new TransportSlot(connect, read, client);
+            return client;
+        }
+
+        @Override
+        public Call newCall(Request request) {
+            return clientForRequest(request).newCall(disneyMediaRequest(request));
         }
     }
 }

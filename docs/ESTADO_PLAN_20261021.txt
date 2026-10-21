@@ -1,0 +1,121 @@
+Punto de continuacion del plan DRBEP — 21/10/2026
+
+El usuario pide guardar el estado y pasar primero a estudiar la tipografia.
+El plan de rendimiento queda pendiente de reanudacion; no se descarta trabajo.
+
+Entorno
+Servidor de desarrollo: drbep-dev-185 (192.168.93.185), usuario drbep-dev.
+Repositorio: /srv/drbep-dev/repos/drbep-tv-player
+Rama: qoder/disneyplus-vod-582
+HEAD al guardar: 3666e66
+Hay cambios preparados sin commit/push. No se han publicado los ultimos bloques.
+Produccion .223 y stable no se modifican. No usar copias del Mac para desarrollar.
+Leer AGENTS.md y los documentos de contexto del backend antes de continuar.
+
+Lectura del plan
+- docs/plan-tevas-progress-20261020.txt: historial de bloques.
+- docs/pruebas-tv-pendientes-20261020.txt: lista completa de validaciones,
+  incluidos bloques 43 a 48. No sustituir esa lista por este resumen.
+- docs/zap-movistar-hls-20261020.txt: comparacion real de zapeo.
+
+Ultimos bloques preparados en desarrollo
+43. Reutilizacion acotada de clientes HTTP de reproduccion, opt-in beta
+    reusePlaybackTransport. El pool ya se compartia; no atribuirle una mejora
+    nueva de conexiones. Ver playback-transport-reuse-20261021.txt.
+44. Agrupacion de tareas de imagenes por canal/dia, opt-in beta
+    coalesceArtworkGrids. Cola limitada y callbacks independientes.
+    Ver artwork-singleflight-20261021.txt.
+45. Consultas TMDB especializadas por ambito, manteniendo el camino global
+    por tipo para evitar una regresion. Ver metadata-scope-query-20261021.txt.
+46. Preparacion de cola sin joins de presentacion ni progreso innecesario.
+    Ver metadata-queue-preparation-20261021.txt.
+47. Predicado de grupo especializado para peliculas y series; predicado mixto
+    conservado. Ver metadata-group-filter-20261021.txt.
+48. Preparacion TMDB en transaccion: limpieza e insercion juntas, preferencias
+    despues del commit, reintento idempotente.
+    Ver metadata-queue-atomic-20261021.txt.
+
+Validacion disponible
+Ultima ejecucion documentada en .185: 855 tests, 0 fallos, 0 errores y
+assembleDebug correcto con updateChannel=beta y fireAbiOnly=true.
+Ademas, tres pruebas SQLite WAL con datos sinteticos verifican rollback,
+lectura sin cola parcial e idempotencia de reintento.
+Los benchmarks de SQL y equivalencias son de Linux con datos sinteticos.
+No equivalen a tiempos de SQLite Android ni a validacion audiovisual.
+
+Fire y resultados aun pendientes
+Television apagada segun ultima indicacion del usuario; esperar aviso.
+No instalar ni publicar automaticamente al retomar.
+Ultima referencia restaurada y verificada el 20/10: A.apk, version 772,
+SHA256 ad25328c3983d035ced09fce1aa313b50befe8b97765abd717b65b15f7480630.
+Esto es una referencia historica, no una comprobacion actual del dispositivo.
+Los APK de ensayo usan firma de pruebas; no promoverlos al canal oficial.
+
+Zapeo Movistar HLS: referencia final 54 sintonizaciones y mediana 713 ms;
+variante optimizada 18 y 783 ms en nueve rafagas de seis pulsaciones.
+Reduccion de sintonizaciones del 67%, pero persisten unos 70 ms adicionales:
+el objetivo de no retrasar la imagen NO esta alcanzado.
+Mantener opciones experimentales desactivadas de forma general.
+Comparar arranque HLS y zapeo por separado, con Movistar HLS, no runtime.
+
+Al volver a disponer de TV encendida y mando libre
+Seguir checklist completo. Probar opciones nuevas una a una, cache fria/caliente,
+primer frame, p95 de mando, memoria, cancelacion, retorno a miniatura, VOD,
+catchup, timeshift y multipantalla. Verificar preparacion TMDB grande con video,
+pausa/reanudacion y panel, junto con SQLite Android/WorkManager.
+Mantener las rutas que funcionan en La 1 y Vamos y no cambiar produccion.
+
+Nuevo tema: tipografia
+El usuario ha autorizado Inter. Implementacion en desarrollo documentada en
+docs/inter-typography-20261021.txt; pendiente validacion visual en Fire. La licencia publicada por Apple no permite incrustarla en aplicaciones
+Android/Fire TV; valorar Inter bajo SIL OFL como alternativa visual.
+Referencias: https://developer.apple.com/fonts/ y https://rsms.me/inter/
+Elegir tipografia antes de implementar; revisar menus, EPG, dialogs, reproductor,
+vistas Java/XML y Compose, conservando iconos y legibilidad en TV.
+
+Inventario Git previo a guardar este documento
+ M app/build.gradle
+ M app/src/main/java/com/drbep/tvplayer/ImportedMovieRepository.kt
+ M app/src/main/java/com/drbep/tvplayer/MainActivity.java
+ M app/src/main/java/com/drbep/tvplayer/MetadataIndexSelection.java
+ M app/src/main/java/com/drbep/tvplayer/MetadataIndexWorker.kt
+ M app/src/main/java/com/drbep/tvplayer/MovistarArtworkRepository.java
+ M app/src/main/java/com/drbep/tvplayer/NetworkClients.java
+ M app/src/main/java/com/drbep/tvplayer/PlayerController.java
+ M app/src/main/java/com/drbep/tvplayer/RemoteZapQueue.java
+ M app/src/test/java/com/drbep/tvplayer/MetadataIndexReviewTest.java
+ M app/src/test/java/com/drbep/tvplayer/MetadataIndexSelectionTest.java
+ M app/src/test/java/com/drbep/tvplayer/RemoteZapQueueTest.java
+ M docs/plan-tevas-progress-20261020.txt
+ M docs/pruebas-tv-pendientes-20261020.txt
+ M docs/remote-zap-experiment-20261020.txt
+ M tools/test-metadata-index-scope.py
+?? app/src/main/java/com/drbep/tvplayer/ArtworkSingleFlight.java
+?? app/src/main/java/com/drbep/tvplayer/MetadataIndexQueue.java
+?? app/src/test/java/com/drbep/tvplayer/ArtworkSingleFlightTest.java
+?? app/src/test/java/com/drbep/tvplayer/MetadataIndexQueueTest.java
+?? app/src/test/java/com/drbep/tvplayer/MetadataQueuePreparationTest.java
+?? app/src/test/java/com/drbep/tvplayer/PlaybackTransportReuseTest.java
+?? docs/artwork-singleflight-20261021.txt
+?? docs/hls-zap-comparativa-fire-20261020.txt
+?? docs/metadata-group-filter-20261021.txt
+?? docs/metadata-queue-atomic-20261021.txt
+?? docs/metadata-queue-preparation-20261021.txt
+?? docs/metadata-scope-query-20261021.txt
+?? docs/playback-transport-reuse-20261021.txt
+?? docs/zap-espera100-fire-20261020.txt
+?? docs/zap-movistar-hls-20261020.txt
+?? tools/benchmark-metadata-queue.py
+?? tools/benchmark-metadata-scope.py
+?? tools/test-metadata-queue-transaction.py
+
+Nuevo bloque autorizado: lateral compacto de pantallas principales.
+Ver docs/main-rail-20261021.txt y checklist 50. Pendiente Fire, sin publicar.
+
+Plan retomado: bloque 51, filtro temprano de lista al preparar series TMDB.
+Ver metadata-source-20261021.txt. Todas las pruebas Fire siguen pendientes.
+
+21/10/2026 posterior: Inter retirado por peticion del usuario; lateral conservado.
+Catchup compacto recupera dos filas, EPG recupera cartel oficial bajo demanda.
+TV foco por posicion con mejora preliminar y picos pendientes; ver
+fuente-epg-tv-20261021.txt. No publicacion ni cambios de produccion.

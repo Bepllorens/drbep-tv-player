@@ -1,0 +1,35 @@
+Preparacion transaccional de cola TMDB — 21/10/2026
+
+Cambio
+La limpieza de generaciones antiguas y la insercion de peliculas/series se
+ejecutan dentro de una unica transaccion SQLite. La marca prepare=false se
+guarda solo despues de endTransaction correcto.
+Si reconstruccion falla o el trabajo se detiene antes de confirmar, rollback
+conserva la cola anterior. Si falla la marca de preferencias tras confirmar
+SQL, el error permite reintentar; INSERT OR IGNORE mantiene la idempotencia.
+No hay transaccion conjunta SQLite/SharedPreferences: ese intervalo se cubre
+con reintento, no con una promesa de atomicidad entre almacenes.
+
+Conservado
+Filtros de ambito y candidatos, filas done ya existentes, permisos, ocultos,
+politica de WorkManager y bloqueo de coordinacion existente. Sin migracion
+de esquema, cambios de fuentes ni operaciones sobre bases reales.
+
+Validacion local
+MetadataQueuePreparationTest: orden SQL/marca, fallo de reconstruccion,
+parada previa/durante, fallo al cerrar transaccion y fallo de marca.
+tools/test-metadata-queue-transaction.py: tres pruebas SQLite WAL real,
+base temporal sintetica y dos conexiones. Fallo tras limpieza/peliculas/series
+restaura filas anteriores; lector no ve mitad de cola; reintento tras commit
+no duplica filas ni reinicia done. No prueba corte fisico de energia.
+testDebugUnitTest + assembleDebug correctos:
+{'tests': 855, 'failures': 0, 'errors': 0}
+Log privado: /srv/drbep-dev/reviews/metadata-atomic-20261021-build.log
+
+Pendiente Fire
+Preparacion de listas grandes con reproduccion activa; medir tiempo de
+bloqueo de escritor y fluidez. Pausa, cancelacion y reanudacion durante
+preparacion; observar estados/progreso desde panel. SQLite Android y
+WorkManager requieren validacion de dispositivo. No se afirma mejora temporal.
+TV apagada: sin instalacion/publicacion ni pruebas audiovisuales en esta fase.
+Produccion y stable intactos.

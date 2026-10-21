@@ -1,0 +1,31 @@
+Lateral compacto — 21/10/2026
+
+Alcance: shell principal compartido de Inicio, En directo y Mi biblioteca.
+Los accesos a peliculas, series, guia y catchup mantienen los navegadores
+existentes. No se agrega un shell nuevo a sus dialogos ni al reproductor.
+
+Ancho fijo 68dp, fondo oscuro degradado y logo 48dp. Diez iconos vectoriales
+originales, trazo comun. Objetivos 48dp; circulo 40dp. Seleccion con marca cyan,
+foco con contorno claro y escala 1.06 sin cambiar medidas de contenido.
+Etiqueta flotante no enfocable: no desplaza contenido ni recibe el mando.
+Lista central desplazable para alturas pequenas; Ajustes y Salir al pie.
+Inter y accesibilidad semantica conservadas.
+
+Salir invoca showHomeExitConfirmation existente; no equivale a cerrar el
+dialogo actual. Callback asociado al ciclo del menu y limpiado al cerrarlo.
+No se alteran startupPreviewFocusPending, restauracion de TV, callbacks de
+reproduccion ni panel de canales del reproductor.
+
+Archivos: StartupHomeHubComposeBinder.kt, MainRailItem.kt,
+StartupHomeHubUiModel.java, MainActivity.java y res/drawable/rail_*.xml.
+Existen otros cambios anteriores sin commit; no confundirlos con este bloque.
+
+Pendiente TV encendida: OK inicial abre miniatura, flecha izquierda al lateral,
+restauracion de foco al volver, todos los accesos, etiquetas y scroll,
+Salir/cancelar, ajustes, tablet y ausencia de recortes a distintas resoluciones.
+No instalado ni publicado. Produccion y stable intactos.
+
+Validacion .185: assembleDebug y 855 pruebas correctas, cero fallos/errores.
+Expresiones de foco inicial comparadas con HEAD: identicas.
+Log: /srv/drbep-dev/reviews/main-rail-20261021-build.log
+Validacion visual del Fire sigue pendiente.

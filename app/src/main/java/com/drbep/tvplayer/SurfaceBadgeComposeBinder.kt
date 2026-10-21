@@ -98,8 +98,7 @@ private fun SurfaceBadge(model: SurfaceBadgeUiModel) {
                     fontSize = if (compact) 18.sp else 24.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
-                    lineHeight = if (compact) 25.sp else 34.sp
-                )
+                    lineHeight = if (compact) 25.sp else 34.sp)
             )
         }
         return
@@ -123,8 +122,7 @@ private fun SurfaceBadge(model: SurfaceBadgeUiModel) {
                 color = Color(model.textColor),
                 fontSize = if (model.large) if (compact) 13.sp else 15.sp else 11.sp,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
+                textAlign = TextAlign.Center)
         )
     }
 }

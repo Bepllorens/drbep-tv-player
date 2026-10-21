@@ -122,8 +122,7 @@ private fun ClassicTouchControlsBar(model: TouchControlsBarUiModel, artworkBinde
                     color = OfflineTvTheme.Colors.textSoft,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.End
-                )
+                    textAlign = TextAlign.End)
             )
         }
         if (model.expanded && model.actions.any { it.iconHint == "vod_languages" }) {
@@ -619,8 +618,7 @@ private fun ModernActionIcon(item: ZapActionItem, focused: Boolean, artworkBinde
                     color = normalColor,
                     fontSize = if (item.iconText.length > 3) 12.sp else 15.sp,
                     fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center
-                )
+                    textAlign = TextAlign.Center)
             )
         } else if (kind == ModernActionIconKind.OTHER) {
             BasicText(
@@ -800,8 +798,7 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                     style = TextStyle(
                         color = Color.White,
                         fontSize = if (compact) 12.sp else 13.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                        fontWeight = FontWeight.Black)
                 )
                 if (model.remainingText.isNotBlank()) {
                     Spacer(modifier = Modifier.width(6.dp))
@@ -812,8 +809,7 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                         style = TextStyle(
                             color = OfflineTvTheme.Colors.textSoft,
                             fontSize = if (compact) 9.sp else 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                            fontWeight = FontWeight.Bold)
                     )
                 }
             }
@@ -825,8 +821,7 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                 style = TextStyle(
                     color = Color.White,
                     fontSize = if (compact) 14.sp else 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                    fontWeight = FontWeight.Bold)
             )
             if (model.programMeta.isNotBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -836,8 +831,7 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                     overflow = TextOverflow.Ellipsis,
                     style = TextStyle(
                         color = OfflineTvTheme.Colors.textSoft,
-                        fontSize = if (compact) 10.sp else 11.sp
-                    )
+                        fontSize = if (compact) 10.sp else 11.sp)
                 )
             }
             ProgrammeMetadataStrip(model.programmeMetadata, true)
@@ -850,8 +844,7 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                     style = TextStyle(
                         color = OfflineTvTheme.Colors.focus,
                         fontSize = if (compact) 10.sp else 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                        fontWeight = FontWeight.Bold)
                 )
             }
             if (model.streamInfo.isNotBlank()) {
@@ -886,8 +879,7 @@ private fun TouchNowPlayingHeader(model: TouchControlsNowPlayingUiModel, artwork
                             style = TextStyle(
                                 color = OfflineTvTheme.Colors.textPrimary,
                                 fontSize = if (compact) 9.sp else 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                                fontWeight = FontWeight.Bold)
                         )
                     }
                 }
@@ -966,8 +958,7 @@ private fun TouchMiniChip(text: String) {
         style = TextStyle(
             color = OfflineTvTheme.Colors.textPrimary,
             fontSize = 10.sp,
-            fontWeight = FontWeight.Black
-        )
+            fontWeight = FontWeight.Black)
     )
 }
 
@@ -993,8 +984,7 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
                 style = TextStyle(
                     color = OfflineTvTheme.Colors.accentCyan,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Black
-                )
+                    fontWeight = FontWeight.Black)
             )
             if (model.contextSubtitle.isNotBlank()) {
                 BasicText(
@@ -1005,8 +995,7 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
                     style = TextStyle(
                         color = Color.White,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                        fontWeight = FontWeight.Bold)
                 )
             }
         }
@@ -1022,8 +1011,7 @@ private fun TouchContextHeader(model: TouchControlsBarUiModel) {
                 style = TextStyle(
                     color = Color.White,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Black
-                )
+                    fontWeight = FontWeight.Black)
             )
         }
     }
@@ -1059,8 +1047,7 @@ private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier,
             color = if (focused) OfflineTvTheme.Colors.focusInk else Color.White,
             fontSize = if (compact) 12.sp else 13.sp,
             fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
+            textAlign = TextAlign.Center)
     )
 }
 

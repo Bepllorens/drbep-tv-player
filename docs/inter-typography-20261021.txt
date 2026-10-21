@@ -1,0 +1,32 @@
+Inter 4.1 — tipografia local Android/Fire TV — 21/10/2026
+Origen: https://github.com/rsms/inter/releases/tag/v4.1
+Licencia SIL OFL incluida en assets/licenses/Inter-OFL.txt.
+Cinco pesos estaticos: 400, 500, 600, 700, 900; compatibles desde API 23.
+Fuente incluida en APK, sin descargas ni consultas de red al arrancar.
+Estilos Compose conservan colores, dimensiones, interlineado y pesos.
+Tema nativo y controles propios reciben Inter; pictogramas y preferencias de
+subtitulos del reproductor se conservan. Panel web externo no forma parte del
+cambio de tipografia nativa.
+Pendiente Fire: revisar recortes, alineacion, dialogos, EPG, catchup, listas,
+peliculas/series, teclado, miniatura y controles. TV apagada: no instalar.
+
+Cobertura: 381 estilos Compose, tema nativo API26+, puente ResourcesCompat
+para controles propios API23+, buscador nativo catchup e iniciales de picons.
+No hay barridos de vistas por frame; el recorrido nativo se limita al dialogo
+pequeno de busqueda al abrirse. No cambia medidas/foco/acciones/reproduccion.
+
+Huellas de recursos originales Inter 4.1:
+inter_black.ttf 6342d3ea6dc088b43867f615e807d898adf100c93edb978b8e52c5eb71a264da
+inter_bold.ttf 288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f
+inter_medium.ttf 97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872
+inter_regular.ttf 40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82
+inter_semibold.ttf 78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3
+
+Validacion final .185: testDebugUnitTest + assembleDebug correctos.
+{'tests': 855, 'failures': 0, 'errors': 0}
+APK inspeccionada: cinco fuentes y licencia presentes. git diff --check limpio.
+Registro privado: /srv/drbep-dev/reviews/inter-20261021-final-build.log
+Sin instalacion, publicacion, commit/push ni cambios en produccion.
+
+21/10/2026 posterior: revertida la aplicacion de Inter por peticion del usuario.
+Fuente anterior recuperada globalmente. Ver docs/fuente-epg-tv-20261021.txt.

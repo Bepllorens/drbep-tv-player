@@ -48,8 +48,7 @@ internal fun TimelineScaleRow(model: TimelineScaleUiModel) {
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 style = TextStyle(
                     color = Color(slot.textColor),
-                    fontSize = 11.sp
-                )
+                    fontSize = 11.sp)
             )
         }
     }

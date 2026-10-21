@@ -1,0 +1,20 @@
+Beta 773 - 2026-10-21
+
+Version: 2.0.773-beta-tv-guide. Universal ARM32 y ARM64, canal beta.
+Fuente original restaurada; lateral compacto conservado; foco inicial en miniatura.
+Catchup: dos filas completas y seis columnas en el Fire probado.
+EPG: recuperacion diferida del cartel oficial para el evento de la misma identidad y hora.
+TV: navegacion por posicion al entrar filas nuevas, con cancelacion al abandonar el contexto.
+Incluye los bloques pendientes de consultas, cola atomica e indexacion de metadatos.
+Las opciones experimentales de transporte, imagenes y zapeo permanecen desactivadas por defecto.
+
+Validacion: 857 tests Android y 17 tests SQL/transacciones, todos correctos.
+El codigo UI se comprobo en el Fire con APK de pruebas (ver fuente-epg-tv-20261021.txt).
+La APK universal de publicacion tiene la firma release habitual, distinta de la instalada
+actualmente en el Fire. No se desinstala ni se borran datos para cambiar esa firma.
+La validacion tactil de esta version y la comprobacion funcional de la APK release exacta
+quedan pendientes. Persisten picos de navegacion TV; no se considera optimizacion finalizada.
+
+Artefactos, respaldo y recibos: /srv/drbep-dev/artifacts/beta773-publication
+APK: /srv/drbep-dev/artifacts/drbep-beta773-universal-release.apk
+No se modifica stable ni se despliega backend.

@@ -1,0 +1,49 @@
+Zapeo: espera de 100 ms — Fire .190 — 20-10-2026
+
+Cambio acotado sobre 3666e66:
+RemoteZapQueue.SETTLE_MS 250 -> 100; test ajustado al nuevo plazo.
+Primera pulsacion inmediata, quietud de 1000 ms y validacion/cancelacion
+sin cambios. Flag coalesceRemoteZap sigue false por defecto.
+HLS rapido permanece false en todas las APK de esta comparacion.
+
+Validacion .185: 6 tests RemoteZapQueue y 4 RemoteZapTrace; 0 fallos.
+APK D100 compilada con version 772 y firma de pruebas preexistente del Fire.
+SHA256 256211273cdad53aeedf44e8ec7a92a55722fc9ef8bbc62a604e22edae4c1022.
+Instalacion conservando los datos. TV encendida e imagen comprobada.
+
+Comparacion A-D-A: normal, 100 ms, normal nuevamente.
+Cada tanda: dos pulsaciones aisladas y nueve rafagas de seis, agrupadas
+en subir/bajar/cambio de direccion, mismo origen Aguila Roja.
+Destinos finales coincidentes: Runtime Thriller / Aguila Roja / Aguila Roja.
+El panel exporta ZAP_PRESS/TUNE/FRAME; latencia desde la pulsacion asociada
+al fotograma final. No usar el tiempo de ejecucion de ADB como latencia.
+
+                           A antes     D100       A despues
+Rafagas                       9          9            9
+Sintonizaciones              54         18           54
+Mediana pulsacion->imagen   1745 ms     2028 ms      1816 ms
+Maximo                     3854 ms     2801 ms      2934 ms
+Espera de cola                0       100-101 ms       0
+Errores/rebuffer               0          0            0
+
+D100 reduce sintonizaciones un 66,7%, pero la mediana empeora
+283 ms (+16,2%) frente a la primera referencia, y 212 ms (+11,7%)
+frente a la segunda. Red y fuente varian; no atribuir todo el incremento
+al temporizador ni el maximo inferior a una mejora causal.
+Tampoco comparar directamente contra los tres casos de 250 ms del turno
+anterior como si fueran un ensayo controlado de 250 frente a 100.
+La primera pulsacion aislada sigue sin espera de cola.
+Prueba adicional cuatro CH+ y Atras: un solo cambio, pendiente cancelado,
+destino Runtime Crimen. Sin errores ni rebuffer.
+No se modifican rutas de reproduccion, proveedores, DRM, HLS ni catchup.
+
+Decision: reduccion preparada en codigo experimental, no activar globalmente.
+No se ha alcanzado el objetivo de mantener reduccion sin demora de imagen.
+El Fire queda con A, la beta 772 de referencia y datos conservados.
+No se publica, no se hace commit/push y no se toca produccion ni stable.
+
+Evidencia privada:
+ /srv/drbep-dev/reviews/hls-zap-ab-20261020/
+ A100.json, D100.json, A100-after.json, D100-cancel.json
+ zap100-summary.json, zap100-tests.log, build-D100.log, D100.apk
+ blackbox100-private.zip y panel100-private.xml NO incorporar a Git.

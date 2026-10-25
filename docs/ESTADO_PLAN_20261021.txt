@@ -370,3 +370,8 @@ Xiaomi748/0/0, gestosVOD/U7D y pausa correctos. Mando series E04 restaura, filtr
 y carrusel; multiview2 con seleccionaudio. Experimentos8flagsFALSE. Limite del
 primer dibujo frio no se declara resuelto. Ver candidata-conjunta-774-20261025.txt.
 Commit/publicacion aun pendientes al redactar, no backend/stable.
+
+25/10/2026 cierre774: cambios444c92c enGit; universal publicada enbeta con
+excepcion de sesiones autorizada. SHA publico9765775a82923eb3f7802325a4cc3d2a2bef2cf9c86fec078554ba045f870826.
+Stable intacto. Detalles/limiteOTA en beta-774-20261025.txt. Mantener experimentos
+sin mejora demostrada OFF; esto no declara resueltos todos los picos frios.

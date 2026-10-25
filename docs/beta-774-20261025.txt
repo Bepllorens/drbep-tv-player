@@ -1,6 +1,6 @@
 BETA774 - candidata universal de TV y metadatos
 Version2.0.774-beta-tv-series; codigo774; ARM32+ARM64.
-Estado: preparada y probada, publicacion pendiente.
+Estado: PUBLICADA en beta el25/10/2026; descarga verificada. Stable intacto.
 
 Cambios reunidos desde773:
 - Preparacion transaccional de indexacion, senal de pausa por generacion y
@@ -31,3 +31,20 @@ archivo773 antes de cambiar puntero. Respaldo publico773 SHAae921796167a75cb...
 verificado en185, ademas del archivo previo y su archivo de retorno del backend.
 Stable referencia582 SHA6d2e01e4120637ec69947006ba0aa42ad21580781e79a692750ab5c536f9c18a.
 Tras publicar: verificar manifiesto, descarga/hash, stable igual y OTA tablet.
+
+Cierre de publicacion25/10/2026:
+- Commit de cambios444c92c enviado a qoder/disneyplus-vod-582.
+- Guard de sesiones activas superado solo con autorizacion expresa del usuario.
+- API200; manifiesto beta774 y descarga104745053bytes con SHA exacto arriba.
+- Certificado oficial y ARM32+ARM64 verificados de nuevo en descarga publica.
+- Stable582 conserva version, nombre, SHA y update_enabled previos.
+- Archivo de beta nuevo; respaldo773 verificado antes de publicar.
+- Xiaomi mantiene774 oficial, catalogo visible y esquema9 con748entradas.
+- Auxiliares de mantenimiento retirados de ambos dispositivos.
+
+Limite de validacion OTA: instalacion oficial774 porADB y adopcion de datos
+comprobadas; actualizacion completa773->774 desde el actualizador NO repetida.
+Android rechaza reinstalar773 con INSTALL_FAILED_VERSION_DOWNGRADE incluso
+con -r -d. No desinstalar ni borrar datos para forzarlo. El intento fue rechazado
+antes de instalar773; se reabrio774, catalogo/progreso conservados. La publicacion
+y el binario descargable estan verificados; no confundirlo con prueba OTA.

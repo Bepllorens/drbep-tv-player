@@ -1,0 +1,60 @@
+TV: coste de logotipos y contraste - 2026-10-23
+
+Entorno .185, rama qoder/disneyplus-vod-582, base ca3f076.
+Se conservan cambios anteriores. No se modifica produccion ni se publica.
+
+Diagnostico
+Instrumentacion separada logoCreate, logoBind, logoContrast, logoDraw, logoMeasure.
+Se mide la primera entrada tras instalar, Movistar HLS 133 canales, La Sexta 6.
+La lectura del contraste hacia 256 llamadas nativas getPixel por drawable no
+cacheado y creaba/reciclaba un Bitmap auxiliar en cada analisis.
+
+Cambio acotado
+IntegratedChannelLogoView conserva AppCompatImageView, cargador, cache debil,
+umbrales de contraste, ajuste FIT_CENTER, colores y radio del halo.
+- Lee los 256 pixels con una sola llamada getPixels.
+- Reutiliza Bitmap 16x16, Canvas y array por hilo (aprox. 2 KiB de pixels/array).
+- Limpia la superficie transparente antes de CADA dibujo, tambien tras errores.
+- Restaura siempre los bounds del drawable; fallo no se cachea, como antes.
+- Reutiliza el halo de cada vista y evita reinstalar el mismo fondo.
+LogoContrast.java separa la decision ARGB manteniendo la misma aritmetica.
+StartupHomeHubComposeBinder.kt agrega trazas de creacion/carga, sin URLs ni datos.
+No cambia el tiempo de sintonia ni la reproduccion ni difiere las cargas de logos.
+
+Pruebas
+885 tests, 0 fallos/errores/omitidos. Tests nuevos: transparencia, luminancia,
+porcentaje de cobertura y equivalencia con algoritmo anterior en 1000 muestras.
+Benchmark Android nativo en Fire: metodos extraidos de fuente anterior/actual,
+drawables sinteticos no cacheables, 9 muestras con orden alterno, 300 analisis.
+Mediana anterior 141,903 ms; nueva 7,513 ms.
+Resultados equivalentes; bounds conservados y secuencia oscuro -> fallo -> blanco
+parcial confirma que no quedan pixels de otros drawables en la superficie reutilizada.
+No usa catalogos ni credenciales de produccion como fixtures.
+
+Trazas reales (ms)         anterior     despues instalar     repetir tras force-stop
+logoContrast total (39)    55,1         10,7                 11,8
+logoBind total (9)         74,0         44,4                 53,9
+logoCreate total (9)       20,6         12,4                 8,4
+logoDraw total (18)        6,1          4,1                  similar
+logoMeasure total (26)     2,2          2,1                  similar
+measureAndLayout max       588,9        522,0                521,6
+frame maximo               1159,4       1099,9               928,2
+
+Los tiempos anidados no se suman. Creacion y dibujado no tienen un cambio de
+algoritmo atribuible en esta comparacion: sus variaciones dependen de caches y sistema.
+La reduccion de contraste se repite con igual numero de llamadas. Los maximos de
+frame incluyen otros callbacks y no prueban causalidad exclusiva ni fluidez completa.
+Queda pendiente el coste principal de subcomposicion y medicion de filas (~522 ms).
+No afirmar que el primer dibujo entero este resuelto.
+
+Validacion funcional Fire
+Picones y halo visibles con mismo aspecto. 12 abajo de La Sexta 6 -> M+ Drama 18,
+12 arriba -> La Sexta 6; OK pantalla completa y Atras devuelve video a miniatura.
+scroll.png y return.png verificados visualmente. Datos y foco conservados.
+Misma firma de prueba anterior, instalacion -r sin borrar datos.
+
+Evidencias privadas: /srv/drbep-dev/reviews/tv-logo-20261023
+APK instalada fire.apk SHA256:
+b004a48cb32f597b261caafd37f9c405bd7f169c10321d7ef52ccb20c614a9f5
+Rollback: /srv/drbep-dev/reviews/tv-first-draw-20261023/fire.apk
+Sin commit/push ni publicacion.

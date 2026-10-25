@@ -9,7 +9,7 @@ import kotlinx.coroutines.delay
 
 /** Only composed rows tick, and only while this window is visible and resumed. No I/O. */
 @Composable
-internal fun <T> rememberVisibleProgramme(key: Any, initial: T, read: (() -> T)?, same: (T,T)->Boolean): T {
+internal fun <T> rememberVisibleProgramme(key: Any, initial: T, read: (() -> T)?, initialDelayMs: Long = 0, same: (T,T)->Boolean): T {
     var value by remember(key, initial) { mutableStateOf(initial) }
     val latestRead by rememberUpdatedState(read)
     val latestSame by rememberUpdatedState(same)
@@ -17,9 +17,12 @@ internal fun <T> rememberVisibleProgramme(key: Any, initial: T, read: (() -> T)?
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(key, initial, lifecycle, view) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            if (initialDelayMs > 0) delay(initialDelayMs)
             while (true) {
                 if (view.isShown && view.hasWindowFocus()) {
-                    latestRead?.invoke()?.let { fresh -> if (!latestSame(value,fresh)) value=fresh }
+                    android.os.Trace.beginSection("DRBEP.visibleProgramme")
+                    try { latestRead?.invoke()?.let { fresh -> if (!latestSame(value,fresh)) value=fresh } }
+                    finally { android.os.Trace.endSection() }
                 }
                 delay(15_000)
             }
@@ -29,8 +32,10 @@ internal fun <T> rememberVisibleProgramme(key: Any, initial: T, read: (() -> T)?
 }
 
 @Composable
-internal fun liveProgrammeCard(card: StartupHomeHubUiModel.ContinueCard): StartupHomeHubUiModel.ContinueCard =
-    rememberVisibleProgramme(card.channelId, card, card.refreshProgramme?.let { supplier -> { supplier.get() } }) { a,b ->
+internal fun liveProgrammeCard(card: StartupHomeHubUiModel.ContinueCard, reuseRecentSnapshot: Boolean = false): StartupHomeHubUiModel.ContinueCard =
+    rememberVisibleProgramme(card.channelId, card, card.refreshProgramme?.let { supplier -> { supplier.get() } },
+        initialDelayMs = if (reuseRecentSnapshot && card.programmeSnapshotUptimeMs > 0)
+            (15_000L - (android.os.SystemClock.uptimeMillis() - card.programmeSnapshotUptimeMs)).coerceIn(0, 15_000L) else 0) { a,b ->
         a.channelId==b.channelId && a.subtitle==b.subtitle && a.schedule==b.schedule &&
             a.description==b.description && a.nextProgram==b.nextProgram && a.progress==b.progress &&
             a.programmeMetadata?.key==b.programmeMetadata?.key && a.programmeMetadata?.initial==b.programmeMetadata?.initial

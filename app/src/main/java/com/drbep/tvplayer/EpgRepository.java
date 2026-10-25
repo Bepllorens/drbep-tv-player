@@ -1198,23 +1198,30 @@ final class EpgRepository {
         if (pair == null) {
             return null;
         }
-        List<EpgProgram> timed = new ArrayList<>();
-        if (hasProgramTiming(pair.current)) {
-            timed.add(pair.current);
+        // The pair contains at most two immutable programmes. Avoid a temporary
+        // list and retain the exact first-current/earliest-next selection order.
+        EpgProgram current = null;
+        EpgProgram next = null;
+        for (int i = 0; i < 2; i++) {
+            EpgProgram program = i == 0 ? pair.current : pair.next;
+            if (!hasProgramTiming(program)) continue;
+            long start = parseIsoMillis(program.startTime);
+            long end = parseIsoMillis(program.endTime);
+            if (current == null && start <= now && end > now) {
+                current = programWithProgress(program, now);
+                continue;
+            }
+            if (start > now && (next == null || start < parseIsoMillis(next.startTime))) {
+                next = programWithProgress(program, now);
+            }
         }
-        if (hasProgramTiming(pair.next)) {
-            timed.add(pair.next);
-        }
-        EpgProgramPair selected = selectCurrentAndNext(timed, now);
-        EpgProgram current = selected.current;
-        EpgProgram next = selected.next;
         if (current == null && pair.current != null && !hasProgramTiming(pair.current)) {
             current = pair.current;
         }
         if (next == null && pair.next != null && !hasProgramTiming(pair.next)) {
             next = pair.next;
         }
-        return new EpgProgramPair(current, next);
+        return current == pair.current && next == pair.next ? pair : new EpgProgramPair(current, next);
     }
 
     private static boolean hasProgramTiming(EpgProgram program) {
@@ -1795,6 +1802,7 @@ final class EpgRepository {
         if (startMs > 0 && endMs > startMs && startMs <= nowMs && endMs > nowMs) {
             progress = (int) Math.max(0L, Math.min(100L, ((nowMs - startMs) * 100L) / (endMs - startMs)));
         }
+        if (program.progress == progress) return program;
         return new EpgProgram(program.channelId, program.channelName, program.tvgId, program.title, program.icon, program.description, program.startTime, program.endTime, program.category, progress, program.metadata, program.detailsUrl);
     }
 

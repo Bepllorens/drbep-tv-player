@@ -2239,7 +2239,7 @@ final class PlayerController {
                         + " dropped=" + counters.droppedBufferCount
                         + " consecutive=" + counters.maxConsecutiveDroppedBufferCount
                         + " bufferMs=" + activePlayer.getTotalBufferedDuration()
-                        + " state=" + activePlayer.getPlaybackState());
+                        + " state=" + activePlayer.getPlaybackState() + playbackBufferDebugSuffix());
             }
         }
         if (!shouldWatch) {

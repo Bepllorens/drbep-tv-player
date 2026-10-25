@@ -46,3 +46,9 @@ Resultado local 21/10: testDebugUnitTest + assembleDebug con la opcion activa
 completados correctamente. 835 tests, cero fallos/errores. APK debug solo de
 compilacion, no instalada ni publicable como release. Log privado en
 /srv/drbep-dev/reviews/transport-reuse-20261021-final.log.
+
+23/10 actualizacion: ensayo HLS real completado tras recuperacion audio Fire.
+12 cambios completos por variante: A mediana747,5ms / B771ms prepare->frame.
+Sin errores; retorno de B a miniatura con video. No mejora de mediana demostrada,
+opcion sigue desactivada. No valida otros recorridos/timeouts/tablet.
+Detalle y limites en docs/transport-fire-20261023.txt.

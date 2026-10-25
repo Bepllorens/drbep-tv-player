@@ -12,10 +12,18 @@ final class MetadataIndexQueue {
     // after a marker failure is safe because preparation uses INSERT OR IGNORE.
     static boolean prepare(Transaction transaction, java.util.function.BooleanSupplier active,
                            Runnable rebuild, Runnable markPrepared) {
+        return prepareStages(transaction, active, java.util.Collections.singletonList(rebuild), markPrepared);
+    }
+
+    static boolean prepareStages(Transaction transaction, java.util.function.BooleanSupplier active,
+                                 java.util.List<Runnable> stages, Runnable markPrepared) {
         if (!active.getAsBoolean()) return false;
         transaction.begin();
         try {
-            rebuild.run();
+            for (Runnable stage : stages) {
+                if (!active.getAsBoolean()) return false;
+                stage.run();
+            }
             if (!active.getAsBoolean()) return false;
             transaction.successful();
         } finally {
@@ -32,7 +40,13 @@ final class MetadataIndexQueue {
     static final String FILTER = " WHERE e.kind=? AND COALESCE(p.hidden,0)=0 AND (?='' OR e.source=?)";
 
     static String sql(boolean series, boolean withGroup, boolean withSource) {
-        if (!series || !withSource) return sql(series, withGroup);
+        if (!withSource) return sql(series, withGroup);
+        if (!series) {
+            // A selected movie list is an equality, not an optional filter.
+            // Let SQLite constrain sources/entries before visiting other lists.
+            return INSERT + BASE_FROM + FILTER.replace("(?='' OR e.source=?)", "e.source=?")
+                    + (withGroup ? " AND " + MetadataIndexSelection.groupPredicate("e", "movie") : "");
+        }
         // Restrict before grouping; the visible representative and group EXISTS
         // must still be computed across all episodes of this source.
         String scoped = SERIES_SUFFIX.replace(" GROUP BY", " AND e.source=? GROUP BY");
@@ -46,7 +60,7 @@ final class MetadataIndexQueue {
         if (series && !source.isEmpty()) values.add(source);
         values.add(kind);
         values.add(source);
-        values.add(source);
+        if (series || source.isEmpty()) values.add(source);
         if (!group.isEmpty()) values.add(group);
         return values.toArray(new String[0]);
     }

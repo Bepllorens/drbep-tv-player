@@ -19,6 +19,14 @@ final class MovistarArtworkRepository implements AutoCloseable {
     private final KeyedArtworkLocks locks=new KeyedArtworkLocks();
     private final ArtworkSingleFlight<String,List<Row>> grouped = new ArtworkSingleFlight<>(workers,256);
     private volatile boolean closed;
+    // Numeric beta tracing only: never records channel IDs, titles or image URLs.
+    private final java.util.concurrent.atomic.AtomicInteger artworkRequests=new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger gridTasks=new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger gridLoads=new java.util.concurrent.atomic.AtomicInteger();
+    private static void traceCount(String name,java.util.concurrent.atomic.AtomicInteger counter) {
+        if ("beta".equals(BuildConfig.UPDATE_CHANNEL) && android.os.Build.VERSION.SDK_INT>=29)
+            android.os.Trace.setCounter(name,counter.incrementAndGet());
+    }
     static final class Row {final long start;final String channel,title,image,normalizedTitle;Row(long s,String c,String t,String i){start=s;channel=c;title=t;image=i;normalizedTitle=titleKey(t);}}
     MovistarArtworkRepository(File dir){directory=new File(dir,"movistar-artwork");directory.mkdirs();File[] files=directory.listFiles();if(files!=null)for(File f:files)if(System.currentTimeMillis()-f.lastModified()>9L*86400000)f.delete();}
     static String horizontal(JSONObject object){JSONArray images=object.optJSONArray("Imagenes");if(images!=null)for(int i=0;i<images.length();i++){JSONObject item=images.optJSONObject(i);if(item!=null&&"horizontal".equals(item.optString("id"))){String url=item.optString("uri");HttpUrl parsed=HttpUrl.parse(url);if(parsed!=null&&"https".equals(parsed.scheme()))return url;}}return "";}
@@ -29,6 +37,7 @@ final class MovistarArtworkRepository implements AutoCloseable {
     static String match(List<Row> rows,String provider,long start,String title){if(rows==null)return "";String expected=titleKey(title),found="";for(Row row:rows){if(!provider.equalsIgnoreCase(row.channel)||Math.abs(row.start-start)>120000||!expected.equals(row.normalizedTitle))continue;if(!found.isEmpty()&&!found.equals(row.image))return "";found=row.image;}return found;}
     boolean request(String provider,long start,String title,Consumer<String> callback){
         if(closed||provider==null||!provider.matches("[A-Za-z0-9_-]{1,24}")||start<=0)return false;
+        traceCount("Artwork.requests",artworkRequests);
         if(BuildConfig.COALESCE_ARTWORK_GRIDS) {
             String k=key(provider,start);
             // A callback retains its own programme identity even when the grid is shared.
@@ -67,12 +76,14 @@ final class MovistarArtworkRepository implements AutoCloseable {
     }
     // Caller owns the key lock; cache and trim keep their existing generation guard.
     private List<Row> loadCached(String provider,long start,String k)throws Exception{
+        traceCount("Artwork.gridTasks",gridTasks);
         long generation=grids.generation();
         List<Row> rows=grids.get(k);
         if(rows==null){rows=load(provider,start);grids.putIfCurrent(k,rows,generation);}
         return rows;
     }
     private List<Row> load(String provider,long start)throws Exception{
+        traceCount("Artwork.gridLoads",gridLoads);
         File cache=new File(directory,key(provider,start)+".json");ArtworkGridDiskCache.Payload payload=ArtworkGridDiskCache.readPayload(cache,System.currentTimeMillis(),true);
         if(payload==null){HttpUrl url=HttpUrl.parse("https://ottcache.dof6.com/movistarplus/webplayer/OTT/epg").newBuilder().addQueryParameter("from",day(start)+"T00:00:00").addQueryParameter("span","2").addQueryParameter("channel",provider).addQueryParameter("network","movistarplus").addQueryParameter("version","8.2").addQueryParameter("mdrm","true").addQueryParameter("tlsstream","true").addQueryParameter("demarcation","1").build();
             boolean downloaded=false;

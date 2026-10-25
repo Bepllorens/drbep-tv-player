@@ -1,0 +1,33 @@
+BETA774 - candidata universal de TV y metadatos
+Version2.0.774-beta-tv-series; codigo774; ARM32+ARM64.
+Estado: preparada y probada, publicacion pendiente.
+
+Cambios reunidos desde773:
+- Preparacion transaccional de indexacion, senal de pausa por generacion y
+  recuperacion tras reiniciar, sin cancelar una generacion posterior.
+- Consultas especializadas de peliculas/series y grupos; indice adicional para
+  localizar episodios de una serie/grupo, con migracion idempotente.
+- Estado/progreso/grupos del panel con los mismos resultados y filtros.
+- Navegacion TV con datos de guia reutilizados, busquedas de canales indexadas,
+  detalles del canal diferidos al estabilizar foco y dibujo de filas/logos mas ligero.
+- Mantener fuente del sistema anterior, permisos y asociaciones oficiales.
+
+Validacion:902unitarios+8SQLite+4equivalenciasmixtas+19Node. Worker Android
+completo enFire (30kepisodios,150series), respaldo/retorno reales. Fire yXiaomi
+version774, video, VOD, miniatura, foco, catchup/seek/pausa y gestos comprobados;
+multiview2 enFire. Detalles y limites en candidata-conjunta-774-20261025.txt.
+No afirmar que todo pico frio este resuelto. Ocho opciones experimentales OFF.
+No backend/reinicio, cambios de claves, La1/Vamos o canal stable.
+
+APK distribucion congelada y probada EXACTA enXiaomi:
+9765775a82923eb3f7802325a4cc3d2a2bef2cf9c86fec078554ba045f870826
+Firma oficial0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b.
+Fire mantiene identidad de pruebas anterior; codigo/recursos iguales byte a byte.
+No recompilar para publicar. Artefactos/respaldos privados en185:
+/srv/drbep-dev/reviews/joint-candidate-20261025
+
+Publicacion prevista mediante API solo beta, ruta NUEVA con hash, preservando
+archivo773 antes de cambiar puntero. Respaldo publico773 SHAae921796167a75cb...
+verificado en185, ademas del archivo previo y su archivo de retorno del backend.
+Stable referencia582 SHA6d2e01e4120637ec69947006ba0aa42ad21580781e79a692750ab5c536f9c18a.
+Tras publicar: verificar manifiesto, descarga/hash, stable igual y OTA tablet.

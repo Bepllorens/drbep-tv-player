@@ -1,0 +1,74 @@
+TV y miniatura: perfil y reutilizacion UTC - 2026-10-21
+
+Trabajo en .185 sobre ca3f076, conservando los cambios pendientes anteriores.
+Sin cambios de backend, publicacion, claves, URLs de reproduccion o produccion.
+
+Diagnostico
+La traza inicial del recorrido TV Movistar HLS (dos veces 12 abajo + 12 arriba)
+mostro measureAndLayout max 75,6 ms y Choreographer max 81,7 ms.
+Las ejecuciones posteriores se degradaron con fuerte presion de memoria del Fire:
+kswapd y numerosas faltas mayores, mas de 170 MB del proceso en intercambio,
+carga del sistema alrededor de 16-17. No es valido atribuir toda esa variacion
+al algoritmo de la app. Se reinicio solo el Fire, conservando datos.
+
+Se recogio un perfil de metodos con muestreo de 10 ms (sin volcar el heap).
+Las pilas senalaron normalizacion EPG, parseEpochMillis, normalizeUtc y consultas
+a la zona horaria al copiar programas para refrescar su progreso. Una fecha que
+termina en Z ya declara UTC y no depende de la zona del dispositivo.
+
+Cambio conservado
+EpgTimeCodec.parseEpochMillis usa UTC directamente para entradas terminadas en Z.
+normalizeUtc reutiliza el resultado para esas entradas en una LRU sincronizada de
+2048 valores como maximo y longitud maxima de entrada 160. Las fechas locales,
+offsets explicitos, formatos anteriores y entradas invalidas conservan su contrato.
+No se cambia la cadencia de refresco ni se difiere la programacion de las filas.
+
+Experimentos retirados
+- Precargar cuatro filas vecinas mediante LazyListPrefetchStrategy: no mejoro la
+  traza y aumento el trabajo. Codigo de ensayo solo en review, fuera del repositorio.
+- Retrasar 350 ms la lectura inicial de snapshots caducados: resultados no concluyentes
+  bajo presion del sistema; retirado. No queda instalado ni en el codigo final.
+No se deben atribuir sus cifras a la version final.
+
+Validacion
+873 pruebas, cero fallos/errores. Nuevas pruebas cubren cambio de zona del dispositivo,
+cambio de hora, UTC con fracciones, offsets explicitos, valores invalidos y fechas
+locales que deben seguir interpretandose con la zona vigente.
+
+Comparacion aislada anterior/nuevo con las mismas 500 fechas sinteticas:
+15000 operaciones normalize+parse por muestra, 9 muestras, calentamiento previo,
+comprobacion de igualdad exacta y checksum, mismas reglas y caché de parseo anterior.
+- Linux .185: mediana 26,51 -> 4,62 ms.
+- Runtime Android del Fire .190, mismo proceso para ambos algoritmos:
+  mediana 286,90 -> 37,49 ms, resultados iguales.
+Esto mide el coste de las fechas; no equivale a una mejora global de 7x de la pantalla.
+Las trazas UI antes/despues sin controlar presion del sistema no prueban una reduccion
+reproducible de todos los picos. La fluidez completa sigue pendiente.
+
+Evidencia privada fuera de Git:
+/srv/drbep-dev/reviews/tv-peaks-20261021/
+  before.trace, before-gfx.txt, prefetch.trace (descartada), settle.trace (descartada),
+  utc.trace (sistema bajo presion), methods.trace, profile.py, profile-summary.txt,
+  utc-build.log, utc-benchmark.txt, fire-utc-benchmark.txt,
+  cpu-pressure.txt, memory-pressure.txt, bench/, bench-android.zip, utc.apk.
+
+La APK instalada conserva version visible 773 y firma de prueba existente.
+SHA-256: 400689a45719c194bc5e6322f115edd6687542b425d10edc0b9e23b0180bb04c
+Publicacion, commit y push no realizados en este pase.
+
+Cierre funcional en Fire despues del reinicio:
+- MemAvailable 660736 kB al abrir la app.
+- Movistar HLS, 133 canales. Doce abajo: Veo7 (38) -> M+ LALIGA 2 (50).
+  Doce arriba devuelve foco a Veo7 (38), con video real.
+- La programacion de Veo7 muestra el episodio que empieza a las 20:20, T5 E13,
+  en fila y detalle; no se altera el horario local de la EPG.
+- OK abre pantalla completa; Atras devuelve a la lista con video en miniatura.
+- No callbacks dropped-video registrados en el proceso durante esta prueba;
+  no es una prueba de ausencia de todos los saltos visibles.
+- final.trace todavia muestra picos: measureAndLayout max 115,8 ms,
+  Choreographer max 183,4 ms. No se ha demostrado reduccion global frente
+  al baseline; las condiciones del sistema y la longitud del recorrido difieren.
+  El resultado confirmado del pase es reducir el trabajo UTC, no eliminar todo jank.
+- Evidencias: final-down.png, final-up.png, final-fullscreen.png,
+  final-miniature.png, final.trace, final-dropped.log.
+- Se devuelve el mando al usuario dejando TV en Veo7.

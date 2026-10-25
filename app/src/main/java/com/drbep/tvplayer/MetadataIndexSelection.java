@@ -21,7 +21,10 @@ final class MetadataIndexSelection {
   java.util.List<String> values=new java.util.ArrayList<>();
   if(!source.isEmpty())values.add(source);
   if(!kind.isEmpty())values.add(kind);
-  if(!group.isEmpty())values.add(group);
+  if(!group.isEmpty()) {
+   values.add(group);
+   if(kind.isEmpty())values.add(group);
+  }
   return values.toArray(new String[0]);
  }
 
@@ -41,11 +44,14 @@ final class MetadataIndexSelection {
   String sql;
   if(kind.equals("movie"))sql=GROUP_MOVIE_SQL;
   else if(kind.equals("series"))sql=GROUP_SERIES_SQL;
-  else if(kind.isEmpty())sql=GROUP_SQL;
+  else if(kind.isEmpty())sql=GROUP_MIXED_SQL;
   else throw new IllegalArgumentException();
   return sql.replace("@",alias);
  }
  static final String GROUP_MOVIE_SQL="EXISTS (SELECT 1 FROM entries g JOIN sources gs ON gs.id=g.source AND COALESCE(gs.active,gs.preview)=g.generation LEFT JOIN preferences gp ON gp.source=g.source AND gp.identity=g.identity AND gp.occurrence=g.occurrence WHERE g.source=@.source AND g.generation=@.generation AND g.kind=@.kind AND g.group_name=? AND COALESCE(gp.hidden,0)=0 AND g.identity=@.identity AND g.occurrence=@.occurrence)";
  static final String GROUP_SERIES_SQL="EXISTS (SELECT 1 FROM entries g JOIN sources gs ON gs.id=g.source AND COALESCE(gs.active,gs.preview)=g.generation LEFT JOIN preferences gp ON gp.source=g.source AND gp.identity=g.identity AND gp.occurrence=g.occurrence WHERE g.source=@.source AND g.generation=@.generation AND g.kind=@.kind AND g.group_name=? AND COALESCE(gp.hidden,0)=0 AND g.series=@.series)";
  static final String GROUP_SQL="EXISTS (SELECT 1 FROM entries g JOIN sources gs ON gs.id=g.source AND COALESCE(gs.active,gs.preview)=g.generation LEFT JOIN preferences gp ON gp.source=g.source AND gp.identity=g.identity AND gp.occurrence=g.occurrence WHERE g.source=@.source AND g.generation=@.generation AND g.kind=@.kind AND g.group_name=? AND COALESCE(gp.hidden,0)=0 AND ((@.kind='series' AND g.series=@.series) OR (@.kind='movie' AND g.identity=@.identity AND g.occurrence=@.occurrence)))";
+ // Choose one membership path per row so movie identity and series indexes
+ // remain usable. Each branch has its own bound copy of the same group.
+ static final String GROUP_MIXED_SQL="(CASE WHEN @.kind='movie' THEN ("+GROUP_MOVIE_SQL+") WHEN @.kind='series' THEN ("+GROUP_SERIES_SQL+") ELSE 0 END)";
 }

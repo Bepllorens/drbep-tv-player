@@ -86,4 +86,25 @@ public class ArtworkSingleFlightTest {
             assertEquals(1,q.tasks.size());q.runNext();assertEquals(80,callbacks.get());
         } finally {e.shutdownNow();}
     }
+    @Test public void followersDoNotStarveAnotherChannelWhileFirstGridIsBlocked() throws Exception {
+        ExecutorService workers=Executors.newFixedThreadPool(4);
+        CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1),other=new CountDownLatch(1);
+        AtomicInteger firstLoads=new AtomicInteger(),firstCallbacks=new AtomicInteger();
+        ArtworkSingleFlight<String,String> flight=new ArtworkSingleFlight<>(workers,100);
+        try {
+            assertTrue(flight.request("a/day",()->{firstLoads.incrementAndGet();entered.countDown();
+                release.await();return "a";},x->{assertEquals("a",x);firstCallbacks.incrementAndGet();}));
+            assertTrue(entered.await(5,TimeUnit.SECONDS));
+            for(int i=0;i<59;i++)assertTrue(flight.request("a/day",()->{fail("Follower loaded separately");return "";},
+                x->{assertEquals("a",x);firstCallbacks.incrementAndGet();}));
+            assertTrue(flight.request("b/day",()->"b",x->{assertEquals("b",x);other.countDown();}));
+            // Must complete before a/day is released, not merely eventually.
+            assertTrue(other.await(5,TimeUnit.SECONDS));
+            assertEquals(1,firstLoads.get());assertEquals(0,firstCallbacks.get());
+            release.countDown();workers.shutdown();
+            assertTrue(workers.awaitTermination(5,TimeUnit.SECONDS));
+            assertEquals(60,firstCallbacks.get());
+        } finally {release.countDown();flight.close();workers.shutdownNow();}
+    }
+
 }

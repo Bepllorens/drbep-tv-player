@@ -1,0 +1,61 @@
+Progreso y pendientes TMDB — validacion .185, 23/10/2026
+
+Estado y alcance
+El bloque de consultas optimizadas YA estaba implementado en MetadataIndexSelection
+y usado por MetadataIndexWorker. Esta sesion lo valida con mas escenarios; no
+se atribuye como nueva una optimizacion preparada el 21/10. No se modifica
+codigo de ejecucion, esquema, indices, metadatos, colas reales ni reproduccion.
+
+Herramienta nueva: tools/benchmark-metadata-progress.py
+Compila y ejecuta el helper Java REAL para obtener where/args y countWhere/args.
+Compara con los predicados opcionales anteriores al bloque21/10. No compara
+contra la APK A del bloque44: aquella ya contenia estas consultas optimizadas.
+Tablas e indices se extraen de las sentencias CREATE del esquema vigente.
+Fixtures sinteticos: 120000 filas sin grupo y 12000 con grupo. Sin red ni datos
+de produccion. No se usan credenciales ni bases privadas como fixtures.
+
+Equivalencia: 384 comparaciones exactas, ocho escenarios.
+Progreso por estado, siguiente pendiente con sus seis campos, existencia de
+pendientes y miembros de reintento. Ambitos todas/lista/tipo/grupo; lista ausente
+y nombres con comillas; entradas ocultas, generaciones antiguas, source activa
+y preview, representantes de serie en distintos grupos. Colas mixtas, casi
+terminadas, terminadas y tras reintentar errores. Conserva orden por rowid.
+No se valida aqui la interaccion real pausa/reanudar de WorkManager en Android.
+
+Medicion SQLite 3.40.1 en Linux .185, en memoria. Dos calentamientos,
+nueve muestras por variante con orden alternado. Medianas ms:
+filas | lista | tipo | grupo | consulta | anterior -> preparada
+120000 | todas | ambos | - | counts | 7.0232 -> 3.8665
+120000 | todas | ambos | - | next | 1.9216 -> 1.59
+120000 | todas | movie | - | counts | 7.21 -> 4.9541
+120000 | todas | movie | - | next | 1.9952 -> 0.0034
+120000 | s0 | ambos | - | counts | 11.1024 -> 8.6764
+120000 | s0 | ambos | - | next | 2.0302 -> 1.6521
+120000 | s0 | movie | - | counts | 9.1735 -> 1.1279
+120000 | s0 | movie | - | next | 2.0631 -> 0.0039
+12000 | s0 | ambos | Drama | counts | 16.6757 -> 16.7177
+12000 | s0 | ambos | Drama | next | 3.7225 -> 3.6972
+12000 | s0 | movie | Drama | counts | 9.7026 -> 0.3351
+12000 | s0 | movie | Drama | next | 2.0469 -> 0.0074
+12000 | s0 | series | Drama | counts | 7.7984 -> 6.2548
+12000 | s0 | series | Drama | next | 1.6015 -> 0.0048
+
+Casos con empeoramiento >20% Y >0,2 ms: 0.
+Los grupos con ambos tipos conservan el predicado original y mejoran poco.
+No extrapolar tiempos a SQLite Android ni afirmar fluidez/p95 real de Fire.
+Experimento MIN(rowid) descartado: no mejoraba de forma consistente; no aplicado.
+
+Regresion: testDebugUnitTest correcto (886 tests, resultados reutilizados de cache
+por Gradle; no se afirma nueva ejecucion de todos). 14 tests SQLite de ambitos,
+3 de transacciones y 14 del panel/grupos/series ejecutados sin fallos.
+git diff --check correcto. No APK nueva ni instalacion, publicacion o Git push.
+
+Evidencia /srv/drbep-dev/reviews/metadata-progress-20261023:
+progress.json (medidas/planes/hashes por escenario), existing-scope.json, unit-tests.log.
+Reproducir: source /srv/drbep-dev/env.sh; desde raiz Android ejecutar
+python3 tools/benchmark-metadata-progress.py
+
+Pendiente: SQLite Android con indexacion y video, progreso del panel, siguiente
+titulo, pausa/reanudar/reintentos y revision por paginas. No iniciar indexacion
+contra proveedor para validar SQL. Sin cambios en .223 ni La 1/Vamos.
+Siguiente bloque del plan46: preparacion ligera de cola TMDB.

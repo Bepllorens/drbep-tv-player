@@ -41,19 +41,39 @@ final class LiveHomePolicy {
         LinkedHashMap<String, StartupHomeHubUiModel.Provider> result = new LinkedHashMap<>();
         if (p == null || !p.liveEnabled || visible.isEmpty()) return new ArrayList<>();
         result.put("ALL", new StartupHomeHubUiModel.Provider("ALL", "Todos", ""));
+        // Local to this calculation: permission/catalogue edits are effective immediately.
+        Map<String, String> normalizedGroups = new HashMap<>();
         for (ChannelItem c : visible) {
             if (!visibleInHome(c, p)) continue;
-            if (platformAllowed(p, c.platformId) && !normalized(c.platformName).isEmpty()) {
+            if (platformAllowed(p, c.platformId)) {
                 String key = "live:" + c.platformId;
-                result.putIfAbsent(key, new StartupHomeHubUiModel.Provider(key, c.platformName, c.platformLogoUrl));
+                if (!result.containsKey(key) && !normalized(c.platformName).isEmpty()) {
+                    result.put(key, new StartupHomeHubUiModel.Provider(key, c.platformName, c.platformLogoUrl));
+                }
             }
-            for (String group : groups(c)) {
-                if (normalized(group).isEmpty() || !groupAllowed(p, group)) continue;
-                String key = "group:" + normalized(group);
-                String logo = c.customGroupLogos == null ? "" : c.customGroupLogos.get(normalized(group));
-                result.putIfAbsent(key, new StartupHomeHubUiModel.Provider(key, group, logo));
+            // Insertion order and first logo/name win, just as with groups(c).
+            // Repeated raw group names need neither another collection nor another Provider.
+            addCategoryGroup(result, normalizedGroups, c, c.group, p);
+            if (c.customGroups != null) for (String group : c.customGroups) {
+                addCategoryGroup(result, normalizedGroups, c, group, p);
             }
         }
         return new ArrayList<>(result.values());
     }
+    private static void addCategoryGroup(
+            Map<String, StartupHomeHubUiModel.Provider> result, Map<String, String> normalizedGroups,
+            ChannelItem channel, String group, OfflinePermissions permissions) {
+        String normalizedGroup = normalizedGroups.get(group);
+        if (normalizedGroup == null) {
+            normalizedGroup = normalized(group);
+            normalizedGroups.put(group, normalizedGroup);
+        }
+        if (normalizedGroup.isEmpty() || !permissions.liveAccessMetadataKnown
+                || !permissions.allowedLiveGroups.contains(normalizedGroup)) return;
+        String key = "group:" + normalizedGroup;
+        if (result.containsKey(key)) return;
+        String logo = channel.customGroupLogos == null ? "" : channel.customGroupLogos.get(normalizedGroup);
+        result.put(key, new StartupHomeHubUiModel.Provider(key, group, logo));
+    }
+
 }

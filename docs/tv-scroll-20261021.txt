@@ -1,0 +1,74 @@
+TV con miniatura: filas nuevas y foco — 21 octubre 2026
+
+Base: ca3f076, beta773. Desarrollo exclusivamente en .185. Fire AFTKRT ARM32,
+192.168.93.190:5555, TV encendida y mando cedido por el usuario. Movistar HLS.
+Sin cambios de backend, produccion, asociaciones, reproduccion, beta publicada ni stable.
+
+Diagnostico:
+- La lista usa LazyColumn con los canales ya cargados, no paginas descargadas.
+- Atrace del hilo principal: composicion/prefetch de filas de hasta164.5ms;
+  refrescos visibles hasta19.3ms, desplazamiento/foco hasta73.5ms.
+- Cada fila nueva repetia inmediatamente el calculo de un modelo recien creado.
+- La navegacion esperaba un fotograma aun con destino ya compuesto.
+- En rafagas, cancelar el trabajo anterior perdia el destino pendiente.
+- Contar filas parcialmente visibles como completas podia dejar el destino fuera
+  del viewport: 12 flechas desde posicion38 acababan enfocando46, no50.
+
+Cambios:
+- Marca temporal monotona del snapshot de programacion. Solo las filas de TV
+  reutilizan el dato reciente hasta el siguiente refresco de15s. Las demas
+  superficies conservan el refresco inicial. Datos antiguos refrescan al entrar.
+- Solicitud inmediata de foco cuando el vecino ya esta visible.
+- TvChannelFocusQueue conserva todas las flechas pendientes, las inversiones y
+  descarta el destino al salir/cambiar grupo o consulta; no guarda historial.
+- Revelado de la fila por altura real en pixeles, sin suponer filas completas.
+- Trazas DRBEP.visibleProgramme y DRBEP.tvFocusScroll sin identificadores privados.
+
+Medicion intermedia, mismo recorrido lento Veo7(pos38) a M+LALIGA2(pos50):
+                         base       primer candidato
+Frames totales           113        121
+Mediana gfxinfo           97ms       53ms
+P95 gfxinfo               300ms      200ms
+P99 gfxinfo               450ms      300ms
+Prefetch max             164.5ms    48.6ms
+Foco/scroll max           73.5ms     13.7ms
+Esta medida precede al ajuste de cola/geometria. Es una observacion del Fire,
+no una garantia global: distinta emision, caches y reconstrucciones periodicas.
+La mayoria de frames debug sigue superando16ms; quedan picos por afinar.
+
+861 tests sin fallos, incluyendo cuatro casos de cola (rafaga, inversion,
+cancelacion y limites). Compilacion posterior de geometria correcta.
+Evidencias privadas, APK base/candidatos, trazas, screenshots y analizador:
+/srv/drbep-dev/reviews/tv-scroll-20261021
+
+Cierre de la prueba:
+Se sustituyo scrollToItem por requestScrollToItem exclusivamente en la flecha
+que revela una fila no visible: se programa la medicion del siguiente frame y
+se agrupan solicitudes, en lugar de forzar mediciones dentro de la pulsacion.
+La variante geometrica sin este ajuste conservaba el foco, pero tenia maximo
+146.8ms de scroll en el recorrido lento y p95 gfx350ms; no es la que queda instalada.
+
+Version final scheduled.apk (mismo versionCode773, APK de pruebas):
+SHA256 36d4d90fe6f2fd7382bdf8fc2b1ae08391d0d6825e4ae16fde1e8034a173db73
+Firma de pruebas existente del Fire. No se modifica la APK publica beta773.
+
+Mismo recorrido lento final, 12 flechas Veo7(pos38)->M+LALIGA2(pos50):
+- 96frames, mediana gfx61ms, P95 250ms, P99 600ms.
+- Foco/scroll: 12peticiones, total32.0ms, mediana1.8ms, max11.8ms
+  frente a total204.0ms y max73.5ms de la base instrumentada.
+- Main-thread Choreographer: mediana9.7ms y P95 98.3ms
+  frente a16.2ms y132.1ms de la base.
+- Persiste pico homeModel389.6ms y P99 gfx peor que la base450ms.
+  No presentar la mejora de foco como eliminacion de todos los tirones.
+- Pruebas rapidas: 12DOWN llegan50; 12UP regresan38. Cola+geometria
+  corrigen los cuatro pasos perdidos observados antes. Capturas geometry-*
+  y scheduled-rapid-end.png. En la rafaga final max foco18.4ms.
+- OK abre pantalla completa; Atras devuelve TV con foco en Veo7 y la
+  miniatura vuelve a mostrar video (return-settled.png). No se modifican
+  PlayerController, superficies ni rutas de reproduccion.
+
+Comparacion observacional, no ensayo estadistico: programas, caches y cargas
+asincronas varian. Hay dos reconstrucciones homeModel en el recorrido final.
+Siguiente objetivo: reconstruccion general de modelos, separada de revelar filas.
+Pruebas unitarias861 correctas; build final Kotlin correcto; diff --check correcto.
+Cambios sin commit/push/publicacion en esta tarea. Mando devuelto al usuario.

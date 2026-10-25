@@ -119,3 +119,254 @@ Ver metadata-source-20261021.txt. Todas las pruebas Fire siguen pendientes.
 Catchup compacto recupera dos filas, EPG recupera cartel oficial bajo demanda.
 TV foco por posicion con mejora preliminar y picos pendientes; ver
 fuente-epg-tv-20261021.txt. No publicacion ni cambios de produccion.
+
+21/10 posterior a publicacion773: afinado TV con miniatura, ver tv-scroll-20261021.txt.
+Corregida geometria de filas parcialmente visibles y perdida de flechas en rafaga;
+foco programado, sin relectura inmediata de snapshots EPG recientes. Fire probado
+MovistarHLS,12DOWN/12UP, OK/pantalla completa/Atras/miniatura. Max foco73.5->11.8ms
+recorrido lento. Persisten picos generales homeModel389.6ms; P99 gfx no mejora.
+861tests correctos. APK privada de pruebas instalada, sin nueva publicacion ni Git.
+
+21/10 modelo general: feed Inicio diferido en TV, sin precargas VOD ocultas;
+lectura del orden reutilizada con invalidacion por usuario/contenido. 867tests.
+Fire reiniciado por saturacion de memoria; cuatro modelos TV55–85ms (mediana67).
+Comparacion no A/B estricto por el reinicio. Categorias siguen ~40–60ms.
+TV/Inicio y12DOWN/12UP comprobados. Ver home-model-20261021.txt. APK privada
+instalada conservando datos; sin publicacion ni commit/push adicionales.
+
+2026-10-21: categorias TV optimizadas sin cambiar permisos ni orden.
+Mediana fase categorias Fire 50 -> 18 ms; modelo TV 73 -> 49 ms.
+870 pruebas correctas. Instalacion privada sobre 773, sin publicacion ni produccion.
+Detalle y limites: docs/categories-20261021.txt.
+
+2026-10-21: perfil TV identifica trabajo repetido de fechas EPG UTC.
+Cache UTC acotada + evitar consulta de zona para fechas Z; 873 pruebas correctas.
+Benchmark aislado en Fire 15000 operaciones 286,90 -> 37,49 ms con mismos resultados.
+Experimentos de precarga extra y espera inicial retirados; no quedan en la app.
+No confundir este benchmark con fluidez global: persisten picos bajo presion de memoria.
+Detalle: docs/tv-peaks-20261021.txt. Sin publicacion ni cambios de produccion.
+
+2026-10-22: cache de 128 consultas de canal con invalidacion por mutacion de lista.
+877 pruebas correctas; mismo resultado ante reemplazos, borrados y reordenacion.
+Benchmark Fire 1000 consultas repetidas/20000 canales 916,55 -> 1,02 ms.
+TV real conserva foco y video; no se demuestra mejora global de fotogramas.
+Pendiente: picos de composicion/medida y renovacion del modelo general.
+Detalle: docs/channel-lookup-20261022.txt. Sin publicacion ni produccion.
+
+2026-10-23: aislada la lectura del foco del panel TV. Metadatos no se quitan y
+reinsertan durante el recorrido; aviso sobre video con alpha en capa, sin cambiar
+la altura del panel. 877 pruebas correctas. Fire mismo recorrido: 155 recomposiciones
+antes, 97 y 114 despues. Persisten picos de dibujo; no hay mejora uniforme de maximos.
+Detalle: docs/tv-details-20261023.txt. Sin publicacion ni produccion.
+
+2026-10-23: refresco EPG evita recorrido durante cooldown y reutiliza programas y
+parejas inmutables si no cambian. 880 pruebas correctas, equivalencia con algoritmo
+anterior y limites de emisiones verificados. Microbenchmark Fire 7980 refrescos
+174,49 -> 153,64 ms; parejas nuevas por 133 sin cambios 133 -> 0.
+No demuestra mejora global de todos los fotogramas; pendientes picos de dibujo.
+Detalle: docs/epg-refresh-20261023.txt. Sin publicar ni modificar produccion.
+
+2026-10-23: TV dibuja titulo, programa y progreso en un nodo de layout con cache
+Compose acotada a 64 medidas. Aspecto y acciones conservados, 880 pruebas correctas.
+Fire: p95 medida 50,2 ms referencia -> 37,9/38,8 ms en repeticiones calientes;
+primera ejecucion tras instalar no mejora. Persisten pendientes de primera carga
+con modelos/caches equivalentes. Detalle: docs/tv-row-text-20261023.txt.
+Sin publicar ni tocar produccion.
+
+2026-10-23: primera entrada TV evita scrollToItem sincronico al restaurar foco;
+viewport inicial parte del seleccionado si no hay posicion guardada. Fire:
+operacion posicionar 224,2 ms -> <0,1 ms; 880 pruebas y recorrido 6->18->6,
+pantalla completa/miniatura correctos. Pico grande de primer dibujo persiste
+(1147,7/1170 ms): no afirmar resuelto el arranque global.
+Detalle: docs/tv-entry-20261023.txt. Sin publicar ni tocar produccion.
+
+2026-10-23: primer dibujo TV: reutilizar reloj por hilo y filtrar grupo antes
+de permisos globales. 882 pruebas correctas; 399 horarios Fire 33,93 -> 5,56 ms,
+mismo resultado. Validado mando y retorno con video. Pico inicial NO resuelto:
+measureAndLayout sigue ~623 ms. Pendiente subcomposicion/interop de logos.
+Detalle: docs/tv-first-draw-20261023.txt. Sin publicar ni modificar produccion.
+
+2026-10-23: contraste de logos lee pixels en bloque y reutiliza muestra por hilo
+y halo por vista. 885 pruebas correctas. Fire real 39 analisis: 55,1 -> 10,7/11,8 ms;
+primera medicion de filas 588,9 -> 522/521,6 ms. Microbenchmark nativo 300
+analisis 141,9 -> 7,51 ms, misma decision, bounds y limpieza tras fallo. Picones,
+foco 6->18->6 y vuelta a miniatura verificados. Aun pendiente subcomposicion
+inicial (~522 ms). Detalle docs/tv-logo-20261023.txt. Sin publicar ni produccion.
+
+2026-10-23: diagnostico del pico de filas. Los ~522 ms previos eran de APK debug.
+Se retiran experimentos sin mejora demostrada (layout/foco/numero/puente de logos).
+Se corrige procedimiento en AGENTS: medir release perfilable, misma firma del Fire.
+APK privada optimizada instalada conservando datos; 885 pruebas correctas. Primera
+medida final 430,1 ms, repeticion 311 ms; primer frame 911,9/648,9 ms. Sigue margen:
+no afirmar resueltos todos los picos. Verificados foco, 6->18->6 y retorno a miniatura.
+Usuario autoriza cerrar Nuvio; cerrado para reducir interferencias, sin tocar servicios.
+Detalle docs/tv-row-layout-20261023.txt. Sin publicacion, commit/push ni produccion.
+
+23/10: continuacion, cache LRU de identidad textual U7D (512 nombres <=160 caracteres).
+Mismo algoritmo, sin cachear permisos/listas ni tocar rutas/reproduccion.
+Microbenchmark 19.950 nombres repetidos: .185 73,650 -> 0,502 ms; Fire
+2623,671 -> 2,609 ms. No extrapolar a toda TV ni primera carga.
+Ver docs/u7d-identity-20261023.txt; pruebas visuales pendientes de TV/mando.
+Compilacion optimizada correcta, 888 pruebas sin fallos. APK privada preparada
+(no instalada ni publicable); sigue instalada la referencia optimizada anterior.
+
+23/10 validacion Fire autorizada: candidata identidad U7D instalada, SHA verificado.
+133 canales HLS, 12 abajo/arriba y foco/picones conservados. Sin mejora global
+demostrada: medida primer dibujo control 367,6 ms / nueva 454,3 ms.
+Video detenido tras fullscreen->miniatura reproducido TAMBIEN en APK control
+anterior; retorno de video NO validado, nueva prioridad diagnosticarlo.
+Sin publicacion ni produccion; detalle/evidencias en u7d-identity-20261023.txt.
+Decision final de la prueba: candidata NO adoptada; se restaura tv-row-layout
+SHA d81f07c9dd3814764d93975d42a0a822dfedefb0fa40529c3909db4d748cd4cb.
+La imagen detenida tambien aparecio sin fullscreen; causa no aislada, no
+atribuirla al retorno ni a esta optimizacion. Datos y fuentes conservados .185.
+Cache experimental retirada del codigo activo; parche/tests privados conservados.
+APK anterior verificada por SHA y video en movimiento en comprobacion final.
+
+23/10 imagen detenida: aislado bloqueo de salida audio del Fire. READY/buffer
+no implicaban avance: posicion40ms, audio/video parados, AudioFlinger pista
+activa con buffer lleno y Server0, salida sin writes recientes. Tras reinicio
+del Fire, MISMA APK anterior vuelve a reproducir y retorna a miniatura con video.
+No parche de superficies ni cambios backend. Detalle preview-freeze-20261023.txt.
+La candidata de cache de identidad sigue retirada; no mezclar esta recuperacion
+de sistema con una mejora de cache o una nueva release.
+
+23/10 plan43: transporte reutilizable comparado en Fire ya recuperado del
+bloqueo audio. Release ARM32 perfilable A=false/B=true; otros flags HLS/zapeo
+apagados. Tandas completas12 cambios HLS (La Sexta/MPlus) por variante:
+prepare->frame mediana A747,5ms / B771ms; maxA1274 / B947. Cero errores.
+B conserva fullscreen->miniatura con movimiento. No aceleracion demostrada,
+flag sigue apagado; VOD/catchup/multiview/timeouts no validados para adopcion.
+Captura de timings en directo evita perder primeros cambios por anillo logcat.
+885 tests correctos. Sin publicar/produccion. Ver transport-fire-20261023.txt.
+Proxima prioridad44, coordinacion de cargas de imagenes, aislada de transporte.
+
+23/10 plan44: 886 tests correctos. Prueba de equidad .185/Fire confirma que
+seguidores de una parrilla bloqueada no ocupan los cuatro workers. En carga
+real A/B no se observan solicitudes validas de fallback; no hay aceleracion
+visible demostrada. 12 regiones de imagen/marcador identicas; foco por mando
+verificado al cambiar dia y entrar a tarjetas/ficha. Flag queda apagado; A
+restaurada en Fire, miniatura avanza sin dropped en muestra final. Sin publicar
+ni produccion. Ver artwork-fire-20261023.txt. Siguiente bloque45 TMDB.
+
+23/10 plan45: validada la optimizacion de ambitos TMDB ya preparada el21/10.
+Nuevo benchmark ejecuta helper Java real y esquema vigente con fixtures
+120000/12000 filas. 384 comparaciones exactas de progreso/siguiente/existencia/
+reintentos; mixtas/casi completas/completas/reintentadas, grupos y generaciones.
+Sin cambios de runtime o esquema: no presentar como nuevo un parche existente.
+886 resultados unitarios correctos reutilizados por Gradle; 14 SQLite+3 transaccion
++14 panel ejecutados. Medidas y limites en metadata-progress-20261023.txt.
+Pendiente validacion Android con video/panel, sin instalar ni publicar. Proximo46.
+
+23/10 plan45 Fire: SQLite3.28, 108 equivalencias por tanda en DB sintetica
+separada, video HLS activo y prioridad background. Recuento lista/pelicula
+112,304->19,923ms; siguiente 27,537->0,694ms. 9 muestras de video sin dropped
+ni bloqueo/cierre. Panel real 1948/1948, 0 pendientes/errores; paginas50 ida/vuelta
+y refresco correctos. No se reinicia cola real. Panel temporal cerrado.
+Persisten costes grupo mixto~263ms/series~91ms; no afirmar resuelto todo.
+Detalle metadata-progress-fire-20261023.txt. Sin instalar/publicar/produccion.
+
+23/10 plan46: mejora nueva en peliculas por lista: filtro e.source=? directo
+en preparacion, sin alterar todas/series. 126 equivalencias .185 (estados e
+idempotencia), 7 Fire. .185 listaa 22,688->17,822ms; Fire286,293->226,804ms;
+con grupo Fire316,683->231,715ms. Fixture120000, sin bases/listas reales.
+887 pruebas correctas y assembleRelease optimizado; candidata SIN FIRMA guardada
+y no instalada. Sin publicacion/produccion. Pendiente Worker/panel real, no
+marcar validado por este ensayo aislado. Ver metadata-preparation-20261023.txt.
+Siguiente47 coste de grupos, especialmente series.
+
+23/10 plan47: indice aditivo entries_series_group preparado, esquema9 no activado.
+218 equivalencias .185 y 12 Fire temporales, 4 tests de migracion correctos;
+887 unitarios y release optimizada correctos. Series/grupo Fire87->6ms;
+preparacion .185120000:451,7->7,1ms. Indice3,617MiB/120000; insertar5000
+24,2->30,8ms (coste extra real). Mixtos siguen~248ms en Fire.
+Candidata sin firma NO instalada; BD8/773 del Fire intactas. Antes de activar
+preparar respaldo/retorno compatible: APK helper8 no abre BD9 por defecto.
+Ver metadata-series-group-20261023.txt. Pendiente Worker/panel y filtros mixtos.
+
+23/10 plan47 mixtos: CASE por tipo reutiliza EXISTS especializados, grupo enlazado
+dos veces; resto de ambitos SQL/args intactos. 932 consultas equivalentes +52
+reintentos y 80 comprobaciones sin cambios; 12 equivalencias Fire. Indicesv8
+Fire recuento253->104ms; con indicev9 preparado249->18,6ms. Grupos ausentes
+cuestan ~1-1,5ms extra: no mejora universal. Release y 888 unitarios correctos.
+Sin instalar/produccion; BD real8 intacta, regla respaldo/retorno9 sigue vigente.
+Ver metadata-mixed-group-20261023.txt. Pendiente ciclo real Worker/panel; proximo48.
+
+23/10 plan48: preparacion ahora en etapas con active/isStopped antes de cada
+SQL, una transaccion y marcador tras end. Cancelar evita ejecutar etapas
+restantes y revierte SQL. 20 escenarios Android, 228 observaciones entre etapas
+y 237 lecturas desde otro hilo: solo cola anterior/completa. Cancelacion tras
+limpieza ~200->0,7ms en fixture; preparacion completa sin mejora clara (variacion
+~3%). 892 pruebas y release correctos. No instalacion/produccion.
+Pausar del panel sigue sujeto al mismo mutex: NO se afirma respuesta instantanea
+ni validacion E2E WorkManager/SharedPrefs. Ver metadata-transaction-20261023.txt.
+Siguiente: revisar espera de comandos manteniendo generacion/seleccion.
+Bloque49 Inter descartado por reversion expresa del usuario, conservar fuente anterior.
+
+23/10 plan48 pausa: senal por generacion antes del mutex de preparacion;
+active la observa y evita etapas posteriores. La pausa durable conserva mutex
+y guarda de generacion: no cancela un start/resume nuevo. No interrumpe SQL
+en curso ni elimina coste de status; no prometer respuesta instantanea.
+Ver metadata-pause-20261023.txt. Pendiente E2E panel/Worker aislado.
+Sin instalacion, publicacion ni produccion; retorno de esquema9 sigue pendiente.
+Validacion pausa: 898 pruebas correctas (6 nuevas), release ARM32 compilada
+sin firma, sin instalar. Sin medida nueva del tiempo HTTP del panel.
+
+24/10 pausa panel: E2E aislado Fire, paquete distinto, Worker/WorkManager/SQLite
+y HTML reales (8 SHA iguales). 5 ciclos HTTP .185->ADB LAN: pausa mediana33,4ms
+(max69,4), reanudar36,5ms (primera173,8). 5 ciclos locales adicionales preservan
+identidades done; pausa preparacion conserva cola y prepare; reanudar completa.
+Pausa antigua ignorada tras publicar nueva generacion; nuevo Worker avanza.
+Ver metadata-panel-pause-20261024.txt: latencia debug, sin A/B ni prueba fluidez.
+No instalar candidata en app real ni activar esquema9 sobre sus datos.
+Cierre E2E OK(1 test); navegador reanuda22->97, pausa conserva97, cero errores.
+Paquetes de ensayo retirados; original773 conservada. No produccion/push.
+
+24/10 ciclo siguiente: selector grupos TMDB por EXISTS solo con<=32 candidatos;
+sonda acotada33, mas grupos conserva SQL anterior. 240 equivalencias .185 y36
+Fire sobre fixtures; mixto63,7->20,7ms, peliculas35,1->14,9, series35,2->15,0.
+Muchos grupos con sobrecoste real de sonda hasta1,25ms en la muestra. Variante
+global descartada por regresion; sin cache/esquema nuevo. Ver metadata-groups-20261024.txt.
+Pendiente panel real/release integrado con video; sin instalar ni produccion.
+Cierre selector grupos:902 unitarios correctos y release optimizada compilada,
+candidata sin firma no instalada/publicada. Temporales Fire retirados.
+
+24/10 grupos integrados: panel/Worker/SQLite reales en paquete desechable Fire.
+15 ambitos exactos con SQL anterior +13 observaciones DOM, filtros conservados
+al actualizar/navegar y respuesta antigua descartada. HTTP A12000 caliente
+53..73ms; UI mediana95,4ms en6 cambios, primera203,4ms (incluye tunel/navegador).
+Preferencias y digest de cola sin cambios; no indexador. Ver
+metadata-groups-panel-20261024.txt. Solo pruebas/docs, no cambio runtime/prod.
+Cierre panel grupos:OK(1 test), hash cola/prefs intactos, cero trabajos TMDB,
+paquetes y conexion de ensayo retirados; DRBEP773 conservada.
+
+24/10 siguiente pendiente51 series-source: VALIDACION de codigo ya preparado,
+no runtime nuevo. 612 equivalencias .185 (orden/estados/idempotencia),108 SQL/args
+controles intactos;30 casos SQLite Fire. Indices8: sin grupo1477->101ms y preview
+1532->93ms; grupo existente aun~11s. Con indices9 en copia sintetica grupo~100ms
+(observacion unica); no activado en app. 172s de captura,22 muestras,4201 cuadros
+nuevos, delta perdidos0, mismo proceso. Tanda larga inicial descartada por limite.
+Ver metadata-series-source-fire-20261024.txt. No nueva APK ni cambios de app/DB
+real;902 unitarios previos no repetidos por no cambiar runtime. Pendiente flujo
+Worker series y adopcion release con respaldo/retornoDB9 antes de instalar.
+
+24/10 ADOPCION REAL indice en Fire190: mantener DB8 y APK773 original. Respaldo
+fisico58MB verificado en185 privado+Fire; clonecheck y retorno ACTIVO apply/drop/
+apply conservan digest completo/rowids/1948 estados. Indice final presente.
+Copia real27950 episodios: SQLseries/grupo mediana58667->205ms,3 muestras;
+1200 candidatos SELECT exactos en185. No tiempos de UI. Futuro migrateV9 IFNOT
+EXISTS,7SQLite+902JUnit/release correctos, candidata no instalada/publicada.
+Series real abre; no nueva APKDRBEP ni backend. TeVas0.4.5 codigo82 instalada.
+Ver index-adoption-fire-20261024.txt para respaldo, retorno y limites.
+Ya no afirmar que indice solo esta preparado: esta aplicado en DB8 del Fire.
+Nueva APKcon9 sigue requiriendo retorno compatible antes de futuras pruebas.
+
+25/10 candidata conjunta774 universal preparada y probada Fire+Xiaomi (archivo
+firmado distribucion EXACTO instalado enARM64). 902JUnit,8SQLite,4mixtos y19Node;
+Worker series aislado Fire30000episodios/150series completa150, pausa/reinicio/503
+conservan progreso;147,862s limitado por peticiones1/s, no costeSQL. Respaldo y
+retornoDB8->9->8 activos/copia, datos actuales preservados. Fire28698/27950/1948;
+Xiaomi748/0/0, gestosVOD/U7D y pausa correctos. Mando series E04 restaura, filtros
+y carrusel; multiview2 con seleccionaudio. Experimentos8flagsFALSE. Limite del
+primer dibujo frio no se declara resuelto. Ver candidata-conjunta-774-20261025.txt.
+Commit/publicacion aun pendientes al redactar, no backend/stable.

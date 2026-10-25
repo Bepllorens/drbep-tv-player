@@ -1,0 +1,106 @@
+24/10/2026 - Adopcion segura del indice de series en Fire190 + TeVas0.4.5
+
+PETICION: adoptar indice pendiente con respaldo/retorno, sin perder datos, e
+instalar APK adjunta. Se sustituye primero OwnTV0.4.0->0.4.4 y luego, por nueva
+indicacion del usuario, TeVas0.4.5 codigo82 ARM32. Paquete com.cineplex.owntv,
+firma344524915ebd5dfa7cec9ce3b45988daab55da53f3b7a9973f556d60f1ba7b2a
+coincide con instalada; install-r sin desinstalar/borrar datos. APK finalSHA256:
+1573726ace4a17cf16208febc16ec9f2c7d01d65b2b6efaa7608de6596ccc228.
+
+INDICE ADOPTADO EN DATOS ACTIVOS, no solo preparado:
+entries_series_group ON entries(source,generation,kind,series,group_name).
+Se mantiene PRAGMA user_version=8 y la APK original DRBEP773, SHA256
+82b5f2d5734a85fed51b75f2c84bd4df6d65c019f0cfb081694d70c3a10b5b57.
+No nueva APK DRBEP, ni instalacion de candidata v9, ni produccion223/publicacion.
+Un indice aditivo no necesita elevar user_version para ser usado por SQLite.
+Esto conserva compatibilidad con helper8 y evita un downgrade destructivo.
+No confundir con solucion general de retorno de una futura DB9 a helper8.
+
+RESPALDO REAL: 58155008 bytes, base personal-playlists.db completa. Se detiene
+la app solo durante mantenimiento; no se genera APK distinta de DRBEP. Auxiliar
+de instrumentacion separado, firmado con la MISMA identidad de pruebas instalada,
+accede al contexto de DRBEP con permiso de esa firma. Verifica version8, sin
+indice y trabajos/importaciones activos antes del respaldo. Checkpoint WAL,
+transaccion/exclusion de escritor y copia fisica exacta (NO VACUUM que podria
+cambiar rowids). Copia interna privada en no_backup, SHA256 contra original,
+integridad y digest de todos los valores/rowids/tipos de todas las tablas.
+Transferencia privada a185: FireOS bloquea adb pull de Android/data; se usa
+servidor SOLO loopback, puerto efimero, token256bits, un solo archivo/request,
+45s y sin explorar filesystem. HTTP via forwarding ADB autorizado al185, token
+no puesto en Git, cerrado y eliminado del informe al terminar. Temporal externo
+privado retirado por el auxiliar. Respaldo185 en directorio700/fichero600,
+SHA256 e integrity_check iguales; se conserva copia interna privada para retorno.
+
+Ruta PRIVADA (no Git):
+/srv/drbep-dev/reviews/index-adoption-20261024/backups/personal-playlists-v8.db
+SHA256 7ea7f6b4595dcc8a537a3f6895b573e9dd40147a3a1822857561a3c0847eeb4c
+APKs originales respaldadas en ese mismo directorio backups. No compartir DB:
+puede contener URLs/credenciales/material de listas; los informes solo huellas.
+
+RETORNO VALIDADO:
+1 Copia de base REAL en Fire: crear indice, datos/rowids/version8 iguales;
+  creacion repetida idempotente; retirar indice preserva todo; helper8 abre copia.
+2 Base ACTIVA: APPLY -> ROLLBACK(drop solo indice esperado) -> APPLY final.
+  Tres huellas completas de datos/esquema (salvo indice) coinciden con respaldo.
+  Mantiene todos los rowids y estados; integridad correcta. Operaciones totales
+  con comprobacion:28,0s/17,0s/25,5s. No son latencias de CREATE/DROP.
+  Datos finales antes de reabrir app:28698 entradas,27950 series/episodios,
+  1948 filas metadata_index, exactamente los mismos totales iniciales.
+  Datos despues de volver a usar la app pueden actualizarse normalmente; no
+  sobrescribirlos con una copia antigua para retirar un indice.
+
+MEDICION REAL, copia privada de respaldo en Fire (NO en base activa):
+Grupo con27950 episodios, consulta MetadataIndexQueue actual de preparacion de
+series por lista/grupo. Misma SQL/parametros; indice ausente/presente alternados.
+Un calentamiento y3 muestras: mediana58666,867ms ->205,304ms (~286x,99,65%menos).
+Solo ejecucion SQL; excluye copia, crear indice, huellas, red y dibujo. No decir
+que el menu entero o el arranque pase de59s a205ms. INSERT OR IGNORE se revierte
+tras cada muestra; estado/orden de la cola y digest de TODA la copia intactos.
+Como la cola real ya contiene filas, esa comparacion puede enmascarar candidatos
+ignorados: se verifica ademas SELECT proyectado directo de candidatos sobre copia
+privada del respaldo en185. 1200 candidatos, mismo orden/valores antes/despues.
+Esa comprobacion adicional es SQLiteLinux3.40.1, no falsa prueba Android; Fire ya
+cubria pertenencia con filas nuevas en fixtures de bloques anteriores.
+
+CODIGO DE DESARROLLO:
+PlaylistDatabase.migrateV9 ahora CREATE INDEX IF NOT EXISTS: futura actualizacion
+acepta indice ya adoptado en schema8. No cambia version9 prevista en codigo,
+solo hace migracion idempotente. Regex del benchmark admite forma nueva.
+7 tests SQLite (3 nuevos) cubren actualizacion tras adopcion, rowids/progreso,
+retorno aditivo en8 y fallo futuro de9 preservando indice previo. 902 JUnit
+correctos y assembleRelease optimizado, sin instalar/publicar esa candidata.
+Auxiliar reproducible en tools/android-index-maintenance, sin firmas ni DBs.
+El auxiliar no es parte de la app y se desinstala al cerrar mantenimiento.
+
+INCIDENCIA DEL AUXILIAR, RESUELTA:
+AGP9.1 habia incluido Kotlin stdlib automaticamente. Al instrumentar APKofuscada,
+clases duplicadas causaron abort ART antes de entrar a datos. Se excluye grupo
+org.jetbrains.kotlin y se verifica DEX sin duplicados antes de instalar. Intento
+compile --reset denegado por FireOS (no borro perfiles). Verify recompilado no
+resolvia causa; se preservan perfiles y se restaura speed-profile al terminar.
+No cambiar permisos/seguridad ni desinstalar DRBEP para ese problema. APKoriginal
+intacta, cuentas/Keystore no sustituidos. Esta incidencia no es perdida de DB.
+
+VALIDACION FINAL:
+Auxiliar retirado, puerto de respaldo cerrado/forward retirado, token efimero
+eliminado de registro privado. DRBEP773 abre Inicio con miniatura real y Series
+carga catalogo/carátulas/metadata (737/1200 fichas). No se reproduce un titulo ni
+se inicia indexador. Se intento abrir filtro Grupo, pero Fire paso a reproduccion
+de otro canal a pantalla completa; se detienen acciones de mando para no interferir.
+No afirmar selector de grupo visualmente validado en esta ultima tanda. La
+medicion de cola/indice y retorno ya estan completas. No cambios EPG/catchup/
+La1/Vamos ni fuentes/claves. No evaluacion de jank/p95 tras mantenimiento.
+
+RETIRAR INDICE SI SE SOLICITA DESPUES:
+Reinstalar temporalmente auxiliar firmado con misma identidad, action rollback.
+Debe seguir schema8, columnas exactas y no haber indexador activo. rollback
+preserva datos actuales, no exige que sigan iguales al respaldo antiguo. No
+reemplazar DB por copia vieja salvo incidente concreto y nueva autorizacion.
+Reverificar datos/rowids/integridad/version y quitar auxiliar. Si una futura APK
+ya elevo a9, DETENERSE y preparar retorno compatible antes de instalar helper8.
+
+Evidencia privada185: /srv/drbep-dev/reviews/index-adoption-20261024
+backup-verified.json, clonecheck.txt, actual-series-bench.txt, direct-select-verified.json,
+live-adoption.json, inspect-final.txt, apk-before.json, apk-after.json, result.json,
+pruebas y capturas. No publicar esos respaldos ni incorporarlos a Git.
+Sin commit/push ni cambios en servidor223 o canales de release.

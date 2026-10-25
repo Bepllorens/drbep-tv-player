@@ -68,3 +68,38 @@ Beta y stable usan el mismo identificador de aplicacion; no son instalaciones ai
 Preservar foco de mando, gestos tactiles, navegacion de series y retorno a la portada. Mantener listas de canales ligeras, controles discretos y degradados de la estetica actual. Al modificar video o superficies, probar zapeo, miniatura, vuelta desde pantalla completa y multipantalla; al modificar catchup, probar tambien acceso al timeshift y retorno al directo.
 
 No reintroducir cargas masivas de catalogos al arrancar, parrillas completas en memoria ni temporizadores trabajando en pantallas ocultas. Conservar la base indexada, paginacion y refresco selectivo del catchup. No recordar canales o grupos de adultos como seleccion de arranque.
+
+## Medidas de rendimiento en Fire
+
+Las APK de depuracion sirven para diagnostico y pruebas funcionales, pero sus
+costes de Compose, carga de clases y ejecucion no representan la APK optimizada
+que se distribuye. Para comparar fluidez, usar una variante release perfilable:
+
+```bash
+bash ./gradlew --no-daemon --max-workers=1 :app:assembleRelease \
+  -PupdateChannel=beta -PfireAbiOnly=true -PprofileBeta=true
+```
+
+Verificar el APK de esta compilacion mediante output-metadata.json, ABI, version,
+firma y SHA256. No elegir un app-release.apk antiguo que siga en outputs. Una
+compilacion privada puede firmarse con la identidad de pruebas ya instalada en
+el Fire para preservar datos; esa firma no autoriza publicar el artefacto en beta.
+No borrar datos ni desinstalar para cambiar de identidad. No publicar ni promover
+una APK de pruebas sin autorizacion expresa y firma de distribucion correcta.
+
+Comparar el mismo recorrido y grupo, separar primera entrada de recorridos
+calientes, distinguir CPU de tiempo total y comprobar otras apps/carga del sistema.
+No cerrar otras apps sin autorizacion. Si no hay mejora demostrable, retirar el
+experimento. Conservar capturas, trazas y retorno a la miniatura como evidencias.
+Detalle del diagnostico del 23 de octubre: docs/tv-row-layout-20261023.txt.
+
+## ADB de tablet Android 11 o posterior
+
+Para depuracion inalambrica TLS, el ADB Debian29 no es suficiente. Hay una copia
+Linux del platform-tools37 oficial existente en `/srv/drbep-dev/tools/adb-modern`.
+Usarlo con `-P 5038` en TODOS los comandos de tablet, para conservar el servidor
+5037 que controla el Fire con `/usr/bin/adb`. No matar ni sustituir ese servidor.
+Comprobar IP/puerto actuales; emparejar mediante el codigo que facilite el usuario,
+sin guardar ese codigo en archivos, Git o informes. La Xiaomi puede mostrar un
+aviso Instalar via USB con denegacion automatica a los10s: confirmar solo la APK
+autorizada; no recordar decisiones generales ni desactivar verificaciones.

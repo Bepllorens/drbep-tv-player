@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
@@ -633,6 +634,7 @@ private fun DiscoveryLibrary(model: StartupHomeHubUiModel, artwork: StartupHomeH
 @Composable
 private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHubArtworkBinder?, browse: () -> Unit) {
     val discovery = model.discovery ?: return
+    val homeChannels = remember(model) { model.resolveHomeChannels() }
     val live = model.currentLive
     val previewFocus = remember { FocusRequester() }
     val television = (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
@@ -661,7 +663,7 @@ private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHu
     }
     LaunchedEffect(Unit) {
         val id = discovery.homeFocusedChannel
-        val index = model.homeChannels.indexOfFirst { it.channelId == id }
+        val index = homeChannels.indexOfFirst { it.channelId == id }
         if (index >= 0) {
             listState.scrollToItem(index)
             withFrameNanos { }; withFrameNanos { }
@@ -726,8 +728,8 @@ private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHu
             }
         } else LazyColumn(Modifier.weight(1f).fillMaxWidth().background(OfflineTvTheme.Menu.background),state=listState,
             verticalArrangement=Arrangement.spacedBy(2.dp),contentPadding=androidx.compose.foundation.layout.PaddingValues(bottom=12.dp)) {
-            items(model.homeChannels.size,key={"channel:${model.homeChannels[it].channelId}"}) { index ->
-                val channel=model.homeChannels[index]
+            items(homeChannels.size,key={"channel:${homeChannels[it].channelId}"}) { index ->
+                val channel=homeChannels[index]
                 val focus=requesters.getOrPut(channel.channelId) { FocusRequester() }
                 var focused by remember { mutableStateOf(false) }
                 val playing=channel.channelId==live?.channelId
@@ -791,6 +793,7 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
             }
         }
     }
+    val rowTextMeasurer = androidx.compose.ui.text.rememberTextMeasurer(cacheSize = 64)
     var query by remember { mutableStateOf(discovery.liveQuery) }
     var searchOpen by remember { mutableStateOf(false) }
     var restoreSearch by remember { mutableStateOf(false) }
@@ -825,13 +828,20 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
     val selectedChannel = { channels.firstOrNull { it.channelId == selectedId } }
     val navigationCadence = remember(provider, query) { TvNavigationCadence() }
     val channelNavigationScope = androidx.compose.runtime.rememberCoroutineScope()
+    val channelFocusQueue = remember(provider, query, channels) { TvChannelFocusQueue() }
     val channelNavigationJob = remember(provider, query) { arrayOfNulls<kotlinx.coroutines.Job>(1) }
-    androidx.compose.runtime.DisposableEffect(channelNavigationJob) {
-        onDispose { channelNavigationJob[0]?.cancel() }
+    androidx.compose.runtime.DisposableEffect(channelNavigationJob, channelFocusQueue) {
+        onDispose { channelNavigationJob[0]?.cancel(); channelFocusQueue.cancel() }
     }
     val positionKey = "live:$provider:$query"
-    val gridState = remember(positionKey) { androidx.compose.foundation.lazy.LazyListState(
-        discovery.scrollPositions[positionKey] ?: 0, discovery.scrollPositions["$positionKey:offset"] ?: 0) }
+    val gridState = remember(positionKey) {
+        // Start at the selected channel when there is no saved viewport, instead
+        // of composing the first page and synchronously measuring another page.
+        val initialIndex = discovery.scrollPositions[positionKey]
+            ?: channels.indexOfFirst { it.channelId == selectedId }.coerceAtLeast(0)
+        androidx.compose.foundation.lazy.LazyListState(initialIndex,
+            discovery.scrollPositions["$positionKey:offset"] ?: 0)
+    }
     androidx.compose.runtime.DisposableEffect(positionKey, gridState) {
         onDispose {
             discovery.scrollPositions[positionKey] = gridState.firstVisibleItemIndex
@@ -859,7 +869,14 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
             runCatching { groupButtonFocus.requestFocus() }
         } else {
             val index = channels.indexOf(target).coerceAtLeast(0)
-            gridState.scrollToItem(index)
+            android.os.Trace.beginSection("DRBEP.tvEntryPosition")
+            try {
+                if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                    // Schedule positioning for the regular layout pass. Avoid
+                    // a synchronous extra measure while the TV screen is built.
+                    gridState.requestScrollToItem(index)
+                }
+            } finally { android.os.Trace.endSection() }
             withFrameNanos { }; withFrameNanos { }
             var restored = false
             repeat(3) {
@@ -957,7 +974,7 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(3.dp)) {
                     items(channels.size, key = { channels[it].channelId }) { index ->
-                        val channel = liveProgrammeCard(channels[index])
+                        val channel = liveProgrammeCard(channels[index], reuseRecentSnapshot = true)
                         val requester = channelFocus.getOrPut(channel.channelId) { FocusRequester() }
                         var focused by remember { mutableStateOf(false) }
                         val playing = channel.channelId == previewChannelId
@@ -969,22 +986,32 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                                 val key = event.nativeKeyEvent
                                 val down = key.action == android.view.KeyEvent.ACTION_DOWN
                                 val ok = key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || key.keyCode == android.view.KeyEvent.KEYCODE_ENTER
-                                if (down && key.keyCode != android.view.KeyEvent.KEYCODE_DPAD_UP && key.keyCode != android.view.KeyEvent.KEYCODE_DPAD_DOWN) channelNavigationJob[0]?.cancel()
+                                if (down && key.keyCode != android.view.KeyEvent.KEYCODE_DPAD_UP && key.keyCode != android.view.KeyEvent.KEYCODE_DPAD_DOWN) { channelNavigationJob[0]?.cancel(); channelFocusQueue.cancel() }
                                 if (down && movingChannel == null &&
                                     (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP || key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN)) {
                                     navigationCadence.onNavigation(key.eventTime, key.repeatCount)
-                                    val targetIndex = index + if (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) -1 else 1
+                                    val targetIndex = channelFocusQueue.move(index, if (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) -1 else 1, channels.size)
                                     if (targetIndex in channels.indices) {
                                         channelNavigationJob[0]?.cancel()
                                         channelNavigationJob[0] = channelNavigationScope.launch {
                                             val target = channels[targetIndex].channelId
                                             val visible = gridState.layoutInfo.visibleItemsInfo
-                                            if (visible.none { it.index == targetIndex }) {
-                                                val first = if (targetIndex < index) targetIndex else
-                                                    (targetIndex - visible.size.coerceAtLeast(1) + 1).coerceAtLeast(0)
-                                                gridState.scrollToItem(first)
+                                            android.os.Trace.beginSection("DRBEP.tvFocusScroll")
+                                            try {
+                                            if (visible.any { it.index == targetIndex }) {
+                                                val ready = channelFocus[target]
+                                                if (ready != null && runCatching { ready.requestFocus(); true }.getOrDefault(false)) return@launch
+                                            } else {
+                                                // A partially visible row is not a full slot. Reveal the
+                                                // destination using pixel geometry, not visible-item count.
+                                                val rowHeight = visible.firstOrNull { it.index == index }?.size
+                                                    ?: visible.firstOrNull()?.size ?: 1
+                                                val offset = if (targetIndex < index) 0 else
+                                                    -(gridState.layoutInfo.viewportEndOffset - rowHeight).coerceAtLeast(0)
+                                                gridState.requestScrollToItem(targetIndex, offset)
                                             }
-                                            repeat(3) {
+                                            } finally { android.os.Trace.endSection() }
+                                            repeat(6) {
                                                 withFrameNanos { }
                                                 val requester = channelFocus[target]
                                                 if (requester != null && runCatching { requester.requestFocus(); true }.getOrDefault(false)) return@launch
@@ -1032,20 +1059,17 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                                     if (focused) drawRoundRect(Color(0xFFFFA348), size = Size(3.dp.toPx(), size.height), cornerRadius = radius)
                                 }
                             }
-                            .onFocusChanged { focused = it.isFocused; if (it.isFocused) { selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId } }
+                            .onFocusChanged { focused = it.isFocused; if (it.isFocused) { channelFocusQueue.focused(index); selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId } }
                             .tvButtonSemantics(true, (if (movingChannel == channel.channelId) "Moviendo " else "") + channel.title + ". " + channel.subtitle)
                             .clickable { selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId; channel.onClick?.run() }
                             .padding(9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 BasicText(if (playing) "▶" else "${index + 1}", modifier = Modifier.width(18.dp), style = TextStyle(if (playing) Color(0xFF67DBEA) else Color(0xFF9BB4C5), 10.sp))
                                 DiscoveryArtwork(channel.imageUrl, channel.title, false, artwork, Modifier.width(42.dp).height(34.dp).padding(3.dp), 42, 34)
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    BasicText(channel.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 14.sp, FontWeight.SemiBold))
-                                    BasicText(if (hasProgramme) remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle).title } else "Sin programación", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFB7CAD8), 11.sp))
-                                    if (hasSchedule) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF354B5B))) {
-                                        Box(Modifier.fillMaxWidth(channel.progress.coerceIn(0f, 1f)).fillMaxHeight().background(Color(0xFF67DBEA)))
-                                    }
-                                }
+                                TvChannelRowText(channel.title,
+                                    if (hasProgramme) remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle).title } else "Sin programación",
+                                    if (hasSchedule) channel.progress else null, rowTextMeasurer,
+                                    Modifier.weight(1f).fillMaxHeight())
                             }
                         }
                     }
@@ -1078,33 +1102,51 @@ private fun DiscoveryLiveDetails(selectedChannel: () -> StartupHomeHubUiModel.Co
                     }
                     displayed?.let { original ->
                         val channel = liveProgrammeCard(original)
-                        androidx.compose.runtime.key(provider) { DiscoveryLivePreview(channel, artwork, onPreviewChannel = onPreviewChannel) }
-                        if (channel.channelId != selectedChannel()?.channelId) {
-                            BasicText("Seleccionando canal…", style = TextStyle(Color(0xFF9FBDCF), 12.sp))
-                        } else {
-                        val programme = remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle) }
-                        val hasProgramme = channel.subtitle.isNotBlank() && !channel.subtitle.equals(channel.title, true) && channel.subtitle != "Programación no disponible"
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            BasicText(channel.title, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 15.sp, FontWeight.SemiBold))
-                            BasicText("OK para pantalla completa", style = TextStyle(Color(0xFF9FBDCF), 10.sp))
+                        Box {
+                            androidx.compose.runtime.key(provider) { DiscoveryLivePreview(channel, artwork, onPreviewChannel = onPreviewChannel) }
+                            DiscoveryLiveSelectionHint(channel.channelId, selectedChannel,
+                                Modifier.align(Alignment.BottomStart).padding(8.dp))
                         }
-                        BasicText(if (hasProgramme) programme.title else "Sin programación", maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 20.sp, FontWeight.Bold))
-                        if (hasProgramme && programme.metadata.isNotBlank()) BasicText(programme.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 12.sp))
-                        if (hasProgramme && channel.schedule.isNotBlank()) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                BasicText(channel.schedule, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
-                                BasicText("● EN DIRECTO", style = TextStyle(Color(0xFF67DBEA), 10.sp, FontWeight.Bold))
-                            }
-                            Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0xFF354B5B))) {
-                                Box(Modifier.fillMaxWidth(channel.progress.coerceIn(0f,1f)).fillMaxHeight().background(Color(0xFF67DBEA)))
-                            }
-                        }
-                        if (hasProgramme) ProgrammeMetadataStrip(channel.programmeMetadata)
-                        if (hasProgramme && channel.description.isNotBlank()) BasicText(channel.description, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFC5D6E2), 12.sp))
-                        if (channel.nextProgram.isNotBlank() && !channel.nextProgram.equals(channel.title,true)) BasicText("Después · ${channel.nextProgram}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
-                        }
+                        DiscoveryLiveProgrammeDetails(channel)
+
                     }
                 }
+}
+
+
+/** Metadata stays stable until the focused row settles. */
+@Composable
+private fun DiscoveryLiveProgrammeDetails(channel: StartupHomeHubUiModel.ContinueCard) {
+    val programme = remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle) }
+    val hasProgramme = channel.subtitle.isNotBlank() && !channel.subtitle.equals(channel.title, true) && channel.subtitle != "Programación no disponible"
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        BasicText(channel.title, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 15.sp, FontWeight.SemiBold))
+        BasicText("OK para pantalla completa", style = TextStyle(Color(0xFF9FBDCF), 10.sp))
+    }
+    BasicText(if (hasProgramme) programme.title else "Sin programación", maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color.White, 20.sp, FontWeight.Bold))
+    if (hasProgramme && programme.metadata.isNotBlank()) BasicText(programme.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 12.sp))
+    if (hasProgramme && channel.schedule.isNotBlank()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            BasicText(channel.schedule, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
+            BasicText("● EN DIRECTO", style = TextStyle(Color(0xFF67DBEA), 10.sp, FontWeight.Bold))
+        }
+        Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0xFF354B5B))) {
+            Box(Modifier.fillMaxWidth(channel.progress.coerceIn(0f,1f)).fillMaxHeight().background(Color(0xFF67DBEA)))
+        }
+    }
+    if (hasProgramme) ProgrammeMetadataStrip(channel.programmeMetadata)
+    if (hasProgramme && channel.description.isNotBlank()) BasicText(channel.description, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFFC5D6E2), 12.sp))
+    if (channel.nextProgram.isNotBlank() && !channel.nextProgram.equals(channel.title,true)) BasicText("Después · ${channel.nextProgram}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(Color(0xFF9FBDCF), 11.sp))
+
+}
+
+@Composable
+private fun DiscoveryLiveSelectionHint(displayedId: String,
+    selectedChannel: () -> StartupHomeHubUiModel.ContinueCard?, modifier: Modifier) {
+    // Read selection only in the layer: no text remeasurement or video recomposition.
+    BasicText("Seleccionando canal…", modifier.graphicsLayer {
+        alpha = if (displayedId != selectedChannel()?.channelId) 1f else 0f
+    }.clearAndSetSemantics { }, style = TextStyle(Color(0xFF9FBDCF), 12.sp))
 }
 
 @Composable
@@ -1164,15 +1206,21 @@ private fun DiscoveryRail(title: String, cards: List<StartupHomeHubUiModel.Conti
 
 @Composable
 private fun DiscoveryArtwork(url: String, label: String, poster: Boolean, binder: StartupHomeHubArtworkBinder?, modifier: Modifier, width: Int, height: Int) {
-    AndroidView(modifier = modifier, factory = { context -> (if (poster) AppCompatImageView(context) else IntegratedChannelLogoView(context)).apply {
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
-    } }, onReset = { image ->
+    AndroidView(modifier = modifier, factory = { context ->
+        android.os.Trace.beginSection("DRBEP.logoCreate")
+        try { (if (poster) AppCompatImageView(context) else IntegratedChannelLogoView(context)).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        } } finally { android.os.Trace.endSection() }
+    }, onReset = { image ->
         binder?.releaseArtwork(image)
         image.setTag(R.id.startup_home_artwork_request, null)
     }, onRelease = { binder?.releaseArtwork(it) }, update = { image ->
         if (image.getTag(R.id.startup_home_artwork_request) != url) {
-            if (poster) binder?.bindPoster(image, url, width, height) else binder?.bindLogo(image, url, label, width, height)
+            android.os.Trace.beginSection("DRBEP.logoBind")
+            try {
+                if (poster) binder?.bindPoster(image, url, width, height) else binder?.bindLogo(image, url, label, width, height)
+            } finally { android.os.Trace.endSection() }
             image.setTag(R.id.startup_home_artwork_request, url)
         }
     })

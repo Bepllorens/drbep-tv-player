@@ -1,0 +1,106 @@
+Filtro mixto de grupos TMDB — 23/10/2026
+
+Cambio nuevo
+MetadataIndexSelection.groupPredicate(alias,kind vacio) usa CASE por tipo:
+pelicula -> EXISTS por identidad/ocurrencia; serie -> EXISTS por nombre de serie.
+Cada rama reutiliza la consulta especializada anterior, incluyendo fuente,
+generacion activa/preview, grupo y preferencias de ocultacion. Otros tipos -> 0.
+Se evita el OR interno que impedia aprovechar los dos caminos de indice.
+La misma cadena de grupo se enlaza dos veces, una por rama. args/countArgs y
+MetadataIndexReview conservan el orden estado/cursor DESPUES del ambito.
+Parametros de datos nunca se interpolan en SQL. No se crean nuevos indices.
+La referencia GROUP_SQL y el helper de un argumento se conservan para comparacion.
+Filtros sin grupo y de un unico tipo mantienen SQL y parametros anteriores.
+
+Alcance
+Solo .185 y ensayos aislados de SQLite Android. Sin instalar, publicar o cambiar
+produccion. La migracion9 de la sesion anterior sigue preparada y NO activada
+en la base del Fire. La mejora de CASE funciona tambien con indices v8.
+
+Equivalencia
+tools/benchmark-metadata-mixed-group.py compila helper anterior/candidato reales.
+Fixtures v8 y v9, 12000 y 120000 entradas sinteticas; visible/ocultos/generacion
+antigua/cola terminada. Progreso, siguiente con seis campos y rowid, miembros de
+reintento y revision con segunda pagina cuando procede.
+Consultas equivalentes: 932. Efectos de UPDATE retry equivalentes: 52.
+Comparaciones de SQL/args identicos para ambitos no modificados: 80.
+tools/test-metadata-mixed-group.py: cuatro pruebas adicionales sobre ocurrencias
+de pelicula, serie cuyo representante esta en otro grupo, episodio oculto,
+preview, generacion activa, tipo live excluido, comillas y reintentos acotados.
+
+Medidas .185: SQLite Linux en memoria, dos calentamientos + nueve muestras
+alternadas. Medicion finalizada ANTES de la compilacion. No datos de produccion.
+filas | indices | grupo | consulta | anterior -> candidato (ms)
+12000 | v8 | Drama | counts | 19.0217 -> 8.4449
+12000 | v8 | Drama | next | 4.5178 -> 1.9749
+12000 | v8 | Missing | counts | 1.2036 -> 1.3427
+12000 | v8 | Missing | next | 0.2847 -> 0.3069
+12000 | v9 | Drama | counts | 18.9546 -> 1.4271
+12000 | v9 | Drama | next | 3.8970 -> 0.3299
+12000 | v9 | Missing | counts | 1.0580 -> 1.1892
+12000 | v9 | Missing | next | 0.2583 -> 0.2848
+120000 | v8 | Drama | counts | 2303.3750 -> 909.2033
+120000 | v8 | Drama | next | 462.2402 -> 184.0675
+120000 | v8 | Missing | counts | 10.7152 -> 12.0752
+120000 | v8 | Missing | next | 2.4829 -> 2.6911
+120000 | v9 | Drama | counts | 2275.6919 -> 15.4826
+120000 | v9 | Drama | next | 456.9856 -> 3.5755
+120000 | v9 | Missing | counts | 10.5926 -> 12.8324
+120000 | v9 | Missing | next | 2.4191 -> 2.8104
+
+Fire AFTKRT, SQLite Android, 12000 entradas sinteticas
+Mismo Java convertido a DEX, prioridad BACKGROUND10, base propia /data/local/tmp.
+Consulta anterior/candidata sobre los MISMOS datos con indices v8 y v9.
+Comparaciones exactas: 12. Dos calentamientos + nueve muestras alternadas.
+No se altera el user_version ni los datos de la base real de la app.
+indices | grupo | consulta | anterior -> candidato (ms)
+v8 | Drama | counts | 252.746 -> 103.897
+v8 | Drama | next | 52.040 -> 22.610
+v8 | Drama | review | 57.101 -> 26.652
+v8 | Missing | counts | 13.889 -> 15.005
+v8 | Missing | next | 3.950 -> 4.274
+v8 | Missing | review | 4.538 -> 4.982
+v9 | Drama | counts | 248.736 -> 18.572
+v9 | Drama | next | 55.383 -> 5.019
+v9 | Drama | review | 57.532 -> 9.447
+v9 | Missing | counts | 14.451 -> 15.831
+v9 | Missing | next | 3.932 -> 4.451
+v9 | Missing | review | 4.644 -> 6.131
+
+Limites y regresiones observadas
+Grupos ausentes: pequeno coste extra. En Fire recuento v8 13,89->15,00ms y
+v9 14,45->15,83ms; revision v9 4,64->6,13ms. No afirmar mejora universal.
+Las grandes ganancias requieren grupos con contenidos; no se cambia el resultado
+de los vacios. La estructura actual v8 ya mejora, el indice v9 lo amplifica.
+Los fixtures incluyen una fila de cola por entrada y estresan el filtro; no
+extrapolar las cifras de 120000 a la cola real de 1948 titulos del usuario.
+No se ha medido latencia HTTP/renderizado del panel ni p95 de mando.
+Muestras PreviewPerf: posicion y frames avanzan; dropped=1 acumulado en las
+muestras finales, sin captura previa continua para atribuir ese descarte.
+No se cambia ni se evalua de nuevo el reproductor. No afirmar cero descartes.
+
+Regresion y artefacto
+assembleRelease optimizada ARM32 perfilable beta + testDebugUnitTest correctos:
+888 pruebas, 0 fallos, 0 errores.
+Cuatro pruebas mixtas +14 de ambitos SQLite +3 de transacciones correctas.
+git diff --check correcto. Candidata SIN FIRMA de distribucion, version773,
+NO instalada ni publicable: candidate-unsigned.apk SHA256 f4864feb41a32c16e10060ded050a05ce738166451cafe1d62f60f11e8a4940e
+Todos los flags experimentales de transporte/HLS/zapeo/imagenes siguen apagados.
+
+Estado de datos y migracion
+Archivos propios de ensayo del Fire se retiran al finalizar. No se inicia el
+Worker TMDB ni se modifican fichas, listas o preferencias reales. La APK sigue
+siendo la anterior. Antes de instalar candidata con esquema9, seguir respaldo
+y retorno compatible indicados en metadata-series-group-20261023.txt; una APK
+helper8 no abre por defecto una BD9. Este cambio CASE no elimina ese requisito.
+
+Evidencia privada .185: /srv/drbep-dev/reviews/metadata-mixed-group-20261023
+results.json, benchmark.log, fire.json, fire-errors.txt, video-samples.txt,
+build.log, tests.json, build-identity.json, candidate-unsigned.apk, fuentes y
+respaldo previo de Selection/test. No tokens ni material de reproduccion.
+
+Plan
+Filtro mixto preparado y medido con resultados iguales. Sigue pendiente
+activacion controlada y prueba del ciclo Worker/panel sobre datos reales.
+Proximo bloque previsto: preparacion transaccional (48), validar cancelacion,
+visibilidad de la cola y reanudacion en SQLite Android sin alterar colas reales.

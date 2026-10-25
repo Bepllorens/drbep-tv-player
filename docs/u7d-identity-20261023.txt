@@ -1,0 +1,90 @@
+Precarga catchup: reutilizacion acotada de identidad textual - 23/10/2026
+
+Desarrollo .185, rama qoder/disneyplus-vod-582; HEAD ca3f076.
+Conserva todos los cambios anteriores. Sin produccion, publicacion ni push.
+
+Motivo
+El muestreo anterior detecto archiveChannels durante la entrada a TV.
+Ese recorrido repite la normalizacion de nombres al deduplicar las tres listas.
+Se optimiza unicamente esa conversion determinista, tambien usada por matches.
+No se cambia el algoritmo ni se cachean listas, permisos, asociaciones o reproducciones.
+Los filtros de adultos/visibilidad y la seleccion del canal siguen ejecutandose.
+
+Cambio
+U7dChannelIdentity.normalize conserva el algoritmo anterior en normalizeUncached.
+LRU sincronizada de hasta 512 entradas, por texto exacto (null equivale a vacio).
+No retiene nombres de mas de 160 caracteres. Regex fuera del bloqueo.
+Una edicion de alias usa otra clave, sin invalidaciones dependientes de catalogo,
+cuenta, EPG, reloj o idioma; la conversion sigue usando Locale.ROOT.
+
+Validacion aislada
+399 textos sinteticos (133 canales x tres variantes de lista), todos equivalentes.
+20 calentamientos, 9 muestras alternando orden, 50 recorridos por muestra:
+19.950 nombres por muestra.
+.185 mediana anterior 73,650 ms; cache caliente 0,502 ms.
+Fire AFTKRT mediana anterior 2623,671 ms; cache caliente 2,609 ms.
+399 nombres nuevos: 12,103 ms Linux y 58,519 ms Fire en una muestra.
+No se atribuyen estos factores al tiempo de apertura global de TV: en frio se
+sigue normalizando; cache con mas de 512 nombres puede perder sus aciertos.
+Benchmark con checksum consumido y equivalencia de resultados.
+Ejecutado con app_process independiente, sin cambiar la pantalla ni el mando.
+Tres pruebas nuevas: equivalencia/eviccion, edicion/entradas largas/locale,
+concurrencia de cuatro lectores con mas de 512 nombres.
+Compilacion release optimizada ARM32 correcta (2 min 43 s).
+888 pruebas, 0 fallos/errores/omitidos. git diff --check correcto.
+APK privada de pruebas preparada, firma compatible con la instalada; NO publicada.
+SHA256 604b8668a430f3b5d00d8c731704faf287ba2e62409b8d8bc5b20ae27b879011.
+Instalada posteriormente y contrastada con control; ver validacion Fire debajo.
+
+Evidencias privadas .185
+/srv/drbep-dev/reviews/u7d-identity-20261023
+Identity.before.java, benchmark-linux.txt, benchmark-fire.txt y build.log.
+El benchmark no utiliza catalogos, sesiones ni datos de produccion.
+
+Validacion Fire - 23/10, TV encendida y mando libre confirmados
+APK preparada instalada con -r, sin borrar datos; firma compatible y SHA instalado
+contrastado con 604b8668a430f3b5d00d8c731704faf287ba2e62409b8d8bc5b20ae27b879011.
+Control: APK optimizada tv-row-layout, misma version 773 y mismo perfil ARM32.
+Recorrido: proceso frio, 10 s Inicio, abrir TV Movistar HLS, 133 canales.
+Una muestra inicial por variante, no una comparacion estadistica:
+- Control: Activity 1895 ms; max Owner measureAndLayout 367,6 ms; frame 854,4 ms.
+- Nueva: Activity 1652 ms; max Owner measureAndLayout 454,3 ms; frame 891,8 ms.
+- homeModel maximo 815,3 / 1009,6 ms (control/nueva).
+Por tanto NO se demuestra mejora global del primer dibujo; no extrapolar microbench.
+Desplazamiento nueva: 12 abajo hasta M+ Drama 18 y 12 arriba hasta La Sexta 6,
+sin perder foco, con picones/EPG. Traza: frame p95 38,1 ms, max 142,8 ms;
+Owner p95 29,9 ms, max 104,2 ms. Sin control caliente equivalente, no afirmar mejora.
+
+Incidencia detectada durante la validacion
+Al volver de pantalla completa, el video permanece en el mismo fotograma.
+Se repitio con reinstalacion del control y recorrido equivalente en Movistar Plus:
+ambas capturas del video, separadas 5 segundos, tienen igual hash.
+Tambien se observo con la nueva APK. No es evidencia de regresion causada por
+la cache, ni se considera retorno a miniatura validado.
+El control con un cambio de canal sin pasar por pantalla completa si cambia
+fotogramas. Queda pendiente diagnosticar el retorno de superficie/reanudacion.
+Se reinstala la candidata tras el control, sin cambiar codigo de video o backend.
+No se modifican rutas, claves ni La 1/Vamos.
+Log inicial del proceso candidato: 0 FATAL/ANR/OOM/PlaybackException/
+ExoPlaybackException en las 3000 lineas consultadas. La ausencia de errores no
+demuestra movimiento de video ni elimina la incidencia observada.
+No se valida reproduccion catchup completa en esta pasada.
+Evidencias: baseline-entry.trace, candidate-entry.trace, candidate-scroll.trace,
+fullscreen/return, final-motion1/2, control-return1/2, error-counts.json.
+
+Decision final de la pasada
+Tras la ultima reinstalacion candidata se observaron tambien capturas identicas
+en La Sexta y aviso de auto-reparacion, sin pasar por fullscreen en ese ultimo
+recorrido. Por tanto NO se limita la incidencia al retorno ni se atribuye una
+causa con estas pruebas. Faltan muestras de estado/decodificador/superficie.
+Se restaura la APK control tv-row-layout (d81f07c9dd3814764d93975d42a0a822dfedefb0fa40529c3909db4d748cd4cb),
+sin borrar datos. Candidata queda preparada pero NO adoptada, al no demostrar
+mejora global y quedar incompleta la validacion audiovisual.
+La optimizacion y sus pruebas se retiran del checkout activo y se conservan
+en reviews/u7d-identity-20261023/not-adopted.patch y U7dIdentityReuseTest.java;
+no se publican. No cambiar reproduccion ni atribuir freeze a claves/EPG/normalizador
+sin un diagnostico adicional.
+
+Retorno final: SHA del control verificado en el APK instalado. Dos capturas
+del video de Movistar Plus separadas 4 segundos difieren; movimiento recuperado.
+No se repite fullscreen antes de devolver el mando.

@@ -1,0 +1,198 @@
+24/10/2026 - Validacion siguiente bloque pendiente51: cola de series por lista
+
+Es una validacion del filtro source antes del GROUP BY ya preparado el21/10,
+NO un cambio nuevo de runtime. Sin lista seleccionada y peliculas son controles
+sin SQL/argumentos modificados. No cambiar playback, metadatos ni esquemas.
+
+Referencia: overload MetadataIndexQueue.sql(series,withGroup) para series con
+lista elegida, con el filtro source exterior opcional. Preparada: overload con
+withSource=true agrega source dentro de la agrupacion y mantiene el exterior.
+Compara helpers Java reales compilados; no reconstruir consulta con regex.
+Predicado por grupo, generacion/preview y ocultos son los actuales en ambos lados,
+para aislar exactamente el efecto source. No atribuir cambios de indices a ese
+filtro; SQLite Fire compara cada variante con los mismos indices.
+
+.185 SQLite: 12000/120000 entradas ficticias (20 fuentes),612 comparaciones
+exactas de filas/orden/estados/reintento. 108 comprobaciones de SQL/args intactos
+para peliculas y sin fuente. Fases visible, ocultos y generacion antigua; s19 ya
+usa preview. Fuentes ausentes y comillas como datos; grupos Drama/ausentes.
+Se preservan estados done/error/unmatched/skipped y filas de otra lista; segundo
+INSERT OR IGNORE no cambia filas ni orden. SHA256 de candidatos y salida completa
+en linux.json. Datos generados, no catalogos/sesiones/credenciales reales.
+Medianas .185 de ejecucion SQL, excluyendo reset/snapshot de prueba:
+[
+  {
+    "source": "s0",
+    "group": "",
+    "before_ms": 71.5947,
+    "after_ms": 4.702799
+  },
+  {
+    "source": "s0",
+    "group": "Drama",
+    "before_ms": 531.683161,
+    "after_ms": 457.502507
+  },
+  {
+    "source": "s19",
+    "group": "",
+    "before_ms": 71.076956,
+    "after_ms": 4.774002
+  },
+  {
+    "source": "s19",
+    "group": "Drama",
+    "before_ms": 526.947261,
+    "after_ms": 462.666171
+  }
+]
+
+Sin grupo s0:71,59->4,70ms; preview s19:71,08->4,77. Con grupo s0:
+531,68->457,50ms; NO afirmar solucionado el coste de grupo. Contencion/vida de
+Worker requieren otras pruebas; aqui no se ejecutan llamadas a TMDB.
+
+Herramientas nuevas: tools/benchmark-metadata-series-source.py y
+ tools/benchmarks/SeriesSourceFireCheck.java. Native prueba DB exclusiva
+/data/local/tmp/drbep-series-source-20261024.db y clasehelper real enDEX;
+no abre la BD del paquete DRBEP. Indices8 y9, este ultimo solo en esa copia.
+Transaccion de prueba envuelve fases y revierte cambios sinteticos al terminar.
+La medida cronometra execSQL de insercion, no limpieza/commit/respuesta del panel.
+Prueba de estados/idempotencia fuera del cronometro; no inventar tiempos HTTP.
+
+Video: registro pasivo del PID real de DRBEP, solo lineas PreviewPerf. No cambio
+de canal ni instalacion/reinicio. No implica televisor/HDMI observado visualmente;
+conservar solo conclusiones sustentadas por contador de cuadros/estado/posicion.
+No se cerraron otras apps. Proceso de ensayo prioridad background10 como Worker.
+
+Evidencias .185: /srv/drbep-dev/reviews/metadata-series-source-20261024
+linux.json, fixture.db, clases/DEX/series.jar, fire.json, video.txt y resumen.
+Sin produccion223 ni publicacion/Git push. APK773/BD8 reales intactas.
+Los902 unitarios/release del bloque previo no se repiten al no cambiar runtime.
+
+Control del ensayo: primera tanda larga alcanza limite240s sin informe funcional
+completo; sus tiempos se descartan. Registro pasivo en ese intervalo:30 muestras,
+5800 cuadros nuevos, delta de cuadros perdidos0, playing=true en todas, mismo
+PID. No usar ese registro como sustituto de resultados funcionales ausentes.
+Hubo un segundo arranque del arnes antiguo al fallar su recompilacion por no
+cargar env; se detuvo solo ese proceso sintetico (28s,4 muestras,600 cuadros
+nuevos, delta perdidos0). No se toco el proceso de DRBEP ni datos del usuario.
+Tanda final acotada: tres muestras tras dos calentamientos para sin grupo;
+con grupo se conserva una comparacion funcional cronometrada por ambito, SIN
+atribuir precision de mediana a esas observaciones individuales. Todas las
+comprobaciones funcionales previstas se mantienen. Helpers de app sin cambios.
+
+TANDA FINAL COMPLETA, no parcial:
+{
+  "checks": 30,
+  "saved_states_preserved": true,
+  "retry_idempotent": true,
+  "order_unchanged": true
+}
+[
+  {
+    "indexes": 8,
+    "source": "s0",
+    "group": "",
+    "before_ms": 1476.921231,
+    "after_ms": 101.185154,
+    "samples": 3
+  },
+  {
+    "indexes": 8,
+    "source": "s0",
+    "group": "Drama",
+    "before_ms": 12298.195078,
+    "after_ms": 10761.717154,
+    "samples": 1
+  },
+  {
+    "indexes": 8,
+    "source": "s19",
+    "group": "",
+    "before_ms": 1532.033,
+    "after_ms": 93.481307,
+    "samples": 3
+  },
+  {
+    "indexes": 8,
+    "source": "s19",
+    "group": "Drama",
+    "before_ms": 12345.652846,
+    "after_ms": 11692.815617,
+    "samples": 1
+  },
+  {
+    "indexes": 8,
+    "source": "s0",
+    "group": "Missing",
+    "before_ms": 1503.893846,
+    "after_ms": 83.742769,
+    "samples": 1
+  },
+  {
+    "indexes": 9,
+    "source": "s0",
+    "group": "",
+    "before_ms": 1424.958308,
+    "after_ms": 72.257308,
+    "samples": 3
+  },
+  {
+    "indexes": 9,
+    "source": "s0",
+    "group": "Drama",
+    "before_ms": 1405.941924,
+    "after_ms": 99.989769,
+    "samples": 1
+  },
+  {
+    "indexes": 9,
+    "source": "s19",
+    "group": "",
+    "before_ms": 1445.916231,
+    "after_ms": 76.207769,
+    "samples": 3
+  },
+  {
+    "indexes": 9,
+    "source": "s19",
+    "group": "Drama",
+    "before_ms": 1477.493154,
+    "after_ms": 108.228077,
+    "samples": 1
+  },
+  {
+    "indexes": 9,
+    "source": "s0",
+    "group": "Missing",
+    "before_ms": 1411.185154,
+    "after_ms": 64.599384,
+    "samples": 1
+  }
+]
+
+Fixture120000 entradas totales, fuente s0 activa 5956 entradas. No presentar
+120000 como entradas de esa unica lista. count de casos incluye4 filas de estado
+preexistente sembradas; no interpretarlo directamente como cantidad nueva de series.
+Indice8 actual: sin grupo s0 mediana1476,92->101,19ms (~93% menos), preview
+s19 mediana1532,03->93,48ms. 3 muestras tras2 calentamientos: muestra pequena,
+no p95 ni garantia universal. Grupo Drama s0 una observacion12298,20->10761,72ms;
+preview12345,65->11692,82ms. Sigue CUELLO de grupo; no prometer solucionado.
+
+Indice9 SOLO EN COPIA SINTETICA: sin grupo1424,96->72,26ms; grupoDrama
+1405,94->99,99ms (una observacion). El contraste anterior/despues dentro de cada
+indice aisla source; la diferencia8/9 pertenece al indice preparado en otro bloque,
+no atribuirla a source ni afirmar aplicado esquema9 a DRBEP real.
+
+Video durante tanda final,172,307s:22 muestras,4201 cuadros renderizados nuevos,
+posicion avanza168024ms, delta dropped0, todas playing=true, mismo PID. No
+captura visual ni juicio de HDMI, ni p95/jank/UI ni garantia de cero errores
+fuera de estas muestras. Solo se conservaron lineas PreviewPerf sin URLs/tokens.
+
+Se compilan Java y DEX de helpers/arnes, no nueva APK. Las comprobaciones de
+cola se hacen por SHA256 de filas COMPLETAS en orden rowid y estados; incluyen
+repeticion SQL idempotente. 30 casos Fire,612 comparaciones .185. No cambios
+nuevos del producto, solo pruebas y documentos. No afirmar prueba E2E de
+WorkManager/resolucion TMDB para series: sigue pendiente esa integracion y
+validacion release al adoptar el conjunto. Antes de instalar candidata conDB9,
+preparar respaldo y retorno compatible; APKhelper8 no abre DB9 por defecto.

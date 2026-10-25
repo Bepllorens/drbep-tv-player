@@ -1,0 +1,43 @@
+TV: primera entrada y restauracion de posicion - 2026-10-23
+
+Entorno: desarrollo .185, rama qoder/disneyplus-vod-582, base ca3f076.
+Se conservan todos los cambios pendientes anteriores. Produccion intacta.
+
+Diagnostico
+La primera entrada componia inicialmente el viewport guardado o la fila cero,
+y luego scrollToItem(selectedIndex) forzaba una medicion inmediata adicional.
+Traza instrumentada en Fire Movistar HLS (133 canales, seleccionado La Sexta):
+DRBEP.tvEntryPosition 224,2 ms con scrollToItem.
+
+Cambio acotado en StartupHomeHubComposeBinder.kt
+- Sin viewport guardado, LazyListState nace en el indice seleccionado.
+- Si el canal ya esta visible, no desplaza la lista para restaurar el foco.
+- Si queda fuera, requestScrollToItem agenda la posicion en el layout ordinario.
+- Se conservan las esperas de frames, reintentos de foco y fallback al grupo.
+- No cambia filas, fuente, temporizacion de sintonia, EPG ni reproductor.
+
+Validacion
+880 tests, 0 fallos/errores/omitidos; build y git diff --check correctos.
+Misma firma de prueba del Fire, instalacion -r conserva datos.
+Comparacion instrumentada primera entrada despues de instalar cada APK:
+                          antes       despues
+Posicionar lista ms       224,2       <0,1 (solo agenda/comprueba)
+measureAndLayout total    875,6       658,1 ms
+measureAndLayout llamadas 7           4
+Texto filas total         127,1       72,2 ms
+Frame maximo              1147,7      1170,0 ms
+
+Los totales son de toda la ventana de entrada (incluyen callbacks de datos).
+Una comparacion no demuestra una reduccion general del tiempo de arranque.
+El pico grande de primer dibujo persiste: queda pendiente aislar composicion,
+dibujo y cargas del modelo. No se considera resuelta toda la primera carga.
+
+Prueba funcional Fire: foco La Sexta 6 al entrar; 12 abajo llegan a M+ Drama 18;
+12 arriba vuelven a La Sexta 6. OK abre pantalla completa, Atras devuelve video
+a la miniatura y mantiene foco y aspecto. Capturas verificadas visualmente.
+
+Evidencia privada .185: /srv/drbep-dev/reviews/tv-entry-20261023
+Baseline firmado instrument.apk; nueva APK fire.apk.
+SHA256 fire.apk: 5a217cf69bead70262d93a24e37dae201e483f2f49fa7c1e0c417cbf5fe74ca9
+Rollback anterior: /srv/drbep-dev/reviews/tv-row-text-20261023/fire.apk
+Sin publicacion, commit/push ni modificacion del backend.

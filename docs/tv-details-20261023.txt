@@ -1,0 +1,64 @@
+TV: aislar el foco del panel de miniatura - 2026-10-23
+
+Entorno .185, rama qoder/disneyplus-vod-582 sobre ca3f076 y cambios pendientes
+anteriores conservados. Sin backend, produccion, publicacion, commit o push.
+
+Problema localizado
+DiscoveryLiveDetails leia selectedChannel()?.channelId directamente en composicion
+para decidir entre el mensaje Seleccionando canal y todos los metadatos.
+Cada pulsacion invalidaba el panel entero y quitaba/insertaba todos sus textos,
+cambiando su medida aunque displayed y el video seguian esperando a asentarse.
+
+Cambio acotado
+StartupHomeHubComposeBinder.kt:
+- DiscoveryLiveProgrammeDetails conserva los metadatos del canal displayed mientras
+  se recorren filas; se renuevan con el mismo displayed y refresco EPG existente.
+- DiscoveryLiveSelectionHint lee la seleccion en graphicsLayer, cambiando solo alpha.
+- El aviso se superpone en la esquina inferior de la imagen: no anade altura ni
+  fuerza medir nuevamente el panel. Se excluye de semantica para no anunciarlo oculto.
+- No se cambian el proveedor, permisos, teclas, cola de foco, demora de sintonizacion,
+  acciones, fuentes, reproductor, rutas de catchup ni configuracion de video.
+La disposicion con el mando detenido conserva los textos y espacios anteriores.
+
+Validacion
+Compilacion debug perfilada beta y 877 pruebas correctas. El primer intento de
+compilacion detecto una importacion de clearAndSetSemantics ausente; corregida antes
+de instalar. Sin nuevas pruebas que reflejen artificialmente la estructura Compose.
+
+Fire .190, TV encendida y mando libre confirmado por el usuario.
+Movistar HLS, 133 canales, La Sexta (6). Recorrido 2*(12 abajo + 12 arriba),
+48 movimientos de foco, mismo punto de partida, antes y despues, sin reinicio.
+La captura de referencia inicial before.trace fue en Inicio y se descarta;
+la referencia valida es before-tv.trace, verificada con baseline-tv.png.
+
+Trazas, resultado observado (no ensayo controlado de 60fps):
+                           referencia      despues 1      despues 2
+Compose:recompose cantidad       155              97             114
+Compose:recompose total ms     324,2           329,5           303,2
+Recomposer:recompose cantidad     79              50              59
+Choreographer mediana ms        13,2            11,3            10,1
+Choreographer max ms            98,1           126,8            83,5
+measureAndLayout max ms         49,4            97,1            64,3
+Foco-scroll max ms               4,4            12,1             5,6
+Se reduce el numero de recomposiciones y el parpadeo de metadatos. Los tiempos de
+CPU totales no bajan en todas las muestras y los picos de dibujo siguen presentes;
+no afirmar que TV ya sea completamente fluida ni que todos los maximos mejoraron.
+La segunda captura final incluye un refresco general del modelo de 34,6 ms.
+
+Evidencia privada fuera de Git:
+/srv/drbep-dev/reviews/tv-details-20261023/
+  Binder.before.kt, build.log, baseline-tv.png, before-tv.trace,
+  installed-tv.png, after-tv.trace, after.png, repeat-tv.trace, repeat.png,
+  selected.png, return.png, errors-filtered.log, fire.apk.
+Retorno disponible: /srv/drbep-dev/reviews/channel-lookup-20261022/fire.apk.
+APK de prueba privada conserva version visible 773 y firma del Fire.
+
+Cierre funcional: M+ Estrenos (9) actualiza imagen y ficha a Recien nacidas,
+con titulo, horario, genero, ano, edad y valoracion. Regreso a La Sexta (6)
+actualiza la EPG a Al rojo vivo al comenzar las 11:00. OK y Atras conservan
+video en miniatura. Sin FATAL EXCEPTION, ConcurrentModificationException ni
+callbacks de dropped-video en el registro filtrado del proceso durante la prueba.
+Esto no demuestra ausencia de todos los saltos de video.
+SHA-256 APK instalada:
+d6115fafac594a81de523853b73d16a9d70cbb3743f7f87372545254e9581542
+Mando devuelto, TV en La Sexta. No se ha publicado ninguna nueva beta.

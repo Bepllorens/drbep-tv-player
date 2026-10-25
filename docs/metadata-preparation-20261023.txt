@@ -1,0 +1,75 @@
+Preparacion de cola TMDB — continuacion 23/10/2026
+
+Cambio nuevo y acotado
+MetadataIndexQueue.sql(false,group,true) aplica e.source=? directamente para
+peliculas de una lista concreta. Antes el OR opcional impedia restringir la
+lectura al principio; ahora SQLite usa sources(id) y entries_page con source,
+generacion y tipo. Se elimina el argumento de lista duplicado en ese recorrido.
+ImportedMovieRepository ya usa el metodo con withSource derivado de source.
+Todos los demas recorridos, incluidas series y todas las listas, conservan SQL
+y parametros anteriores. Sin nuevos indices ni migracion de esquema.
+INSERT OR IGNORE, generacion activa/preview, ocultos, grupos y estados previos
+se conservan. No cambia transaccion, marca prepare, WorkManager ni llamadas TMDB.
+
+Equivalencia .185
+tools/benchmark-metadata-preparation.py compila y ejecuta los helpers Java reales
+(referencia y candidata). Fixture sintetico de 120000 entradas e indices vigentes.
+126 comparaciones exactas: candidatos completos, done/error/unmatched/skipped
+existentes e idempotencia. Lista vacia, a/b/d/ausente/comillas, grupos vacios,
+Drama, comillas y ausentes; peliculas y series, generaciones/ocultos/preview.
+No se observan cambios de orden por rowid en este fixture. La consulta anterior
+no tenia ORDER BY: no presentar esta comprobacion como garantia de orden global.
+
+Medidas .185, insercion en cola vacia, dos calentamientos + siete muestras
+alternando orden antes/despues. No incluye descargas TMDB ni progreso de red.
+lista | grupo | antes -> despues (ms)
+todas | - | 55.556 -> 55.484
+a | - | 22.688 -> 17.822
+a | Drama | 24.676 -> 18.449
+b | - | 20.185 -> 14.899
+b | Drama | 24.817 -> 18.748
+absent | - | 4.947 -> 0.002
+absent | Drama | 4.878 -> 0.002
+
+SQLite Fire, prueba de insercion aislada
+API30/AFTKRT con APK773 anterior reproduciendo HLS. Proceso de ensayo separado,
+prioridad BACKGROUND10. 120000 entradas en DB sintetica /data/local/tmp.
+Siete comparaciones de candidatos completos por hash; mismos resultados.
+INSERT dentro de transaccion; tiempos solo execSQL INSERT, no DELETE/commit.
+Siete muestras tras dos calentamientos, orden alternado. No equivale a toda
+la duracion de preparacion real ni a bloqueo de su conexion en la app.
+lista | grupo | antes -> despues (ms)
+todas | - | 833.012 -> 838.943
+a | - | 286.293 -> 226.804
+a | Drama | 316.683 -> 231.715
+b | - | 286.782 -> 228.756
+b | Drama | 314.865 -> 242.507
+absent | - | 73.850 -> 0.096
+absent | Drama | 71.193 -> 0.099
+
+Todas las listas usa SQL identico; 833->839ms es variacion del ensayo, no mejora.
+Las muestras PreviewPerf disponibles durante el ensayo conservan avance y
+dropped=0. No hubo captura continua de todos los frames ni p95 de mando.
+Los dos archivos sinteticos creados en Fire se retiran al terminar; sin borrar
+datos ni catalogos reales. No se inicia una indexacion contra TMDB.
+
+Validacion de codigo
+assembleRelease optimizada ARM32 perfilable beta + testDebugUnitTest correctos.
+887 pruebas ejecutadas, 0 fallos/errores/skipped. 14 SQLite de ambitos y tres
+de transacciones correctos; git diff --check correcto.
+Artefacto privado candidato SIN FIRMA de distribucion, version773, NO instalado:
+candidate-unsigned.apk SHA256 122d8f72cd3075ed5e24f6eb3babfab1dd919b7adb6f88251cec1e9f75ecb0a9
+Otros experimentos transporte/HLS/zapeo/imagenes permanecen desactivados.
+
+Evidencias privadas: /srv/drbep-dev/reviews/metadata-preparation-20261023
+results.json, fire.json, fire-errors.txt, build.log, tests.json, build-identity.json,
+video-samples.txt, fuentes de ensayo y respaldo previo de ambos archivos.
+
+Estado del plan
+Continua el bloque46 de preparacion ligera. Mejora nueva medida y comprobada
+en SQLite Linux y Android; sin instalar APK, publicar, commit/push o produccion.
+Siguen pendientes preparacion mediante Worker/panel sobre una cola real,
+pausa/reanudar/cancelacion con ese Worker y contencion durante reproduccion.
+No se marcan esas pruebas como hechas por haber ensayado la DB aislada.
+Siguiente bloque47: revisar coste del filtro por grupo, especialmente series,
+donde la validacion anterior conserva un coste relevante.

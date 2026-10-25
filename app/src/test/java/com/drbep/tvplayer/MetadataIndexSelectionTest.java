@@ -45,16 +45,26 @@ public class MetadataIndexSelectionTest {
   assertEquals(scoped.where(),scoped.countWhere());
   assertArrayEquals(scoped.args(),scoped.countArgs());
  }
- @Test public void specializedGroupKeepsMixedFallbackAndValidatesInputs(){
-  assertEquals(MetadataIndexSelection.groupPredicate("metadata_index"),
+ @Test public void specializedAndMixedGroupsValidateInputs(){
+  assertNotEquals(MetadataIndexSelection.groupPredicate("metadata_index"),
     MetadataIndexSelection.groupPredicate("metadata_index",""));
   String movie=MetadataIndexSelection.groupPredicate("e","movie");
   String series=MetadataIndexSelection.groupPredicate("e","series");
   assertTrue(movie.contains("g.identity=e.identity AND g.occurrence=e.occurrence"));
   assertTrue(series.contains("g.series=e.series"));
   assertFalse(movie.contains(" OR "));assertFalse(series.contains(" OR "));
-  assertTrue(new MetadataIndexSelection("a","","Drama").where().contains(" OR "));
+  assertFalse(new MetadataIndexSelection("a","","Drama").where().contains(" OR "));
   try{MetadataIndexSelection.groupPredicate("e","bad");fail();}catch(IllegalArgumentException expected){}
   try{MetadataIndexSelection.groupPredicate("bad","movie");fail();}catch(IllegalArgumentException expected){}
+ }
+ @Test public void mixedGroupBindsBothBranchesBeforeReviewCursor(){
+  String group="Drama' OR 1=1 --";
+  MetadataIndexSelection mixed=new MetadataIndexSelection("a","",group);
+  assertArrayEquals(new String[]{"a",group,group},mixed.args());
+  assertEquals(mixed.args().length,mixed.where().chars().filter(c->c=='?').count());
+  assertArrayEquals(mixed.args(),mixed.countArgs());
+  assertFalse(mixed.where().contains(group));
+  assertTrue(mixed.where().contains("CASE WHEN metadata_index.kind='movie'"));
+  assertArrayEquals(new String[]{"a",group,group,"error","50"},MetadataIndexReview.args(mixed,"error",50));
  }
 }

@@ -1,0 +1,62 @@
+Modelo general durante TV — 21 octubre 2026
+
+Continuacion del diagnostico tv-scroll-20261021.txt. Solo desarrollo .185 y Fire
+.190 con TV encendida y mando cedido. Sin backend, produccion, stable ni publicacion.
+
+Instrumentacion nueva StartupPerf por fases del modelo: counts, primary,
+continue, recommendations, shortcuts, preload, categories, liveActions, homeFeed.
+No se registran URLs, identidades de usuario ni datos de reproduccion.
+
+Causa identificada: el modelo completo preparaba feed de Inicio y precargaba
+caratulas VOD incluso mientras la seccion visible era TV. El orden de listas
+se analizaba de nuevo en cada consulta, dos veces para categories.
+
+Cambios:
+- MainActivity omite la precarga VOD solo mientras se muestra En directo.
+- Feed de Inicio diferido mediante Supplier en modelos creados para TV.
+  LiveHomeLanding lo resuelve una vez, antes de consumir sus filas. El mismo
+  constructor del feed conserva filtros, permisos vigentes, orden y limite8.
+  Los modelos construidos para Inicio conservan la preparacion eager anterior.
+- HomeLiveOrderSnapshot reutiliza JSONObject de lectura si usuario y string
+  de preferencias siguen iguales. Cada lectura comprueba ambos; una edicion
+  invalida inmediatamente. Los escritores siguen usando su copia mutable,
+  sin modificar la persistencia ni las decisiones manuales existentes.
+- La consulta redundante de categories se sustituye por una unica lectura.
+
+Pruebas: 867 tests correctos. Nuevos casos de feed: difiere hasta consumirse,
+conserva filas/orden, resuelve una vez, reintenta tras fallo sin perder filas,
+conserva funcionamiento eager. Orden: reutilizacion, invalidacion al editar,
+aislamiento entre usuarios y recuperacion tras JSON malformado.
+
+Mediciones:
+Antes,6 reconstrucciones TV: mediana130.5ms, rango98–251ms.
+preload mediana17.5ms; feed39.5ms; categorias36.5ms.
+Despues,4 reconstrucciones TV: mediana67ms, rango55–85ms.
+preload0ms y feed0ms; categorias41.5ms. Ambas fases ocultas dejan de trabajar.
+NO es A/B estricto: se reinicio el Fire entre tandas por saturacion de memoria.
+El coste de categorias no ha mostrado mejora, aunque el cache evita parses
+repetidos y sus invariantes estan probadas. No atribuir todo el descenso al cambio.
+No extrapolar el rango55–85 como cota universal ni declarar eliminados los tirones.
+
+Incidencia de dispositivo:
+Un proceso de DRBEP termino sin excepcion Java registrada, mientras Fire OS
+presentaba thrashing de memoria y cerraba multiples aplicaciones. Se vio Netflix
+al recuperar la pantalla. No se ha probado la causa exacta de esa terminacion.
+Se guardaron registros y memoria y se reinicio el Fire conservando datos.
+Tras arrancar, MemAvailable ~508MB. Nuevo proceso estable durante repeticiones
+TV/Inicio y rafagas, sin cierre reproducido. No se mataron servicios de produccion.
+
+Validacion fisica final:
+TV Movistar HLS con video y foco;12DOWN desde38 llegan50;12UP vuelven38.
+TV->Inicio muestra feed completo y la miniatura recupera video; captura
+settled-home.png. Hay transicion negra al reubicar video, ya existente; no se
+han modificado PlayerController ni superficies en este bloque.
+
+APK de pruebas instalada: /srv/drbep-dev/reviews/home-model-20261021/final.apk
+SHA256 a7a5b5e8578a468dccc03482eabe79bb7ed7be4184c90b60bb4cdba05292abc2
+VersionCode773, firma de pruebas existente, datos conservados. APK beta publica
+773 permanece intacta. Evidencia privada y logs en el mismo directorio.
+
+Pendiente: categorias (~40–60ms) y coste restante de continuar viendo; ensayo
+controlado con mismo estado de memoria si se quiere cuantificar mejora global.
+Sin commit/push ni nueva publicacion durante esta tarea. Mando devuelto al usuario.

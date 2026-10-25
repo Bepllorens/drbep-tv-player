@@ -1,0 +1,61 @@
+TV: filas con textos y progreso dibujados juntos - 2026-10-23
+
+Entorno .185, rama qoder/disneyplus-vod-582, sobre ca3f076 con los cambios pendientes
+anteriores conservados. Sin produccion, publicacion, commit o push.
+
+Cambio limitado a la pantalla TV
+TvChannelRowText.kt dibuja el titulo, el programa y la linea de progreso en un unico
+nodo de layout por fila. Usa TextMeasurer de Compose con cache de 64 medidas compartida
+solo por esta pantalla. No usa Paint nativo ni cambia familia, peso o tamano de letra.
+Se mantienen nombre 14sp semibold, programa 11sp, colores, separacion 3dp, linea 1dp,
+ellipsis de una linea y centrado vertical. El padre conserva su etiqueta completa
+para accesibilidad y todas las acciones de mando; numeros y logos siguen iguales.
+StartupHomeHubComposeBinder.kt sustituye solo la columna de texto/progreso de TV.
+No se cambian acciones, permisos, datos EPG, tiempos de sintonia ni superficies de video.
+La cache es acotada y desaparece al salir de esta composicion; no prepara todo el catalogo.
+
+Compilacion/pruebas
+880 pruebas correctas, cero fallos/errores; verificacion visual y mando en Fire.
+Sin tests que dupliquen artificialmente el dibujo. Se conserva APK anterior para retorno.
+
+Medicion Fire .190
+Movistar HLS, 133 canales, La Sexta (6). Recorrido 2*(12 abajo + 12 arriba).
+                                Antes       Tras instalar      Caliente 1    Caliente 2
+Choreographer mediana ms          8,3             9,9                8,0          11,5
+Choreographer p95 ms             60,4           108,1               46,9          45,6
+Choreographer max ms            129,2           167,6               72,0          60,1
+measureAndLayout p95 ms          50,2            71,0               37,9          38,8
+measureAndLayout max ms          93,7           133,4               40,7          53,4
+Foco-scroll max ms                4,7             5,1                3,0           4,9
+
+Los recorridos calientes mejoran en estas muestras, pero el primero tras instalar
+no mejora. La referencia incluye un refresco de modelo de 105 ms y los recorridos
+posteriores no, por lo que los maximos globales no se pueden atribuir solo al dibujo.
+Los marcadores foco-scroll fueron 48 en referencia, 45 al instalar, 48 y 46 en
+las repeticiones: no equiparar numero de callbacks a pulsaciones o garantia de foco.
+No afirmar que todos los tirones ni la primera carga de nuevas filas estan resueltos.
+El pico de medida de texto ya caliente fue 2,6 ms y 6,0 ms por llamada de fila.
+
+Comprobaciones funcionales
+Capturas before.png e installed.png conservan tamano, alineacion y elipsis de titulos.
+Recorridos conservan foco y video. OK abre pantalla completa y Atras devuelve a TV
+con video en miniatura. Sin FATAL EXCEPTION, ConcurrentModificationException o
+callbacks de dropped-video en el proceso durante esa prueba (no prueba de cero jank).
+Se prueba ademas 44 abajo y 44 arriba para superar la ventana de medidas en cache.
+
+Evidencia privada fuera de Git:
+/srv/drbep-dev/reviews/tv-row-text-20261023/
+  Binder.before.kt, build.log, before.png, before.trace, installed.png,
+  after.trace, warm.trace, warm.png, repeat.trace, return.png,
+  farther.png, farther-return.png, errors-filtered.log, fire.apk.
+Retorno: /srv/drbep-dev/reviews/epg-refresh-20261023/fire.apk.
+APK privada instalada, version visible 773, misma firma existente; SHA-256:
+29a6eb4ed084849fe0afc5cec653aec4c38dac006789cb55593ac54429bbda0a
+
+Pendiente: primera carga y picos al publicar otro modelo; comparar recorridos frios
+con cargas y cache equivalentes antes de declarar una mejora global de la pantalla.
+
+Cierre: 44 abajo llega de La Sexta (6) a M+ LALIGA 2 (50); 44 arriba devuelve
+el foco a La Sexta con video real. Las filas DAZN LALIGA y LALIGA TV HYPERMOTION
+muestran Sin programacion sin barra residual. Titulos largos mantienen ellipsis.
+El cambio queda instalado en el Fire; mando devuelto al usuario, TV en La Sexta.

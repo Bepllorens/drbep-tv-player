@@ -1,0 +1,89 @@
+Filtro de grupos de series TMDB — 23/10/2026
+
+Diagnostico
+El EXISTS especializado conserva bien los resultados, pero SQLite selecciona
+entries_group y recorre muchas entradas de un grupo para cada serie. El indice
+entries_series tampoco contiene el grupo. Forzar ese indice seria fragil para
+series largas con grupos raros; no se adopta ese experimento. Una lista IN
+global tampoco mejora el fixture pequeno, por lo que no se aplica.
+
+Cambio preparado
+PlaylistDatabase: version8 -> 9. migrateV9 crea un indice NO unico:
+CREATE INDEX entries_series_group ON entries(source,generation,kind,series,group_name)
+Se ejecuta tanto en onCreate como al actualizar desde versiones anteriores.
+Permite buscar las cinco igualdades sin cambiar las consultas ni sus parametros.
+Sin UPDATE/DELETE de datos, claves, fuentes, preferencias ni estados de cola.
+No cambia representacion de series, generacion activa/preview o episodios ocultos.
+Preserva las optimizaciones anteriores de preparacion y el resto del arbol Git.
+
+Validacion .185
+tools/benchmark-metadata-series-group.py: fixture v8 sin indice frente a copia
+con indice v9. Java real para ambitos/cola y SQL de revision del repo.
+12000 y 120000 entradas, comparaciones antes/despues de ocultar episodios y
+cambiar generacion; grupos existentes/ausentes/con comillas y los tres tipos.
+218 equivalencias exactas de progreso, siguiente, errores, revision y preparacion.
+Fingerprint de las cuatro tablas identico tras crear indice e integrity_check=ok.
+Cuatro tests de migracion: datos/version/columnas, rollback SQL al simular fallo,
+serie larga/grupo raro y conexion de las rutas onCreate/onUpgrade. No sustituyen
+una prueba instrumentada de SQLiteOpenHelper sobre el catalogo real del usuario.
+
+Medicion definitiva sin compilacion concurrente: SQLite Linux en memoria,
+dos calentamientos + nueve muestras alternadas para lecturas; siete muestras
+tras calentamiento para insercion/preparacion. No incluye descargas TMDB.
+filas | consulta series/Drama | antes -> despues (ms)
+12000 | counts | 6.4419 -> 0.3755
+12000 | next | 0.0027 -> 0.0027
+12000 | prepare | 3.3616 -> 0.4391
+120000 | counts | 887.1832 -> 5.4496
+120000 | next | 0.0029 -> 0.0029
+120000 | prepare | 451.7011 -> 7.1026
+
+Costes del indice en el fixture Linux:
+12000 filas: crear 5.245 ms; crecimiento 368640 bytes (0.352 MiB)
+120000 filas: crear 68.354 ms; crecimiento 3792896 bytes (3.617 MiB)
+Insertar 5000 sobre 12000: 20.087 -> 24.419 ms
+Insertar 5000 sobre 120000: 24.187 -> 30.791 ms
+El coste de importacion aumenta: no afirmar que todo es mas rapido. No se ha
+medido esa escritura extra de importacion en Android. Los contadores mixtos
+conservan el plan/coste anterior; este indice mejora el camino especializado.
+
+SQLite Fire, bases sinteticas separadas
+AFTKRT API30, app773 anterior reproduciendo HLS. Dos bases de 12000 entradas en
+/data/local/tmp, prioridad BACKGROUND10, mismo helper Selection compilado a DEX.
+Doce comparaciones exactas: counts/next de ambos tipos, movie y series, con
+grupos existente y ausente. Dos calentamientos + nueve muestras alternadas.
+Creacion del indice en copia: 113.83 ms. No se abre la base real de DRBEP.
+ambos: 246.612 -> 247.773 ms
+movie: 5.351 -> 5.239 ms
+series: 86.968 -> 6.024 ms
+Las muestras PreviewPerf conservan avance, dropped=0. Captura de muestras, no
+registro continuo completo ni medicion de p95 del mando. Sin afirmar ausencia
+absoluta de tirones. Ambos tipos sigue alrededor de 248ms en este fixture.
+Archivos sinteticos retirados del Fire al terminar. No se instalo candidata.
+
+Compilacion y estado
+assembleRelease optimizada ARM32 perfilable beta y testDebugUnitTest correctos:
+887 pruebas, cero fallos/errores/skipped; 14 SQLite de ambitos y tres de
+transacciones adicionales correctos. git diff --check correcto.
+Candidata privada SIN FIRMA de distribucion, version773, no publicada/instalada:
+candidate-unsigned.apk SHA256 f0d79079ecb1fffb82b2a405b0ba70157cb329cf36ccd4bbe789a78cc36bf0a3
+La APK existente y su base v8 del Fire siguen intactas. No se activa produccion.
+
+Antes de una futura instalacion
+La migracion v9 requiere validar apertura/actualizacion en el ciclo real de la
+app. Preparar respaldo/restauracion compatible de su BD antes de activar en un
+dispositivo con datos: una APK antigua cuyo helper solo admite v8 no abre v9
+por defecto, aunque el cambio SQL sea aditivo. No confundir conservar filas con
+haber probado ese retorno. Esta sesion no migra ni respalda datos reales.
+
+Evidencia privada: /srv/drbep-dev/reviews/metadata-series-group-20261023
+results.json (definitivo aislado), preliminary-concurrent.json (descartado para
+cifras finales, coincidio con compilacion), fire.json, fire-errors.txt, build.log,
+tests.json, build-identity.json, video-samples.txt, fixture/copias y fuentes del
+ensayo; PlaylistDatabase.before.java conserva la version previa.
+
+Estado del plan47
+Mejora especializada de series preparada y medida; falta activarla y probar el
+Worker/panel real con respaldo y una version de beta adecuada. Filtros mixtos
+siguen siendo la siguiente oportunidad; no se marcan resueltos.
+Sin instalar, publicar, commit/push ni tocar produccion o La 1/Vamos.

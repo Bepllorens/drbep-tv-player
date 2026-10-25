@@ -1,0 +1,84 @@
+TV: primera creacion de filas, diagnostico de variante de compilacion - 2026-10-23
+
+Desarrollo .185, rama qoder/disneyplus-vod-582, base ca3f076.
+Todos los cambios anteriores conservados. Sin produccion, publicacion ni push.
+
+Hallazgo y limites de las medidas anteriores
+Los ~522 ms previos se midieron con una APK debug firmada para el Fire.
+La distribucion usa release, R8 y recursos optimizados. Comparar debug con la
+experiencia de distribucion mezclaba costes distintos. Se corrige el procedimiento.
+AGENTS.md indica ahora release perfilable para medir rendimiento, conservando
+build/test debug para diagnostico y pruebas funcionales.
+
+Medicion acotada (debug)
+Una traza de referencia despierto dio measureAndLayout max 498,5 ms. Dentro:
+9 creaciones de fila ~34,6 ms de composicion, 9 layouts de contenido 61,9 ms,
+10 applyChanges ~234,5 ms. Son tiempos anidados: NO se suman.
+Medida adicional del contenedor: 442,473 ms totales, 307,436 ms CPU del hilo.
+Por tanto, parte es ejecucion y parte espera; no todo es calcular posiciones.
+
+Experimentos retirados
+- Column/Row simplificados y foco unico: no se demuestra mejora; foco original restaurado.
+- Layout fijo de tres slots: no se demuestra mejora; retirado del repositorio.
+- Numero de canal con TextMeasurer: no se demuestra mejora global; retirado.
+- Picones dibujados sin jerarquia AndroidView por fila: no se demuestra mejora
+  global; clase y callbacks experimentales retirados, cargador original restaurado.
+- Layout temporal para medir CPU/tiempo: retirado de la APK final.
+Todas las fuentes experimentales quedan solo en reviews, fuera del checkout.
+
+Interferencia encontrada
+Una captura devolvio negro porque el Fire estaba dormido; descartada. El usuario
+confirmo TV encendida y mando libre; KEYCODE_WAKEUP desperto el Fire.
+Nuvio arranco en paralelo (una muestra ~107% CPU) y kswapd alcanzo ~33% CPU.
+No demuestra que Nuvio cause el pico original; si contamina esas comparaciones.
+El usuario autorizo cerrar Nuvio, se hizo force-stop solo de com.nuvio.tv.
+No se cerraron servicios de sistema ni otras aplicaciones.
+
+Comparacion posterior sin Nuvio
+Debug original sin wrapper: measureAndLayout max 578,7 ms, frame max 1071,5 ms.
+Debug con medida de CPU: contenedor 442,473 ms total / 307,436 ms CPU.
+Release optimizada, mismo codigo y misma firma de pruebas, con wrapper temporal:
+contenedor 223,7 ms, measureAndLayout max 342,5 ms, frame max 988,6 ms.
+La variante reduce costes, pero NO demuestra ausencia de picos globales: el primer
+frame incluye tambien recomposicion/modelo/retirada de Inicio y callbacks de datos.
+Los textos, picones y distribucion permanecen originales; no se conservan cambios
+especulativos de filas para obtener estas cifras.
+
+Validacion de la variante optimizada
+885 tests correctos, 0 fallos/errores/omitidos (cache valida en compilacion final).
+Fire ARM32, package com.drbep.tvplayer.offline, versionCode 773, sin DEBUGGABLE,
+perfilable para mediciones. Misma firma 9f76a326703c87666c247a743679b5bf696aacf5f34d835bea53d369fcdfd200.
+Instalacion -r conserva datos. No desinstalar para cambiar firmas.
+TV Movistar HLS 133 canales: recorrido 6 -> 18 -> 6, OK pantalla completa,
+Atras vuelve a miniatura con video. Capturas release-scroll.png y release-return.png
+verificadas visualmente. No se modifica transporte, claves, asociaciones ni catchup.
+
+Evidencia privada: /srv/drbep-dev/reviews/tv-row-layout-20261023
+Rollback validado al comenzar: /srv/drbep-dev/reviews/tv-logo-20261023/fire.apk
+La APK privada usa firma de pruebas: NO publicarla como APK de distribucion.
+No reutilizar un archivo viejo de app/build/outputs/apk/release por su nombre;
+comprobar output-metadata.json y hashes de la compilacion terminada.
+
+APK final sin wrapper de CPU ni otros experimentos
+/srv/drbep-dev/reviews/tv-row-layout-20261023/fire.apk
+SHA256 d81f07c9dd3814764d93975d42a0a822dfedefb0fa40529c3909db4d748cd4cb
+Hash del APK instalado comprobado por pm path/sha256sum: identico al artefacto.
+VersionCode 773; ARM32; flags del paquete sin DEBUGGABLE. Metadatos privados en
+release-metadata.json, marcados publishable=false por la firma de pruebas.
+
+Primera entrada de la APK final: measureAndLayout max 430,1 ms y frame 911,9 ms.
+Esa ventana incluye un logoContrast puntual de 85,6 ms (maximo; total 111,5 ms).
+Repeticion tras force-stop: measureAndLayout max 311,0 ms y frame 648,9 ms;
+logoContrast total 6,8 ms. No seleccionar solo la mejor cifra: rango final 311-430 ms.
+La comparacion reduce el coste observado respecto a debug, pero no resuelve todos
+los picos ni demuestra que cada milisegundo dependa solo de optimizacion de codigo.
+El tiempo del primer frame completo sigue incluyendo otros trabajos y esperas.
+
+La comprobacion funcional se repitio con esta APK final: 6->18->6, pantalla completa,
+Atras, foco y video en miniatura correctos; final-return.png verificada visualmente.
+Final release build correcto; 885 tests sin fallos, cache valida de Gradle.
+Fuente de Binder, TvChannelRowText y Logo comparada con copias al empezar: identica.
+En esta tarea se conserva la correccion del procedimiento y documentacion, no los
+experimentos de distribucion ni nuevas callbacks en el cargador.
+Pendiente: primera composicion/modelo y pausas residuales, midiendo en release.
+No publicar la APK privada ni tocar backend, stable, canales o asociaciones.

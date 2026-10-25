@@ -1,0 +1,52 @@
+TV: primer dibujo, formateo y filtro de categoria - 2026-10-23
+
+Desarrollo .185; rama qoder/disneyplus-vod-582; base ca3f076.
+Todos los cambios anteriores conservados. Sin produccion, publicacion ni push.
+
+Diagnostico de la traza del bloque previo
+Frame maximo 1170 ms: recomposicion 355 ms + traversal 812 ms.
+Dentro del dibujo, measureAndLayout 612,6 ms.
+Muestreo de metodos independiente, con sobrecoste de perfilado:
+- buildDiscoveryHomePage ~383 ms CPU inclusivos; shortTime ~181 ms agregados.
+- LazyLayoutMeasureScope ~338 ms inclusivos; interop AndroidView y texto participan.
+- Otro callback de precarga U7D recorre archiveChannels (~610 ms CPU inclusivos).
+Son tiempos inclusivos, no se suman ni equivalen a tiempo ahorrable del frame.
+El callback U7D y sus reglas NO se modifican en este bloque.
+
+Cambios aplicados
+EpgClockFormatter.java: SimpleDateFormat HH:mm reutilizable por hilo.
+Cada llamada comprueba Locale y TimeZone actuales; se renueva al cambiarlos.
+No cachea los horarios ni las zonas, no comparte formateadores mutables entre hilos.
+MainActivity.shortTime conserva parseo y --:-- para tiempos no positivos.
+En buildDiscoveryHomePage se descartan primero canales ajenos a la categoria;
+los coincidentes siguen pasando todas las comprobaciones de visibilidad y proteccion.
+Guardia explicita para entradas nulas, igual que el descarte previo visibleInHome.
+
+Validacion
+882 pruebas, 0 fallos/errores/omitidos. Nuevos tests comparan contra SimpleDateFormat
+anterior en varios idiomas, zonas y transiciones DST; 4 hilos verifican resultados.
+Benchmark aislado, 399 horas sinteticas, 9 muestras alternando orden, checksum igual:
+.185: mediana 2,653 -> 0,380 ms.
+Fire: mediana 33,930 -> 5,562 ms.
+No extrapolar este microbenchmark a una aceleracion equivalente de toda TV.
+
+La traza nueva NO demuestra que el pico principal este arreglado.
+Tras comprobar optimizacion local del paquete (cmd package compile retorna Success,
+pero dumpsys indica quicken, no compilacion speed completa), primer frame 1179 ms,
+measureAndLayout 622,8 ms. Es similar a la referencia 1170 / 612,6 ms.
+La traza after.trace no se usa para atribuir mejora: se ejecuto un microbenchmark
+externo en la misma sesion temporal. aot.trace es la repeticion sin benchmark paralelo;
+su nombre no significa que el paquete debug tenga compilacion AOT completa.
+
+Funcional Fire: TV Movistar HLS 133 canales; 12 abajo/12 arriba, foco vuelve a
+La Sexta; OK pantalla completa, Atras miniatura con video, horarios y picones visibles.
+La captura return.png se verifico visualmente.
+
+Pendiente real: reducir subcomposicion/medida inicial de filas e interop de logos.
+No sustituir el cargador de imagen ni diferir todos los logos sin validar la apariencia,
+reutilizacion y cancelacion de solicitudes. No afirmar que la primera carga sea fluida.
+
+Evidencias privadas: /srv/drbep-dev/reviews/tv-first-draw-20261023
+APK instalada fire.apk SHA256:
+b3f725426a57cecacb84a8beed12b6059275e6ee2c48f839f47499180f64af48
+Rollback: /srv/drbep-dev/reviews/tv-entry-20261023/fire.apk

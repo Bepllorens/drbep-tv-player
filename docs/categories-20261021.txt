@@ -1,0 +1,61 @@
+TV: categorias sin asignaciones repetidas - 2026-10-21
+
+Desarrollo en .185, rama qoder/disneyplus-vod-582, sobre ca3f076 y conservando
+los cambios pendientes de tv-scroll-20261021 y home-model-20261021.
+Sin despliegue backend, publicacion ni cambios en produccion/stable.
+
+Diagnostico
+La fase categoriesOrder incluye lectura del orden y construccion de categorias.
+El algoritmo anterior creaba un Provider por canal/grupo aunque la clave ya
+existiera (putIfAbsent evaluaba el constructor primero), repetia normalizaciones
+y creaba una coleccion temporal de grupos por canal.
+
+Cambio
+LiveHomePolicy.categories conserva visibleInHome y los permisos efectivos.
+Solo crea Provider para claves nuevas. Reutiliza la normalizacion de nombres
+durante esa unica llamada y recorre grupo principal y customGroups directamente.
+No hay cache persistente de permisos/catalogo. Se conserva la primera aparicion,
+con su nombre y logo, y el orden se sigue aplicando mediante LiveCategoryOrder.
+MainActivity registra subfases categoriesVisible, categoriesOrder y
+categoriesSelection en beta, sin datos de canales ni credenciales.
+
+Validacion automatica
+870 pruebas, cero fallos/errores. Nuevas pruebas comparan exactamente claves,
+titulos y logos con la implementacion anterior para 400 canales sinteticos y 32
+combinaciones de permisos. Incluyen nulos, grupos repetidos, espacios, administradores,
+metadatos desconocidos, acceso desactivado, orden guardado y cambios de permisos/logos.
+Un fallo inicial fue una expectativa del test con espacios: ChannelItem ya recorta
+el grupo en su constructor; se corrigio la expectativa. La comparacion contra la
+implementacion anterior paso desde el primer intento.
+
+Medicion en Fire .190, Movistar HLS, 133 canales
+Mismo recorrido Inicio/TV, reinstalacion conservando datos, sin reiniciar el Fire.
+Muestras de callbacks asincronos: antes 9 modelos TV, despues 7; no es un ensayo
+controlado de fotogramas y no demuestra ausencia de todos los tirones.
+- Fase categorias: mediana 50 ms (45-61) -> 18 ms (17-27).
+- Creacion/orden: mediana 36 -> 9,5 ms (6 submuestras completas despues).
+- Modelo TV completo: mediana 73 -> 49 ms.
+La mejora de este pase se limita a crear el modelo: no mide latencia de sintonizacion.
+
+Dispositivo
+Instalacion de prueba firmada con la misma clave ya instalada, conservando datos;
+version visible sigue siendo 773. Selector comprobado con Movistar HLS seleccionado,
+miniatura de Veo7 con video real. Doce pulsaciones abajo desde 38 llegan a 50
+(M+ LALIGA 2), sin bloqueo de foco. Evidencia de regreso e Inicio en review.
+Los otros permisos y orden se validan con datos sinteticos; no se modificaron permisos reales.
+
+Evidencia privada, fuera de Git:
+/srv/drbep-dev/reviews/categories-20261021/
+  before.log, after.log, comparison.json, build.log,
+  before.png, after.png, groups.png, rapid-list.png, rapid-return.png, home.png,
+  baseline.apk (retorno), fire.apk.
+
+Pendiente
+Continuar midiendo el contenido de continuar viendo y las colas de fotogramas;
+no declarar la pantalla completamente fluida. Commit/push y publicacion requieren
+peticion del usuario; la beta publica 773 no contiene estos pases posteriores.
+
+Cierre de comprobacion: regreso a Inicio con foco en miniatura y video real de Veo7.
+Sin entradas nuevas en el buffer crash durante esta prueba. Mando devuelto al usuario.
+SHA-256 del APK instalado:
+89a3f67aeb02b66fa028c0f32553f41cc9dc1f58e52ace4483a2c1da6ceb72c7

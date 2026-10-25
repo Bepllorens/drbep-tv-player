@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="DRBEP index maintenance" android:allowBackup="false"/><instrumentation android:name="com.drbep.maintenance.IndexMaintenance" android:targetPackage="com.drbep.tvplayer.offline" android:functionalTest="true"/></manifest>

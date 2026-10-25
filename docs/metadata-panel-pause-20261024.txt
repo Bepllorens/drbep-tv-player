@@ -1,0 +1,110 @@
+24/10/2026 - Pausa/reanudacion desde el panel web, Fire
+
+Ensayo aislado: paquete com.drbep.panelcheck, distinto de DRBEP offline773.
+APK debug + instrumentacion, sin iniciar MainActivity ni instalar la candidata
+con esquema9 sobre datos reales. SQLite/WorkManager/SharedPreferences reales,
+1200 entradas sinteticas, 10 fichas done iniciales. Metadatos ficticios servidos
+solo en loopback; no peticiones a TMDB/produccion ni credenciales reales.
+Los 8 componentes relevantes (HTML, servidor HTTP, Worker, senal, consultas,
+repositorio, DB) coinciden SHA256 con el checkout, source-identity.json.
+
+Interfaz: conexion por PIN, Actividad, Continuar y Pausar pulsados desde navegador.
+Estados y botones cambian: en cola/en curso -> en pausa/progreso guardado.
+No se usan controles de indexacion del paquete real.
+
+HTTP de .185 al Fire mediante forwarding ADB LAN; cronometro incluye enviar,
+recibir respuesta completa y decodificar JSON. 5 ciclos; no son tiempos de dibujo
+ni una medida de red directa desde tablet. Segunda tanda definitiva (ms):
+{
+  "transport": "HTTP .185 through ADB LAN forwarding to Fire; full response decoded",
+  "cycles": [
+    {
+      "before": 10,
+      "after": 11,
+      "pause_ms": 24.524852982722223,
+      "resume_ms": 173.78570401342586
+    },
+    {
+      "before": 11,
+      "after": 12,
+      "pause_ms": 25.78332700068131,
+      "resume_ms": 46.71627399511635
+    },
+    {
+      "before": 12,
+      "after": 13,
+      "pause_ms": 33.4002940217033,
+      "resume_ms": 36.53740001027472
+    },
+    {
+      "before": 13,
+      "after": 14,
+      "pause_ms": 69.39176097512245,
+      "resume_ms": 29.392825003014877
+    },
+    {
+      "before": 14,
+      "after": 15,
+      "pause_ms": 43.85098000057042,
+      "resume_ms": 31.181063008261845
+    }
+  ],
+  "pause_ms": {
+    "median": 33.4002940217033,
+    "min": 24.524852982722223,
+    "max": 69.39176097512245
+  },
+  "resume_ms": {
+    "median": 36.53740001027472,
+    "min": 29.392825003014877,
+    "max": 173.78570401342586
+  }
+}
+
+Primera reanudacion 173,8ms; siguientes 29,4-46,7ms. No presentar solo mediana
+como tiempo maximo. No se afirma mejora frente a un control anterior, pues se
+valida funcionalidad y latencia actual, no comparacion A/B.
+
+Otros 5 ciclos HTTP locales del Fire: se conservan IDENTIDADES done anteriores,
+no solo total. Contador estable 1,2s tras cada pausa; reanudar avanza. Progreso
+15->20. Preparacion real bloqueada controladamente en SQLiteConnectionPool:
+el Worker posee el mutex de comandos y espera el escritor de la BD sintetica.
+La pausa llega antes de liberar ese escritor (senal en 11,67ms), revierte sin
+perder identidades done ni borrar prepare=true. Reanudar completa preparacion
+y sigue hasta21. Estos tiempos son del ensayo controlado, no maximos garantizados
+para SQL arbitrario. No se interrumpe una sentencia SQLite en curso.
+
+Carrera: nueva generacion A sin senal previa; HTTP pausa captura A mientras su
+mutex esta retenido por el ensayo. Se espera expresamente senal(A). Se simula
+retirada de A bajo el mismo mutex (enabled=false/state=complete) y se publica B
+por command(resume) REAL. Al liberar mutex, pausa(A) devuelve B habilitada, no
+la cancela; WorkManager conserva trabajo activo y avanza a22. No es solo test
+unitario de la guarda. La retirada de A es controlada, no una finalizacion natural
+cronometrada. Primer intento de este caso tenia una barrera incorrecta (reutilizaba
+una senal de pausa ya puesta); se corrige el ENSAYO, no codigo productivo, y se
+repite con generacion limpia para asegurar orden causal.
+
+Reproducible: app/src/androidTest/java/com/drbep/tvplayer/MetadataPanelPauseDeviceTest.java
+se omite automaticamente salvo paquete desechable com.drbep.panelcheck.
+No ejecutar ni adaptar para usar datos reales. Requiere copia de desarrollo con
+applicationId separado; comandos de control test-* existen solo en el Host de
+instrumentacion, no se anaden al panel distribuido ni al Worker.
+
+Evidencias privadas .185: /srv/drbep-dev/reviews/metadata-panel-20261024
+http-lan.json, check-report.json, source-identity.json, build.log,
+instrumentation.txt. No guardar PIN/sesion de ensayo en Git.
+
+Limites: ensayo debug y datos sinteticos; no mide fluidez ni video ni todo el
+coste de una lista real grande. Conserva fuente/seleccion del ensayo. No se
+modifican playback, EPG, catchup, claves o canales de La1/Vamos. Produccion223,
+beta/stable y cola real intactas. Sin publicacion ni commit/push.
+
+Cierre verificado: instrumentacion OK (1 test), 194,771s incluyendo la espera
+para acciones manuales del navegador. No es tiempo de respuesta de un comando.
+En esa ultima comprobacion manual, Continuar desde22 avanza a97; Pausar guarda
+97 y dos lecturas separadas1,2s devuelven estado/conteos iguales, cero errores.
+Captura panel-paused.png y final-ui-state.json en evidencia privada.
+Paquetes com.drbep.panelcheck y .test desinstalados, sus forwards retirados;
+DRBEP original sigue versionCode773/versionName2.0.773-beta-tv-guide.
+Los 898 unitarios del bloque previo no se vuelven a ejecutar: este turno cambia
+solo el ensayo de instrumentacion y documentacion, no el codigo productivo.

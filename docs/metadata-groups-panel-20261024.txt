@@ -1,0 +1,65 @@
+24/10/2026 - Desplegable de grupos TMDB integrado en panel web
+
+Ensayo Fire en paquete separado com.drbep.panelcheck. DB sintetica nueva,
+sin instalar en com.drbep.tvplayer.offline, sin migrar su BD8 ni activar la
+candidata real. Sin MainActivity ni red a servicios externos. No se inicia
+indexador; el Host de instrumentacion rechaza comandos que cambien la cola.
+Conservar produccion223, stable/beta, La1/Vamos y toda reproduccion.
+
+5 listas ficticias: A12000 entradas mixtas (grupos ocultos/vacios/Unicode/comillas,
+generacion antigua y canal live que no deben aparecer); B300 entradas; C1105
+grupos (algunos ocultos), Dpreview64 entradas, Evacia. 15 comparaciones exactas
+contra consulta anterior: listas x ambos/movie/series, orden y truncated.
+C devuelve1000 grupos + opcion Todos; aviso de truncado correcto. D usa preview.
+E devuelve solo Todos en UI, [] en API. Oculto/Antiguo/SoloTV excluidos.
+9 componentes de produccion iguales por SHA256 a checkout; source-identity.json.
+HTML original intacto en assets. Host de ensayo agrega SOLO al HTML servido un
+observador DOM de medida: eventos change y control habilitado, siguiente rAF;
+no sustituye handlers ni usa funciones internas de aplicacion. No interpreta
+ese rAF como prueba de scanout/fin de pintura real. Observador no va a produccion.
+
+HTTP: 9 solicitudes por ambito, primera separada, 7 muestras calientes tras2
+llamadas iniciales. Tiempo completo desde .185 por forwarding ADB LAN al Fire,
+incluye JSON. A12000 mediana mixto73,41ms, peliculas52,98ms, series53,75ms;
+primera solicitud de la tanda mixta148,16ms. C1000 mediana23,35ms.
+Resto y maximos en http.json. No son medidas de red tablet directa ni A/B contra
+servidor antiguo; se valida latencia actual y exactitud de resultados.
+
+Navegador Mac por tunel SSH al .185: primera carga UI203,4ms. Tanda6 cambios de
+Contenido: mediana95,4ms, rango70,5..113ms. Incluye red adicional/tunel y paso
+al siguiente cuadro del navegador, no solo SQL. No atribuir los95ms al Fire.
+No equiparar con los21ms de SQL aislado del bloque anterior (fixture distinto).
+
+13 observaciones UI contrastadas con opciones de la consulta anterior, quitando
+solo la opcion vacia Todos del comparador. Primera entrada restaura A/movie/
+Drama's. Elegir Cine y Actualizar conserva los3 filtros. Navegar Resumen->Actividad
+conserva B/movie/Bcine; Actualizar conserva tambien B/series/Bseries. Cambiar
+lista o tipo reinicia grupo a Todos como antes, conservando los otros campos
+pertinentes; no prometer persistencia de filtros temporales tras desconexion.
+Trabajo guardado sigue siendo A/movie/Drama's: escoger filtros nuevos no lo
+modifica mientras no se pulse Completar. Texto de trabajo y controles pueden
+mostrar ambitos diferentes por esa razon deliberada del producto.
+
+Respuesta antigua: Host retrasa solo A1200ms; UI cambia A->B antes de recibir A.
+Se comprueba que A termino; UI conserva B/movie/Bcine y opcionesB. Retardo
+artificial excluido de medidas normales. Se usa sentinel __disabled__ para
+inhabilitarlo al medir fuente vacia; se repite esa medida sin retardo porque
+el valor inicial vacio del fixture retrasaba dicha peticion. No fallo de app.
+
+Preferencias savedPrefs iguales y digest SHA256 de toda metadata_index igual
+antes/despues. WorkManager sin trabajo de indexacion. No se usan tokens reales,
+ni se guardan PIN/sesion en Git. Faltan rendimiento audiovisual y despliegue
+release real; este ensayo debug valida HTTP/DOM/SQL con datos sinteticos.
+
+Fuentes: app/src/androidTest/java/com/drbep/tvplayer/MetadataGroupsPanelDeviceTest.java
+solo se ejecuta con paquete desechable, se omite en APK normal. Produccion
+sin cambios de codigo funcional en este turno; solo ensayo y documentacion.
+Evidencia privada /srv/drbep-dev/reviews/metadata-groups-panel-20261024:
+build.log, http.json, integration-report.json, ui-summary.json,
+drbep-grupos-panel-ui-20261024.json, capturaPNG, source-identity.json,
+instrumentation.txt y groups-panel-result.json tras cerrar ensayo.
+
+Cierre: instrumentacion OK(1 test),439,541s incluyendo interaccion manual; no es
+latencia de consulta. WorkManager sin trabajo de indexacion. Paquetes de ensayo
+y forward retirados. Version original773 conservada. git diff --check correcto.
+Sin publicacion, commit/push ni cambio de esquema/datos reales.

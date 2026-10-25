@@ -1,0 +1,69 @@
+Progreso y pendientes TMDB: SQLite Fire con video — 23/10/2026
+
+Alcance: Fire AFTKRT API30, APK privada release773 ya instalada, Movistar HLS,
+M+ Clasicos reproduciendo. Sin reinstalar, cambiar datos o iniciar indexador.
+SQLite Android 3.28.0; helper MetadataIndexSelection REAL compilado a DEX.
+Bases sinteticas separadas en /data/local/tmp, nunca la base de DRBEP.
+Fixture generado con tools/benchmark-metadata-progress.py, esquema/indices reales.
+120000 filas sin grupo y 12000 con grupo. Dos fases: mixtas y terminadas.
+108 comparaciones exactas por tanda: conteos por estado, siguiente pendiente
+con seis campos y existencia; todas/lista/tipo/grupo, lista ausente e identificador
+con comillas. La prueba .185 anterior sigue cubriendo 384 comparaciones.
+
+Tanda principal: misma prioridad BACKGROUND (10) del indexador. Dos calentamientos
+y nueve muestras, alternando anterior/preparada; medianas ms. Se incluyen costes
+del cursor Android/lectura de resultados; no son tiempos HTTP ni de renderizado.
+El proceso de medicion es independiente de la app: no mide bloqueo de su
+conexion real ni toda la contencion durante un Worker con solicitudes TMDB.
+
+filas | lista | tipo | grupo | consulta | anterior -> preparada
+120000 | todas | ambos | - | counts | 88.209 -> 58.364
+120000 | todas | ambos | - | next | 20.473 -> 17.621
+120000 | todas | movie | - | counts | 94.617 -> 73.883
+120000 | todas | movie | - | next | 22.832 -> 0.630
+120000 | todas | series | - | counts | 90.631 -> 73.695
+120000 | todas | series | - | next | 22.739 -> 0.627
+120000 | s0 | ambos | - | counts | 126.657 -> 107.396
+120000 | s0 | ambos | - | next | 30.799 -> 28.290
+120000 | s0 | movie | - | counts | 112.304 -> 19.923
+120000 | s0 | movie | - | next | 27.537 -> 0.694
+120000 | s0 | series | - | counts | 118.982 -> 20.373
+120000 | s0 | series | - | next | 28.416 -> 0.623
+12000 | s0 | ambos | Drama | counts | 262.619 -> 262.632
+12000 | s0 | ambos | Drama | next | 57.075 -> 55.806
+12000 | s0 | movie | Drama | counts | 157.054 -> 5.347
+12000 | s0 | movie | Drama | next | 34.749 -> 0.714
+12000 | s0 | series | Drama | counts | 118.118 -> 91.238
+12000 | s0 | series | Drama | next | 26.794 -> 0.783
+
+Video durante la tanda: 78.1 segundos, 9 muestras PreviewPerf.
+Posicion 629057 -> 693045 ms; frames 35070 -> 36671. Todas las muestras dropped=0.
+Sin FATAL EXCEPTION ni StuckPlayerException en captura continua. No se afirma
+ausencia absoluta de tirones ni p95 de interfaz: no se ha medido ese alcance.
+
+Panel REAL del Fire conectado por sesion temporal, solo operaciones de lectura:
+1948/1948 revisados = 1202 done + 745 unmatched + 1 skipped; 0 errores.
+Estado terminado, 0 pendientes por total revisado completo. No se arranca una
+indexacion para fabricar pendientes; la seleccion no vacia se valida en fixture.
+Consultar sin coincidencia devuelve 50 titulos; Siguientes devuelve otra pagina
+y Anteriores recupera la primera. Error de consulta devuelve 0 titulos, fin.
+Actualizar mantiene mismos totales y estado. Pausar/Continuar/Reintentar deshabilitados
+en estado terminado sin errores. No se pulsan Completar/Pausar/Continuar/Reintentar.
+La sesion temporal se cierra al terminar; app devuelta a Inicio.
+
+Resultado: mejora de consultas confirmada tambien en SQLite Android. Queda coste
+alto en recuentos de ambos tipos/grupo (~263ms) y series/grupo (~91ms). No se
+modifican algoritmos ni se agregan indices para ocultar esa limitacion.
+Pendiente: progreso durante indexacion real, pausa/reanudar/reintentos en Worker
+y contencion de su conexion, si se autoriza una prueba que modifique la cola.
+
+Evidencia privada .185: /srv/drbep-dev/reviews/metadata-progress-fire-20261023
+fire.json (primera tanda prioridad normal, video detras de Ajustes),
+fire-background.json (tanda principal en Inicio), video-during.txt, video-summary.json,
+background-errors.txt, fixture-120000.db/fixture-12000.db, jar/classes, capturas.
+Los registros before/after-video de la primera tanda estaban vacios (contador
+de miniatura no activo en Ajustes); por ello se repite con captura continua.
+Herramienta reproducible guardada en tools/benchmarks/MetadataFireBench.java.
+Compilar con android.jar + MetadataIndexSelection.java, convertir con d8 y ejecutar
+app_process con dos DB sinteticas (nombres terminados en 120000.db y 12000.db).
+No APK nueva, publicacion, commit/push ni modificaciones en produccion.

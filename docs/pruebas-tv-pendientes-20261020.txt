@@ -250,17 +250,29 @@ Ver playback-transport-reuse-20261021.txt. No instalar/publicar automaticamente.
 [ ] Cola saturada, error de red, fallback y reintento al volver.
 [ ] Cerrar pantalla, trim y reapertura con cargas pendientes.
 [ ] Tira catchup, acceso a timeshift, miniatura y retorno al directo intactos.
-Ver artwork-singleflight-20261021.txt. TV apagada: no validado en dispositivo.
+23/10: A/B ejecutadas en Fire; 12 imagenes/marcadores identicos y foco verificado.
+Carga real no ejercita cola valida de fallback: rendimiento visible pendiente.
+Equidad sintetica validada; flag final apagado. Checklist restante sigue pendiente.
+Ver artwork-singleflight-20261021.txt y artwork-fire-20261023.txt.
 
 45. Consultas de progreso y pendientes TMDB (21/10)
+23/10 Fire: 108 equivalencias SQLite Android con video activo; panel real terminado
+1948/1948 y navegacion de resultados verificados. Pendiente indexador real activo
+y su contencion/pausa/reintento. Ver metadata-progress-fire-20261023.txt.
 [ ] Comparar recuentos y siguiente titulo con todas/lista/tipo/grupo.
 [ ] Pausa, reanudar, reintentar y revision por paginas conservan el ambito.
 [ ] Series con episodios en varios grupos, ocultos y listas reimportadas.
 [ ] Medir SQLite Android y fluidez con reproduccion e indexacion simultaneas.
 [ ] Revisar especialmente recuento por tipo sin lista seleccionada.
-Ver metadata-scope-query-20261021.txt. Sin validacion Fire mientras TV apagada.
+Ver metadata-scope-query-20261021.txt.
+23/10 .185: 384 equivalencias y medidas alternadas correctas; ver metadata-progress-20261023.txt.
+Pruebas Android y p95 durante reproduccion siguen pendientes. Sin validacion Fire mientras TV apagada.
 
 46. Preparacion ligera de cola TMDB (21/10)
+23/10: filtro directo de lista en peliculas, 126 equivalencias .185 y 7 Fire
+sinteticas; mejora de insercion comprobada, 887 tests. Candidata NO instalada.
+Las pruebas Worker/panel real siguientes permanecen pendientes.
+Ver metadata-preparation-20261023.txt.
 [ ] Iniciar por todas/lista/tipo/grupo con peliculas y series.
 [ ] Totales, ocultos, representante visible y generaciones activos/preview.
 [ ] Cola existente: done/error/pending conservados al preparar de nuevo.
@@ -269,6 +281,13 @@ Ver metadata-scope-query-20261021.txt. Sin validacion Fire mientras TV apagada.
 Ver metadata-queue-preparation-20261021.txt. Pendiente con TV encendida.
 
 47. Filtro por grupo TMDB especializado (21/10)
+23/10 mixtos: CASE preparado y medido, 932 consultas+52 reintentos equivalentes,
+12 comparaciones Fire sinteticas. Mejora con indices8 y9; pequenos costes en
+grupos ausentes. No instalado; ver metadata-mixed-group-20261023.txt.
+23/10: indice series/grupo en esquema9 PREPARADO, no activado. 218 equivalencias
+.185/12 Fire sinteticas, 4 tests migracion y mejora especializada comprobados.
+Mixtos y ciclo Worker/panel reales pendientes. Antes de instalar, respaldo y
+retorno compatibles con cambio de version BD. Ver metadata-series-group-20261023.txt.
 [ ] Peliculas/series/ambos, lista y grupo: mismos totales y candidatos.
 [ ] Series con representante en otro grupo, episodios ocultos y reimportacion.
 [ ] Revisar/reintentar resultados solo del ambito seleccionado.
@@ -276,6 +295,10 @@ Ver metadata-queue-preparation-20261021.txt. Pendiente con TV encendida.
 Ver metadata-group-filter-20261021.txt. Pendiente con TV encendida.
 
 48. Preparacion TMDB transaccional (21/10)
+23/10: etapas cancelables preparadas, 20 escenarios SQLite Android, 228 lecturas
+entre etapas y 237 simultaneas sin cola parcial. Pruebas reales Worker/panel
+siguientes pendientes; mutex de Pausar sin modificar. Candidata NO instalada.
+Ver metadata-transaction-20261023.txt.
 [ ] Listas grandes: preparar con video activo; medir escritor/fluidez.
 [ ] Pausa/cancelacion y reanudacion mientras se prepara, sin cola parcial.
 [ ] Panel ve cola anterior o completa; reintento conserva done y no duplica.
@@ -283,6 +306,8 @@ Ver metadata-group-filter-20261021.txt. Pendiente con TV encendida.
 Ver metadata-queue-atomic-20261021.txt. Pendiente con TV encendida.
 
 49. Inter en la interfaz (21/10)
+DESCARTADO por decision posterior del usuario: se conserva la fuente anterior.
+No volver a aplicar ni instalar Inter al seguir esta lista antigua.
 [ ] Revisar Inicio, TV, guia, catchup, peliculas/series, biblioteca y ajustes.
 [ ] Dialogos, teclado/buscador, mensajes, botones y controles: sin recortes.
 [ ] Acentos, simbolos, horas, pesos y foco visibles en Fire y tablet.
@@ -304,3 +329,43 @@ Ver main-rail-20261021.txt. Sin pruebas Fire hasta TV encendida.
 [ ] Preparar lista grande con video activo; medir SQLite Android y fluidez.
 [ ] Pausa/reanudar y estado done conservados; peliculas sin regresion.
 Ver metadata-source-20261021.txt. Pendiente TV encendida.
+
+Pausa TMDB durante preparacion (23/10):
+[ ] E2E aislado: pausar durante limpieza/peliculas/series y comprobar rollback,
+    enabled/state/prepare, respuesta HTTP y reanudacion sin perder done.
+[ ] Cruce de pausa antigua con nueva generacion: no cancelar el trabajo nuevo.
+[ ] Medir sentencia en curso y status por separado; no confundir senal inmediata
+    con respuesta inmediata. Sin reiniciar ni modificar cola real para el ensayo.
+
+24/10: pausa/reanudar/generacion antigua validadas con HTTP y Worker reales en
+paquete aislado del Fire, ver metadata-panel-pause-20261024.txt. Conservar
+pendiente medida con lista grande/video de APK release si se activa candidata;
+no inferir fluidez a partir del ensayo debug. BD real8 y APK773 conservadas.
+
+24/10 selector de grupos TMDB:
+[ ] Panel de candidata: lista/tipo/grupo, grupos visibles/ocultos, preview,
+    mas1000/truncated, refresco tras importacion, cero cambios de seleccion/cola.
+[ ] Medir HTTP/desplegable con video release. SQLite aislado validado240+36
+    equivalencias, no sustituye esa prueba. No activar BD9 sin retorno compatible.
+
+24/10 grupos: validado desplegable de candidata en paquete aislado Fire mediante
+panel HTTP/navegador,15 ambitos+13 observaciones, limites/ocultos/preview y
+respuestas antiguas. No instalar candidata real: sigue pendiente conjunto release
+con reproduccion/video y retorno compatible para BD9.
+
+24/10 bloque51: SQL/preparacion series por fuente validado .185612 y Fire30
+con estados y orden identicos, retry idempotente. Sin grupo1477->101ms indices8;
+con grupo persiste cuello sin indice9 (solo ensayado en DB ficticia). Video
+contadores avanzan en22 muestras sin delta dropped durante172s; no UI/HDMI.
+Pendiente E2E Worker series y validacion de release integrada/retornoDB9.
+
+24/10 indice adoptado en DB8 REAL del Fire sin cambiar APK773. Respaldo+retorno
+real verificados, datos/rowids intactos, Series carga. Esquema9 NO activado.
+Ver index-adoption-fire-20261024.txt: futura APK9 requiere plan de retorno propio.
+
+25/10 cierre candidata774: consultar candidata-conjunta-774-20261025.txt para
+pruebas reales y limites. Worker series completo/retorno con progreso, foco E04,
+filtros, VODretorno, video miniatura,2multiview, BBC pausa135s/seek, XiaomiARM64
+VOD/U7D gestos y pausa verificados. No dar por corregido todo pico frio ni habilitar
+HLS/zapeo/transporte sin mejora demostrada;8opciones experimentales siguenFALSE.
+Falta confirmacion del canal tras publicacion y OTA tablet; no se modifico backend.

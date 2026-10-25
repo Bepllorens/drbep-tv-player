@@ -1,0 +1,125 @@
+24/10/2026 - Siguiente ciclo: selector de grupos TMDB
+
+Diagnostico: groups() hacia LEFT JOIN de preferencias por cada entrada antes de
+DISTINCT. Varias entradas comparten grupo; interesa comprobar existencia de un
+miembro visible por grupo. Variante global descartada: con grupos unicos
+Linux0,825->10,32ms y todo oculto3,302->11,905ms (120000 entradas totales).
+
+Solucion acotada preparada en .185:
+MetadataIndexGroups extrae consulta probe limitada a33 nombres, usando indice
+existente. Si hay0..32, obtiene candidatos con indice y EXISTS de miembro visible;
+con33 devuelve exactamente la consulta anterior y sus argumentos. Sin cache,
+sin nuevos indices ni otra migracion en este bloque. Peliculas/series/mixtos,
+generacion activa o preview y ocultos conservan significado. No se cambian los
+comandos, estado, cola, seleccion, paginacion ni el formato JSON. Conserva
+limite1001 para detectar truncated y devolver1000. Fuente vacia no consulta BD.
+
+La sonda y consulta son dos lecturas; no crean transaccion que bloquee escritor.
+Si se importa otra generacion entre ellas, solo cambia la eleccion de plan; la
+consulta final sigue resolviendo la generacion vigente en su propia instantanea.
+No prometer una unica instantanea compartida con la sonda ni coste identico bajo
+importacion concurrente. La sonda no consulta preferencias ni filtra ocultos: solo estima
+cardinalidad; la consulta final verifica visibilidad como la original.
+
+Equivalencia .185:240 comparaciones exactas con helper Java REAL compilado,
+12000/120000 entradas, fuentes ausentes y comillas/inyeccion como datos,
+peliculas/series/ambos, activo/preview, grupos vacios/Unicode/comillas, ocultos,
+32/33/muchos grupos y limite1001. Native Fire36 comparaciones, mismos helpers
+Java compilados a DEX sobre SQLite Android3.28, sin APK nueva. No base real.
+Fixture total120000, fuente s0 activa contiene 5956 entradas; no afirmar
+que la lista medida contiene todas las120000 entradas.
+
+Medidas Fire: dos calentamientos, nueve muestras alternando antes/despues.
+El tiempo despues INCLUYE sonda y consulta, materializacion y lectura del cursor.
+No HTTP ni dibujo ni una prueba de fluidez/video. Resultados completos:
+{
+  "equivalences": 36,
+  "timings": [
+    {
+      "phase": "few",
+      "kind": "both",
+      "returned": 2,
+      "before_ms": 63.736461,
+      "after_ms": 20.672923
+    },
+    {
+      "phase": "few",
+      "kind": "movie",
+      "returned": 2,
+      "before_ms": 35.069077,
+      "after_ms": 14.909692
+    },
+    {
+      "phase": "few",
+      "kind": "series",
+      "returned": 2,
+      "before_ms": 35.154462,
+      "after_ms": 15.022384
+    },
+    {
+      "phase": "unique",
+      "kind": "both",
+      "returned": 1001,
+      "before_ms": 12.458846,
+      "after_ms": 12.974385
+    },
+    {
+      "phase": "unique",
+      "kind": "movie",
+      "returned": 1001,
+      "before_ms": 16.869308,
+      "after_ms": 16.731539
+    },
+    {
+      "phase": "unique",
+      "kind": "series",
+      "returned": 1001,
+      "before_ms": 16.666231,
+      "after_ms": 17.295539
+    },
+    {
+      "phase": "all_hidden",
+      "kind": "both",
+      "returned": 0,
+      "before_ms": 53.911385,
+      "after_ms": 55.160308
+    },
+    {
+      "phase": "all_hidden",
+      "kind": "movie",
+      "returned": 0,
+      "before_ms": 40.217923,
+      "after_ms": 39.387231
+    },
+    {
+      "phase": "all_hidden",
+      "kind": "series",
+      "returned": 0,
+      "before_ms": 40.306846,
+      "after_ms": 40.524615
+    }
+  ]
+}
+
+Pocos grupos: mixto63,74->20,67ms; pelicula35,07->14,91; series35,15->15,02.
+Con muchos grupos el fallback agrega coste pequeño pero real: mixto12,46->12,97;
+series16,67->17,30; todo oculto mixto53,91->55,16 (+1,25ms). No declarar que
+todos los casos mejoran o que el coste de la sonda es cero. Sin instalar en la
+app real ni activar el esquema9 pendiente del bloque anterior.
+
+Archivos: MetadataIndexGroups.java, MetadataIndexWorker.kt (solo groups en este
+ciclo), MetadataIndexGroupsTest.java, tools/benchmark-metadata-groups.py,
+tools/benchmarks/MetadataGroupsFireBench.java.
+Evidencias privadas: /srv/drbep-dev/reviews/metadata-groups-20261024
+linux.json, fire.json, fixture.db, classes/dex/groups.jar, build.log.
+
+Pendiente: comprobar el desplegable dentro del panel real con la candidata,
+medir con reproduccion activa y validacion release del conjunto antes de adoptar.
+El flujo pausa/reanudar de otro bloque ya fue validado aisladamente y no cambia.
+No produccion223, ni beta/stable, ni commit/push, ni datos/instalacion DRBEP real.
+
+Cierre: release ARM32 beta optimizada compilada, 902 pruebas unitarias
+(4 nuevas) correctas, sin fallos/errores. Candidata app-release-unsigned.apk
+versionCode 773 NO instalada ni publicada.
+SHA256 887d93e4dd0047c7d5d1e0d334964e388ee12419ea37a1b9630a67f4de209399
+Temporales exactos de la prueba SQLite Fire retirados tras finalizar el proceso.

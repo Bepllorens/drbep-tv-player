@@ -1,0 +1,144 @@
+CANDIDATA CONJUNTA 774 - 25 octubre 2026
+
+Trabajo canonico en .185, rama qoder/disneyplus-vod-582, base ca3f076.
+Preparacion autorizada, Fire .190 TV encendida/mando libre confirmado hoy.
+No cambios de backend, asociaciones, claves, rutas La1/Vamos ni canal stable.
+No publicar hasta cerrar las comprobaciones que figuran abajo.
+
+BINARIOS
+Universal armeabi-v7a + arm64-v8a, release optimizada perfilable, beta explicita.
+902 unitarios sin fallos; 8 pruebas SQLite migracion/retorno; 4 equivalencias
+filtros mixtos y 19 pruebas Node panel correctas. Prueba Android separada abajo.
+fastHlsStartup, coalesceRemoteZap, reusePlaybackTransport, coalesceArtworkGrids,
+cooperativeImports, cooperativeMetadata, boundedArtworkRequests y
+catchupSearchIndex siguen DESACTIVADOS. No promover experimentos sin evidencia.
+Conservar fuente del sistema anterior; no reintroducir Inter.
+
+Instalada privada compatible Fire, conservando datos:
+f5af5e6c6b874abf3131f73ffa8f7644c40216d0387352c2bb2287503a1c3c74
+Preparada distribucion, NO publicada al redactar:
+9765775a82923eb3f7802325a4cc3d2a2bef2cf9c86fec078554ba045f870826
+Ambas se firman desde el MISMO unsigned congelado, sin recompilar.
+Todos los elementos ZIP fuera META-INF iguales byte a byte; bibliotecas ARM
+verificadas. No instalar firma de distribucion encima de firma privada Fire.
+La prueba Fire no equivale a probar actualizador de tablet o su identidad.
+
+RESPALDO Y RETORNO
+APK anterior773 guardada y SHA conocido verificado.
+DB8 real con indice ya adoptado: nuevo respaldo fisico 61628416 bytes, hash
+5a2c006762db56a7add2b11dee4e78f6d6861141fc3bcfae112680729d99dfec.
+Privado en185 y noBackupFilesDir Fire, nombres fecha25; no pisar respaldo24.
+Digest datos/rowids de todas las tablas sigue
+2dea72f3cca1bcd4e714949b40d71edc02865aa62abafafe9350231e9cb51c2a.
+Esquema salvo indice propio igual al respaldo anterior.
+
+releasecheck: copia real8->9->8, datos exactos e integridad, helper8 abre.
+Retorno ACTIVO tras instalar774: inspect9/28698 entradas/27950 episodios/1948
+estados; return8 conserva digest exacto; reinstalar773 -r -d sin borrar datos;
+apertura fria correcta3469ms. Reinstalar774: apertura2293ms. Son observaciones,
+no benchmark de aceleracion (caches/perfiles diferentes).
+return8 exige respaldo8, vivo9, esquema identico salvo indice, columnas esperadas,
+indexador inactivo; no devuelve filas antiguas ni borra progreso posterior.
+Abortar si otra migracion cambia esquema. No usar retorno8 con versiones futuras.
+Auxiliar tools/android-index-maintenance; accion return8, snapshot20261025.
+Antes: detener app/importaciones/indexador; despues instalar APK anterior MISMA
+firma -r -d y verificar apertura/DB. No desinstalar DRBEP ni borrar sus datos.
+
+TRABAJADOR SERIES - ANDROID REAL, DATOS SINTETICOS
+MetadataSeriesWorkerDeviceTest, paquete desechable com.drbep.panelcheck;
+se omite si destino no es ese paquete. No usa datos/servicios productivos.
+30.000 episodios, 300 series, grupo Selected150 y Other150. Importador,
+SQLite, SharedPreferences y WorkManager reales. Metadata stub loopback kindtv.
+Primera fase53s incluye importacion; start/progreso/pausa4,718s incluye esperas
+intencionadas2,6s y limite de peticiones, NO es el coste SQL del indice.
+5 done iniciales ->6; pausa estable. Reinicio real del proceso; HTTP503
+controlado produce errores recuperables; retry avanza sin perder done.
+Despues completa150/150, cero pendientes/errores, estado complete y grupo
+conservado, atravesando lotes de20 del Worker:147,862s desde resume.
+Dos fases instrumentacion OK(1test) cada una; segunda154,778s con casos de error.
+No confundir HTTP503 simulado con desactivar wifi ni con validar TMDB real.
+No se modifica indexador/preferencias de biblioteca real. Paquetes retirados.
+
+TV Y REPRODUCCION - EN CURSO
+Capturas inicio774 con fuente anterior, foco en canal y video real.
+TV HLS133canales,18abajo/18arriba, foco vuelve a AXN Movies; OK pantalla
+completa y Atras miniatura con video en primera captura tras comando.
+Primer recorrido tras instalar: frame principal max789ms frente referencia478ms;
+p9528,9 frente24,6ms. Condicion tras instalacion/perfil distinta; no atribuirlo
+a un cambio concreto ni dar picos por corregidos. Repetir optimizacion local y
+recorridos comparables sin ensayos simultaneos antes de decidir publicacion.
+BBC Earth: Diario de los grandes felinos Episodio4,23/10, video confirmado.
+Pausa + seek60s conserva playing=false/catchup; Play reanuda. HTTP comando
+pausa26,9ms/seek38,3ms/resume39ms, NO tiempo hasta primer fotograma.
+Pausa prolongada, caja negra, mando, multiview y VOD aun por cerrar en esta tanda.
+Tablet solicitada; no disponible/confirmada todavia, no dar por probado su update.
+
+EVIDENCIA PRIVADA
+/srv/drbep-dev/reviews/joint-candidate-20261025
+Copias APK/DB, capturas, trazas, resultados y sesiones del panel solo alli.
+NO incorporar a Git DB, claves, PIN/sesiones, APKs ni registros privados.
+El panel es temporal20min; cerrar al terminar y retirar auxiliar de mantenimiento.
+
+CIERRE DE PRUEBAS 25/10 (antes de publicar)
+- Fire tras optimizacion local del paquete y sin ensayo series simultaneo:
+  frame hilo UI n457, mediana3,895ms/p9522,965/max146,675;
+  measureAndLayout n283 mediana1,077/p956,719/max77,340ms.
+  Misma ruta18abajo+18arriba; no atribuir diferencia789->147 a codigo nuevo:
+  cambia estado de compilacion/cache. Primer dibujo frio sigue siendo limite;
+  los experimentos HLS/zapeo/transporte descartados NO se activan en774.
+- VOD Fire: dialogo continuar visible; Al filo del manana reproduce desde23:23.
+  Boton Volver a peliculas mediante flechas/OK abre catalogo importado correcto.
+  Atras devuelve Inicio conforme politica existente, no cierra app. No cambiar
+  esa politica por confundirla con boton biblioteca. Vuelta a TV con video.
+  Captura tras elegirTV tarda7,34s incluyendo ADB/captura; NO equivale a tiempo
+  hasta primer fotograma ni a prueba de que tarde exactamente2s.
+- Series Fire: modo teclado tras toques ADB no sirve para evaluar mando puro.
+  Repeticion DPAD: E04 enfocado -> ficha (Temporadas) -> E04 restaurado; retorno
+  al carrusel conserva seleccion; Arriba llega Lista; dos Derecha llegan Genero;
+  Abajo devuelve carrusel y cinco Derecha mantienen fila/foco.
+  Antes hubo ensayo inconcluso en modo tactil; no era evidencia de regresion.
+- Multiview Fire:2 ventanas con video AXNMovies yLa1; flechas/OK marcan Audio
+  activo enVentana2; Cerrar recupera AXNMovies con video. No prueba auditiva ni
+  prueba de4ventanas; no forzar capacidad superior al perfil del dispositivo.
+- BBC Earth Fire: pausa135,75s y reanudacion correctas, incremento PLAY_ERROR0;
+  retorno al directo correcto. 3errores acumulados pertenecen SOLO a773;
+  export tiene843eventos774, ceroPLAY_ERROR774 en esa captura, perdida0.
+
+XIAOMI ARM64
+Modelo2410CRP4CG/API36, ABI SOLOarm64-v8a. Actual773 oficial respaldada (mismo
+SHAae921796167a75cb6143cf21d33dc26746b87b1d1930973c56a38c37d1630dd4).
+Auxiliarv2release/target34 firmado oficial. Rechazos iniciales eran denegacion
+del aviso Instalar viaUSB10s. Se confirma solo Instalar, sin recordar eleccion
+ni cambiar verificaciones. ADB37 en5038, sin interrumpir Fire5037.
+DB8 sin indice:748peliculas,0series,0estados. Respaldo1769472bytes en185+tablet,
+SHA46dea1d7c870e7910e1dff1856eeed88d7fb6586bb030e96ecfa9c857dfbac17.
+Copia8->9->8 conserva datos y helper8 abre; tras instalar774 realinspect9/indice
+presente/mismos748/0/0. return8 ACTIVO conserva progreso actual; nueva774 abre.
+APK instalada descargada del sistema y SHA9765775a82923eb3f7802325a4cc3d2a2bef2cf9c86fec078554ba045f870826
+verificado: es EXACTAMENTE la firmada de distribucion preparada para publicar.
+
+Gestos VOD real: dos taps se inyectan en174ms; desplazamiento neto segun
+MediaSession +29242ms, swipe atras-30643ms (extrapola reloj entre actualizaciones).
+Pausa+swipe+30006ms conserva PAUSED; Play reanuda. No son medidas de primer frame.
+Series vacias muestra No hay series con estos filtros, sin cierre.
+Catchup: primera consulta del panel devuelve0 antes de activar vista; no usar ese
+resultado como medida de carga completa. Vista nativa carga programas en segundo
+plano;1938disponibles mientras170canales pendientes, luego filtro23/10 BBC36programas.
+Busqueda y cambio de dia operativos. Diario grandes felinos Episodio4 reproduce.
+Doble tap:217s->251s; diferencia descontando reloj28,43s (caption discretizado).
+Pausa:254->284s exactos, estadoPAUSED conservado; Play reanuda. Boton volver al
+directo deja cabeceraBBC Earth y quita cabecera del programa replay.
+4PLAY_ERROR historicos del ZIP pertenecen a771; versiones749/750/771/772/773
+anteriores no se confunden con774, que no tenia errores en ese export.
+No afirmar comodidad tactil por humanos ni validacion universal de todos canales.
+
+Estado final datos Fire: schema9/indice,28698entradas/27950episodios/1948estados.
+Tablet:748entradas,0series,0estados; progreso nuevo preservado en retorno probado.
+Pendiente al escribir este cierre: commit/push, publicar774 y verificar descarga
+publica/manifest/stable; comprobar actualizador tablet despues de publicacion.
+
+Verificacion ARM64 final: APK extraida tras instalar coincideSHA9765775a8292...
+DB9/indice/748/0/0; retorno ACTIVO a8 conserva todos los datos actuales, despues
+arranca774. No se restaura copia vieja sobre el progreso generado por gestos.
+La prueba de actualizador OTA se hara DESPUES de activar el canal; no confundir
+instalacion ADB (ya validada) con descarga e instalador desde la propia app.

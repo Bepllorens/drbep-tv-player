@@ -23,7 +23,7 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
         val ctx=applicationContext
         val generation=inputData.getString("generation")?:return Result.success()
         val selection=synchronized(lock){selection(ctx)}
-        fun active()=!isStopped && synchronized(lock){prefs(ctx).getBoolean("enabled",false)&&prefs(ctx).getString("generation","")==generation}
+        fun active()=!isStopped && synchronized(lock){!pauseSignal.isPaused(generation) && prefs(ctx).getBoolean("enabled",false)&&prefs(ctx).getString("generation","")==generation}
         if(!active())return Result.success()
         try {
             val cooperative=CooperativeWorkYield(
@@ -57,19 +57,19 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
             synchronized(lock) {
                 if(!active())return Result.success()
                 if(prefs(ctx).getBoolean("prepare",false)) {
-                    val prepared=MetadataIndexQueue.prepare(object:MetadataIndexQueue.Transaction {
+                    val stages=mutableListOf<Runnable>(Runnable { db.execSQL(MetadataIndexQueue.CLEAN_STALE) })
+                    repos.filter{selection.kind.isEmpty() || it.kind==selection.kind}
+                        .forEach{repo -> stages.add(Runnable { repo.queueIndex(selection.source,selection.group) })}
+                    val prepared=MetadataIndexQueue.prepareStages(object:MetadataIndexQueue.Transaction {
                         override fun begin() { db.beginTransaction() }
                         override fun successful() { db.setTransactionSuccessful() }
                         override fun end() { db.endTransaction() }
-                    }, { active() }, {
-                        db.execSQL(MetadataIndexQueue.CLEAN_STALE)
-                        repos.filter{selection.kind.isEmpty() || it.kind==selection.kind}
-                            .forEach{it.queueIndex(selection.source,selection.group)}
-                    }, {
+                    }, { active() }, stages, {
                         check(prefs(ctx).edit().putBoolean("prepare",false).commit()) { "Queue marker unavailable" }
                     })
                     if(!prepared)return Result.success()
                 }
+                if(!active())return Result.success()
                 prefs(ctx).edit().putString("state","running").commit()
             }
             // Short, bounded jobs avoid Android's ten-minute worker limit.
@@ -126,6 +126,7 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
     companion object {
         private const val WORK="drbep-metadata-index"
         private val lock=Any()
+        private val pauseSignal=MetadataPauseSignal()
         private fun prefs(c:Context)=c.getSharedPreferences("metadata-index",Context.MODE_PRIVATE)
         private fun selection(c:Context)=MetadataIndexSelection(prefs(c).getString("source","")?:"",prefs(c).getString("kind","")?:"",prefs(c).getString("group","")?:"")
         private fun enqueue(c:Context,generation:String,policy:ExistingWorkPolicy) {
@@ -137,38 +138,54 @@ class MetadataIndexWorker(context:Context, parameters:WorkerParameters):Worker(c
         }
         @JvmStatic fun command(c:Context,command:String):String = command(c,command,"","","")
         @JvmStatic fun command(c:Context,command:String,source:String,kind:String):String = command(c,command,source,kind,"")
-        @JvmStatic fun command(c:Context,command:String,source:String,kind:String,group:String):String = synchronized(lock) {
-            val p=prefs(c)
+        @JvmStatic fun command(c:Context,command:String,source:String,kind:String,group:String):String {
             require(command in listOf("start","pause","resume","retry"))
-            if(command=="pause") {
-                p.edit().putBoolean("enabled",false).putString("state","paused").commit()
-                WorkManager.getInstance(c).cancelUniqueWork(WORK)
-            } else {
-                // Repeated start/resume while active never creates another worker.
-                if(!p.getBoolean("enabled",false)) {
-                    if(command=="start") {
-                        val chosen=MetadataIndexSelection(source,kind,group)
-                        if(chosen.source.isNotEmpty())PlaylistDatabase.getInstance(c).readableDatabase.rawQuery("SELECT 1 FROM sources WHERE id=?",arrayOf(chosen.source)).use {
-                            require(it.moveToFirst()){"La lista ya no existe"}
-                        }
-                        p.edit().putString("source",chosen.source).putString("kind",chosen.kind).putString("group",chosen.group).commit()
+            // Signal before waiting for preparation; the current SQL finishes first.
+            val pausedGeneration=if(command=="pause")pauseSignal.requestPause {
+                prefs(c).getString("generation","")?:""
+            } else null
+            return synchronized(lock) {
+                val p=prefs(c)
+                if(command=="pause") {
+                    // A delayed pause must not cancel a newer start/resume.
+                    if(p.getString("generation","")==pausedGeneration) {
+                        p.edit().putBoolean("enabled",false).putString("state","paused").commit()
+                        WorkManager.getInstance(c).cancelUniqueWork(WORK)
                     }
-                    val chosen=selection(c)
-                    if(command=="retry")PlaylistDatabase.getInstance(c).writableDatabase.execSQL("UPDATE metadata_index SET state='pending' WHERE state='error' AND "+chosen.where(),chosen.args())
-                    val id=UUID.randomUUID().toString()
-                    p.edit().putBoolean("enabled",true).putString("generation",id).putString("state","queued")
-                        .putBoolean("prepare",command=="start"||p.getBoolean("prepare",false)).commit()
-                    enqueue(c,id,ExistingWorkPolicy.REPLACE)
+                } else {
+                    // Repeated start/resume while active never creates another worker.
+                    if(!p.getBoolean("enabled",false)) {
+                        if(command=="start") {
+                            val chosen=MetadataIndexSelection(source,kind,group)
+                            if(chosen.source.isNotEmpty())PlaylistDatabase.getInstance(c).readableDatabase.rawQuery("SELECT 1 FROM sources WHERE id=?",arrayOf(chosen.source)).use {
+                                require(it.moveToFirst()){"La lista ya no existe"}
+                            }
+                            p.edit().putString("source",chosen.source).putString("kind",chosen.kind).putString("group",chosen.group).commit()
+                        }
+                        val chosen=selection(c)
+                        if(command=="retry")PlaylistDatabase.getInstance(c).writableDatabase.execSQL("UPDATE metadata_index SET state='pending' WHERE state='error' AND "+chosen.where(),chosen.args())
+                        val id=UUID.randomUUID().toString()
+                        pauseSignal.publishGeneration {
+                            check(p.edit().putBoolean("enabled",true).putString("generation",id).putString("state","queued")
+                                .putBoolean("prepare",command=="start"||p.getBoolean("prepare",false)).commit())
+                        }
+                        enqueue(c,id,ExistingWorkPolicy.REPLACE)
+                    }
                 }
+                status(c)
             }
-            status(c)
         }
         @JvmStatic fun groups(c:Context,source:String,kind:String):String {
             MetadataIndexSelection(source,kind)
             val rows=org.json.JSONArray()
-            if(source.isNotEmpty())PlaylistDatabase.getInstance(c).readableDatabase.rawQuery(
-                "SELECT DISTINCT e.group_name FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation LEFT JOIN preferences p ON p.source=e.source AND p.identity=e.identity AND p.occurrence=e.occurrence WHERE e.source=? AND e.kind IN ('movie','series') AND (?='' OR e.kind=?) AND e.group_name<>'' AND COALESCE(p.hidden,0)=0 ORDER BY e.group_name LIMIT 1001",
-                arrayOf(source,kind,kind)).use {cursor->while(cursor.moveToNext())rows.put(cursor.getString(0))}
+            if(source.isNotEmpty()) {
+                val db=PlaylistDatabase.getInstance(c).readableDatabase
+                val candidates=db.rawQuery(MetadataIndexGroups.probeSql(kind),MetadataIndexGroups.probeArgs(source,kind)).use {it.count}
+                val grouped=MetadataIndexGroups.grouped(candidates)
+                db.rawQuery(MetadataIndexGroups.sql(kind,grouped),MetadataIndexGroups.args(source,kind,grouped)).use {cursor->
+                    while(cursor.moveToNext())rows.put(cursor.getString(0))
+                }
+            }
             val truncated=rows.length()>1000
             if(truncated)rows.remove(1000)
             return JSONObject().put("groups",rows).put("truncated",truncated).toString()

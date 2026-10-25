@@ -30,12 +30,25 @@ public class MetadataIndexQueueTest {
                 MetadataIndexQueue.args(true,"series",source,"Drama"));
         assertEquals(6,sql.chars().filter(c->c=='?').count());
     }
-    @Test public void allSourcesAndMoviesKeepPreviousQueriesAndBindings() {
+    @Test public void allSourcesKeepPreviousQueriesAndBindings() {
         for(boolean group:new boolean[]{false,true}) {
             assertEquals(MetadataIndexQueue.sql(true,group),MetadataIndexQueue.sql(true,group,false));
-            assertEquals(MetadataIndexQueue.sql(false,group),MetadataIndexQueue.sql(false,group,true));
+            assertEquals(MetadataIndexQueue.sql(false,group),MetadataIndexQueue.sql(false,group,false));
         }
         assertArrayEquals(new String[]{"series","series","",""},MetadataIndexQueue.args(true,"series","",""));
-        assertArrayEquals(new String[]{"movie","movie","a","a"},MetadataIndexQueue.args(false,"movie","a",""));
+        assertArrayEquals(new String[]{"movie","movie","a"},MetadataIndexQueue.args(false,"movie","a",""));
+    }
+    @Test public void selectedMoviesBindOneSourceAndPreserveGroupPredicate() {
+        String source="list' OR 1=1 --";
+        for(boolean group:new boolean[]{false,true}) {
+            String sql=MetadataIndexQueue.sql(false,group,true);
+            assertFalse(sql.contains("(?='' OR e.source=?)"));
+            assertTrue(sql.contains("e.source=?"));
+            assertFalse(sql.contains(source));
+            assertEquals(group?4:3,sql.chars().filter(c->c=='?').count());
+            assertArrayEquals(group?new String[]{"movie","movie",source,"Drama"}:new String[]{"movie","movie",source},
+                    MetadataIndexQueue.args(false,"movie",source,group?"Drama":""));
+            if(group)assertTrue(sql.contains(MetadataIndexSelection.groupPredicate("e","movie")));
+        }
     }
 }

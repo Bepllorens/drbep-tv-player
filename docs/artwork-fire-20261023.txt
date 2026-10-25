@@ -1,0 +1,54 @@
+Coordinacion de imagenes de catchup: validacion 23/10/2026
+
+Alcance: desarrollo .185 y prueba privada Fire .190, television encendida y
+mando libre por confirmacion del usuario. Sin publicacion, commit/push ni
+cambios de produccion, claves, asociaciones o rutas La 1/Vamos.
+
+Cambio de esta sesion: contadores numericos beta de Trace en
+MovistarArtworkRepository (requests validas, tareas, cargas). No incluyen
+identidades, titulos ni URLs. Test nuevo de equidad de ArtworkSingleFlight:
+un canal bloqueado con 59 seguidores no impide terminar otro canal. Se
+conservan 61 entregas individuales y una carga de la primera parrilla.
+886 pruebas correctas; compilaciones release perfilables ARM32 optimizadas.
+
+Prueba controlada, cuatro workers, primera parrilla bloqueada 120 ms:
+mediana de espera del OTRO canal en nueve muestras alternadas:
+.185: referencia 120,243 ms / agrupada 0,335 ms.
+Fire: referencia 120,533 ms / agrupada 0,587 ms.
+Es una prueba sintetica de bloqueo de workers, NO una medida de velocidad
+de imagen real ni del tiempo de pantalla completa.
+
+Comparacion real A/B: proceso reiniciado, cache de disco conservada,
+misma ruta de fechas. EPG actualizandose: no tratar como red fria controlada.
+No se observaron contadores de solicitudes VALIDAS de fallback en ninguna
+traza. Las imagenes oficiales evitan esta cola; otras tarjetas pueden no
+tener proveedor valido o imagen. No se ha demostrado mejora visible real.
+Las 12 regiones de imagen/marcador del miercoles 21 coinciden pixel a pixel.
+No confundir marcadores/picones con carteles disponibles.
+Mando verificado aparte de los toques: Hoy -> derecha Ayer -> OK, abajo a
+filtros, abajo a primera tarjeta, derecha a segunda, OK abre ficha.
+Se descartan recorridos que mezclaban toque y ventanas de retorno distintas;
+no prueban una regresion de foco. No se cambia codigo de foco.
+
+Decision: mantener coalesceArtworkGrids DESACTIVADO por defecto y en Fire.
+Se restaura A al terminar; agrupacion preparada pero sin adopcion general.
+Fire queda en Inicio, miniatura enfocada, M+ Clasicos de Movistar HLS.
+Reproductor avanza 3836 -> 27840 ms, frames 92 -> 692, cero dropped en muestra.
+No aparecen StuckPlayerException/FATAL en la consulta final de registros.
+Datos de la app conservados, no desinstalada ni borrada su cache.
+
+Artefactos privados /srv/drbep-dev/reviews/artwork-flight-20261023:
+A.apk (instalado final, flag false):
+82b5f2d5734a85fed51b75f2c84bd4df6d65c019f0cfb081694d70c3a10b5b57
+B.apk (flag true, retirado tras comparacion):
+4ffff6930b77d3c86a7bc90aac774c9f1b7e95f9982117bad9f2602f97edb78a
+Version 773, firma privada de pruebas; NO publicar estas APK.
+A.trace/B.trace, benchmark-linux.txt/benchmark-fire.txt, poster-equivalence.json,
+A-wed.png/B-wed.png, B-focus-ayer.png/B-day-ayer.png/B-grid-focus.png,
+B-detail.png, final-home-1.png/final-home-2.png, logs de build y firmas.
+
+Pendiente para adoptar: carga real que ejerza la cola, medir imagen visible
+con cache fria/caliente y p95 del mando; saturacion/error/trim/cierre con
+cargas reales pendientes; tira de reproductor y timeshift. No se altera
+catalogo/EPG para fabricar solicitudes. Siguiente bloque del plan: 45,
+consultas de progreso y pendientes TMDB, comparacion de resultados y coste.

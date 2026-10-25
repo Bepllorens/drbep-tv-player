@@ -424,7 +424,7 @@ public class MainActivity extends FragmentActivity {
         }
     };
     private final List<ChannelItem> channels = new ArrayList<>();
-    private final List<ChannelItem> allChannels = new ArrayList<>();
+    private final ChannelLookupList allChannels = new ChannelLookupList();
     private final List<ChannelItem> cachedMovistarVodItems = new ArrayList<>();
     private boolean cachedMovistarVodItemsValid = false;
     private boolean dynamicMovistarVodLoaded = false;
@@ -539,6 +539,7 @@ public class MainActivity extends FragmentActivity {
     private int overlayListScrollRequestToken;
     private String baseUrl;
     private SharedPreferences prefs;
+    private final HomeLiveOrderSnapshot homeLiveOrderSnapshot = new HomeLiveOrderSnapshot();
     private String playbackHeartbeatSessionId;
     private ChannelItem playbackHeartbeatChannel;
     private long playbackHeartbeatStartedAtMs;
@@ -4669,14 +4670,17 @@ public class MainActivity extends FragmentActivity {
 
     private void ensureHomeLiveEpg() {
         if (!isHomeLiveEpgVisible()) return;
+        String key = currentEpgFilterKey();
+        long now = System.currentTimeMillis();
+        if (!shouldHydrateVisibleEpg(1, 0,
+                epgFilterLastOverlayRequestAtMs.getOrDefault(key, 0L), now,
+                OFFLINE_EPG_OVERLAY_REFRESH_COOLDOWN_MS)) return;
         List<ChannelItem> source = resolvePriorityEpgSourceChannels();
         int resolved = 0;
         for (ChannelItem item : source) {
             EpgRepository.EpgProgramPair pair = normalizedEpgPair(item.id);
             if (pair != null && hasProgramTitle(pair.current)) resolved++;
         }
-        String key = currentEpgFilterKey();
-        long now = System.currentTimeMillis();
         if (!shouldHydrateVisibleEpg(source.size(), resolved,
                 epgFilterLastOverlayRequestAtMs.getOrDefault(key, 0L), now,
                 OFFLINE_EPG_OVERLAY_REFRESH_COOLDOWN_MS)) return;
@@ -8330,8 +8334,7 @@ public class MainActivity extends FragmentActivity {
         if (ms <= 0L) {
             return "--:--";
         }
-        SimpleDateFormat out = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        return out.format(new Date(ms));
+        return EpgClockFormatter.format(ms);
     }
 
     private static String formatIsoMillis(long value) {
@@ -8370,15 +8373,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private ChannelItem findChannelItemById(String channelID) {
-        if (channelID == null || channelID.trim().isEmpty()) {
-            return null;
-        }
-        for (ChannelItem item : allChannels) {
-            if (item != null && channelID.equals(item.id)) {
-                return item;
-            }
-        }
-        return null;
+        return allChannels.find(channelID);
     }
 
     private int findChannelIndexById(String channelID) {
@@ -9017,8 +9012,8 @@ public class MainActivity extends FragmentActivity {
         catch (Exception ignored) { return new JSONObject(); }
     }
     private List<String> homeLiveOrder(String key) {
-        JSONObject entry = homeLiveOrders().optJSONObject(key);
-        return jsonStringList(entry == null ? null : entry.optJSONArray("ids"), 10000);
+        String scope = homeOrderPreferenceKey();
+        return jsonStringList(homeLiveOrderSnapshot.ids(scope, prefs.getString(scope, "{}"), key), 10000);
     }
     private void saveHomeLiveOrder(String key, List<String> ids) {
         JSONObject orders = homeLiveOrders();
@@ -20145,7 +20140,16 @@ public class MainActivity extends FragmentActivity {
         }
     }
 
+    private long logHomeModelPhase(String phase, long started) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if ("beta".equals(BuildConfig.UPDATE_CHANNEL)) Log.i(TAG, "StartupPerf homeSection="
+                + discoveryHomeState.section + " phase=" + phase + " ms=" + (now - started));
+        return now;
+    }
+
     private StartupHomeHubUiModel buildStartupHomeHubModelInternal(StartupHubState state, Function<Runnable, Runnable> open, Runnable close) {
+        long phase = android.os.SystemClock.elapsedRealtime();
+        boolean liveScreen = "En directo".equals(discoveryHomeState.section);
         ChannelItem current = getCurrentPlaybackChannelItem();
         List<ChannelItem> homeFavorites = buildFavoriteQuickChannels();
         int tvCount = countItemsForQuickTarget("tv");
@@ -20153,6 +20157,7 @@ public class MainActivity extends FragmentActivity {
         int completedCount = state == null ? 0 : state.completedRecordings;
         int scheduledCount = state == null ? 0 : state.scheduledRecordings;
 
+        phase = logHomeModelPhase("counts", phase);
         List<StartupHomeHubUiModel.PrimaryCard> primaryCards = new ArrayList<>();
         primaryCards.add(new StartupHomeHubUiModel.PrimaryCard(
                 getString(R.string.startup_home_live_eyebrow),
@@ -20179,6 +20184,7 @@ public class MainActivity extends FragmentActivity {
             primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("MIS LISTAS","Series","Temporadas y episodios","",true,
                 open.apply(() -> personalPlaylists().showKind("series",() -> showStartupHubDialog(state)))));
         }
+        phase = logHomeModelPhase("primary", phase);
         List<StartupHomeHubUiModel.ContinueCard> continueCards = new ArrayList<>();
         if (current != null && !current.isVod && !shouldHideProtectedItem(current)) {
             String currentMeta = current.nowProgram == null || current.nowProgram.trim().isEmpty()
@@ -20286,6 +20292,7 @@ public class MainActivity extends FragmentActivity {
                     open.apply(() -> playRecording(resumeRecording, basePath))
             ));
         }
+        phase = logHomeModelPhase("continue", phase);
         long now = System.currentTimeMillis();
         long recommendationEnd = now + 24L * 60L * 60L * 1000L;
         List<StartupRecommendation> recommendations = new ArrayList<>();
@@ -20357,6 +20364,7 @@ public class MainActivity extends FragmentActivity {
             }
         }
 
+        phase = logHomeModelPhase("recommendations", phase);
         List<StartupHomeHubUiModel.Shortcut> shortcuts = new ArrayList<>();
         shortcuts.add(new StartupHomeHubUiModel.Shortcut("▤", getString(R.string.startup_home_guide), getString(R.string.startup_home_guide_subtitle), open.apply(this::openTimelineGuideForCurrentPlayback)));
         if (!isOfflineRecordingsDisabled()) {
@@ -20373,8 +20381,9 @@ public class MainActivity extends FragmentActivity {
                 open.apply(this::showDeviceExperienceDialog)
         ));
 
+        phase = logHomeModelPhase("shortcuts", phase);
         // Warm only already-authorized continue-watching artwork; never block playback.
-        if (catalogRepository != null && catalogSnapshotStore != null) {
+        if (!liveScreen && catalogRepository != null && catalogSnapshotStore != null) {
             int warmed = 0;
             for (StartupHomeHubUiModel.ContinueCard card : continueCards) {
                 if (card.livePreview || card.imageUrl.isEmpty()) continue;
@@ -20384,6 +20393,7 @@ public class MainActivity extends FragmentActivity {
                 if (++warmed >= 8) break;
             }
         }
+        phase = logHomeModelPhase("preload", phase);
         String clock = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
         String summary = getString(R.string.startup_home_catalog_summary, tvCount, vodCount);
         StartupHomeHubUiModel homeModel = new StartupHomeHubUiModel(
@@ -20404,19 +20414,23 @@ public class MainActivity extends FragmentActivity {
         // VOD provider strip has no consumer, so do not scan the catalogue for it.
         discoveryHomeState.providers.clear();
         discoveryHomeState.liveProviders.clear();
+        long categoryPhase = android.os.SystemClock.elapsedRealtime();
         List<ChannelItem> visibleLive = new ArrayList<>();
         if (currentOfflinePermissions != null && currentOfflinePermissions.liveEnabled) {
             for (ChannelItem item : allChannels) if (LiveHomePolicy.visibleInHome(item, currentOfflinePermissions) && !shouldHideProtectedItem(item)) visibleLive.add(item);
         }
+        categoryPhase = logHomeModelPhase("categoriesVisible", categoryPhase);
         String orderKey = "live_category_order_" + android.net.Uri.encode(catalogSnapshotStore.getUserScope());
         java.util.List<String> savedOrder = new java.util.ArrayList<>();
         try {
             org.json.JSONArray values = new org.json.JSONArray(prefs.getString(orderKey, "[]"));
             for (int i = 0; i < values.length(); i++) savedOrder.add(values.optString(i));
         } catch (org.json.JSONException ignored) { }
-        if (!homeLiveOrder("categories").isEmpty()) savedOrder = homeLiveOrder("categories");
+        List<String> preferredCategoryOrder = homeLiveOrder("categories");
+        if (!preferredCategoryOrder.isEmpty()) savedOrder = preferredCategoryOrder;
         discoveryHomeState.liveProviders.addAll(LiveCategoryOrder.apply(LiveHomePolicy.categories(visibleLive, currentOfflinePermissions), savedOrder));
         discoveryHomeState.liveProviders.removeIf(entry -> "ALL".equals(entry.key));
+        categoryPhase = logHomeModelPhase("categoriesOrder", categoryPhase);
         discoveryHomeState.saveChannelOrder = (category, ids) -> saveHomeLiveOrder("channels:" + category, ids);
         discoveryHomeState.saveLiveOrder = keys -> {
             prefs.edit().putString(orderKey, new org.json.JSONArray(keys).toString()).apply();
@@ -20454,10 +20468,12 @@ public class MainActivity extends FragmentActivity {
             syncHomeLiveSelection(key, discoveryHomeState.selectedLiveChannels.getOrDefault(key, ""));
             if (discoveryHomeState.refreshHome != null) discoveryHomeState.refreshHome.run();
         };
+        categoryPhase = logHomeModelPhase("categoriesSelection", categoryPhase);
         String homeGroup = discoveryHomeState.selectedProviders.getOrDefault("En directo", "");
         for (StartupHomeHubUiModel.Provider entry : discoveryHomeState.liveProviders) {
             if (entry.key.equals(homeGroup)) homeModel.liveGroupTitle = entry.title;
         }
+        phase = logHomeModelPhase("categories", phase);
         ChannelItem active = getCurrentPlaybackChannelItem();
         homeModel.livePlaybackError = playerController != null && !playerController.getPlaybackDiagnostics().lastError.isEmpty();
         if (active != null && findAllowedHomeLiveChannel(active.id) != null) {
@@ -20484,16 +20500,32 @@ public class MainActivity extends FragmentActivity {
             homeModel.onLiveHistory=open.apply(()->openArchiveCatalog(null,false));
             homeModel.onSavedArchive=open.apply(()->openArchiveCatalog(null,true));
         }
-        List<ChannelItem> homeCandidates = new ArrayList<>(homeFavorites);
-        homeCandidates.addAll(buildRecentQuickChannels());
-        homeCandidates.addAll(visibleLive);
-        homeCandidates.removeIf(this::shouldHideProtectedItem);
-        for (ChannelItem item : LiveHomeFeed.select(homeCandidates, homeGroup, currentOfflinePermissions, 8)) {
-            if (!shouldHideProtectedItem(item)) homeModel.homeChannels.add(buildHomeLiveCard(item, homeGroup, open));
+        phase = logHomeModelPhase("liveActions", phase);
+        if (liveScreen) {
+            homeModel.deferredHomeChannels = () -> buildStartupLiveFeed(homeFavorites, visibleLive, homeGroup, open);
+        } else {
+            homeModel.homeChannels.addAll(buildStartupLiveFeed(homeFavorites, visibleLive, homeGroup, open));
         }
         discoveryHomeState.page = (section, providerKey) -> buildDiscoveryHomePage(section, providerKey, open, state);
         homeModel.discovery = discoveryHomeState;
+        phase = logHomeModelPhase("homeFeed", phase);
         return homeModel;
+    }
+
+    private List<StartupHomeHubUiModel.ContinueCard> buildStartupLiveFeed(List<ChannelItem> favorites,
+            List<ChannelItem> visible, String group, Function<Runnable, Runnable> open) {
+        long started = android.os.SystemClock.elapsedRealtime();
+        try {
+            List<ChannelItem> candidates = new ArrayList<>(favorites);
+            candidates.addAll(buildRecentQuickChannels());
+            candidates.addAll(visible);
+            candidates.removeIf(this::shouldHideProtectedItem);
+            List<StartupHomeHubUiModel.ContinueCard> result = new ArrayList<>();
+            for (ChannelItem item : LiveHomeFeed.select(candidates, group, currentOfflinePermissions, 8)) {
+                if (!shouldHideProtectedItem(item)) result.add(buildHomeLiveCard(item, group, open));
+            }
+            return result;
+        } finally { logHomeModelPhase("homeFeedResolved", started); }
     }
 
     private void syncHomeLiveSelection(String providerKey, String channelId) {
@@ -20532,6 +20564,7 @@ public class MainActivity extends FragmentActivity {
                 }));
         card.programmeMetadata = programmeMetadata(item,current);
         card.channelId = item.id;
+        card.programmeSnapshotUptimeMs = android.os.SystemClock.uptimeMillis();
         card.refreshProgramme = () -> buildHomeLiveCard(item, providerKey, open);
         card.description = current == null || current.description == null ? "" : current.description;
         card.schedule = current == null || parseIsoMillis(current.startTime) <= 0L || parseIsoMillis(current.endTime) <= parseIsoMillis(current.startTime) ? "" : shortTime(current.startTime) + " – " + shortTime(current.endTime);
@@ -20565,7 +20598,8 @@ public class MainActivity extends FragmentActivity {
             for (StartupHomeHubUiModel.Provider entry : discoveryHomeState.liveProviders) if (entry.key.equals(providerKey)) validCategory = true;
             if (!validCategory) return page;
             for (ChannelItem item : allChannels) {
-                if (!LiveHomePolicy.visibleInHome(item, currentOfflinePermissions) || shouldHideProtectedItem(item) || !LiveHomePolicy.matches(item, providerKey)) continue;
+                // Discard other groups before expensive permission/name checks.
+                if (item == null || !LiveHomePolicy.matches(item, providerKey) || !LiveHomePolicy.visibleInHome(item, currentOfflinePermissions) || shouldHideProtectedItem(item)) continue;
                 page.cards.add(buildHomeLiveCard(item, providerKey, open));
             }
             List<String> channelOrder = homeLiveOrder("channels:" + providerKey);

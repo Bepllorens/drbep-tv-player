@@ -1,0 +1,42 @@
+23/10/2026 - Pausa TMDB durante preparacion (desarrollo .185)
+
+Problema: command(pause) adquiria el mismo mutex que la preparacion de cola.
+Mientras esperaba no cambiaba enabled ni isStopped; los controles entre etapas
+no podian ver esa peticion y se ejecutaba toda la preparacion.
+
+Cambio acotado:
+- MetadataPauseSignal publica una senal volatile antes de esperar el mutex.
+- active() observa la senal para esa generacion, tambien entre etapas SQL.
+- Un gate breve serializa leer la generacion al pausar con publicar una nueva.
+  No contiene SQL, ni espera el mutex de la cola. La publicacion persiste prefs.
+- La pausa durable y cancelUniqueWork siguen dentro del mutex original;
+  verifican que la generacion siga siendo la capturada. Si cambio, la pausa
+  antigua no modifica enabled/state ni cancela el trabajo nuevo.
+- La nueva generacion limpia la senal anterior. No hay coleccion creciente.
+- Se vuelve a comprobar active antes de marcar running tras la preparacion.
+- No cambia seleccion, filtros, claves, rutas, reproduccion ni esquema SQL.
+
+Limites:
+No interrumpe una sentencia SQLite en curso. La peticion queda senalada antes,
+pero la respuesta del panel espera finalizar esa sentencia, rollback/persistencia
+y consulta de estado. No se afirma latencia instantanea. Una pausa que llega
+tras marcar exitosa la transaccion puede dejar la cola completa comprometida;
+se detiene el trabajo posterior, no deshace una transaccion ya confirmada.
+La senal es local al proceso; la persistencia de enabled=false usa la via existente.
+Si muere el proceso antes de persistir no hay confirmacion durable de la pausa.
+
+Pruebas:
+MetadataPauseSignalTest: bloqueo real entre dos hilos, rollback sin SQL posterior,
+generaciones distintas, pausa antigua/nueva, fallo de persistencia simulado,
+visibilidad y gate concurrente de publicacion. No utiliza cola ni tokens reales.
+La prueba de la guarda de generacion es del modelo; falta el flujo completo
+WorkManager/SharedPreferences/HTTP del panel en un entorno aislado.
+
+Sin instalar APK, sin publicar, sin commits/push, sin produccion .223.
+La BD real del Fire sigue v8. La candidata contiene el v9 pendiente de otro
+bloque: no instalar sin respaldo y plan de retorno compatible.
+
+Validacion .185: assembleRelease y testDebugUnitTest correctos en 2m49s;
+898 pruebas, cero fallos/errores; seis nuevas de senal/concurrencia.
+APK app-release-unsigned.apk, versionCode 773, NO instalada/publicada.
+SHA256 4d944670443ddf3068dd65fcf11a8911640b550c7464985da37c5f57404c04df

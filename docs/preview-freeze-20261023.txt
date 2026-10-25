@@ -1,0 +1,57 @@
+Imagen detenida en miniatura - diagnostico y recuperacion 23/10/2026
+
+Entorno .185, rama qoder/disneyplus-vod-582, referencia ca3f076.
+Fire AFTKRT/karat .190; TV encendida y mando disponible por el usuario.
+Sin produccion, publicacion, borrado de datos ni cambios de rutas/DRM.
+
+Evidencia previa al reinicio
+Misma incidencia con la APK optimizada anterior y la candidata de identidad U7D.
+Miniatura detenida tras 1-20 frames, tambien sin pasar por pantalla completa.
+Media3 READY, playWhenReady=true, playing=true, speed=1.0, suppression=0.
+Posicion detenida en 40 ms; hasta 41.856 ms de buffer disponible; audio 70/47,
+video 54/20, sin progreso. Media3 termina con StuckPlayerException a los 10 s.
+Por tanto no basta con comprobar READY, buffer o una captura con imagen.
+
+AudioFlinger del sistema durante pista DRBEP activa:
+1 pista activa, PCM estereo 48 kHz, 24.000 muestras disponibles, Server=0.
+Frames escritos salida primaria=925347072; ultimo write hace ~4.577.365 ms.
+Salida no consumia las muestras. Otros muestreos mantienen el mismo total.
+Pausa/reanudar y recreacion de app no recuperaron el avance de forma estable.
+Esto apunta a bloqueo de salida de audio del Fire (y reloj maestro), no prueba
+un fallo de SurfaceView ni de las claves/URLs. No se parchea superficie por conjetura.
+No se ha aislado que desencadeno originalmente el bloqueo del servicio/HAL.
+
+Accion
+Se restauro APK anterior optimizada, SHA
+d81f07c9dd3814764d93975d42a0a822dfedefb0fa40529c3909db4d748cd4cb.
+Se reinicio el Fire por ADB, manteniendo datos/configuracion.
+No se reinicio ni modifico servidor DRBEP.
+Ampliacion diagnostica preparada en PlayerController: misma muestra beta cada
+5 segundos incluye playbackBufferDebugSuffix (posicion/reloj/pausa/supresion/
+audio/video). No incluye URL, token o payload. Compila en release optimizada.
+APK diagnostica privada usada para aislar el fallo; NO es la instalada final.
+No se presenta el reinicio como un parche permanente contra futuras incidencias.
+
+Validacion tras reinicio
+Misma APK que fallaba antes del reinicio.
+AudioFlinger pasa de 3.961.344 a 4.111.104 frames en ~3 s,
+ultimo write 8/24 ms; salida activa y consumiendo.
+Contador video pasa de 1506 a 1705, 0 descartados en esas muestras.
+0 StuckPlayerException, 0 Unexpected runtime error y 0 FATAL en registro inicial.
+TV Movistar HLS 133 canales, miniatura con movimiento real (capturas diferentes).
+OK a pantalla completa y Atras: miniatura vuelve con movimiento, capturas a 5 s
+distintas. Repeticiones adicionales se registran al completar.
+El fallo queda recuperado en este dispositivo; vigilar recurrencia del bloqueo
+de audio. No prometer que una modificacion de app arregla un fallo de sistema.
+
+Evidencias privadas .185
+/srv/drbep-dev/reviews/preview-freeze-20261023
+preview-numeric-before/after.txt, system-audio-before/after.json,
+audio-diagnostic.txt (muestreo con pista activa), capturas reboot-* y repeat-*.
+diagnostic-build.log, diagnostic.apk y respaldo PlayerController.before.java.
+No publicar los volcados sin revisarlos; no se añaden binarios a Git.
+
+Comprobacion final: repetidos dos ciclos mas fullscreen->miniatura en
+Movistar Plus y La Sexta; cada par de capturas a 4 s tiene video distinto.
+SHA de APK anterior instalada verificado. Registro final sin StuckPlayerException,
+Unexpected runtime error ni FATAL. Mando devuelto al usuario.

@@ -1,0 +1,69 @@
+Plan bloque 43: transporte multimedia reutilizable en Fire - 23/10/2026
+
+Desarrollo .185, rama qoder/disneyplus-vod-582, HEAD ca3f076.
+TV encendida y mando libre confirmados para esta pasada.
+Ensayo posterior al reinicio que recupero la salida de audio del Fire.
+No comparar video con las tandas anteriores al reinicio durante el bloqueo.
+
+Variantes privadas ARM32 release optimizadas perfilables, version773
+A reutilizacion=false; B=true. fastHlsStartup=false y coalesceRemoteZap=false
+en ambas. Fuente y codigo iguales salvo flag; diagnostico numerico ampliado
+en ambas (mismo codigo PlayerController).
+A SHA 04319b01e2ad77b7ecfc46d161af55d247d7f40260b1d6179b20cf7b48593fca
+B SHA 4575889a4623a60aed315d9c741f80c439bd85971c8e20a2e5de9320e15dcffc
+Firma de pruebas preexistente, compatible con datos instalados. NO publicables.
+Se verifico salida nueva mediante output-metadata y flag generado; no usar
+app-release.apk antiguo que persiste en outputs.
+
+Pruebas y metodo
+885 tests, cero fallos/errores/omitidos; build-B.log.
+TV Movistar HLS, 133 canales; La Sexta y Movistar Plus, ids1113473/1113474.
+12 pulsaciones alternadas abajo/arriba, pausa4s entre cambios; misma lista.
+Se mide dentro del proceso, PlaybackPerf prepare -> primer frame no repetido.
+No es tiempo pulsacion->imagen: excluye espera de seleccion/650ms de preview.
+La conexion/socket ya se reutilizaba; el flag reduce construccion de clientes.
+No cambia URL, permisos, DRM, seleccion, buffers o respuesta del servidor.
+
+Primeras tandas A/B consultaron logcat al terminar: el anillo solo conservaba
+8 de12 fotogramas. Se conservan como diagnostico, NO como comparacion completa.
+Se corrigio el capturador privado para leer logcat en directo y retener SOLO
+timings numericos; no se borra el registro ni se guardan URLs o tokens.
+Tanda exploratoria A-main interrumpida por usar teclas de interfaz, no se usa.
+
+Tandas completas por streaming (ms)
+                     A sin reuse    B con reuse
+Cambios/fotogramas         12/12           12/12
+prepare->frame mediana    747,5           771,0
+prepare->frame max       1274             947
+attempt->frame mediana    751,5           774,0
+Stuck/FATAL/runtime         0/0/0           0/0/0
+
+En 12 muestras el percentil95 por rango coincide con maximo; no interpretar
+como estimacion poblacional. B tuvo menos maximo, pero mediana23,5ms mayor.
+Orden de las tandas completas B y luego A (antes hubo tandas exploratorias A/B).
+Muestra breve de dos canales, variabilidad de origen/cache/red; no permite
+atribuir diferencias pequenas al flag ni afirmar equivalencia estadistica.
+No se mide aqui memoria atribuible a la fabrica ni numero de sockets nuevos.
+No se valida arranque frio equivalente (cambio de canal de inicio entre variantes).
+
+Resultado y estado final
+No se demuestra aceleracion de imagen con reusePlaybackTransport.
+Se mantiene apagado por defecto. No activar globalmente por ahorro teorico de objetos.
+B reprodujo cambios HLS y paso fullscreen->miniatura con video en movimiento;
+capturas B-return1/2 separadas3s difieren. No reaparecio bloqueo de salida de audio.
+Se reinstalo A para control final; se conserva sin reutilizacion experimental.
+No se han probado VOD, archivo catchup, multiview, saturacion o recuperacion
+real de timeout con este flag: siguen sin validar para cualquier futura adopcion.
+La 1/Vamos y produccion no se modifican. Sin publicacion, commit ni push.
+
+Siguiente bloque
+44: coordinacion de peticiones de parrillas de imagenes, probar por separado
+coalesceArtworkGrids, identidad de imagenes, foco, cierre y reapertura.
+El bloque43 queda ensayado en HLS y no adoptado; no repetir como si faltara
+esta comparacion, ni dar por completada su validacion cruzada de reproductores.
+
+Evidencias privadas
+/srv/drbep-dev/reviews/transport-fire-20261023
+variants.json, A-stream.json, B-stream.json, *-numeric.txt, B-return1/2.png,
+run-stream.py (captura en directo), build-B.log y B-output-metadata.json.
+A.json/B.json son tandas incompletas por rotacion del anillo.

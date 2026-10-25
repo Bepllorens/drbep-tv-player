@@ -3,7 +3,6 @@ package com.drbep.tvplayer;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -14,17 +13,41 @@ import java.util.WeakHashMap;
 final class IntegratedChannelLogoView extends AppCompatImageView {
     private static final WeakHashMap<Drawable.ConstantState, Boolean> DARK = new WeakHashMap<>();
 
+    private static final ThreadLocal<ContrastSample> SAMPLES = new ThreadLocal<>();
+    private GradientDrawable contrastHalo;
+
+    // One tiny scratch image per calling thread, never a catalogue of logo bitmaps.
+    private static final class ContrastSample {
+        final Bitmap bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888);
+        final Canvas canvas = new Canvas(bitmap);
+        final int[] pixels = new int[16 * 16];
+    }
+
     IntegratedChannelLogoView(Context context) { super(context); }
 
     @Override public void setImageDrawable(Drawable drawable) {
         super.setImageDrawable(drawable);
-        boolean dark = drawable != null && needsContrast(drawable);
-        if (!dark) { setBackground(null); return; }
-        GradientDrawable halo = new GradientDrawable();
-        halo.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        halo.setColors(new int[]{0xFF8795A2, 0x008795A2});
-        halo.setGradientRadius(24f * getResources().getDisplayMetrics().density);
-        setBackground(halo);
+        boolean dark;
+        android.os.Trace.beginSection("DRBEP.logoContrast");
+        try { dark = drawable != null && needsContrast(drawable); }
+        finally { android.os.Trace.endSection(); }
+        if (!dark) { if (getBackground() != null) setBackground(null); return; }
+        if (contrastHalo == null) {
+            contrastHalo = new GradientDrawable();
+            contrastHalo.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+            contrastHalo.setColors(new int[]{0xFF8795A2, 0x008795A2});
+            contrastHalo.setGradientRadius(24f * getResources().getDisplayMetrics().density);
+        }
+        if (getBackground() != contrastHalo) setBackground(contrastHalo);
+    }
+
+    @Override protected void onDraw(Canvas canvas) {
+        android.os.Trace.beginSection("DRBEP.logoDraw");
+        try { super.onDraw(canvas); } finally { android.os.Trace.endSection(); }
+    }
+    @Override protected void onMeasure(int width, int height) {
+        android.os.Trace.beginSection("DRBEP.logoMeasure");
+        try { super.onMeasure(width, height); } finally { android.os.Trace.endSection(); }
     }
 
     private static boolean needsContrast(Drawable drawable) {
@@ -32,23 +55,21 @@ final class IntegratedChannelLogoView extends AppCompatImageView {
         Boolean cached = key == null ? null : DARK.get(key);
         if (cached != null) return cached;
         // Tiny, one-off sample per cached drawable, not per frame or focus change.
-        Bitmap sample = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888);
+        ContrastSample sample = SAMPLES.get();
+        if (sample == null) { sample = new ContrastSample(); SAMPLES.set(sample); }
         Rect bounds = new Rect(drawable.getBounds());
-        int visible = 0, dark = 0;
         try {
+            // A reused surface must start transparent, including after failed draws.
+            sample.bitmap.eraseColor(android.graphics.Color.TRANSPARENT);
             drawable.setBounds(0, 0, 16, 16);
-            drawable.draw(new Canvas(sample));
-            for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
-                int pixel = sample.getPixel(x, y);
-                if (Color.alpha(pixel) < 96) continue;
-                visible++;
-                if (Color.red(pixel) * .2126 + Color.green(pixel) * .7152 + Color.blue(pixel) * .0722 < 75) dark++;
-            }
+            drawable.draw(sample.canvas);
+            // One native read instead of 256 getPixel calls per uncached drawable.
+            sample.bitmap.getPixels(sample.pixels, 0, 16, 0, 0, 16, 16);
         } catch (RuntimeException unsupportedDrawable) {
             // Some hardware-backed drawables cannot be sampled on a software canvas.
             return false;
-        } finally { drawable.setBounds(bounds); sample.recycle(); }
-        boolean result = visible > 0 && dark > visible * .65;
+        } finally { drawable.setBounds(bounds); }
+        boolean result = LogoContrast.needsHalo(sample.pixels);
         if (key != null) DARK.put(key, result);
         return result;
     }

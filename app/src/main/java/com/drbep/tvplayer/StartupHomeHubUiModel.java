@@ -24,6 +24,19 @@ public final class StartupHomeHubUiModel {
     public ContinueCard currentLive;
     public boolean livePlaybackError;
     public final List<ContinueCard> homeChannels = new ArrayList<>();
+    public java.util.function.Supplier<List<ContinueCard>> deferredHomeChannels;
+
+    /** UI thread only. TV refreshes need not build the hidden landing feed. */
+    public List<ContinueCard> resolveHomeChannels() {
+        if (deferredHomeChannels != null) {
+            List<ContinueCard> resolved = deferredHomeChannels.get();
+            deferredHomeChannels = null;
+            homeChannels.clear();
+            if (resolved != null) homeChannels.addAll(resolved);
+        }
+        return homeChannels;
+    }
+
     public Runnable onSavedArchive;
     public Runnable onLiveGuide, onLiveRecord, onLiveStartOver, onLiveHistory;
     public String liveGroupTitle = "";
@@ -121,6 +134,7 @@ public final class StartupHomeHubUiModel {
         public final boolean livePreview;
         public ProgrammeMetadataUiModel programmeMetadata;
         public java.util.function.Supplier<ContinueCard> refreshProgramme;
+        public long programmeSnapshotUptimeMs;
         public String channelId = "", description = "", schedule = "", nextProgram = "";
         public String libraryId = "", facts = "";
         public Runnable onResume, onStartOver, onRemove, onEpisodes;

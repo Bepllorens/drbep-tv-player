@@ -1,0 +1,70 @@
+Plan: reducir trabajo y asignaciones del refresco EPG - 2026-10-23
+
+Desarrollo exclusivo .185, rama qoder/disneyplus-vod-582 sobre ca3f076, conservando
+todos los pases pendientes de TV, miniatura, busquedas y fechas UTC. Produccion,
+publicacion, commit y push no se modifican en este pase.
+
+Cambios
+1. MainActivity.ensureHomeLiveEpg comprueba primero el cooldown existente de 45 s,
+   antes de filtrar el catalogo y normalizar parejas. La comprobacion final de
+   cobertura sigue estando presente; no se actualiza la marca de peticion al saltar.
+   Se usa la misma funcion shouldHydrateVisibleEpg para que la regla temporal no diverja.
+2. EpgRepository.normalizePairForNow inspecciona directamente sus dos programas,
+   sin ArrayList temporal. Conserva la prioridad del primer programa actual y el
+   siguiente de inicio mas temprano, y los fallbacks originales sin horario.
+3. programWithProgress reutiliza el EpgProgram inmutable cuando el porcentaje
+   calculado no cambia. normalizePairForNow reutiliza la pareja si sus dos referencias
+   siguen siendo las mismas. Cuando empieza/termina un programa o cambia el progreso,
+   crea los objetos necesarios. No se almacenan resultados por tiempo ni se retrasa EPG.
+
+Pruebas
+880 pruebas completas correctas, cero fallos/errores.
+EpgPairReuseTest compara todos los campos con el algoritmo anterior en 512 casos:
+parejas nulas/parciales, sin horario, futuras, caducadas, solapadas, invertidas y
+limites de inicio/fin. Comprueba identidad estable solo cuando no cambia el contenido,
+avance de progreso y paso del siguiente a actual. Otros casos comparan la decision
+anticipada del cooldown con la decision original para distintas coberturas y relojes.
+
+Medicion aislada
+Benchmark generado fuera de Git a partir de los metodos y de EpgProgram/EpgProgramPair
+anteriores y nuevos. Datos sinteticos: 133 canales, dos programas, progreso estable
+50%, mismas fechas, 7980 refrescos por muestra, calentamiento y nueve muestras.
+ProgramaMetadata es un stub sin comportamiento y no se usa al medir. No representa
+el coste de red, carga de imagenes, filas Compose ni la aplicacion completa.
+Los dos algoritmos ejecutan el mismo EpgTimeCodec vigente, incluidas mejoras anteriores.
+- .185: mediana 6,68 -> 4,33 ms.
+- Runtime Android Fire: mediana 174,49 -> 153,64 ms.
+- Por cada 133 parejas sin cambios, antes 133 parejas nuevas y despues 0;
+  tambien se reutilizan los programas cuando no cambia su progreso.
+- Checksum de resultados identico; pruebas de equivalencia verifican todos los campos.
+
+Fire .190
+Tele encendida y mando libre confirmado. Se conserva version visible 773, firma y
+datos. Movistar HLS con 133 canales. Recorrido 2*(12 abajo + 12 arriba), 48 movimientos.
+Referencia antes: Choreographer mediana 8,5 ms, max 102,2; medida/layout max 81,9.
+Primera ejecucion tras instalar: mediana 11,9 ms, max 117,7; medida/layout max 84,0.
+No afirmar una mejora global de dibujo a partir de ese recorrido. Quedan picos.
+Al abrir se observo una actualizacion automatica de catalogo ya existente; no se
+lanzo ningun sincronizador del servidor ni se modifico su configuracion.
+
+Evidencia privada fuera de Git:
+/srv/drbep-dev/reviews/epg-refresh-20261023/
+  EpgRepository.before.java, MainActivity.before.java, build.log,
+  before.png, before.trace, installed-tv.png, after.trace, after.png, warm.trace,
+  return.png, errors-filtered.log, bench/, benchmark-linux.txt, benchmark-fire.txt,
+  bench.zip, fire.apk.
+APK instalada SHA-256:
+a4e40fd5df0acab873dadb71bbb24c8d58611b9a3fdff656f5a8636379751559
+Retorno privado: /srv/drbep-dev/reviews/tv-details-20261023/fire.apk.
+Pendiente: picos de dibujo de nuevas filas y preparacion del modelo, comparacion de
+fluidez prolongada; no declarar que todos los tirones esten resueltos.
+
+Cierre de validacion
+Repeticion con la app caliente: 48 movimientos, Choreographer mediana 8,7 ms,
+max 100,6 ms; medida/layout max 68,7 ms; foco-scroll max 4,3 ms.
+La referencia tenia mediana 8,5 ms, max 102,2 ms; medida/layout max 81,9 ms;
+foco-scroll max 5,2 ms. La mediana global permanece parecida; no prometer ausencia
+de tirones. La mejora confirmada de este pase es menos trabajo/asignaciones EPG.
+Verificados foco de vuelta a La Sexta, informacion y progreso EPG, OK a pantalla
+completa y Atras con video en miniatura. Sin FATAL EXCEPTION ni callbacks dropped-video
+en el registro filtrado de esta prueba. El mando queda libre para el usuario.

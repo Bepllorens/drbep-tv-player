@@ -1,0 +1,96 @@
+Preparacion transaccional TMDB: cancelacion por etapas — 23/10/2026
+
+Cambio nuevo
+MetadataIndexQueue.prepareStages comprueba active antes de cada Runnable y
+antes de confirmar. La preparacion sigue en UNA transaccion; el marcador
+prepare=false se escribe solo tras endTransaction correcto. El metodo prepare
+anterior delega con una sola etapa para conservar sus consumidores existentes.
+MetadataIndexWorker genera etapas de limpieza, peliculas y series segun el
+ambito actual, manteniendo orden, bloqueo, consultas y parametros anteriores.
+Si WorkManager detiene el trabajo tras una etapa, las siguientes ya no corren
+y el finally revierte SQL sin borrar la marca de preparacion.
+No se interrumpe una sentencia SQL en curso. No se cambia generacion, politica
+WorkManager, prioridad, filtros, fuentes, metadatos ni reproduccion.
+
+Limite importante: boton Pausar
+command/status y preparacion conservan el mismo synchronized(lock). Por ello
+una peticion de Pausar puede esperar ese bloqueo antes de cancelar el Worker.
+La mejora comprobada es la respuesta a active/isStopped entre etapas; NO se
+afirma que el boton Pausar del panel sea instantaneo. Cambiar ese bloqueo
+requiere otra revision de carreras, estado y generacion.
+
+Prueba de SQLite Android aislada
+Fire AFTKRT, prioridad BACKGROUND10, fixture v8 de 12000 entradas en archivo
+temporal propio y dos conexiones WAL. Se repite con el indice v9 preparado,
+sin tocar la APK ni la base de DRBEP. Helper prepareStages y SQL de cola REALES.
+20 escenarios: fallo tras limpieza/peliculas/series, cancelacion en esos tres
+puntos, commit correcto referencia/nuevo, fallo del marcador tras commit y
+reintento idempotente. Se conserva done, no hay duplicados ni filas parciales.
+228 observaciones lectoras entre etapas: solo la instantanea anterior hasta
+confirmar. Verificar una cola completa serializa miles de filas para este test,
+no representa la consulta paginada del panel ni su latencia de red.
+Lectura de la cola previa pequena, maximo: 3.095 ms; verificar snapshot completo hasta 225.204 ms.
+
+Lectura simultanea en otro hilo
+Prueba adicional mientras el escritor ejecuta prepareStages:
+indices v8: 121 lecturas, solo cola anterior o completa.
+indices v9: 116 lecturas, solo cola anterior o completa.
+No es una prueba end-to-end del panel, SharedPreferences o WorkManager: el
+lector representa una conexion independiente, no ejecuta el Host web real.
+
+Tiempo de cancelacion tras limpieza
+Referencia: recorrido anterior con las tres operaciones dentro de una clausura.
+Nuevo: lista de tres etapas; la cancelacion se inyecta al acabar la limpieza.
+Transaccion, SQL y datos iguales; dos calentamientos y siete muestras por
+variante con orden alternado. Incluye observaciones lectoras del ensayo.
+No son tiempos HTTP del boton Pausar ni duracion normal de indexacion.
+indices | cancelacion antes -> despues | preparacion completa antes -> despues (ms)
+v8 | 200.196 -> 0.666 | 246.457 -> 239.559
+v9 | 207.023 -> 0.772 | 235.952 -> 244.065
+Las preparaciones completas varian en ambas direcciones (~3%); no se declara
+una aceleracion ni una ralentizacion significativa. Los campos successful_*_ms
+sin median del JSON son muestras individuales diagnosticas, NO la comparacion
+final; las medianas alternadas se agregaron por su variabilidad inicial.
+
+Garantias y limites
+Cancelacion/fallo antes del commit: cola anterior y marcador intactos. Una
+cancelacion que llega despues de marcar la transaccion como correcta puede
+confirmar la cola completa; no se promete revertir un commit ya efectuado.
+Fallo de marcador despues del commit: queda cola completa, el reintento con
+INSERT OR IGNORE no reabre done. No hay transaccion atomica conjunta entre
+SQLite y SharedPreferences. No se simula corte fisico de energia/disco lleno.
+No hay validacion audiovisual en esta sesion: video-samples.txt no contiene
+muestras suficientes. No se atribuye fluidez ni playback a estas pruebas SQL.
+
+Regresion y artefacto
+Cuatro pruebas nuevas de coordinacion: cancelacion tras cada etapa, parada
+tras begin, fallo de etapa y commit/marcador ordenados.
+assembleRelease optimizada ARM32 perfilable beta + testDebugUnitTest correctos:
+892 pruebas, cero fallos/errores/skipped. Tres pruebas SQLite WAL .185 correctas.
+git diff --check correcto. candidate-unsigned.apk SIN FIRMA de distribucion,
+version773, NO instalada, SHA256 4a9bcee1edf2396ce935a449a69cf5f0a004ed11d82cffd441ebc5ae4324998e
+Los flags experimentales de transporte/HLS/zapeo/imagenes siguen apagados.
+Migracion9 de indice sigue preparada sin activarse en la base real del Fire.
+Seguir respaldo/retorno compatible antes de instalar una candidata con BD9.
+
+Herramientas reproducibles en el repo
+tools/benchmarks/QueueTransactionFireCheck.java
+tools/benchmarks/QueueConcurrentReadFireCheck.java
+Compilar con android.jar y MetadataIndexQueue/MetadataIndexSelection; convertir
+a DEX y ejecutar app_process con ruta de DB sintetica v8. El segundo requiere
+el primero en el mismo classpath. Fixture base: benchmark-metadata-progress.py
+fixture(12000), respaldada a fichero. Los ensayos modifican SOLO ese fichero.
+
+Evidencia privada /srv/drbep-dev/reviews/metadata-transaction-20261023
+fire.json, fire-concurrent.json, errores (vacios), build.log, tests.json,
+build-identity.json, candidate-unsigned.apk, fuentes/clases y respaldos previos.
+fire-initial.json/fire-reader-costs.json conservan ensayos previos no definitivos.
+Archivos de ensayo del Fire retirados; datos reales conservados.
+
+Plan48
+Coordinacion por etapas preparada y probada en SQLite Android; pendiente
+activacion controlada y ciclo real de Pausar/Continuar/WorkManager desde panel.
+Proxima mejora concreta: revisar la espera del mutex de comandos durante la
+preparacion, con generacion y seleccion protegidas. Fuente Inter permanece
+descartada por decision del usuario; no retomar ese bloque antiguo del plan.
+Sin instalar, publicar, commit/push o cambios de produccion.

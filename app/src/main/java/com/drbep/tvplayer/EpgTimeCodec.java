@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -19,6 +20,11 @@ final class EpgTimeCodec {
     // Time parsing is pure for a value and fallback zone. Keep memory bounded.
     private static final Map<String, Long> PARSED = new LinkedHashMap<String, Long>(256, .75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Long> entry) { return size() > 2048; }
+    };
+    // UTC input is independent of the device zone. Reuse normalized strings too:
+    // progress-only EPG copies must not format the same timestamps repeatedly.
+    private static final Map<String, String> NORMALIZED_UTC = new LinkedHashMap<String, String>(256, .75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, String> entry) { return size() > 2048; }
     };
     private static final DateTimeFormatter XMLTV_WITH_OFFSET = new DateTimeFormatterBuilder()
             .parseCaseInsensitive()
@@ -40,7 +46,8 @@ final class EpgTimeCodec {
     }
 
     static long parseEpochMillis(String value) {
-        return parseEpochMillis(value, ZoneId.systemDefault());
+        String clean = safe(value);
+        return parseEpochMillis(clean, clean.endsWith("Z") ? ZoneOffset.UTC : ZoneId.systemDefault());
     }
 
     static long parseEpochMillis(String value, ZoneId fallbackZone) {
@@ -91,8 +98,16 @@ final class EpgTimeCodec {
     }
 
     static String normalizeUtc(String value) {
-        long epochMillis = parseEpochMillis(value);
-        return epochMillis <= 0L ? safe(value) : formatUtc(epochMillis);
+        String clean = safe(value);
+        boolean utc = clean.endsWith("Z") && clean.length() <= 160;
+        if (utc) synchronized (NORMALIZED_UTC) {
+            String cached = NORMALIZED_UTC.get(clean);
+            if (cached != null) return cached;
+        }
+        long epochMillis = parseEpochMillis(clean);
+        String normalized = epochMillis <= 0L ? clean : formatUtc(epochMillis);
+        if (utc) synchronized (NORMALIZED_UTC) { NORMALIZED_UTC.put(clean, normalized); }
+        return normalized;
     }
 
     static String formatUtc(long epochMillis) {

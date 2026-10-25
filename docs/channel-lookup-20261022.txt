@@ -1,0 +1,53 @@
+TV: consultas repetidas de canales - 2026-10-22
+
+Entorno .185, rama qoder/disneyplus-vod-582, sobre ca3f076 con los pases pendientes
+anteriores conservados. Sin produccion, publicacion, commit ni push.
+
+Motivo
+El perfil muestreado del 21/10 encontro findChannelItemById en el hilo principal:
+44,3 ms de CPU propio durante ese perfil. Cada llamada recorria allChannels,
+que incluye VOD, aunque la consulta fuese sobre el mismo canal repetido.
+
+Cambio
+ChannelLookupList mantiene un ArrayList como almacenamiento y cachea hasta 128
+consultas por ID (incluidas ausencias), conservando el primer resultado en caso
+de duplicados y la validacion original de IDs. Todas las mutaciones de List
+invalidan hits y misses: carga del coordinador, append, set, iterator, removeIf,
+subList, sort, clear y replaceAll. No hay cache de permisos ni de decisiones DRM.
+Los objetos de canal siguen siendo los mismos, por lo que sus actualizaciones
+EPG son visibles. El ID de ChannelItem es final. Las mutaciones y find comparten
+un monitor; los recorridos conservan la disciplina UI existente del catalogo.
+MainActivity.findChannelItemById delega en esa lista. No se cambia la seleccion
+de canal permitido, ni URLs, asociaciones, diales, tiempos de zapeo o superficies.
+
+Pruebas
+877 pruebas, cero fallos/errores. Nuevos casos: IDs duplicados, nulos, ausencias,
+reemplazo mismo tamano, append, limpieza, iterator/listIterator, subList, removeIf,
+replaceAll, eviction de la cache y cambios de orden que alteran el primer resultado.
+
+Benchmark sintetico aislado: 20.000 canales, 80 IDs repetidos, 1000 consultas por
+muestra, 7 muestras con calentamiento. Referencia ArrayList con recorrido lineal;
+nuevo codigo ChannelLookupList real, ChannelItem sintetico solo con id final.
+No usa datos, BD ni credenciales de produccion. Comprobacion de checksum igual.
+- .185 mediana 40,69 -> 0,030 ms.
+- Runtime Android en Fire, ambos algoritmos en el mismo proceso:
+  916,55 -> 1,020 ms.
+Esto mide consultas calientes, no la primera busqueda ni los fotogramas de TV.
+El primer miss sigue recorriendo la lista. Una mutacion vacia la cache.
+
+Recorrido real Fire: Movistar HLS, 133 canales, La Sexta (6), 12 abajo + 12 arriba.
+Foco vuelve a La Sexta con video en miniatura. La fase foco-scroll tiene p95
+4,4 -> 3,8 ms, pero max 4,5 -> 5,0 ms; no demuestra una ganancia general.
+La traza de dibujo no mejora globalmente: measureAndLayout max 71,5 -> 121,1 ms;
+Choreographer max 92,6 -> 186,3 ms. El modelo general se refresco durante la
+segunda captura. No se debe atribuir una mejora global al benchmark aislado.
+Siguen pendientes los picos de composicion/medida y el refresco del modelo.
+
+APK privada instalada conserva version visible 773 y firma de prueba existente.
+SHA-256: 093955df4f744a6666361e709da5453de8fcee884bc9215d489495ce35698696
+Retorno: /srv/drbep-dev/reviews/tv-peaks-20261021/utc.apk (previa instalada).
+Evidencia privada:
+/srv/drbep-dev/reviews/channel-lookup-20261022/
+  build.log, final-build.log, before.trace, after.trace, benchmark-linux.txt,
+  benchmark-fire.txt, before-tv.png, down.png, after.png, return.png,
+  errors-filtered.log, fire.apk, bench/.

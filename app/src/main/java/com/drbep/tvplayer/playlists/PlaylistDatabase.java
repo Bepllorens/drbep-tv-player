@@ -24,7 +24,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         this(context, "personal-playlists.db");
     }
     private PlaylistDatabase(Context context, String name) {
-        super(context.getApplicationContext(), name, null, 8);
+        super(context.getApplicationContext(), name, null, 9);
         setWriteAheadLoggingEnabled(true);
     }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
@@ -42,6 +42,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         migrateV6(db);
         migrateV7(db);
         migrateV8(db);
+        migrateV9(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) migrateV2(db);
@@ -51,6 +52,12 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         if (oldVersion < 6) migrateV6(db);
         if (oldVersion < 7) migrateV7(db);
         if (oldVersion < 8) migrateV8(db);
+        if (oldVersion < 9) migrateV9(db);
+    }
+    private void migrateV9(SQLiteDatabase db) {
+        // Group membership checks must narrow to one series before visiting episodes.
+        // A verified additive adoption may already exist while user_version is 8.
+        db.execSQL("CREATE INDEX IF NOT EXISTS entries_series_group ON entries(source,generation,kind,series,group_name)");
     }
     private void migrateV8(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE metadata_index(kind TEXT NOT NULL,source TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,generation TEXT NOT NULL,identity TEXT NOT NULL,occurrence INTEGER NOT NULL,series TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(kind,source,generation,identity,occurrence))");

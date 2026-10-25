@@ -44,4 +44,34 @@ public class MetadataQueuePreparationTest {
         catch(IllegalStateException expected){}
         assertEquals(Arrays.asList("begin","commit","end"),t.events);
     }
+    @Test public void cancellationAfterEachStageSkipsRemainingSqlAndMarker() {
+        for(int stopAfter=0;stopAfter<3;stopAfter++) {
+            Tx t=new Tx();boolean[] active={true};int stop=stopAfter;
+            List<Runnable> stages=new ArrayList<>();
+            for(int i=0;i<3;i++){int stage=i;stages.add(()->{t.events.add("stage"+stage);if(stage==stop)active[0]=false;});}
+            assertFalse(MetadataIndexQueue.prepareStages(t,()->active[0],stages,()->fail()));
+            assertEquals(stop+3,t.events.size());
+            assertEquals("begin",t.events.get(0));assertEquals("end",t.events.get(t.events.size()-1));
+            assertFalse(t.events.contains("commit"));
+        }
+    }
+    @Test public void stopAfterBeginDoesNotRunAnyStage() {
+        Tx t=new Tx();int[] reads={0};
+        assertFalse(MetadataIndexQueue.prepareStages(t,()->++reads[0]==1,
+                Arrays.asList(()->fail()),()->fail()));
+        assertEquals(Arrays.asList("begin","end"),t.events);
+    }
+    @Test public void stagedFailureStopsAndRollsBackWithoutMarking() {
+        Tx t=new Tx();
+        try {MetadataIndexQueue.prepareStages(t,()->true,Arrays.asList(
+                ()->t.events.add("cleanup"),()->{throw new IllegalStateException();},()->fail()),()->fail());fail();}
+        catch(IllegalStateException expected){}
+        assertEquals(Arrays.asList("begin","cleanup","end"),t.events);
+    }
+    @Test public void successfulStagesCommitOnceBeforeMarker() {
+        Tx t=new Tx();
+        assertTrue(MetadataIndexQueue.prepareStages(t,()->true,Arrays.asList(
+                ()->t.events.add("cleanup"),()->t.events.add("movies"),()->t.events.add("series")),()->t.events.add("marker")));
+        assertEquals(Arrays.asList("begin","cleanup","movies","series","commit","end","marker"),t.events);
+    }
 }

@@ -236,3 +236,6 @@ ACTUALIZACIÓN DE VALIDACIÓN CON TV — 26/10
 Ver docs/cierre-beta-776-20261026.txt: sustituye los estados antiguos de pruebas
 Fire pendientes y recoge las limitaciones reales. La validación XMLTV completa,
 caché y cancelación terminó sin alterar datos originales. Publicación por verificar.
+
+BETA776 PUBLICADA — SHA y validación en cierre-beta-776-20261026.txt.
+Stable/rescue intactas. Plex preparado sin activar; autorización pendiente.

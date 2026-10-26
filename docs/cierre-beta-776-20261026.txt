@@ -68,3 +68,29 @@ No se ha probado OTA en Xiaomi; no confundir equivalencia de código con instala
 la APK de distribución en un dispositivo de firma privada.
 Beta774 previa descargada y verificada; stable582 yrescue543 guardadas para comparación.
 Publicación pendiente de resultado del servidor.
+
+PUBLICACIÓN CONFIRMADA 26/10
+Beta776 publicada y descargada de nuevo; SHA256:
+328b80216086ed5a245ea004b14681b3890ee20e680dbcf260efc50faf630a0c
+Tamaño104797027bytes; ARM32 yARM64. Stable582 yrescue543 idénticas.
+Primer intento409 por sesión activa; se cerró solo la reproducción del Fire
+de pruebas. Segundo intento200 con el guard normal, SIN excepción administrativa.
+DRBEP reabierto después en Fire. No se reinició ni desplegó el backend.
+La pregunta de excepción por sesiones ya no requiere respuesta.
+
+Git de implementación:
+backend fbc48a48635524c771a41125cab6cd410719d985
+Android a7d174709a8c4b9b3b3fa7476bcabdfe517ba4b7
+Ambos pushes y referencias remotas comprobados.
+
+Plex preparado, no desplegado:
+ /srv/drbep-dev/reviews/joint-beta-20261026/plex-candidate
+Basado exactamente en palantir-links-20261026;41 archivos de reproducción
+idénticos. Pruebas Plex/Palantir y DB correctas; build Linux estático correcto.
+SHA256 dd201e8c039c906fb7f042e917c1bfab3792ba586ccef8a784c494b24ff11350.
+Activación pendiente de autorización expresa para reiniciar producción con respaldo.
+No usar el checkout canónico entero como reemplazo del release activo:
+se han preservado adrede sus rutas de catchup en esta candidata aislada.
+
+La publicación no significa que todo el plan opcional esté terminado:
+agenda deportiva/DNS, pruebas Xiaomi y fluidez extrema XMLTV siguen pendientes.

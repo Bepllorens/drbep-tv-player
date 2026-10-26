@@ -1,0 +1,100 @@
+Te Vas 0.4.7 — bloque 3: controles compactos y estables
+Fecha: 2026-10-26. Desarrollo y validación técnica en .185.
+TV apagada; sin ADB, instalación, publicación ni despliegue.
+
+FILA DE ACCIONES
+TV, tablet y móvil comparten una fila horizontal de acciones. Las cabeceras de
+cada estilo se conservan. En pantallas estrechas la fila se puede desplazar.
+Cada botón ocupa 48 × 48 dp, con icono visual más pequeño, foco circular y
+etiqueta accesible completa. La etiqueta de la acción enfocada usa una franja
+fija de 20 dp. Cambiar la longitud de una etiqueta no cambia el ancho del botón.
+No hay animación de anchura ni de tamaño al enfocar.
+
+En TV el conjunto fila + leyenda sigue ocupando 68 dp: antes 8 de separación,
+40 de botón y 20 de leyenda; ahora 48 de botón y 20 de leyenda.
+Esta es geometría de diseño, no una medición de los fotogramas del dispositivo.
+El desplazamiento calcula el rectángulo completo de la acción y mueve solo lo
+necesario para mostrarlo. El acceso al directo usa un icono de emisión en lugar
+del botón de texto de 150 dp; su etiqueta completa aparece al enfocarlo.
+Se mantienen orden y callbacks de las acciones existentes.
+Audio y subtítulos se añaden al final de las acciones de TV/catchup; las películas
+mantienen el selector Idiomas. Se conservan multiview, biblioteca de origen,
+ficha, reproducción/pausa, avance, retroceso y retorno al directo.
+
+TIMESHIFT Y CATCHUP
+Se conserva la lógica de la barra, gestos, progreso disponible, foco y carrusel.
+El dock no solicita foco si la selección está en timeshift o en el carrusel.
+La selección de acción continúa usando TouchControlsFocusState y la navegación
+existentes. No se han modificado los controladores de avance, pausa o reproducción.
+La comprobación de accesibilidad entre barra/carrusel/botones en mando real sigue
+pendiente, junto con la interacción táctil.
+
+HORA DE FINALIZACIÓN
+Las películas y episodios muestran “Termina a las…” si Media3 confirma duración,
+posición y velocidad válidas y está reproduciendo. No se muestra en directo,
+catchup, pausa, motor alternativo o duración desconocida.
+La duración real tiene preferencia para el progreso; mientras no esté disponible
+se conserva la duración del catálogo como alternativa, sin derivar de ella una
+hora de finalización no confirmada.
+La lectura se vincula al identificador del contenido actual para no reutilizar
+la duración ni el formato de la película anterior durante la preparación.
+Se consideran velocidades distintas de 1x, se redondea el tiempo restante hacia
+arriba y se rechazan valores inválidos o desbordamientos.
+El espacio del reloj se reserva durante todo el VOD, aunque la estimación esté
+oculta, para que pausa/reanudación no cambien el ancho de la leyenda.
+Se respeta el formato horario del sistema; texto calculado por minuto y cifras
+tabulares. No hay temporizador nuevo: se aprovecha el refresco existente del HUD.
+
+DATOS DE PISTA
+El HUD moderno/mínimo puede mostrar resolución, HDR, códec, tasa declarada,
+FPS declarados, códec de audio, cantidad de canales y contenedor si se conocen.
+Se utiliza el formato de la pista seleccionada, no se deduce por la URL.
+No se convierte “6 canales” en “5.1”, ni E-AC-3 ordinario en Atmos; tampoco se
+afirma qué salida ha negociado la televisión o el receptor.
+Los datos se recalculan al cambiar los objetos Format, no en cada refresco.
+Las notificaciones HDR/Dolby existentes conservan su lógica anterior.
+La cabecera compacta combina los datos en una línea con elipsis para no añadir
+filas expansibles; los datos completos y legibilidad se revisarán en el dispositivo.
+Se mantiene la fuente anterior. Se reutilizan degradados por variante/colores,
+independientemente del foco y del avance de la reproducción.
+
+VALIDACIÓN
+954 pruebas Android, 0 fallos, 0 errores.
+Nuevos casos:
+- finalización según posición, velocidad, pausa/reanudación y duración real;
+- duración inválida, valores no finitos y desbordamientos;
+- visibilidad completa de acciones y límites de desplazamiento;
+- 8.200 movimientos de geometría, con 1–40 acciones y anchos 240/320/600/805/1280;
+- accesos de audio/subtítulos y conservación de los demás callbacks;
+- datos conocidos/desconocidos, audio solo y distinción entre canales y layout.
+Los 8.200 movimientos son casos del cálculo de geometría, no pulsaciones en Fire.
+assembleDebug y assembleRelease beta ARM32 perfilable correctos.
+No se ha medido todavía relayout, dibujo ni fluidez física del nuevo dock.
+
+CANDIDATA PRIVADA
+/srv/drbep-dev/reviews/tevas-047-controls-20261026/compact-controls-774-arm32-unsigned.apk
+VersionCode 774; armeabi-v7a; sin firma de instalación.
+SHA256 3c0915dc17bdbeaa17db6aab763963bef89d14f55ad087628ffb2a3a6ea0d93e
+Antes de instalar, usar la firma de pruebas compatible, conservar datos y
+registrar la nueva huella del artefacto firmado. No es una beta nueva publicada.
+
+EVIDENCIAS Y RETORNO
+/srv/drbep-dev/reviews/tevas-047-controls-20261026
+before/: estado previo de archivos, incluidos los bloques anteriores.
+controls-build.log, controls-release.log, controls-final.log: compilación y pruebas.
+artifact.json: identidad del APK.
+player-hud-read-only.diff: el controlador solo incorpora lecturas para el HUD.
+Retirar únicamente las clases/integraciones de este bloque para volver atrás;
+no revertir MainActivity entero ni borrar los cambios previos.
+
+PENDIENTE FIRE/TABLET
+- Legibilidad de iconos, leyenda, datos y reloj; altura y recorte con fuente grande.
+- TV, VOD y catchup: recorrer toda la fila y verificar cada acción.
+- Arriba/abajo entre acciones, timeshift y programas; retorno al directo.
+- Pausa/reanudación, avance, biblioteca de origen y ficha.
+- Multiview: añadir pantalla y comprobar audio/foco.
+- Tablet/móvil: zonas pulsables y desplazamiento horizontal.
+- Medir relayout/dibujo al enfocar, vídeo y carga durante el refresco del HUD.
+- Regresión de miniatura/pantalla completa y los casos previos de La 1/Vamos.
+Siguen pendientes las comprobaciones físicas de los bloques 0–2.
+Siguiente bloque: lateral configurable y cabecera estable de catálogo.

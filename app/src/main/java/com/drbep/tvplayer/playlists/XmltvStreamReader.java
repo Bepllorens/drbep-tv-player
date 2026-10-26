@@ -31,6 +31,8 @@ public final class XmltvStreamReader {
             public int read()throws IOException{int b=in.read();if(b>=0)check(b);return b;}
             public int read(byte[] b,int off,int len)throws IOException{int n=in.read(b,off,len);for(int i=0;i<n;i++)check(b[off+i]&255);return n;}
         };
+        // DateFormat is mutable: keep it local to this read, never shared between imports.
+        final DateParser dates=new DateParser();
         f.newSAXParser().parse(guarded,new DefaultHandler(){
             String channelId="",channelName="";
             Programme current;String capture="",container="",episodeSystem="";StringBuilder text=new StringBuilder();
@@ -38,12 +40,12 @@ public final class XmltvStreamReader {
                 if(Thread.currentThread().isInterrupted())throw new SAXException("Cancelled");
                 if(name.equals("channel")){channelId=a.getValue("id");channelName="";}
                 if(name.equals("display-name")&&current==null){capture=name;text.setLength(0);}
-                if(name.equals("programme")){current=new Programme();current.channel=a.getValue("channel");try{current.start=date(a.getValue("start"));current.end=date(a.getValue("stop"));}catch(Exception e){throw new SAXException("Invalid programme time");}}
+                if(name.equals("programme")){current=new Programme();current.channel=a.getValue("channel");try{current.start=dates.parse(a.getValue("start"));current.end=dates.parse(a.getValue("stop"));}catch(Exception e){throw new SAXException("Invalid programme time");}}
                 else if(current!=null) {
                     if(name.equals("rating")||name.equals("star-rating"))container=name;
                     if(name.equals("episode-num"))episodeSystem=a.getValue("system");
                     if(name.equals("icon")&&current.image.isEmpty()){String src=a.getValue("src");if(src!=null&&(src.startsWith("https://")||src.startsWith("http://")))current.image=src.length()<=8192?src:"";}
-                    if(java.util.Arrays.asList("title","desc","sub-title","category","date","episode-num","country","director","actor","presenter","writer","value").contains(name)){capture=name;text.setLength(0);}
+                    if(isTextElement(name)){capture=name;text.setLength(0);}
                 }
             }
             public void characters(char[] ch,int start,int length)throws SAXException {if(!capture.isEmpty()){if(text.length()+length>16384)throw new SAXException("Programme text too long");text.append(ch,start,length);}}
@@ -70,5 +72,36 @@ public final class XmltvStreamReader {
         }catch(NumberFormatException ignored){}
         return out.toString();
     }
-    static long date(String value)throws ParseException {if(value==null)throw new ParseException("Missing time",0);String s=value.trim();if(s.matches("[0-9]{14}"))s+=" +0000";SimpleDateFormat f=new SimpleDateFormat("yyyyMMddHHmmss Z",Locale.ROOT);f.setLenient(false);ParsePosition pos=new ParsePosition(0);Date date=f.parse(s,pos);if(date==null||pos.getIndex()!=s.length())throw new ParseException("Invalid XMLTV time",0);return date.getTime();}
+    private static boolean isTextElement(String name) {
+        switch(name) {
+            case "title":case "desc":case "sub-title":case "category":case "date":
+            case "episode-num":case "country":case "director":case "actor":
+            case "presenter":case "writer":case "value":return true;
+            default:return false;
+        }
+    }
+    static final class DateParser {
+        private final SimpleDateFormat format=new SimpleDateFormat("yyyyMMddHHmmss Z",Locale.ROOT);
+        private final TimeZone defaultZone=(TimeZone)format.getTimeZone().clone();
+        private final ParsePosition position=new ParsePosition(0);
+        DateParser(){format.setLenient(false);}
+        long parse(String value)throws ParseException {
+            if(value==null)throw new ParseException("Missing time",0);
+            String s=value.trim();
+            if(isBareUtc(s))s+=" +0000";
+            // Named zones may mutate DateFormat's calendar. Every value must start
+            // with the same default zone as a newly constructed legacy formatter.
+            format.setTimeZone(defaultZone);
+            position.setIndex(0);position.setErrorIndex(-1);
+            Date parsed=format.parse(s,position);
+            if(parsed==null||position.getIndex()!=s.length())throw new ParseException("Invalid XMLTV time",0);
+            return parsed.getTime();
+        }
+        private static boolean isBareUtc(String value) {
+            if(value.length()!=14)return false;
+            for(int i=0;i<14;i++)if(value.charAt(i)<'0'||value.charAt(i)>'9')return false;
+            return true;
+        }
+    }
+    static long date(String value)throws ParseException {return new DateParser().parse(value);}
 }

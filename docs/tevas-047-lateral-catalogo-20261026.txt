@@ -1,0 +1,98 @@
+Te Vas 0.4.7 — bloque 4: lateral configurable y catálogo estable
+Fecha: 2026-10-26. Implementación en .185; sin instalación ni publicación.
+Sin acceso a producción ni pruebas con ADB durante este bloque.
+
+MENÚ LATERAL
+La candidata añade Ajustes → Inicio y aspecto → Menú lateral.
+Permite subir/bajar secciones, ocultar/mostrar las opcionales y restaurar el
+orden original. Los cambios se guardan al momento en las preferencias locales.
+Se utiliza el panel izquierdo, degradado y anchura de menú configurada existentes.
+Las filas del editor llevan claves por ID y conservan sus controles al llegar a
+los extremos de la lista, para no eliminar el nodo que estaba enfocado.
+Las zonas pulsables del editor tienen un mínimo de 48 dp y nombres accesibles
+que incluyen la sección sobre la que actúan.
+
+El lateral principal aplica el orden a Buscar, Inicio, En directo, Mi biblioteca,
+Películas, Series, Guía y Últimos 7 días.
+Inicio no se puede ocultar. Ajustes y Salir siguen en el pie existente; Salir
+conserva la disponibilidad que ofrecía cada contexto.
+No se cambia la anchura del lateral ni el tamaño del logo.
+Si la sección recordada estaba oculta al reabrir, se recupera Inicio.
+
+Los identificadores no dependen del texto visible, proveedor o número de títulos.
+Películas y Series utilizan un ID explícito en PrimaryCard, no una comparación
+con su título. Se filtra por la disponibilidad de los callbacks existentes; la
+preferencia no concede permisos ni hace aparecer una función no disponible.
+La desaparición temporal de una función no borra su posición configurada.
+No se ordena por uso, recuentos o cambios del catálogo.
+La decodificación de preferencias se cachea y no se repite mientras no cambien.
+No se añaden temporizadores, peticiones ni cargas de catálogo al arranque.
+
+El comportamiento de foco inicial en la miniatura se conserva. No se borran los
+mapas de posición, proveedor, canal o filtros existentes al cambiar la disposición.
+Inicio/TV/Biblioteca siguen en la superficie principal; Películas y Series abren
+sus pantallas habituales con los mismos callbacks.
+
+PREFERENCIAS Y RECUPERACIÓN
+Clave local ui_main_rail_v1: versión, IDs ordenados y secciones ocultas.
+Se normalizan duplicados/IDs desconocidos y se incorporan los IDs que falten.
+Datos locales dañados o de versión no soportada recuperan una disposición usable.
+Inicio permanece visible incluso ante un valor manipulado que intente ocultarlo.
+Se añade la disposición al formato de copia portable de preferencias.
+La importación valida tamaño, campos y IDs; no permite campos desconocidos ni
+ocultar secciones protegidas. Las copias antiguas sin esta clave siguen funcionando.
+No se exportan identidades de canales, proveedores ni credenciales en esta opción.
+
+PELÍCULAS Y SERIES IMPORTADAS
+La altura exterior de la cabecera de navegación ya estaba fijada; se estabilizan
+ahora sus bloques internos: dos líneas de título, una de metadatos y dos de sinopsis.
+En la escala de fuente normal conserva 126 dp; se adapta a la escala de texto
+del sistema. Se mantiene la familia tipográfica anterior.
+Los textos largos usan elipsis y los campos vacíos conservan su espacio.
+Los filtros son de una línea y tienen un ancho máximo para no desplazar la barra.
+Las tarjetas reservan dos líneas de título y una de metadatos; las alturas de
+los carruseles no dependen de que el siguiente título ocupe una o dos líneas.
+El nombre de cada carrusel también se limita a una línea.
+Las carátulas ya tenían espacio reservado y conservan sus dimensiones.
+Se reutilizan los degradados de fondo durante cambios de selección/metadatos.
+
+La función MovieArt se ha comprobado idéntica a la previa a este bloque.
+ImportedMovieRepository.kt y MovieFocusNavigation.kt no tienen cambios.
+No se modifican SQL, paginación, enriquecimiento TMDB, permisos, carga de imágenes
+ni rutas de reproducción.
+
+VALIDACIÓN .185
+963 pruebas Android: 0 fallos, 0 errores.
+Incluyen orden y visibilidad, persistencia JSON, secciones protegidas, IDs
+desconocidos, preferencias dañadas, disponibilidad temporal, límites de movimiento,
+copias portables, compatibilidad de copias antiguas y títulos traducidos con ID estable.
+assembleDebug y assembleRelease beta ARM32 perfilable: correctos.
+El APK final contiene ui_main_rail_v1; la candidata anterior no lo contiene,
+comprobación adicional para evitar confundir artefactos con versionCode 774.
+No se ha validado todavía el foco real de Compose ni el aspecto en un dispositivo.
+
+CANDIDATA Y EVIDENCIAS
+/srv/drbep-dev/reviews/tevas-047-rail-20261026/rail-catalog-774-arm32-unsigned.apk
+SHA256 1f8f4ac90649d8f22df2518500f95ae9713e1bff9586835d97f69189ae6ab390
+VersionCode 774, armeabi-v7a, sin firma de instalación. No es una nueva beta publicada.
+Antes de instalar: firma de pruebas compatible, respaldo y huella del APK firmado.
+
+/srv/drbep-dev/reviews/tevas-047-rail-20261026:
+before/: estado previo con los bloques anteriores conservados.
+rail-build.log, rail-tests.log, rail-final.log: compilación y regresión.
+artifact.json: identidad final.
+catalog-audit.txt: comprobación de imagen/repositorio/navegación.
+Para retorno selectivo, retirar solo este bloque; no revertir MainActivity entero
+ni perder las mejoras anteriores.
+
+PENDIENTE CON TV/TABLET
+- Verificar la ruta de ajustes y mover, ocultar y restaurar secciones.
+- Comprobar que el foco acompaña a la fila, también al llegar a los extremos.
+- Reabrir Inicio: foco inicial en la miniatura y recuperación si se ocultó la sección.
+- Entrar/salir de TV/Biblioteca/Películas/Series: posiciones, filtros y callbacks.
+- Títulos cortos/largos, metadatos tardíos, imágenes ausentes y escala de texto.
+- Recorrer carruseles y páginas; verificar ausencia de saltos o recortes.
+- Medir dibujo/desplazamiento mientras se reproduce, sin afirmar mejora de FPS
+  a partir de estas comprobaciones de código y pruebas unitarias.
+- Continuar con las comprobaciones físicas pendientes de los bloques anteriores.
+Siguiente bloque: sincronización incremental de Plex, inicialmente con fixtures .185.

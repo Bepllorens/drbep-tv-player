@@ -13,7 +13,7 @@ final class BlackBoxStore implements AutoCloseable {
     enum Event { SESSION, ACTIVITY, FOREGROUND, BACKGROUND, WINDOW, PLAYER_READY, STARTUP_FRAME,
         CATALOG_READY, CATALOG_APPLY, HOME_MODEL, NAV_HOME, NAV_SECTION, NAV_KEY, PLAY_PREPARE, PLAY_STATE,
         PLAY_FRAME, SURFACE_FRAME, PLAY_ERROR, VIDEO_COUNTERS, AUDIO_COUNTERS, PLAYBACK_SAMPLE, MEMORY, MEMORY_PRESSURE, UI_STALL, CRASH,
-        PROCESS_EXIT, MARK, DETAIL, ENABLED, EPG_LOAD, GUIDE_LOAD, GUIDE_CACHE, GUIDE_HTTP, GUIDE_PARSE, GUIDE_FALLBACK, CATCHUP_PAGE, CATCHUP_STRIP, CATCHUP_DB_OPEN, CATCHUP_DB_COUNT, CATCHUP_DB_FETCH, CATCHUP_DB_DECODE, MULTI_OPEN, MULTI_CLOSE, MULTI_PREPARE, MULTI_STATE, MULTI_FRAME, MULTI_ERROR, MULTI_COUNTERS, ZAP_PRESS, ZAP_TUNE, ZAP_FRAME, ARTWORK_QUEUE_REJECT }
+        PROCESS_EXIT, MARK, DETAIL, ENABLED, EPG_LOAD, GUIDE_LOAD, GUIDE_CACHE, GUIDE_HTTP, GUIDE_PARSE, GUIDE_FALLBACK, CATCHUP_PAGE, CATCHUP_STRIP, CATCHUP_DB_OPEN, CATCHUP_DB_COUNT, CATCHUP_DB_FETCH, CATCHUP_DB_DECODE, MULTI_OPEN, MULTI_CLOSE, MULTI_PREPARE, MULTI_STATE, MULTI_FRAME, MULTI_ERROR, MULTI_COUNTERS, ZAP_PRESS, ZAP_TUNE, ZAP_FRAME, ARTWORK_QUEUE_REJECT, PROGRESS_WRITE, DETAIL_LEASE }
     private static final class Entry {
         final Event type; final long wall,elapsed,op,a,b,c;
         Entry(Event t,long o,long x,long y,long z) {type=t;op=o;a=x;b=y;c=z;wall=System.currentTimeMillis();elapsed=System.nanoTime()/1000000;}
@@ -26,6 +26,7 @@ final class BlackBoxStore implements AutoCloseable {
     private final AtomicLong lost=new AtomicLong(), failures=new AtomicLong();
     private volatile boolean enabled=true,closed;
     private volatile long detailedUntil;
+    private final DiagnosticDetailLease detailObservers=new DiagnosticDetailLease();
     private final int version;
     private long markId;
     BlackBoxStore(File dir,int version) {this(dir,version,512*1024);}
@@ -35,8 +36,15 @@ final class BlackBoxStore implements AutoCloseable {
         event(Event.SESSION,0,version,0,0);
     }
     boolean enabled(){return enabled;}
-    boolean detailed(){return enabled && System.nanoTime()/1000000<detailedUntil;}
-    void setEnabled(boolean value){enabled=value;if(!value)queue.clear();if(value)event(Event.ENABLED,0,1,0,0);}
+    boolean detailed(){return enabled && (System.nanoTime()/1000000<detailedUntil || detailObservers.activeCount()>0);}
+    String detailLease(String client,long sequence,boolean active) throws Exception {
+        int before=detailObservers.activeCount();
+        if(!detailObservers.update(client,sequence,active))throw new IllegalStateException("Too many observers");
+        int count=detailObservers.activeCount();
+        if(before!=count)event(Event.DETAIL_LEASE,0,count,DiagnosticDetailLease.LEASE_MS,0);
+        return new JSONObject().put("ok",true).put("leaseMs",DiagnosticDetailLease.LEASE_MS).put("detailed",detailed()).toString();
+    }
+    void setEnabled(boolean value){enabled=value;if(!value){queue.clear();detailObservers.clear();detailedUntil=0;}if(value)event(Event.ENABLED,0,1,0,0);}
     void detail(){detailedUntil=System.nanoTime()/1000000+600000;event(Event.DETAIL,0,600000,0,0);}
     void event(Event type,long op,long a,long b,long c){
         if(enabled&&!closed&&!queue.offer(new Entry(type,op,a,b,c)))lost.incrementAndGet();
@@ -71,11 +79,11 @@ final class BlackBoxStore implements AutoCloseable {
         try{return f.get(5,TimeUnit.SECONDS);}catch(Exception e){f.cancel(false);throw e;}
     }
     String summary()throws Exception{return call(()->{
-        drain();ArrayDeque<JSONObject> recent=new ArrayDeque<>();StartupTraceSummary startup=new StartupTraceSummary();
+        drain();ArrayDeque<JSONObject> recent=new ArrayDeque<>();StartupTraceSummary startup=new StartupTraceSummary();PlaybackTraceSummary playback=new PlaybackTraceSummary();
         Map<String,List<Long>> values=new TreeMap<>();Map<String,Long> counts=new TreeMap<>();
         for(File f:logs())try(BufferedReader in=new BufferedReader(new InputStreamReader(new FileInputStream(f),StandardCharsets.UTF_8))){
             String line;while((line=in.readLine())!=null){try{
-                JSONObject j=new JSONObject(line);startup.accept(j);String k=j.getString("event");
+                JSONObject j=new JSONObject(line);startup.accept(j);playback.accept(j);String k=j.getString("event");
                 if(k.equals("PLAY_FRAME")&&j.optLong("c")==1)continue;
                 counts.put(k,counts.getOrDefault(k,0L)+1);
                 List<Long> v=values.computeIfAbsent(k,ignored->new ArrayList<>());if(v.size()==256)v.remove(0);v.add(j.getLong("a"));
@@ -89,7 +97,7 @@ final class BlackBoxStore implements AutoCloseable {
         }
         return new JSONObject().put("enabled",enabled).put("detailed",detailed()).put("session",session)
             .put("lost",lost.get()).put("writeErrors",failures.get()).put("bytes",size()).put("limitBytes",segmentLimit*12)
-            .put("startups",startup.json()).put("stats",stats).put("events",new JSONArray(recent)).toString();
+            .put("detailObservers",detailObservers.activeCount()).put("playbacks",playback.json()).put("startups",startup.json()).put("stats",stats).put("events",new JSONArray(recent)).toString();
     });}
     private long size(){long n=0;File[] files=dir.listFiles();if(files!=null)for(File f:files)if(f.isFile())n+=f.length();return n;}
     String mark()throws Exception{return call(()->{

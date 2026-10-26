@@ -1163,4 +1163,5 @@
     <string name="multiview_switch_audio">Cambiar solo el audio</string>
     <string name="multiview_change_channel">Cambiar canal con audio</string>
     <string name="multiview_fullscreen">Ver a pantalla completa</string>
+    <string name="playback_finish_at">Termina a las %1$s</string>
 </resources>

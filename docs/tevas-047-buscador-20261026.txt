@@ -1,0 +1,77 @@
+Te Vas 0.4.7 — bloque 1: buscador independiente
+Fecha: 2026-10-26. Desarrollo y pruebas en .185.
+
+CAMBIO
+Canales, películas importadas, series importadas, Plex, guía y grabaciones ya no
+comparten una única cadena de trabajo. ProgressiveSearch limita a tres consultas
+simultáneas con cola acotada, plazos por origen y cancelación de búsquedas antiguas.
+Se publican instantáneas por origen conforme llegan, con orden de secciones estable.
+Un fallo no borra resultados válidos; hay estado visible y reintento.
+Los fallos de conexión de orígenes remotos tienen espera temporal de 30 segundos.
+El reintento explícito evita esa espera. Un resultado vacío correcto no se trata
+como caída del servidor. No se muestran mensajes técnicos ni URLs del proveedor.
+
+Las filas Compose tienen identidad estable por origen y contenido.
+Se conservan las variantes de listas personales y sus acciones de apertura.
+Plex sigue omitiendo duplicados que ya están en el catálogo base; si este llega
+después, la fila equivalente comparte identidad con la que se mostró desde Plex.
+Encabezados repetidos reciben claves distintas.
+Cambiar texto/filtro, cerrar el buscador o destruir la actividad cancela el trabajo.
+Una llamada de red que ignore interrupciones puede continuar hasta su timeout de
+transporte, pero no puede publicar datos en otra búsqueda; los trabajadores están
+acotados. No se alteran protocolos, canales, EPG oficial ni reproducción.
+
+VALIDACIÓN
+Pruebas de proveedor lento, resultado final, cancelación con proveedor que ignora
+interrupciones, vencimiento, reintento, éxito vacío e instantáneas inmutables.
+Pruebas adicionales de identidad de filas, títulos iguales con acciones de distinto
+origen y encabezados repetidos.
+Compilación y resultado final de regresión: consultar cierre al final del documento.
+
+MEDIDA SINTÉTICA .185
+Corpus controlado: seis orígenes, cien filas por origen; Plex tarda 250 ms y el resto
+2 ms por origen. Dos vueltas de calentamiento y doce medidas.
+Resultados ordenados idénticos en 14/14 ejecuciones: 600 filas.
+Mediana hasta guía: 258,870 ms secuencial frente a 4,917 ms independiente.
+Máximo hasta guía: 258,983 frente a 6,207 ms.
+Mediana hasta colección completa: 261,041 frente a 252,907 ms.
+Es una prueba del aislamiento de consultas; no es una medición de Internet ni de
+la interfaz en Fire. La comparación no demuestra equivalencia de cada proveedor
+real; eso forma parte de la comprobación de dispositivo.
+
+EVIDENCIAS PRIVADAS Y RETORNO
+/srv/drbep-dev/reviews/tevas-047-implementation-20261026
+before/: cinco archivos originales con los cambios previos conservados.
+edit_search.py: transformación inicial.
+/ProgressiveSearchBenchmark.java, search-benchmark.txt: corpus y medidas.
+/search-build.log, search-release.log, search-final.log: compilación y tests.
+Los respaldos no se han aplicado ni se ha borrado ningún dato.
+Para retorno selectivo, comparar los cinco archivos con before y retirar únicamente
+la integración del buscador y las clases nuevas; no revertir los cambios anteriores
+de MainActivity ni otros bloques pendientes.
+
+PENDIENTE CON TV ENCENDIDA
+1. Instalar candidata privada tras verificar versión/firma/ABI y preparar retorno.
+2. Buscar texto con coincidencias en canales/listas/Plex/guía/grabaciones.
+3. Mantener una fila enfocada mientras llega otro origen; comprobar que OK abre
+   el mismo título/origen y que el scroll no salta a otra fila.
+4. Cambiar filtro/texto rápidamente, cerrar/reabrir y confirmar ausencia de resultados
+   de búsquedas anteriores. Probar reintento y proveedor no disponible.
+5. Repetir con un canal reproduciéndose y medir respuesta, trabajo UI y vídeo.
+6. Tablet: entrada de texto, scroll y pulsación de resultados.
+Continúan pendientes las comprobaciones XMLTV del bloque 0.
+La candidata mantiene versionCode 774 para pruebas privadas; no es una beta nueva.
+No se ha usado ADB ni se ha publicado, hecho push o modificado producción.
+
+SIGUIENTE BLOQUE
+Progreso de reproducción y diagnóstico bajo demanda: medir escrituras, evitar
+duplicados y proteger orden/sesión antes de tocar la persistencia; extender la
+caja negra existente. Después: controles, lateral, Plex incremental y agenda.
+
+CIERRE .185
+Regresión final: 927 pruebas, 0 fallos, 0 errores.
+assembleRelease perfilable beta ARM32: BUILD SUCCESSFUL, 26 octubre.
+Candidata privada: /srv/drbep-dev/reviews/tevas-047-implementation-20261026/search-independent-774-arm32-unsigned.apk
+SHA256: 4f59e6203a82ee6646552831ffb4ead5148a955fd688977f72cce63457d181d5
+Versión 774; identidad final/ABI/firma se comprobarán antes de instalar.
+No se ha incrementado la versión ni se ha publicado el artefacto.

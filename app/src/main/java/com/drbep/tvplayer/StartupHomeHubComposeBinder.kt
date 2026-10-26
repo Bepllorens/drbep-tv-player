@@ -38,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
@@ -455,13 +456,16 @@ private fun StartupShortcut(item: StartupHomeHubUiModel.Shortcut, modifier: Modi
 private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubArtworkBinder?) {
     val discovery = model.discovery ?: return
     val touchLayout = (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) != android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
-    var section by remember { mutableStateOf(discovery.section.takeIf { it in listOf("Inicio", "En directo", "Mi biblioteca") } ?: "Inicio") }
+    var section by remember { mutableStateOf(discovery.section.takeIf {
+        it in listOf("Inicio", "En directo", "Mi biblioteca") && model.railLayout.visible(MainRailLayout.sectionId(it))
+    } ?: "Inicio") }
     var provider by remember(section, model) { mutableStateOf(discovery.selectedProviders["En directo"] ?: "") }
     // Visible TV rows refresh EPG independently; explicit home changes publish a model.
     // A second timer rebuilt every channel card on the UI thread between those updates.
     val page = remember(model, section, provider) { discovery.page.apply(section, provider) }
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
+        discovery.section = section
         withFrameNanos { }
         if (!(section == "Inicio" && !touchLayout && discovery.startupPreviewFocusPending && model.currentLive != null) && (!discovery.restoreLiveFocus || section != "En directo") && (section != "Inicio" || discovery.homeFocusedChannel.isBlank())) runCatching { initialFocus.requestFocus() }
     }
@@ -484,20 +488,49 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                 Spacer(Modifier.height(10.dp))
                 Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MainRailItem("Buscar", R.drawable.rail_search, false, action = { model.onSearch?.run() })
-                    listOf("Inicio" to R.drawable.rail_home, "En directo" to R.drawable.rail_tv,
-                        "Mi biblioteca" to R.drawable.rail_library).forEach { (name, icon) ->
-                        MainRailItem(name, icon, section == name,
-                            modifier = if (name == discovery.section) Modifier.focusRequester(initialFocus) else Modifier,
-                            action = { openSection(name) })
+                    val palantir = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.PALANTIR }
+ val movie = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.MOVIES }
+                    val series = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.SERIES }
+                    val available = buildList {
+                        add(MainRailLayout.HOME); add(MainRailLayout.LIVE); add(MainRailLayout.LIBRARY)
+                        if (model.onSearch != null) add(MainRailLayout.SEARCH)
+                        if (movie != null) add(MainRailLayout.MOVIES)
+                        if (series != null) add(MainRailLayout.SERIES)
+ if(palantir!=null)add(MainRailLayout.PALANTIR)
+                        if (model.onLiveGuide != null) add(MainRailLayout.GUIDE)
+                        if (model.onLiveHistory != null) add(MainRailLayout.CATCHUP)
                     }
-                    listOf("Películas" to R.drawable.rail_movies, "Series" to R.drawable.rail_series).forEach { (name, icon) ->
-                        model.primaryCards.firstOrNull { it.title == name }?.let { card ->
-                            MainRailItem(name, icon, false, action = { card.onClick?.run() })
+                    model.railLayout.visibleOrder(available).forEach { id ->
+                        key(id) {
+                            val icon = when(id) {
+                                MainRailLayout.SEARCH -> R.drawable.rail_search
+                                MainRailLayout.HOME -> R.drawable.rail_home
+                                MainRailLayout.LIVE -> R.drawable.rail_tv
+                                MainRailLayout.LIBRARY -> R.drawable.rail_library
+                                MainRailLayout.MOVIES -> R.drawable.rail_movies
+                                MainRailLayout.SERIES -> R.drawable.rail_series
+ MainRailLayout.PALANTIR -> R.drawable.rail_palantir
+                                MainRailLayout.GUIDE -> R.drawable.rail_guide
+                                else -> R.drawable.rail_history
+                            }
+                            val selected = MainRailLayout.sectionId(section) == id
+                            MainRailItem(MainRailLayout.label(id), icon, selected,
+                                modifier = if (selected) Modifier.focusRequester(initialFocus) else Modifier,
+                                action = {
+                                    when(id) {
+                                        MainRailLayout.SEARCH -> model.onSearch?.run()
+                                        MainRailLayout.HOME -> openSection("Inicio")
+                                        MainRailLayout.LIVE -> openSection("En directo")
+                                        MainRailLayout.LIBRARY -> openSection("Mi biblioteca")
+                                        MainRailLayout.MOVIES -> movie?.onClick?.run()
+                                        MainRailLayout.SERIES -> series?.onClick?.run()
+ MainRailLayout.PALANTIR -> palantir?.onClick?.run()
+                                        MainRailLayout.GUIDE -> model.onLiveGuide?.run()
+                                        MainRailLayout.CATCHUP -> model.onLiveHistory?.run()
+                                    }
+                                })
                         }
                     }
-                    model.onLiveGuide?.let { action -> MainRailItem("Guía", R.drawable.rail_guide, false, action = { action.run() }) }
-                    model.onLiveHistory?.let { action -> MainRailItem("Últimos 7 días", R.drawable.rail_history, false, action = { action.run() }) }
                 }
                 Spacer(Modifier.height(8.dp))
                 MainRailItem("Ajustes", R.drawable.rail_settings, false, action = { model.onSettings?.run() })
@@ -668,6 +701,11 @@ private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHu
             listState.scrollToItem(index)
             withFrameNanos { }; withFrameNanos { }
             runCatching { requesters[id]?.requestFocus() }
+        } else if (id.isNotBlank() && (id != "@preview" || live == null)) {
+            // Playback of VOD removes the live preview; never restore focus to
+            // its stale sentinel or to a channel removed from the current list.
+            withFrameNanos { }; withFrameNanos { }
+            runCatching { groupFocus.requestFocus() }
         }
     }
     Column(Modifier.fillMaxSize().padding(top=8.dp,end=14.dp), verticalArrangement=Arrangement.spacedBy(10.dp)) {

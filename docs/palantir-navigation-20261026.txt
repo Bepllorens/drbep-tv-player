@@ -1,0 +1,10 @@
+Palantir: foco y retorno — 26 octubre 2026
+
+PalantirBrowser: foco explícito de TV en botones y carteles; selección restaurada por clave existente, alternativa al primer resultado; espera a finalizar la carga y dos fotogramas antes de enfocar; resultados vacíos recuperan Volver. La lista antigua se retira al cambiar filtros/página para evitar que recupere una clave obsoleta.
+MainActivity: regreso por dismissModalForNextAction, evitando reconstruir portada antes de cerrar el diálogo.
+Orden aclarado como Año de estreno: backend sigue ordenando year DESC,key. Fuente pública sí tiene fecha ISO completa en todas las películas y series; importador conserva solo el año. Pendiente conservar e indexar fecha completa y adoptar catálogo actualizado con respaldo. No confundir estreno con fecha de incorporación.
+
+973 tests sin fallos, release ARM32 de pruebas instalada sobre 775 en Fire .190 conservando datos. Validado con mando: selector Género→Acción, derecha a segunda tarjeta, abrir Pretty Lethal, Atrás vuelve a misma tarjeta, Atrás vuelve a portada con vídeo La 1 en movimiento (capturas distintas de región de vídeo). No se inició película.
+Artefacto y evidencia: /srv/drbep-dev/reviews/palantir-navigation-20261026.
+APK final SHA256 08a9754496a22e6be65f6fb444434754fd9c570b27b0fd21719da7d6154f563c.
+Firma privada de Fire; no publicar este artefacto. Producción y canales beta/stable sin cambios; sin commit/push.

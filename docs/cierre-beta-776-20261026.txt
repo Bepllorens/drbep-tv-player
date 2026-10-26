@@ -1,0 +1,70 @@
+CIERRE CONJUNTO — candidata beta 776 — 26/10/2026
+
+Alcance: consolidación de bloques 0–5 del plan Te Vas 0.4.7 y Palantir.
+Desarrollo en .185. Validación Fire .190 con TV encendida y mando libre.
+La publicación/Git se documentan por separado al confirmarse; esta nota no los presupone.
+
+Correcciones encontradas en la validación
+- Actualizar guía/lista desde el panel web podía fallar antes de encolarse porque
+  el aviso intentaba modificar la UI desde el trabajador HTTP. El aviso pasa por
+  host.post; la importación sigue ejecutándose fuera de UI.
+- Una búsqueda EPG cancelada deja de recorrer canales al finalizar la petición
+  que estuviera en curso. No cambia coincidencias ni permisos.
+- La exportación de preferencias incluye ahora realmente el orden/visibilidad del
+  lateral: el códec ya lo admitía, pero faltaba recogerlo en MainActivity.
+- Separación entre el listado del editor del lateral y la ayuda inferior.
+
+Pruebas
+- Android: 973 unitarias sin fallos antes de estos ajustes; resultado final en
+  final-tests.log. Flags experimentales de importación/HLS/zapeo siguen OFF.
+- Backend: go test ./cmd/... ./internal/... completo correcto.
+- Dashboard: 241 tests Node correctos. Dos expectativas antiguas corregidas:
+  recurso con versión y preview Disney con ruta HD/Widevine actual. Solo tests,
+  ninguna modificación de reproducción Disney.
+- Dashboard offline: 16 tests y typecheck correctos.
+- Contrato API regenerado con todas las rutas actuales, incluida consulta
+  administrativa de enlaces originales Palantir.
+- Fire: búsqueda de fútbol devuelve listas/Plex aun cuando EPG agota su plazo;
+  el resultado enfocado se mantiene. No se afirma que EPG haya respondido.
+- Fire: diagnóstico intensivo caduca sin renovar, cero observadores y cero errores
+  de escritura; cronologías reales presentes.
+- Fire: lateral editable, cambio/reversión de orden por mando; controles compactos,
+  subida desde acciones a timeshift y carrusel verificada por capturas.
+- No se han cambiado rutas, asociaciones ni claves de La 1/Vamos.
+
+XMLTV grande real en Fire
+1000 canales /168000 programas. Importación completada en 497,342 segundos.
+Comprobación de todos los campos: idénticos al corpus sintético.
+La guía compartida se reutiliza en 0,569 s, sin petición de descarga.
+Cancelación de otra guía tras1000 eventos: estado cancelled,4,453 s.
+Cero PLAY_ERROR durante el ensayo; vídeo continúa. Se observan descartes y
+picos UI bajo carga: NO se declara resuelta la fluidez ni una mejora A/B del Fire.
+La reducción del15,59% del parser corresponde solo a JVM/.185.
+Retiradas exactamente tres fuentes, sus trabajos y feeds propios.
+Datos y esquema completos idénticos al respaldo previo de61.710.336bytes.
+Retirados auxiliar com.drbep.xmltvcheck y reverse18766. Copia privada conservada.
+
+Estado de lo que no puede darse por cerrado
+- Plex incremental pasa fixtures y regresión; todavía no activado en .223.
+  Una publicación de APK no despliega el backend.
+- Prueba OTA/táctil Xiaomi requiere tablet disponible; no se sustituye por Fire.
+- Picos de primera entrada TV y durante XMLTV siguen abiertos, sin promesa de FPS.
+- M+ Indie conserva su diagnóstico previo de acceso; no se altera La1/Vamos.
+- Agenda deportiva y diagnóstico DNS son extensiones posteriores opcionales del
+  plan, fuera de esta candidata de estabilidad. AceStream/torrents no se activan.
+
+Evidencias privadas:
+ /srv/drbep-dev/reviews/joint-beta-20261026
+No incorporar respaldo, sesiones, APK ni registros privados al repositorio.
+
+CANDIDATA FINAL VERIFICADA
+Version776 universal ARM32/ARM64, firma de distribución verificada.
+SHA256 328b80216086ed5a245ea004b14681b3890ee20e680dbcf260efc50faf630a0c
+973 pruebas Android y63 pruebas del panel correctas.
+Instalada en Fire con su firma privada compatible, sin desinstalar ni borrar datos.
+Código y recursos de ambas APK comparados por entrada ZIP: idénticos, excepto firma.
+Inicio muestra BETA776 y conserva foco inicial en miniatura deLa1, EPG y lateral.
+No se ha probado OTA en Xiaomi; no confundir equivalencia de código con instalar
+la APK de distribución en un dispositivo de firma privada.
+Beta774 previa descargada y verificada; stable582 yrescue543 guardadas para comparación.
+Publicación pendiente de resultado del servidor.

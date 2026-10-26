@@ -312,7 +312,7 @@ final class PersonalPlaylistController {
     }
     private interface Enqueue {String run()throws Exception;}
     private void queue(Enqueue enqueue) {
-        host.status("Importación en cola. Puedes seguir usando DRBEP.");
+        post(() -> host.status("Importación en cola. Puedes seguir usando DRBEP."));
         PlaylistImportJobs.STAGING.execute(() -> {try{enqueue.run();}catch(Exception e){error();}});
     }
     private void queueServer(String name,String identity) {

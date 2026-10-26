@@ -6,6 +6,8 @@ import java.util.function.Consumer;
 
 public final class GlobalSearchListUiModel {
     public Runnable onVoice;
+    public Runnable onRetry;
+    public String status = "";
     public final String title;
     public final String hint;
     public final String query;

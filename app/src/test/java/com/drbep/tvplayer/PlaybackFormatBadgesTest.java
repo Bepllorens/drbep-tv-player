@@ -23,4 +23,21 @@ public class PlaybackFormatBadgesTest {
         assertEquals("DOLBY DIGITAL PLUS", PlaybackFormatBadges.audio(new Format.Builder().setSampleMimeType("audio/eac3").setChannelCount(6).build()));
         assertEquals("DOLBY TRUEHD", PlaybackFormatBadges.audio(new Format.Builder().setSampleMimeType("audio/true-hd").build()));
     }
+    @Test public void detailsDescribeEncodedFactsWithoutInventingOutputLayout() {
+        Format video = new Format.Builder().setWidth(1920).setHeight(1080).setSampleMimeType("video/avc").setContainerMimeType("video/mp2t").build();
+        Format audio = new Format.Builder().setSampleMimeType("audio/eac3").setChannelCount(6).build();
+        String details = PlaybackFormatBadges.details(video,audio);
+        org.junit.Assert.assertTrue(details.contains("1920 × 1080"));
+        org.junit.Assert.assertTrue(details.contains("H.264"));
+        org.junit.Assert.assertTrue(details.contains("6 canales"));
+        org.junit.Assert.assertTrue(details.contains("TS"));
+        org.junit.Assert.assertFalse(details.contains("5.1"));
+        org.junit.Assert.assertFalse(details.contains("ATMOS"));
+    }
+    @Test public void unknownFactsAreOmittedAndAudioOnlyIsSupported() {
+        assertEquals("",PlaybackFormatBadges.details(null,null));
+        assertEquals("",PlaybackFormatBadges.details(new Format.Builder().build(),null));
+        assertEquals("AAC · 2 canales · MP4",PlaybackFormatBadges.details(null,
+                new Format.Builder().setSampleMimeType("audio/mp4a-latm").setChannelCount(2).setContainerMimeType("audio/mp4").build()));
+    }
 }

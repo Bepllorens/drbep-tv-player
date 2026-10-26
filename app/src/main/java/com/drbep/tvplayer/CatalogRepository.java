@@ -1907,6 +1907,7 @@ final class CatalogRepository {
         permissions.runtimeEnabled = payload.optBoolean("runtime", false);
         permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", false);
         permissions.plexVodEnabled = payload.optBoolean("plex_vod", false);
+ permissions.palantirEnabled = payload.optBoolean("palantir_vod",false);
         permissions.primeVodEnabled = payload.optBoolean("prime_vod", false);
         permissions.daznVodEnabled = payload.optBoolean("dazn_vod", false);
         Set<String> vodGroups = parseStringArray(payload.optJSONArray("groups"));
@@ -2265,6 +2266,7 @@ final class OfflinePermissions implements Serializable {
     boolean runtimeEnabled = true;
     boolean movistarVodEnabled = true;
     boolean plexVodEnabled = true;
+ boolean palantirEnabled = false;
     boolean primeVodEnabled = true;
     boolean daznVodEnabled = true;
     boolean disneyplusVodEnabled = false;
@@ -2314,7 +2316,8 @@ final class OfflinePermissions implements Serializable {
         return vodEnabled && movistarVodEnabled;
     }
 
-    boolean allowsPlexVod() {
+    boolean allowsPalantir() {return vodEnabled && palantirEnabled;}
+ boolean allowsPlexVod() {
         return vodEnabled && plexVodEnabled;
     }
 

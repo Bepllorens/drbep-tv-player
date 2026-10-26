@@ -249,6 +249,12 @@ final class TouchControlsUiFactory {
                     }
             ));
         }
+        if (!vod && current != null) {
+            actions.add(new ZapActionItem(host.text(R.string.audio_track_title), true, false, false,
+                    "audio", "", () -> { host.keepVisible(); host.showAudioTracks(); }, null));
+            actions.add(new ZapActionItem(host.text(R.string.subtitle_track_title), true, false, false,
+                    "subtitles", "", () -> { host.keepVisible(); host.showSubtitles(); }, null));
+        }
         if (vod) {
             actions.add(new ZapActionItem("Idiomas", true, false, false, "vod_languages", "", () -> {
                 host.keepVisible();

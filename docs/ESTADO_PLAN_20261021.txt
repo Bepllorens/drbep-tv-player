@@ -375,3 +375,19 @@ Commit/publicacion aun pendientes al redactar, no backend/stable.
 excepcion de sesiones autorizada. SHA publico9765775a82923eb3f7802325a4cc3d2a2bef2cf9c86fec078554ba045f870826.
 Stable intacto. Detalles/limiteOTA en beta-774-20261025.txt. Mantener experimentos
 sin mejora demostrada OFF; esto no declara resueltos todos los picos frios.
+
+25/10 continuacion tras774 autorizada: estado operativo en
+docs/plan-post-774-20261025.txt. Primer dibujo medido; ensayo diferir detalles
+retirado sin mejora. HLS DVR experimental separado EN CURSO, defaultFALSE.
+No nueva publicacion ni backend; conservar774 como referencia/retorno.
+
+25/10 - Continuacion post774:
+Estado consolidado en docs/plan-post-774-20261025.txt.
+HLS del backend activado con autorizacion, respaldo y retorno; mediana Fire
+963,5 -> 807,5 ms en diez sintonizaciones con la misma APK.
+Perfil TV experimental retirado tras contraste en modo habitual. No cerrar
+primera entrada, importaciones bajo carga, M+ Indie502 ni OTA Xiaomi.
+No hay nueva publicacion ni commit/push de esta continuacion todavia.
+
+26/10/2026: XMLTV grande preparado/medido en185; Fire pendiente por TV apagada.
+Detalle: docs/xmltv-load-20261026.txt. No confundir benchmark JVM con playback.

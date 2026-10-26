@@ -1,0 +1,92 @@
+TV: primer dibujo tras beta774 - 25/10/2026
+Base a7df8fa, desarrollo185; Fire190 TV encendida/mando libre confirmado.
+Referencia exacta774 privada guardada antes de probar, SHA
+f5af5e6c6b874abf3131f73ffa8f7644c40216d0387352c2bb2287503a1c3c74.
+No cambio de produccion, canal beta/stable ni datos de biblioteca.
+
+Ruta: Inicio -> TV MovistarHLS ->18abajo/18arriba, misma seleccionAXNMovies.
+Release perfilable, ARM32, sin debuggable, firma de pruebas preexistente.
+Atrace gfx/view, solo hilo principal del PID de DRBEP. Ventana de entrada:
+primeros4s desde el primer frame de app en traza, NO primer fotograma de video.
+
+Hallazgo referencia: pico286,835ms dentro de ventana de entrada. Tramos anidados:
+recompose37,19ms, applyChanges67,61ms, measureAndLayout104,29ms.
+HomeModel max18,45ms, logoBind max4,08ms. Los tiempos anidados no se suman;
+no atribuir todo a logos ni a construir el modelo.
+
+Ensayo RETIRADO:
+Separar detalles EPG por dos frames manteniendo preview/foco inmediato.
+Resultados de toda ruta: 902unitarios correctos; sin backend ni playback changes.
+Referencia inicial: pico287ms; proceso reiniciado256ms.
+Ensayo tras instalar564ms; proceso reiniciado500ms.
+Retorno a la MISMA referencia tras reinstalar549ms: instalar/compilar es confusor.
+No usar la comparacion inicial para afirmar causalidad ni regresion del codigo.
+
+Comparacion adicional con MISMO filtro ART speed en ambos:
+                                A referencia       B detalles diferidos
+pico frame entrada4s ms           228,425            291,182
+p95 frame ruta ms                  23,675             25,231
+max measureAndLayout ms            75,404             87,960
+pico posterior a entrada ms        30,783             61,489
+Una muestra por variante, no ensayo estadistico. No mejora demostrada, se
+retira TODO el cambio de UI del checkout y se conserva solo fuera de Git.
+No afirmar que speed es una nueva optimizacion de la APK: es control local
+del estado de compilacion. Retorno a politica habitual al terminar ensayos.
+
+Pendiente: causa fina del trabajo de aplicacion de cambios/primer layout y
+muestras de CPU/espera equivalentes. No dar por resuelto el pico frio.
+La navegacion caliente y los datos/logos se mantienen como en774.
+Evidencia privada185: /srv/drbep-dev/reviews/tv-cold-20261025
+Trazas/capturas, entry-windows.json, APKs y Binder.staged-experiment.kt.
+
+SEGUNDO ENSAYO: PERFIL DIRIGIDO SIN CAMBIO DE UI
+APK controlF y varianteG congeladas. Ambasrelease, misma firma/ABI/version,
+misma politica de mando y flags; solo se amplian cinco helpers del perfil.
+Instalacion+compilacionART speed-f en cada brazo,12s tras abrirHome, mismo grupo
+MovistarHLS y recorrido. Procesos distintos por instalacion. No mezclar con
+el experimento anterior de diferir detalles (ese sigue retirado).
+F1 primer pico540.174ms; G1 330.286ms; F2 564.478ms; G2 302.542ms.
+Orden alterno F/G/F/G: diferencia repetida, no una sola medida caliente.
+P95 global respectivamente23.677/26.198/26.890/26.000ms: no afirmar mejora
+sostenida de todas las filas. La reduccion principal esta en la entrada.
+Maxlayout201.196/106.091/261.956/111.252ms.
+Perfil amplificado: TvChannelRowTextKt,VisibleProgrammeRefreshKt,
+IntegratedChannelLogoView,LogoContrast,HomeProgramPresentation.
+Prueba bajo compilacioncompleta mide tambien disposicion/precarga del artefacto;
+no alega aislar el compilador JIT ni representa un telefono distinto.
+Se incorpora a candidata conjunta y requiere comprobar esta ultima antes de
+cerrar adopcion. Sigue quedando un pico inicial, no se declara fluidez perfecta.
+Evidencia privada reviews/tv-cold-20261025/profile-*-F*/G* .json/.trace.
+
+CANDIDATA CONJUNTA Y CONTROL PUBLICADO:
+J1 (panel,coordinacion y perfil, todoslos flags experimentales OFF):
+pico296.043ms; maxlayout89.482ms; p9525.977ms.
+Referencia774 reinstalada despues en iguales condiciones:
+pico404.752ms; maxlayout117.480ms; p9524.275ms.
+Comparacion corta favorable al pico de entrada, no una garantia de mejora
+uniforme del p95 ni de cada arranque. Se prueba ademas J con speed-profile
+antes de dejarla instalada; no alegar equivalencia de ese ensayo con speed-f.
+HashJ privadaFire:
+25b5b750374e0fdaba5fd9c9ae21847560358690f4284b5729656daacaff66a0
+Version774, firma de pruebas existente,915unitarios sinfallos. NO publicable.
+
+Limite del ensayo normal: Fire deniega cmd package compile --reset al usuario
+shell (solo sistema/root puede borrar perfiles). No se ha sorteado ni limpiado
+datos. INSTALL_PROFILE devuelve1(success), compile speed-profile-f success.
+Por tanto el ensayo conserva historialART existente; NO es instalacion limpia.
+
+ADVERTENCIA DE ADOPCION (medicion posterior):
+J speed-profile con perfil instalado da pico769.566ms, p9528.025,
+layout307.331ms. El resultado favorable con speed-f NO basta para decidir
+adopcion de distribucion. Se mide referencia y candidata sin ampliacion de
+perfil bajo el mismo speed-profile; no declarar cerrada la mejora inicial.
+
+DECISION FINAL PERFIL: RETIRADO.
+En speed-profile: referencia774718.329ms, candidata ampliada769.566ms,
+candidata MISMO CODIGO con perfil original428.285ms(p9526.242ms).
+No se sostiene el beneficio observado con speed-f: se restaura exactamente
+baseline-prof.reference.txt, sin cambiar otros archivos. Fire queda con
+dialog-budget-fire.apk, hash8342986e3a41357c9b561c9965d85b6c87a6fb444bdcf50f3abecd8064788f2d.
+915unitarios, todoslos flags experimentales OFF. Sin publicacion.
+La primera entrada permanece en seguimiento por variabilidad; no atribuir
+la diferencia de una unica muestra normal a una optimizacion garantizada.

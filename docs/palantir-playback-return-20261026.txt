@@ -1,0 +1,8 @@
+Regreso desde reproducción Palantir — 26 octubre 2026
+Fallo reproducido con Noche fatídica activa: Atrás abría Inicio con homeFocusedChannel=@preview y currentLive=null; ningún destino real recibía foco.
+Cambios acotados: MainActivity.returnToHome prioriza importedVodReturnAction para Palantir; LiveHomeLanding recupera groupFocus cuando el destino recordado no existe (incluida @preview sin TV).
+973 pruebas sin fallos. Candidata775 privada instalada en Fire: vídeo de película confirmado, Atrás vuelve al catálogo y derecha mueve foco; siguiente Atrás abre Inicio enfocado en plataforma; abajo selecciona La1 y OK sintoniza directo (H264/AAC/TS1080).
+APK SHA256 5583e25512dcb84be7680d9813b532cdb0ab9653ccab0d08a10ecc0e8f1b6f46.
+Respaldo/evidencia /srv/drbep-dev/reviews/palantir-playback-return-20261026.
+Sin publicación, commit/push ni cambios backend.
+Actualización Palantir comprobada: enabled true interval_hours168. Scheduler revisa cada15min; dashboard permite manual/24h/168h. Actualizar en app consulta catálogo servidor, no descarga fuente.

@@ -16,6 +16,34 @@ public class DeviceWebPanelTest {
             ByteArrayOutputStream response=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=s.getInputStream().read(b))!=-1)response.write(b,0,n);return response.toString("UTF-8");
         }
     }
+    @Test public void diagnosticObserverRequiresSessionAndValidBoundedBody() throws Exception {
+        AtomicInteger calls=new AtomicInteger();
+        DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+            public String status(){return "{}";}
+            public long importPlaylist(InputStream input){return 0;}
+            public String blackBoxLease(String client,long sequence,boolean active){
+                calls.incrementAndGet();return "{\"ok\":true}";
+            }
+        };
+        try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+            int port=panel.start();
+            String body=new JSONObject().put("client","tab-test").put("sequence",1).put("active",true).toString();
+            assertTrue(request(port,"POST","/blackbox-detail","",body,body.length()).startsWith("HTTP/1.1 401"));
+            String login=request(port,"POST","/session","",panel.pin(),6);
+            String token=new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token");
+            String auth="X-Panel-Token: "+token+"\r\n";
+            assertTrue(request(port,"POST","/blackbox-detail",auth,body,body.length()).startsWith("HTTP/1.1 200"));
+            assertTrue(request(port,"POST","/blackbox-detail",auth+"Origin: http://other.test\r\n",body,body.length()).startsWith("HTTP/1.1 403"));
+            for(String invalid:new String[]{
+                new JSONObject().put("client","bad/client").put("sequence",2).put("active",true).toString(),
+                new JSONObject().put("client","tab").put("sequence",0).put("active",true).toString(),
+                new JSONObject().put("client","tab").put("sequence",2).put("active","true").toString()}) {
+                assertTrue(request(port,"POST","/blackbox-detail",auth,invalid,invalid.length()).startsWith("HTTP/1.1 400"));
+            }
+            assertTrue(request(port,"POST","/blackbox-detail",auth,"",257).startsWith("HTTP/1.1 400"));
+            assertEquals(1,calls.get());
+        }
+    }
     @Test public void metadataControlsRequireSessionAndAllowOnlyKnownCommands() throws Exception {
         AtomicInteger calls=new AtomicInteger();
         DeviceWebPanel.Host host=new DeviceWebPanel.Host(){

@@ -31,4 +31,29 @@ public class HlsStartupPolicyTest {
         p.arm(true);p.cancel();
         assertFalse(p.shouldStart(false,false,true,500000,1f));
     }
+    @Test public void dvrRequiresItsOwnExplicitExperiment() {
+        assertFalse(HlsStartupPolicy.experimentEnabled(true,false,true,0));
+        assertTrue(HlsStartupPolicy.experimentEnabled(false,true,true,0));
+        assertFalse(HlsStartupPolicy.experimentEnabled(false,true,false,0));
+        assertTrue(HlsStartupPolicy.experimentEnabled(true,false,false,0));
+        assertFalse(HlsStartupPolicy.experimentEnabled(false,false,true,0));
+    }
+    @Test public void restoredDvrPositionNeverGetsTheInitialBufferOverride() {
+        assertFalse(HlsStartupPolicy.experimentEnabled(true,true,true,1));
+        assertFalse(HlsStartupPolicy.experimentEnabled(true,true,true,1729875600000L));
+        HlsStartupPolicy policy = new HlsStartupPolicy();
+        policy.arm(HlsStartupPolicy.experimentEnabled(false,true,true,0));
+        assertTrue(policy.shouldStart(false,false,true,500000,1f));
+        assertFalse(policy.shouldStart(false,false,true,500000,1f));
+    }
+    @Test public void continuousTsIsOnlyEligibleOnExplicitLiveDvrRoute() {
+        assertFalse(HlsStartupPolicy.eligible(true,false,false,false,false,false,"video/mp2t"));
+        assertTrue(HlsStartupPolicy.eligibleForRoute(true,false,false,false,false,false,true,"video/mp2t"));
+        assertFalse(HlsStartupPolicy.eligibleForRoute(true,false,false,false,false,false,false,"video/mp2t"));
+        for (int unsafe=0; unsafe<6; unsafe++) {
+            assertFalse(HlsStartupPolicy.eligibleForRoute(unsafe!=0,unsafe==1,unsafe==2,
+                    unsafe==3,unsafe==4,unsafe==5,true,"video/mp2t"));
+        }
+        assertFalse(HlsStartupPolicy.eligibleForRoute(true,false,false,false,false,false,true,"application/dash+xml"));
+    }
 }

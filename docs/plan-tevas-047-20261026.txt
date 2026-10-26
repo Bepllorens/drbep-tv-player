@@ -1,0 +1,238 @@
+PLAN DRBEP — revisión de Te Vas 0.4.7
+Fecha: 2026-10-26
+Estado: implantación iniciada en .185 el 26 de octubre.
+Bloque 0: preparación XMLTV conservada; comprobaciones Fire pendientes con TV encendida.
+Bloque 1: buscador independiente implementado; 927 tests sin fallos y release compilada.
+Faltan las comprobaciones del foco y la respuesta real en Fire con TV encendida.
+Bloque 2: progreso agrupado fuera de UI y detalle por pestaña implementados.
+943 pruebas Android y 63 del panel sin fallos; Chromium sobre fixture y release correctos.
+Cronología reconstruida con los hitos disponibles (no mide HTTP/decodificador por separado).
+Validación real de persistencia y coste con reproducción: pendiente con TV encendida.
+Bloque 3: controles de tamaño fijo, reloj de finalización y datos de pista implementados.
+954 tests sin fallos y compilación optimizada final correcta.
+Mando, táctil, medición de dibujo y composición visual real pendientes con TV/tablet.
+Bloque 4: lateral configurable y espacios estables del catálogo implementados.
+963 tests sin fallos y release compilada; comprobación visual/foco real pendiente.
+Bloque 5: Plex incremental implementado y compilado en el backend del .185.
+Paginado/confirmación atómica, estado por fuente y revisión completa opcional.
+Fixtures equivalentes, pruebas Plex con -race correctas; 2 fallos Node preexistentes.
+Despliegue, bibliotecas reales y comprobación Fire pendientes; nada activado.
+Bloque 6: agenda deportiva opcional pendiente; siguiente en el orden propuesto.
+Bloque 7: diagnóstico de red posterior; AceStream/torrents siguen siendo opcionales.
+No se ha instalado, publicado ni desplegado durante esta implantación.
+Detalle del bloque 1: docs/tevas-047-buscador-20261026.txt.
+Detalle del bloque 2: docs/tevas-047-progreso-diagnostico-20261026.txt.
+Detalle del bloque 3: docs/tevas-047-controles-20261026.txt.
+Detalle del bloque 4: docs/tevas-047-lateral-catalogo-20261026.txt.
+Detalle del bloque 5 (backend): /srv/drbep-dev/repos/drbep/docs/plex-incremental-20261026.txt.
+
+Prioridad intercalada por el usuario: Palantir, primera fase (26-10-2026).
+Catálogo compartido, permiso por usuario, dashboard y explorador Android implementados
+en .185. Catálogo real validado: 29.991 películas, 9.042 series, 585.124 variantes,
+1.361 colecciones; paginación completa. Fuente privada en reviews, nunca en Git.
+967 tests Android sin fallos; build optimizada compilada, sin publicar/instalar.
+Cuentas, reproducción y Trakt pendientes; validación física pendiente.
+Detalle: /srv/drbep-dev/repos/drbep/docs/palantir-20261026.txt.
+La agenda deportiva sigue pendiente tras esta prioridad.
+
+
+1. BASE VERIFICADA Y ALCANCE
+
+Te Vas: etiqueta v0.4.7, commit bce314ed8414898dc88e041ba6037849ecd35394.
+APK oficial: com.cineplex.owntv, versionName 0.4.7, versionCode 84, armeabi-v7a.
+Tamaño: 40.394.701 bytes.
+SHA256: 813147d1a7b1de90133a1a5d2637965b93dcaf02f3b27ed5665eaef3426790fe.
+Descargada y examinada en /srv/drbep-dev/reviews/tevas-047-20261026.
+18 recursos compartidos comparados: 16 idénticos byte a byte; los dos JSON
+de deportes restantes son semánticamente idénticos (diferencia de formato).
+Esto no demuestra equivalencia de todo el binario con las fuentes.
+La etiqueta aún contiene update.json de 0.4.6; el commit posterior de publicación
+actualiza ese fichero a 0.4.7. Se ha contrastado la APK con ese anuncio.
+
+DRBEP Android: /srv/drbep-dev/repos/drbep-tv-player
+Rama qoder/disneyplus-vod-582, HEAD a7df8fabdba067756ecd29ba6dd7bd4ca6a4b474.
+Backend: /srv/drbep-dev/repos/drbep
+Rama codex/backend-migration-20261015, HEAD 912b4a79c9ae0454e7772aff826ab8f3f1367b41.
+La comparación incluye los cambios locales pendientes, no solo HEAD.
+Análisis estático dirigido a reproducción, UI, tareas, catálogo, búsqueda y panel;
+no se afirma haber ejecutado todos los módulos ni probado la nueva APK en Fire.
+La TV está apagada; no se ha utilizado ADB en esta revisión.
+
+2. LO REALMENTE NUEVO Y LO QUE YA TENEMOS
+
+0.4.7 añade principalmente AceStream en M3U, ajustes y monitor de torrents.
+0.4.6 cambia DNS por defecto; 0.4.5 incorpora búsqueda/reproducción de torrents;
+0.4.4 compacta controles, añade información técnica y hora estimada de finalización;
+0.4.3 permite ordenar el menú. No atribuir todo esto exclusivamente a 0.4.7.
+
+DRBEP ya dispone de base indexada y paginación catchup, refresco selectivo, caché
+de imágenes, trabajos TMDB pausables por grupos, panel, caja negra, multiview,
+gestos, búsqueda global por fases y distintivos HDR/Dolby. Se extienden estas piezas;
+no se propone rehacerlas. No hay evidencia de que 0.4.7 por sí sola resuelva
+nuestros tiempos HLS. El ajuste HLS de producción y los experimentos descartados
+se conservan tal como recoge docs/plan-post-774-20261025.txt.
+
+3. ORDEN PROPUESTO
+
+BLOQUE 0 — cerrar la validación pendiente antes de ampliar reproducción
+- XMLTV grande: la preparación del .185 conserva exactamente los resultados;
+  falta medir en Fire importación con vídeo, cancelación, recarga y limpieza.
+  Referencia: docs/xmltv-load-20261026.txt.
+- Primera entrada TV y miniatura: separar creación de filas, layout, imágenes
+  y primer fotograma; recorridos fríos/calientes y regreso de pantalla completa.
+- Mantener pendientes la reproducción problemática de M+ Indie y la actualización
+  real en Xiaomi, según plan post-774. No declarar esos casos resueltos.
+- Nada de activar flags descartados o copiar umbrales de Te Vas sin comparación.
+
+BLOQUE 1 — buscador independiente por origen (prioridad alta, alcance medio)
+Evidencia DRBEP: MainActivity.fetchGlobalSearchRemoteResults publica resultados
+locales y después consulta Plex, EPG y grabaciones en una secuencia.
+Referencia Te Vas: discovery-core/.../SourceSearch.java.
+Propuesta:
+- Ejecutar orígenes independientes con concurrencia acotada y presupuesto propio.
+- Publicar cada bloque al llegar, preservando orden y foco; no sustituir la fila
+  enfocada al incorporarse otro proveedor.
+- Cancelar consultas antiguas al cambiar texto/filtro/cerrar; identidad por petición.
+- Distinguir proveedor inaccesible de resultado vacío; reintento explícito y
+  espera temporal tras fallos de conexión, sin ocultar resultados válidos.
+- Deduplícación conservadora por identidad estable, conservando origen y variantes.
+Pruebas: proveedor artificialmente lento/caído, misma colección final y permisos,
+ausencia de resultados antiguos, latencia hasta primer resultado y hasta EPG.
+Beneficio esperado: menor espera percibida; pendiente de medir, no cifra prometida.
+
+BLOQUE 2 — progreso de reproducción y diagnóstico (alta, medio)
+Referencias Te Vas:
+app/.../features/common/ProgressCheckpoint.kt
+app/.../features/torrent/TorrentMonitor.kt
+DRBEP: MainActivity.saveVodResumePositions reconstruye y serializa el mapa.
+Propuesta:
+- Medir llamadas/serialización antes de cambiar persistencia.
+- Evitar escrituras idénticas, agrupar actualizaciones periódicas y priorizar
+  pausa/salida; serialización fuera del hilo UI con instantánea consistente.
+- Asociar cada guardado a contenido/perfil/sesión; una operación antigua no puede
+  sobrescribir la nueva. No marcar éxito antes de confirmar la escritura.
+- Extender la caja negra/panel actuales con línea temporal por sesión:
+  resolución, petición, manifiesto, búfer, decodificador, superficie y primer frame.
+- Diagnóstico intensivo mediante suscripción temporal mientras el panel está abierto;
+  mantener registro básico acotado para fallos posteriores y expirar la suscripción.
+- Exportación por intervalo sin tokens, claves, cabeceras ni URLs sensibles.
+Pruebas: pausa/salida simultáneas, error de guardado, cambio rápido de título/perfil,
+panel cerrado y varias pestañas. Verificar progreso y ausencia de sondeo permanente.
+No crear un segundo sistema de logs.
+
+BLOQUE 3 — controles compactos y estables (alta, medio)
+Referencias: player/PlayerHudControls.kt, PlayerHudChrome.kt, FormatBadges.kt.
+- Una fila de acciones bajo la barra; etiquetas al enfocar sin animar el ancho
+  de toda la fila. Geometría fija, degradados reutilizados y reloj sin saltos.
+- Mantener acciones directas de multiview, audio, subtítulos, retorno al directo,
+  biblioteca de origen y acceso correcto entre timeshift/catchup.
+- Añadir “Termina a las…” en película/episodio cuando duración y velocidad sean
+  fiables. Ocultarlo en directo o duración desconocida.
+- Completar los distintivos existentes con resolución/canales/contenedor cuando
+  los datos sean fiables; no confundir formato de pista con salida real del receptor.
+- Iconos visualmente discretos, objetivos táctiles amplios, foco inequívoco.
+Validación: mando/táctil, pausa/avance, doble fila catchup, subtítulos, multiview;
+medir relayout/dibujo al enfocar y comprobar legibilidad a distancia.
+
+BLOQUE 4 — lateral configurable y catálogo visualmente estable (media, bajo/medio)
+Referencia: features/settings/NavMenuSettingsScreen.kt y capturas del repositorio.
+- Ordenar secciones y ocultar opcionales con identificadores estables.
+- Inicio y Ajustes siempre recuperables; opción de restaurar disposición.
+- No reordenar dinámicamente mientras se navega por cambios de catálogo.
+- Conservar foco inicial en miniatura y recordar posición de cada sección.
+- En Películas/Series mantener área de título/metadata de altura estable para que
+  los carruseles no salten, reservando espacio mientras llega la imagen.
+Conservar fuente anterior, degradados, lateral estrecho, dos filas catchup y espacio
+EPG. No copiar la columna fija ancha de grupos ni cargar catálogos al arrancar.
+
+BLOQUE 5 — Plex incremental y estado comprensible (alta si bibliotecas grandes, medio/alto)
+Referencia: plex-core/.../plex/PlexClient.java, LibrarySync.java, CatalogStore.java.
+DRBEP: internal/api/plex_vod.go, syncPlexVODSource recorre bibliotecas habilitadas
+y descarga sus vídeos; ya protege catálogos vacíos/pérdidas masivas.
+- Guardar marcador de cambios por biblioteca y omitir las no modificadas cuando
+  el servidor ofrezca señales fiables; si no, recorrido completo controlado.
+- No actualizar filas idénticas. Confirmar snapshot completo antes de bajas.
+- Mostrar última sincronización correcta, añadidos/cambiados y error por origen.
+- Mantener permisos, correcciones manuales, disponibilidad y progreso.
+Pruebas: misma biblioteca sin cambios, cambios parciales, servidor antiguo sin
+marcadores, fallo a mitad, eliminación masiva y reintento. Comparar contenido,
+bytes, peticiones, escrituras y tiempo. Primero fixtures .185; producción aparte.
+
+BLOQUE 6 — agenda deportiva opcional (función nueva, medio/alto)
+Referencia: features/sports/, SportsRepository.kt, SportsChannelPicker.kt.
+- Equipos/competiciones favoritas, próximos eventos y enlace a la EPG disponible.
+- Usar EPG/catálogo propio primero; proveedor externo opcional con caché y revisión
+  de condiciones de uso. No requerirlo para abrir la app.
+- Mostrar canal/proveedor elegido; dudas o variantes se resuelven explícitamente.
+  No elegir otro canal por parecido del nombre.
+- Avisos optativos y sección fuera del arranque si no se usa.
+Pruebas: huso horario, partidos aplazados, emisiones duplicadas, permisos,
+proveedor caído y resultados/caché. No es requisito del ciclo de estabilidad.
+
+BLOQUE 7 — diagnóstico de red y extensiones opcionales (posterior)
+DNS: DnsConfig.kt permite fallback y pausa temporal tras fallo.
+- Adoptar como mucho una opción de diagnóstico/configuración con prueba de
+  latencia y retorno a DNS del sistema. No imponer xdp.es por defecto a DRBEP.
+AceStream/torrents:
+- Son la novedad principal, pero añaden motor nativo, tráfico y consumo.
+- Solo valorar como módulo optativo si el usuario quiere usar esas fuentes.
+- Sin previsualización automática ni descargas al abrir Inicio; límites de CPU,
+  memoria, disco y conexiones. Te Vas también restringe Ace en multiview/grabación.
+- No sustituir el reproductor ni rediseñar el catchup existente para incorporarlos.
+No incluir grabación local DRM: el usuario ya decidió conservar grabación servidor.
+
+4. VALIDACIÓN Y ENTREGA POR BLOQUE
+
+Desarrollar solo .185. Datos sintéticos; conservar cambios pendientes.
+Comparar mismo corpus, hash de resultados y permisos; medir mediana, p95/máximo
+y coste UI/CPU/memoria donde corresponda, sin presentar asignaciones acumuladas
+como RAM residente. Eliminar experimentos sin mejora demostrable.
+Fire: solo con TV encendida, mando libre, APK release perfilable, respaldo y retorno.
+Tablet: foco táctil, scroll, progreso y actualización con APK universal firmada.
+No cambiar La 1/Vamos, asociaciones confirmadas, rutas o claves de reproducción.
+No publicar ni desplegar por el mero hecho de aprobar este documento; cada entrega
+debe separar código, tests .185, pruebas dispositivo, Git y publicación autorizada.
+
+5. LICENCIA Y FUENTES
+
+Te Vas declara GPLv3 y el componente Outpace declara AGPL.
+Usar las ideas mediante implementación propia en DRBEP; cualquier reutilización
+literal requiere comprobar compatibilidad y obligaciones de licencia.
+
+Repositorio: https://gitflic.ru/project/tevas/te-vas
+Código revisado:
+https://gitflic.ru/project/tevas/te-vas/commit/bce314ed8414898dc88e041ba6037849ecd35394
+Release 0.4.7:
+https://gitflic.ru/project/tevas/te-vas/release/fc9b19ea-16c8-4f7a-b0b6-cdac6dbc811f
+Release 0.4.6:
+https://gitflic.ru/project/tevas/te-vas/release/4f2599f7-3477-4e04-8056-c99217e0730b
+Release 0.4.4:
+https://gitflic.ru/project/tevas/te-vas/release/80b73918-6020-435b-a62f-4cc31ee72b1f
+
+
+
+ACTUALIZACIÓN 26/10 — PALANTIR / CUENTAS
+Segunda fase implementada en desarrollo: cuentas AllDebrid/1fichier por usuario
+en el dashboard offline, cifrado y resolución en backend, reproducción de variantes
+en Android y retorno al catálogo. El cliente no recibe claves del proveedor.
+Detalle y estado verificable en el checkout backend:
+ /srv/drbep-dev/repos/drbep/docs/palantir-accounts-20261026.txt
+ /srv/drbep-dev/reviews/palantir-accounts-20261026/validation.json
+Sin despliegue ni publicación; validación real de cuentas y Fire/tablet pendiente.
+No modifica el plan pendiente de HLS/XMLTV ni la reproducción de La 1/Vamos.
+
+
+DESPLIEGUE PALANTIR 26/10
+Backend/dashboard activos en .223 con migración 12 y puerta offline autorizada
+solo para /api/vod/palantir/; autenticación y administración privada conservadas.
+Fire .190: prueba 775 instalada preservando datos y firma existente. Catálogo,
+filtros, carátulas y ficha con variantes comprobados. Aviso de cuenta requerida
+validado sin cuentas guardadas. Reproducción real pendiente de configurar proveedor.
+Candidata 775 universal firmada de distribución preparada, no publicada.
+Canal beta continúa en 774; stable en 582. No se hace commit/push en esta entrega.
+Estado exacto: /srv/drbep-dev/reviews/palantir-deployment-20261026/deployment-verification.json
+
+ACTUALIZACIÓN DE VALIDACIÓN CON TV — 26/10
+Ver docs/cierre-beta-776-20261026.txt: sustituye los estados antiguos de pruebas
+Fire pendientes y recoge las limitaciones reales. La validación XMLTV completa,
+caché y cancelación terminó sin alterar datos originales. Publicación por verificar.

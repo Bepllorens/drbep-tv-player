@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Explicit, short-lived LAN session. No filesystem browsing or playback credentials are exposed. */
 final class DeviceWebPanel implements AutoCloseable {
-    interface Host { default String metadataIndexReview(String state,long after)throws Exception{throw new IOException();}  default String metadataIndexGroups(String source,String kind)throws Exception{throw new IOException();} default String metadataIndexSelection(String command,String source,String kind,String group)throws Exception{if(!group.isEmpty())throw new IOException();return metadataIndexSelection(command,source,kind);}  default String metadataIndexSelection(String command,String source,String kind)throws Exception {if(!source.isEmpty()||!kind.isEmpty())throw new IOException();return metadataIndex(command);}  default String metadataIndex(String command)throws Exception{throw new IOException();}  default String blackBox()throws Exception{return "{}";} default byte[] blackBoxExport()throws Exception{throw new IOException();} default byte[] blackBoxExport(int minutes)throws Exception{throw new IOException();} default String blackBoxCommand(String command)throws Exception{throw new IOException();} default byte[] screen()throws Exception{throw new IOException("Unavailable");} default String ui()throws Exception{throw new IOException("Unavailable");} default byte[] artwork(String id)throws Exception {throw new IOException("Unavailable");} String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
+    interface Host { default String metadataIndexReview(String state,long after)throws Exception{throw new IOException();}  default String metadataIndexGroups(String source,String kind)throws Exception{throw new IOException();} default String metadataIndexSelection(String command,String source,String kind,String group)throws Exception{if(!group.isEmpty())throw new IOException();return metadataIndexSelection(command,source,kind);}  default String metadataIndexSelection(String command,String source,String kind)throws Exception {if(!source.isEmpty()||!kind.isEmpty())throw new IOException();return metadataIndex(command);}  default String metadataIndex(String command)throws Exception{throw new IOException();}  default String blackBox()throws Exception{return "{}";} default byte[] blackBoxExport()throws Exception{throw new IOException();} default byte[] blackBoxExport(int minutes)throws Exception{throw new IOException();} default String blackBoxCommand(String command)throws Exception{throw new IOException();} default String blackBoxLease(String client,long sequence,boolean active)throws Exception{throw new IOException();} default byte[] screen()throws Exception{throw new IOException("Unavailable");} default String ui()throws Exception{throw new IOException("Unavailable");} default byte[] artwork(String id)throws Exception {throw new IOException("Unavailable");} String status(); long importPlaylist(InputStream input) throws Exception; default String enqueuePlaylist(InputStream input)throws Exception {return "{\"entries\":"+importPlaylist(input)+"}";} default String manage(String json) throws Exception { throw new IOException("Unavailable"); } }
     static final class PanelError extends IOException { PanelError(String message){super(message);} }
     private final Host host;
     private final byte[] page;
@@ -82,6 +82,19 @@ final class DeviceWebPanel implements AutoCloseable {
                         reply(out,200,"application/json",command.equals("groups")?host.metadataIndexGroups(source,kind):host.metadataIndexSelection(command,source,kind,group));
                     }else reply(out,400,"text/plain","Invalid request");
                 }catch(Exception e){reply(out,503,"text/plain","Indexación no disponible");}
+                return;
+            }
+            if(path.equals("/blackbox-detail")){
+                if(!method.equals("POST") || length<1 || length>256){reply(out,400,"text/plain","Invalid request");return;}
+                String client;long sequence;boolean active;
+                try{
+                    org.json.JSONObject data=new org.json.JSONObject(new String(read(in,(int)length),StandardCharsets.UTF_8));
+                    client=data.getString("client");sequence=data.getLong("sequence");
+                    if(!client.matches("[A-Za-z0-9_-]{1,64}") || sequence<1 || !(data.get("active") instanceof Boolean))throw new IllegalArgumentException();
+                    active=data.getBoolean("active");
+                }catch(Exception invalid){reply(out,400,"text/plain","Invalid observer");return;}
+                try{reply(out,200,"application/json",host.blackBoxLease(client,sequence,active));}
+                catch(Exception unavailable){reply(out,503,"text/plain","Diagnóstico no disponible");}
                 return;
             }
             if(path.equals("/blackbox")||path.equals("/blackbox-export")){

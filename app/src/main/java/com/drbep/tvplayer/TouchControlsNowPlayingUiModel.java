@@ -17,6 +17,8 @@ public final class TouchControlsNowPlayingUiModel {
             ""
     );
 
+    public String playbackTrackInfo = "";
+    public long estimatedFinishAtMs;
     public final boolean visible;
     public final String logoUrl;
     public final String channelBadge;

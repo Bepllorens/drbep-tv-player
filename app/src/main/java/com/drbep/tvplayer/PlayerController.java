@@ -483,6 +483,7 @@ final class PlayerController {
     private VlcDirectPlayController vlcDirectPlayController;
     private PlaybackRequest currentRequest;
     private boolean suspendedForMultiView;
+    private long blackBoxPlayback=BlackBox.operation();
     private final long blackBoxWindow=BlackBox.operation();
     private boolean blackBoxWindowClosed;
     private void multiEvent(BlackBoxStore.Event type,long a,long b,long c){
@@ -940,8 +941,11 @@ final class PlayerController {
                 if (!(tag instanceof PlaybackAttemptTag)) return;
                 RemoteZapTrace.Sample sample = remoteZapTrace.frame(
                         ((PlaybackAttemptTag)tag).generation, renderTimeMs);
-                if (sample != null) BlackBox.event(BlackBoxStore.Event.ZAP_FRAME,
-                        sample.operation, sample.pressToFrameMs, sample.tuneToFrameMs, sample.generation);
+                if (sample != null) {
+                    BlackBox.event(BlackBoxStore.Event.ZAP_FRAME,
+                            sample.operation, sample.pressToFrameMs, sample.tuneToFrameMs, sample.generation);
+                    perfStage("zap pressMs=" + sample.pressToFrameMs + " tuneMs=" + sample.tuneToFrameMs);
+                }
             }
 
             @Override public void onVideoDecoderInitialized(EventTime eventTime,String decoderName,long initializedTimestampMs,long initializationDurationMs) { panelVideoDecoder=decoderName; perfStage("decoder initMs=" + initializationDurationMs); }
@@ -960,6 +964,15 @@ final class PlayerController {
 
             @Override public void onVideoInputFormatChanged(EventTime time,Format format,
                     androidx.media3.exoplayer.DecoderReuseEvaluation reuse) {
+                if (!firstFrameRenderedForCurrentItem && "beta".equals(BuildConfig.UPDATE_CHANNEL)
+                        && time.windowIndex >= 0 && time.windowIndex < time.timeline.getWindowCount()) {
+                    MediaItem item = time.timeline.getWindow(time.windowIndex, new Timeline.Window()).mediaItem;
+                    Object tag = item.localConfiguration == null ? null : item.localConfiguration.tag;
+                    if (tag instanceof PlaybackAttemptTag
+                            && ((PlaybackAttemptTag) tag).generation == playbackAttemptGeneration.get()) {
+                        perfStage("videoInput width=" + format.width + " height=" + format.height);
+                    }
+                }
                 updateSelectedPlaybackFormats();maybeShowHdrBadge();reportMultiCompositionAspect();
             }
         });
@@ -983,17 +996,10 @@ final class PlayerController {
         playerView.setFocusable(true);
         playerView.setFocusableInTouchMode(true);
 
-        player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener() {
-            @Override
-            public void onVideoInputFormatChanged(EventTime eventTime, Format format,
-                    androidx.media3.exoplayer.DecoderReuseEvaluation decoderReuseEvaluation) {
-                updateSelectedPlaybackFormats();
-            }
-        });
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
-                BlackBox.event(BlackBoxStore.Event.PLAY_ERROR,playbackAttemptGeneration.get(),error.errorCode,0,0);
+                BlackBox.event(BlackBoxStore.Event.PLAY_ERROR,blackBoxPlayback,error.errorCode,0,0);
                 multiEvent(BlackBoxStore.Event.MULTI_ERROR,error.errorCode,playbackAttemptGeneration.get(),0);
                 PlaybackRequest request = currentRequest;
                 PlaybackRouteResolver.Decision decision = currentPlaybackDecision;
@@ -1037,7 +1043,7 @@ final class PlayerController {
 
             @Override
             public void onPlaybackStateChanged(int playbackState) {
-                BlackBox.event(BlackBoxStore.Event.PLAY_STATE,playbackAttemptGeneration.get(),playbackState,0,0);
+                BlackBox.event(BlackBoxStore.Event.PLAY_STATE,blackBoxPlayback,playbackState,0,0);
                 multiEvent(BlackBoxStore.Event.MULTI_STATE,playbackState,playbackAttemptGeneration.get(),0);
                 lastPlaybackState = playbackStateToString(playbackState);
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
@@ -1170,8 +1176,8 @@ final class PlayerController {
                 resetPlaybackProgressBaseline();
                 schedulePlaybackProgressWatchdog();
                 long elapsedMs = currentPrepareStartedMs <= 0L ? -1L : SystemClock.elapsedRealtime() - currentPrepareStartedMs;
-                if(!repeatedSurfaceFrame)BlackBox.event(BlackBoxStore.Event.PLAY_FRAME,playbackAttemptGeneration.get(),elapsedMs,startupPreviewAttached?1:0,0);
-                else if(blackBoxSurfaceSwitchMs>0)BlackBox.event(BlackBoxStore.Event.SURFACE_FRAME,playbackAttemptGeneration.get(),
+                if(!repeatedSurfaceFrame)BlackBox.event(BlackBoxStore.Event.PLAY_FRAME,blackBoxPlayback,elapsedMs,startupPreviewAttached?1:0,0);
+                else if(blackBoxSurfaceSwitchMs>0)BlackBox.event(BlackBoxStore.Event.SURFACE_FRAME,blackBoxPlayback,
                     SystemClock.elapsedRealtime()-blackBoxSurfaceSwitchMs,startupPreviewAttached?1:0,0);
                 if(!repeatedSurfaceFrame)multiEvent(BlackBoxStore.Event.MULTI_FRAME,elapsedMs,playbackAttemptGeneration.get(),host.multiViewQualityRole());
                 blackBoxSurfaceSwitchMs=0;
@@ -1409,7 +1415,8 @@ final class PlayerController {
         lastPlaybackState = "BUFFERING";
         transitionPlaybackPhase("buffering");
         currentPrepareStartedMs = SystemClock.elapsedRealtime();
-        BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,playbackAttemptGeneration.get(),0,0,0);
+        blackBoxPlayback=BlackBox.operation();
+        BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,blackBoxPlayback,0,0,1);
         multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
         perfStage("prepare");
         currentReadyElapsedMs = -1L;
@@ -2215,19 +2222,19 @@ final class PlayerController {
         if(nowMs-blackBoxVideoSampleMs>=BlackBox.sampleInterval()){
             blackBoxVideoSampleMs=nowMs;
             long sampleBufferMs=activePlayer.getTotalBufferedDuration();
-            BlackBox.event(BlackBoxStore.Event.PLAYBACK_SAMPLE,playbackAttemptGeneration.get(),
+            BlackBox.event(BlackBoxStore.Event.PLAYBACK_SAMPLE,blackBoxPlayback,
                 activePlayer.getCurrentPosition(),sampleBufferMs,
                 PlaybackSampleFlags.encode(activePlayer.getPlaybackState(),activePlayer.getPlayWhenReady(),
                     activePlayer.isPlaying(),activePlayer.isLoading(),activePlayer.getPlaybackSuppressionReason()!=Player.PLAYBACK_SUPPRESSION_REASON_NONE));
             androidx.media3.exoplayer.DecoderCounters audio=activePlayer.getAudioDecoderCounters();
             if(audio!=null) {
                 audio.ensureUpdated();
-                BlackBox.event(BlackBoxStore.Event.AUDIO_COUNTERS,playbackAttemptGeneration.get(),
+                BlackBox.event(BlackBoxStore.Event.AUDIO_COUNTERS,blackBoxPlayback,
                     audio.renderedOutputBufferCount,audio.skippedOutputBufferCount,sampleBufferMs);
             }
             androidx.media3.exoplayer.DecoderCounters counts=activePlayer.getVideoDecoderCounters();
             if(counts!=null){counts.ensureUpdated();BlackBox.event(BlackBoxStore.Event.VIDEO_COUNTERS,
-                playbackAttemptGeneration.get(),counts.renderedOutputBufferCount,counts.droppedBufferCount,activePlayer.getTotalBufferedDuration());
+                blackBoxPlayback,counts.renderedOutputBufferCount,counts.droppedBufferCount,activePlayer.getTotalBufferedDuration());
                 multiEvent(BlackBoxStore.Event.MULTI_COUNTERS,counts.renderedOutputBufferCount,counts.droppedBufferCount,activePlayer.getTotalBufferedDuration());}
         }
         if (homePreviewMode && "beta".equals(BuildConfig.UPDATE_CHANNEL) && nowMs - lastPreviewMetricsMs >= 5000L) {
@@ -3326,16 +3333,19 @@ final class PlayerController {
             + " streamInfo=" + describeStreamInfo(streamInfo)
             + " resumeMs=" + resumePositionMs);
         currentPrepareStartedMs = SystemClock.elapsedRealtime();
-        BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,playbackAttemptGeneration.get(),0,0,0);
+        blackBoxPlayback=BlackBox.operation();
+        BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,blackBoxPlayback,0,0,1);
         multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
         perfStage("prepare");
         currentReadyElapsedMs = -1L;
-        boolean fastHls = HlsStartupPolicy.eligible(BuildConfig.FAST_HLS_STARTUP,
+        boolean liveDvr = usesHlsDvr();
+        boolean fastHls = HlsStartupPolicy.eligibleForRoute(HlsStartupPolicy.experimentEnabled(
+                        BuildConfig.FAST_HLS_STARTUP, BuildConfig.FAST_HLS_DVR_STARTUP, liveDvr, hlsDvrTarget),
                 request.vod, "u7d_proxy".equalsIgnoreCase(request.playbackProfile),
-                host.isMultiViewPlayback(), useFallback, resumePositionMs > 0L || usesHlsDvr(),
+                host.isMultiViewPlayback(), useFallback, resumePositionMs > 0L, liveDvr,
                 decision.mimeType);
         hlsStartupLoadControl.arm(fastHls, safeString(request.channelId));
-        perfStage("startup fastHls=" + fastHls + " initialMs=" + (fastHls ? 500 : 1500));
+        perfStage("startup fastHls=" + fastHls + " initialMs=" + (fastHls ? 500 : 1500) + " dvr=" + liveDvr + " format=" + safeString(decision.mimeType));
         builder.setTag(new PlaybackAttemptTag(generation));
         player.setMediaItem(builder.build());
         if (resumePositionMs > 0L) {
@@ -3998,6 +4008,34 @@ final class PlayerController {
                 && (decision.targetUrl.contains("/hls/ism/")
                 || decision.targetUrl.contains("/hls/ism-mux/"))
                 && isHlsDecision(decision);
+    }
+
+    private Format hudVideoFormat, hudAudioFormat;
+    private String hudTrackInfo = "";
+    String getPlaybackTrackInfo(String contentId) {
+        if (player == null || currentRequest == null || isVlcDirectPlayActive()
+                || !java.util.Objects.equals(contentId, currentRequest.channelId)) return "";
+        Format video = player.getVideoFormat(), audio = player.getAudioFormat();
+        if (video != hudVideoFormat || audio != hudAudioFormat) {
+            hudVideoFormat = video; hudAudioFormat = audio;
+            hudTrackInfo = PlaybackFormatBadges.details(video, audio);
+        }
+        return hudTrackInfo;
+    }
+
+    private boolean hasCurrentHudVod(String contentId) {
+        return player != null && currentRequest != null && currentRequest.vod
+                && java.util.Objects.equals(contentId, currentRequest.channelId) && !isVlcDirectPlayActive();
+    }
+
+    long getHudVodDurationMs(String contentId) {
+        return hasCurrentHudVod(contentId) ? Math.max(0L, player.getDuration()) : 0L;
+    }
+
+    long getVodFinishEstimate(String contentId, long nowMs) {
+        if (!hasCurrentHudVod(contentId)) return 0;
+        return PlaybackFinishEstimate.calculate(nowMs, player.getCurrentPosition(), player.getDuration(),
+                player.getPlaybackParameters().speed, player.isPlaying(), player.isCurrentMediaItemLive());
     }
 
     String getVodStreamInfo() {

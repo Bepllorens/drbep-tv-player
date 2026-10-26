@@ -40,12 +40,25 @@ public final class ComposeDialogHost {
     public static Dialog showFullscreen(Context context, View content, CancelHandler onCancel, DismissHandler onDismiss) {
         Dialog dialog = new Dialog(context, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen) {
             @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+                // Dialog windows receive input without Activity.dispatchKeyEvent.
+                // Give cooperative background jobs the same quiet period here.
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    BackgroundWorkBudget.interaction();
+                }
                 if(context instanceof MainActivity && ((MainActivity)context).handleSearchShortcut(event)) return true;
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
                         && WindowFocusRecovery.navigationKey(event.getKeyCode())) {
                     WindowFocusRecovery.recover(getWindow(), content);
                 }
                 return super.dispatchKeyEvent(event);
+            }
+            @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+                int action = event.getActionMasked();
+                if (action == android.view.MotionEvent.ACTION_DOWN
+                        || action == android.view.MotionEvent.ACTION_MOVE) {
+                    BackgroundWorkBudget.interaction();
+                }
+                return super.dispatchTouchEvent(event);
             }
             @Override public void onWindowFocusChanged(boolean focused) {
                 super.onWindowFocusChanged(focused);

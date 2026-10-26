@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.TextStyle
@@ -194,14 +195,18 @@ internal object ImportedMovies {
         SeriesEpisodes(repo,selected!!,seriesPositions.getOrPut(selected!!.id){SeriesPosition()},{episodes=false}) {channel->play(channel)}
         return
     }
+    val heroHorizontal = remember { Brush.horizontalGradient(listOf(Color(0xFF0B1018),Color(0xDD0B1018),Color(0x550B1018))) }
+    val heroVertical = remember { Brush.verticalGradient(listOf(Color.Transparent,Color(0xEE0B1018))) }
+    val browseHeaderHeight = (104f * LocalDensity.current.fontScale + 22f).dp
     Box(Modifier.fillMaxSize().tvPanelBackHandler(goBack).background(Color(0xFF0B1018))) {
         selected?.backdrop?.takeIf{it.isNotBlank()}?.let{MovieArt(it,Modifier.fillMaxSize(),true)}
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xFF0B1018),Color(0xDD0B1018),Color(0x550B1018)))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent,Color(0xEE0B1018)))))
+        Box(Modifier.fillMaxSize().background(heroHorizontal))
+        Box(Modifier.fillMaxSize().background(heroVertical))
         Column(Modifier.fillMaxSize().focusProperties{canFocus=picker==null}.padding(horizontal=28.dp,vertical=16.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-                BasicText(if(details) if(repo.series)"Ficha de serie" else "Ficha de película" else if(repo.series)"Series · Mis listas" else "Películas · Mis listas",style=TextStyle(Color.White,24.sp,FontWeight.Bold))
-                Spacer(Modifier.weight(1f));MovieButton("Volver",modifier=Modifier.focusRequester(navigation.back).movieDirections{if(it==android.view.KeyEvent.KEYCODE_DPAD_DOWN)navigation.filter(navigation.filterIndex)}){goBack.run()}
+                BasicText(if(details) if(repo.series)"Ficha de serie" else "Ficha de película" else if(repo.series)"Series · Mis listas" else "Películas · Mis listas",
+                    modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(Color.White,24.sp,FontWeight.Bold))
+                MovieButton("Volver",modifier=Modifier.focusRequester(navigation.back).movieDirections{if(it==android.view.KeyEvent.KEYCODE_DPAD_DOWN)navigation.filter(navigation.filterIndex)}){goBack.run()}
             }
             if(!details) LazyRow(state=toolbarState,horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(vertical=8.dp)) {
                 item {MovieButton("Lista: "+(page?.sources?.find{it.first==filter.source}?.second?:"Todas"),modifier=filterModifier(navigation,0)){
@@ -213,10 +218,15 @@ internal object ImportedMovies {
                 item {MovieButton("Ordenar",modifier=filterModifier(navigation,4)){pick("Ordenar ${repo.label}",listOf("Añadidas recientemente" to "added","Fecha de estreno" to "release","Título A–Z" to "title","Valoración" to "rating").map{(label,id)->label to {change(filter.copy(order=id))}})}}
             }
             val item=selected
-            Column(Modifier.fillMaxWidth().height(if(details)250.dp else 126.dp).padding(vertical=7.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                BasicText(item?.title?:"Tu biblioteca de ${repo.label}",maxLines=2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color.White,26.sp,FontWeight.Bold))
-                BasicText(item?.meta.orEmpty(),style=TextStyle(OfflineTvTheme.Colors.accentCyan,12.sp))
-                BasicText(item?.description?.ifBlank{"Ficha pendiente de identificar. Puedes reproducir con los datos de tu lista."}?:if(page!=null)"Importa una lista M3U desde Mis listas para añadir ${repo.label}." else "Cargando catálogo local…",maxLines=if(details)6 else 2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFFCFD7E0),13.sp))
+            Column(Modifier.fillMaxWidth().height(if(details)250.dp else browseHeaderHeight).padding(vertical=7.dp),
+                verticalArrangement=Arrangement.spacedBy(if(details)6.dp else 4.dp)) {
+                BasicText(item?.title?:"Tu biblioteca de ${repo.label}",minLines=if(details)1 else 2,maxLines=2,overflow=TextOverflow.Ellipsis,
+                    style=TextStyle(Color.White,26.sp,FontWeight.Bold,lineHeight=28.sp))
+                BasicText(item?.meta.orEmpty(),minLines=1,maxLines=1,overflow=TextOverflow.Ellipsis,
+                    style=TextStyle(OfflineTvTheme.Colors.accentCyan,12.sp,lineHeight=16.sp))
+                BasicText(item?.description?.ifBlank{"Ficha pendiente de identificar. Puedes reproducir con los datos de tu lista."}?:if(page!=null)"Importa una lista M3U desde Mis listas para añadir ${repo.label}." else "Cargando catálogo local…",
+                    minLines=if(details)1 else 2,maxLines=if(details)6 else 2,overflow=TextOverflow.Ellipsis,
+                    style=TextStyle(Color(0xFFCFD7E0),13.sp,lineHeight=16.sp))
                 if(details&&item!=null){
                     val cast=item.metadata?.optJSONArray("cast")
                     BasicText(cast?.let{a->"Reparto: "+(0 until a.length()).joinToString(", "){a.getString(it)}}.orEmpty(),maxLines=2,style=TextStyle(Color(0xFF9FB0C2),12.sp))
@@ -247,7 +257,8 @@ internal object ImportedMovies {
                 LazyColumn(Modifier.weight(1f),state=columnState,verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     itemsIndexed(page?.shelves.orEmpty(),key={_,shelf->shelf.name}) { row,shelf ->
                         Column {
-                            BasicText(shelf.name,style=TextStyle(OfflineTvTheme.Colors.accentCyan,16.sp,FontWeight.Bold))
+                            BasicText(shelf.name,minLines=1,maxLines=1,overflow=TextOverflow.Ellipsis,
+                                style=TextStyle(OfflineTvTheme.Colors.accentCyan,16.sp,FontWeight.Bold,lineHeight=20.sp))
                             val rowState=rememberLazyListState()
                             DisposableEffect(shelf.name,rowState){navigation.rowStates[shelf.name]=rowState;onDispose{navigation.rowStates.remove(shelf.name)}}
                             LazyRow(state=rowState,horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(vertical=6.dp),modifier=Modifier.focusGroup()) {
@@ -262,8 +273,9 @@ internal object ImportedMovies {
                                         .border(if(focus)2.dp else 0.dp,if(focus)Color.White else Color.Transparent,RoundedCornerShape(4.dp))
                                         .semantics(mergeDescendants=true){contentDescription="${movie.title} · ${shelf.name}";role=Role.Button}.clickable{selected=movie;details=true}.padding(3.dp)) {
                                         MovieArt(if(selected?.id==movie.id) selected!!.poster else movie.poster,Modifier.fillMaxWidth().height(140.dp),false,repo.series && (if(selected?.id==movie.id)selected?.metadata else movie.metadata)?.optString("poster").isNullOrBlank())
-                                        BasicText(movie.title,maxLines=2,overflow=TextOverflow.Ellipsis,style=TextStyle(Color.White,12.sp,FontWeight.Bold),modifier=Modifier.padding(top=5.dp))
-                                        BasicText(if(movie.progress>30000)"Continuar · ${movie.progress/60000} min" else movie.group.ifBlank{movie.provider},maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFF9FB0C2),10.sp))
+                                        BasicText(movie.title,minLines=2,maxLines=2,overflow=TextOverflow.Ellipsis,
+                                            style=TextStyle(Color.White,12.sp,FontWeight.Bold,lineHeight=14.sp),modifier=Modifier.padding(top=5.dp))
+                                        BasicText(if(movie.progress>30000)"Continuar · ${movie.progress/60000} min" else movie.group.ifBlank{movie.provider},minLines=1,maxLines=1,overflow=TextOverflow.Ellipsis,style=TextStyle(Color(0xFF9FB0C2),10.sp,lineHeight=12.sp))
                                     }
                                 }
                             }
@@ -289,7 +301,8 @@ internal object ImportedMovies {
 @Composable private fun MovieButton(label:String,initial:Boolean=false,modifier:Modifier=Modifier,onClick:()->Unit) {
     var focused by remember{mutableStateOf(false)}
     val requester=rememberTvInitialFocusRequester(initial,label)
-    BasicText(label,maxLines=2,style=TextStyle(if(focused)Color(0xFF101722)else Color.White,12.sp,FontWeight.Bold),modifier=modifier
+    BasicText(label,maxLines=1,overflow=TextOverflow.Ellipsis,
+        style=TextStyle(if(focused)Color(0xFF101722)else Color.White,12.sp,FontWeight.Bold),modifier=modifier.widthIn(max=240.dp)
         .then(if(initial)Modifier.focusRequester(requester)else Modifier)
         .onFocusChanged{focused=it.isFocused}.background(if(focused)Color.White else Color.Transparent,RoundedCornerShape(4.dp))
         .semantics(mergeDescendants=true){contentDescription=label;role=Role.Button}.clickable(onClick=onClick).padding(horizontal=12.dp,vertical=10.dp))

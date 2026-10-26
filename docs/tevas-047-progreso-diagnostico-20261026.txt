@@ -1,0 +1,127 @@
+Te Vas 0.4.7 — bloque 2: progreso y diagnóstico bajo demanda
+Fecha: 2026-10-26. Implementado y validado en .185.
+Sin instalación, publicación, push ni cambios de producción. TV apagada.
+
+PROGRESO
+MainActivity captura instantáneas inmutables de posiciones, duraciones y fechas.
+ResumeProgressStore agrupa las actualizaciones pendientes por tipo de historial.
+Un único trabajador serializa JSON y confirma la escritura fuera del hilo de UI.
+Si llegan actualizaciones nuevas, conserva la última; una escritura que ya empezó
+termina antes de la nueva. VOD y grabaciones mantienen sus formatos previos.
+
+Pausas o callbacks repetidos con la misma posición/duración no vuelven a actualizar
+la fecha ni serializan de nuevo el historial. Los fallos de escritura siguen siendo
+reintentables. Solo se reconoce como guardado lo que confirma el almacenamiento.
+Los snapshots capturan las claves del contenido al solicitar el guardado; no leen
+el reproductor ni los mapas mutables desde el trabajador.
+
+El servicio de escritura solo conserva SharedPreferences e instantáneas numéricas,
+sin Activity ni Player. La última instantánea en memoria permite recrear la pantalla
+sin leer un fichero que aún no se ha actualizado. La sesión de la pantalla impide
+que callbacks de otra pantalla anterior envíen guardados tardíos. Cambiar de ámbito
+invalida el trabajo pendiente del anterior; los trabajos ya iniciados siguen el
+orden del trabajador. No se cambia la organización histórica de las preferencias
+ni se introduce una migración de perfiles.
+
+Borrar historial usa el mismo escritor, con una instantánea vacía; por tanto una
+escritura anterior no puede volver a restaurarlo después del borrado.
+Se mantiene la persistencia específica HBO existente.
+Se añade PROGRESS_WRITE a la caja negra: tiempo, número de entradas y éxito/fallo,
+sin identificadores, títulos ni URLs.
+La captura de valores y la resolución existente de duraciones permanecen en UI;
+la serialización JSON y la escritura se hacen en el trabajador.
+
+DIAGNÓSTICO BAJO DEMANDA
+El botón del panel pasa a “Activar detalle en esta pestaña”.
+Mientras Diagnóstico está visible renueva una autorización de 20 segundos cada
+7 segundos. Ocultar la pestaña, cambiar de apartado, desconectar o salir envía
+la liberación y detiene el temporizador. Cerrar sin avisar deja caducar la
+autorización. La frecuencia básica de la caja negra se conserva.
+
+Cada pestaña utiliza un identificador efímero propio. Una no cancela a las demás.
+Secuencias crecientes impiden que una renovación antigua reactive una observación
+ya liberada o que una liberación antigua corte una observación nueva.
+El conjunto está acotado a 16 observadores y conserva brevemente los números de
+secuencia al liberar para rechazar peticiones que lleguen desordenadas.
+La ruta POST /blackbox-detail exige sesión emparejada, mismo origen y cuerpo
+acotado; no acepta clientes, secuencias o tipos inválidos.
+Se conserva el comando manual anterior de detalle temporal para compatibilidad.
+
+CRONOLOGÍA
+El panel reconstruye las últimas ocho reproducciones al consultar el registro,
+usando los eventos existentes. Muestra preparación, búfer inicial, estado listo,
+primer fotograma, cambio de superficie y errores cuando esos hitos existen.
+Los tiempos son acumulados desde preparar la reproducción; no deben sumarse.
+No se atribuyen tiempos a resolución HTTP, descarga del manifiesto o inicialización
+del decodificador si no hay un evento inequívoco para medirlos por separado.
+Esa instrumentación más fina queda como extensión posterior del diagnóstico.
+
+Los eventos de PlayerController pasan a usar una operación global única por
+preparación. Esto evita mezclar reproductores de multiview o reconstrucciones.
+Solo cambia la correlación de telemetría: las generaciones de Media3, reintentos,
+rutas, superficies y decisiones de reproducción quedan intactas.
+Los registros viejos ambiguos no se convierten en cronologías nuevas.
+La exportación por intervalo y la redacción de datos existentes se conservan.
+
+VALIDACIÓN .185
+943 pruebas Android: 0 fallos, 0 errores. Incluyen:
+- ráfagas de actualizaciones y tipos de historial independientes;
+- instantáneas inmutables y recreación antes de escribir;
+- fallo de escritura y reintento sin cambio de posición;
+- retorno al valor ya guardado cuando hay otro distinto pendiente;
+- borrado durante escritura en curso;
+- cambio de ámbito y rechazo de callbacks antiguos;
+- expiración, varias pestañas y peticiones desordenadas;
+- autenticación, origen y límites del contrato HTTP;
+- cronologías por reproducción/proceso y rechazo de datos ambiguos.
+
+63 pruebas de lógica del panel: 0 fallos.
+Chromium / Playwright sobre fixture local del .185:
+- inicio, renovación y liberación del detalle al volver a Resumen;
+- secuencias 1, 2, 3 activas y 4 liberada;
+- ninguna petición adicional de detalle después de salir;
+- cronologías de reproducción con éxito y fallo visibles;
+- captura revisada en output/playwright/diagnostics.png.
+La primera maqueta no implementaba las rutas /screen y /ui; se completó la maqueta
+y se repitió la comprobación. No era un fallo de conexión al dispositivo real.
+La maqueta no contacta con producción ni incluye datos de usuarios.
+
+Compilación assembleRelease beta ARM32 perfilable: BUILD SUCCESSFUL.
+Candidata privada todavía sin firma de instalación:
+  /srv/drbep-dev/reviews/tevas-047-progress-20261026/progress-diagnostics-774-arm32-unsigned.apk
+SHA256:
+  8cc4b3d69bf08a20f1d6375535ca6ba2e1d9ab54c0469dae5106c4265746a8ce
+VersionCode 774, armeabi-v7a. No es una beta nueva publicada.
+Antes de instalar habrá que aplicar la firma de pruebas compatible y registrar
+la huella del artefacto firmado que se vaya a probar.
+
+MEDIDA SINTÉTICA
+Historial de 1.000 títulos; ráfaga de 25 actualizaciones recibidas antes de que
+el trabajador vacíe la cola. Dos vueltas de calentamiento y diez medidas.
+Trabajo del hilo llamante por ráfaga:
+- mediana antes 31,101 ms; después 1,200 ms;
+- máximo antes 37,378 ms; después 5,935 ms.
+Serializaciones/escrituras en ese escenario: 25 -> 1.
+JSON final semánticamente idéntico en 12/12 ejecuciones.
+No representa la latencia del disco ni demuestra una mejora de fotogramas en Fire.
+
+EVIDENCIAS Y RETORNO
+/srv/drbep-dev/reviews/tevas-047-progress-20261026
+before/: archivos previos, incluidos los cambios del buscador y otros pendientes.
+progress-benchmark.txt y ResumeProgressBenchmark.java: medidas y corpus.
+diagnostics-tests.log, panel-regression-final.log, final-build.log: validación.
+artifact.json: versión, tamaño y huella de la candidata.
+player-telemetry-only.diff: diferencias de telemetría respecto al estado previo.
+Para retorno, retirar solo las clases e integraciones de este bloque, comparando
+con before. No usar reset general ni revertir mejoras anteriores.
+
+PENDIENTE CON TV ENCENDIDA / TABLET
+- Firmar e instalar candidata compatible conservando datos y respaldo.
+- Película/episodio: avanzar, pausar, salir y volver a abrir; verificar progreso.
+- Repetir con grabación y cambio de título, y borrar progreso.
+- Abrir/cerrar rápidamente pantalla y verificar que no reaparece progreso antiguo.
+- Mientras reproduce: activar detalle, ocultar/cerrar panel y confirmar caducidad,
+  coste del muestreo, sonido/vídeo y cronología real.
+- Regresión de miniatura, pantalla completa y multiview.
+Siguen pendientes XMLTV y foco del buscador del bloque anterior.
+Siguiente bloque del plan: controles compactos y estables.

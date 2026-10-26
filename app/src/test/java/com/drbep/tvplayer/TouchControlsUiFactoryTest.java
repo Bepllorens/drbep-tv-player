@@ -38,7 +38,7 @@ public class TouchControlsUiFactoryTest {
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
         assertFalse(hasLabel(model, "VOD"));
         assertFalse(hasLabel(model, "U7D"));
-        assertLabels(model, "Canales", "Plataforma", "Guia", "Anterior", "Info", "Grab");
+        assertLabels(model, "Canales", "Plataforma", "Guia", "Anterior", "Info", "Grab", "Audio", "Subtitulos");
     }
     @Test
     public void liveChannelWithU7dKeepsExpectedActionOrder() {
@@ -48,8 +48,8 @@ public class TouchControlsUiFactoryTest {
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host, 2);
 
-        assertEquals(8, model.actions.size());
-        assertLabels(model, "Canales", "Plataforma", "Guia", "U7D", "VOD", "Anterior", "Info", "Grab");
+        assertEquals(10, model.actions.size());
+        assertLabels(model, "Canales", "Plataforma", "Guia", "U7D", "VOD", "Anterior", "Info", "Grab", "Audio", "Subtitulos");
         assertFalse(hasLabel(model, "Rebobinar"));
         assertFalse(hasLabel(model, "Pausa"));
         assertFalse(hasLabel(model, "Avanzar"));
@@ -92,9 +92,21 @@ public class TouchControlsUiFactoryTest {
 
         TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
 
-        assertLabels(model, "Volver al directo", "Canales", "Plataforma", "Guia", "VOD", "Anterior", "Info", "Grab", "Rebobinar", "Pausa", "Avanzar");
+        assertLabels(model, "Volver al directo", "Canales", "Plataforma", "Guia", "VOD", "Anterior", "Info", "Grab", "Rebobinar", "Pausa", "Avanzar", "Audio", "Subtitulos");
         assertFalse(hasLabel(model, "Biblioteca VOD"));
         assertFalse(hasLabel(model, "Ficha VOD"));
+    }
+
+    @Test
+    public void liveAudioAndSubtitleButtonsKeepTheirOwnCallbacks() {
+        FakeHost host = new FakeHost();
+        host.current = channel(false);
+        TouchControlsBarUiModel model = TouchControlsUiFactory.build(host);
+        assertEquals("audio", find(model, "Audio").iconHint);
+        assertEquals("subtitles", find(model, "Subtitulos").iconHint);
+        click(model, "Audio");
+        click(model, "Subtitulos");
+        assertEquals("keep,audio,keep,subtitles", String.join(",", host.events));
     }
 
     @Test

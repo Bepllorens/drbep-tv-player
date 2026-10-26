@@ -33,8 +33,14 @@ final class GlobalSearchUiFactory {
         }
         List<GlobalSearchRowUiModel> rows = new ArrayList<>();
         if (results != null) {
+            java.util.Map<String, Integer> occurrences = new java.util.HashMap<>();
             for (MainActivity.GlobalSearchResult result : results) {
-                rows.add(buildRow(query, result, host));
+                GlobalSearchRowUiModel row = buildRow(query, result, host);
+                String id = (result == null ? "" : result.searchSource) + "|" + identity(result);
+                int occurrence = occurrences.getOrDefault(id, 0);
+                occurrences.put(id, occurrence + 1);
+                row.key = id + "#" + occurrence;
+                rows.add(row);
             }
         }
         return new GlobalSearchListUiModel(
@@ -45,6 +51,18 @@ final class GlobalSearchUiFactory {
                 host::applyQuery,
                 rows
         );
+    }
+
+    static String identity(MainActivity.GlobalSearchResult result) {
+        if (result == null) return "empty";
+        String prefix = result.type + "|";
+        if (result.epgResult != null) {
+            MainActivity.EpgSearchResult epg = result.epgResult;
+            return prefix + (epg.channel == null ? "" : epg.channel.id) + "|" + epg.program.startTime + "|" + epg.program.endTime;
+        }
+        if (result.recording != null) return prefix + result.recordingBasePath + "|" + result.recording.id;
+        if (result.channel != null) return prefix + result.channel.id;
+        return prefix + result.title;
     }
 
     private static List<GlobalSearchFilterUiModel> buildFilters(Host host) {

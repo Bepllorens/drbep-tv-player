@@ -1,0 +1,88 @@
+IMPORTACION GRANDE MIENTRAS REPRODUCE TV - 25/10/2026
+Estado: ensayos A4 y C2 completos, verificados y retirados.
+La variante de cola dedicada se retira: no hay mejora de fluidez demostrada.
+
+Preparacion y conservacion
+- Respaldo privado del esquema9 en185:61.628.416bytes; SHA256
+  220ca20a8327b5b4c380e41044c7fe3d99f25fa727aa58fda5df5a497b603a98.
+- Huella logica de todos los datos originales:
+  ca761f89dfa9e6eeee22fbba40db8dc36ba32058f9b3411755301d499ac9e8bd.
+- Auxiliar de pruebas firmado con la identidad del Fire; no es parte de la app.
+  Verifica integridad, no muestra filas, rechaza fuentes anteriores al respaldo.
+- Fuente sintetica independiente, 120000 peliculas, sin logos/DRM/TMDB.
+  HTTPS de produccion no se utiliza como fixture. El archivo se entrega por
+  localhost mediante un reverse ADB propio18765; no se abren puertos del servidor
+  ni se cambia la seguridad de red. La primera ruta HTTP de LAN fue bloqueada.
+- Al terminar se retira solo el UUID creado por el ensayo y su trabajo exacto.
+  Se exige que toda la base y su esquema coincidan con el respaldo. No se
+  restaura una copia antigua ni se hace una limpieza global de fuentes.
+- Los registros de fuentes aun no publicadas no aparecen en listas; la propiedad
+  se valida tambien mediante el nombre/UUID de su trabajo, no por ausencia visual.
+
+Artefactos de la comparacion
+A: dialog-budget-fire.apk, todos los flags experimentales OFF:
+8342986e3a41357c9b561c9965d85b6c87a6fb444bdcf50f3abecd8064788f2d.
+B: b-cooperative-fire.apk, SOLO COOPERATIVE_IMPORTS=true:
+199752c06f5835929adf98025f20457dda6f4093341785d853a39a42c9aae5da.
+Ambas version774 ARM32, misma firma privada,915unitarios sin fallos.
+A4/C2 usan el mismo modo ART speed-f para aislar el experimento. No equivale
+a una primera instalacion con perfiles normales; cualquier adopcion requiere
+una comprobacion representativa adicional.
+
+Correccion de la metodologia
+Los ensayos A1/A2/A3/B1 NO sirven para adoptar una mejora de fluidez.
+El muestreo completo y repetido de dumpsys meminfo llama al proceso de la app:
+ActivityThread.dumpMemInfo invoca Runtime.gc() antes de contar objetos.
+Fuente primaria Android11:
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android11-release/core/java/android/app/ActivityThread.java
+El Fire documenta --local como recoger solo informacion externa sin llamar
+al proceso. A4/C2 no sondean memoria durante las trazas de interfaz: solo toman
+unas pocas instantaneas --local -s fuera de esos recorridos. El maximo publicado
+es maximo OBSERVADO en esas instantaneas, no un pico continuo garantizado.
+No atribuir la diferencia respecto al ensayo anterior solo al recolector:
+tambien se ha igualado el modo ART de la comparacion corregida.
+
+Resultados que SI siguen siendo validos
+A3 completo:120000 registros, huella de contenido independiente de fuente/generacion:
+30b25c13e3ec1fd863ac14b284c47107426cdab3944062d13a82b1a0fbe32271.
+A1/A2/A3 y B1 retirados; despues de cada uno la huella de datos/esquema original
+coincide. B1 se cancelo expresamente por UUID durante la carga y conserva los datos.
+No usar los291s de A3 ni los picos anteriores como rendimiento natural.
+Una retirada de120000 registros comprometidos puede superar20s: no repetir
+a ciegas despues de un timeout; verificar su resultado o esperar con mas margen.
+
+Evidencia y estado recuperable
+ /srv/drbep-dev/reviews/import-load-20261025/STATE.txt
+Contiene las fuentes que aun requieren retirada, los nombres de artefactos,
+logs y procedimiento. No publicar esa carpeta, bases, sesiones o QR.
+Los defaults del repositorio permanecen OFF. No hay nueva APK publicada.
+
+Comparacion corregida y decision
+A4: recorrido con importacion p95 24,278 ms, maximo94,018 ms;
+120000 registros en294,257s observados; video24,95fps,11descartes/224s,
+cero PLAY_ERROR. Contenido completo igual a la huella esperada; toda la base
+original coincide despues de retirar solo la fuente y el trabajo propios.
+C2: variante adicional con cola de un hilo, prioridad Android10 y capacidad4.
+Cancela un predecesor parcial por UUID y comienza un trabajo distinto.
+Recorrido cargado p95 26,129 ms, maximo284,486 ms; el propio calentamiento
+tenia un pico301,291 ms. No se demuestra mejora; no atribuir causalidad a
+un unico pico ni mezclar estas trazas con las antiguas mediciones invasivas.
+Se retiran SerialImportExecutor, sus cuatro pruebas y el wrapper del Worker.
+Se conservan privadamente codigo y APK experimentales para reproducibilidad.
+La regresion del codigo conservado pasa; COOPERATIVE_IMPORTS sigue OFF.
+C2 retirado por sus dos fuentes y trabajos exactos. La ultima comprobacion
+coincide con todos los datos y el esquema originales; c2-cleanup.json lo acredita.
+
+C2 completo:120000 entradas en302,266s frente a294,257s de A4.
+La huella30b25c13e3ec1fd863ac14b284c47107426cdab3944062d13a82b1a0fbe32271
+coincide para todas las columnas de contenido, excluyendo fuente/generacion.
+Predecesor cancelado con2500 registros; el nuevo trabajo termina completo.
+Video medido:5565 fotogramas/224026ms (24,84fps),1descarte,cero PLAY_ERROR.
+Es una muestra corta, no una demostracion de mejora de descartes frente a A4.
+El recolector de ImportWork no obtuvo lineas: no afirmar que el log de esa
+ejecucion confirme prioridad10. La prueba aislada previa si comprobo0->10->0.
+Regresion tras retirar el experimento: testDebugUnitTest BUILD SUCCESSFUL.
+
+Cierre: no queda ninguna fuente/trabajo sintetico creado por estos ensayos.
+No se ha restaurado una base antigua ni borrado fuentes del usuario.
+La guia XMLTV grande sigue pendiente; no dar por cerrado ese apartado.

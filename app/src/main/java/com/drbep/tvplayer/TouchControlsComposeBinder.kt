@@ -29,8 +29,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +58,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -125,75 +128,21 @@ private fun ClassicTouchControlsBar(model: TouchControlsBarUiModel, artworkBinde
                     textAlign = TextAlign.End)
             )
         }
-        if (model.expanded && model.actions.any { it.iconHint == "vod_languages" }) {
-            CompactVodActionStrip(model, artworkBinder, compact)
-        } else if (model.expanded) BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val actionCount = model.actions.size.coerceAtLeast(1)
-            val firstEnabledIndex = model.actions.indexOfFirst { it.enabled }
-            val focusedIndex = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
-            val scrollState = rememberScrollState()
-            val density = LocalDensity.current
-            val firstButtonFocusRequester = rememberTvInitialFocusRequester(
-                enabled = firstEnabledIndex >= 0,
-                model.actions.size,
-                model.contextSubtitle,
-                focusedIndex
-            )
-            val minimumChipWidth = if (compact) 104.dp else 112.dp
-            val maximumCenteredChipWidth = if (compact) 132.dp else 156.dp
-            val minimumContentWidth =
-                (minimumChipWidth * actionCount) + (8.dp * (actionCount - 1).coerceAtLeast(0)) + 24.dp
-            val shouldCenter = minimumContentWidth <= maxWidth
-            val chipWidth = if (shouldCenter) {
-                ((maxWidth - 24.dp - (8.dp * (actionCount - 1).coerceAtLeast(0))) / actionCount)
-                    .coerceIn(minimumChipWidth, maximumCenteredChipWidth)
-            } else {
-                0.dp
-            }
-            LaunchedEffect(focusedIndex, actionCount, shouldCenter, compact) {
-                if (!shouldCenter && actionCount > 1) {
-                    val chipPx = with(density) { minimumChipWidth.roundToPx() }
-                    val gapPx = with(density) { 8.dp.roundToPx() }
-                    val leadingPx = with(density) { 8.dp.roundToPx() }
-                    val target = leadingPx + ((chipPx + gapPx) * focusedIndex) - chipPx
-                    scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(scrollState),
-                horizontalArrangement = if (shouldCenter) Arrangement.Center else Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(modifier = Modifier.width(8.dp))
-                model.actions.forEachIndexed { index, item ->
-                    TouchControlChip(
-                        item = item,
-                        modifier = if (shouldCenter) Modifier.width(chipWidth) else Modifier.defaultMinSize(minWidth = minimumChipWidth),
-                        focused = index == focusedIndex,
-                        focusRequester = if (index == focusedIndex) firstButtonFocusRequester else null
-                    )
-                    if (index < model.actions.lastIndex) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-            }
-        }
+        if (model.expanded) CompactPlaybackActionDock(model, artworkBinder)
     }
 }
 
 @Composable
 private fun ModernTouchControlsBar(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
+    val top = OfflineTvTheme.Colors.backdropAccent.copy(alpha = 0.77f)
+    val bottom = OfflineTvTheme.Colors.backdrop.copy(alpha = 0.95f)
+    val backdrop = remember(top, bottom) { Brush.verticalGradient(listOf(top, bottom)) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                Brush.verticalGradient(
-                    listOf(OfflineTvTheme.Colors.backdropAccent.copy(alpha = 0.77f), OfflineTvTheme.Colors.backdrop.copy(alpha = 0.95f))
-                ),
+                backdrop,
                 RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             )
             .border(1.dp, OfflineTvTheme.Menu.selected.copy(alpha = 0.33f), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
@@ -211,7 +160,7 @@ private fun ModernTouchControlsBar(model: TouchControlsBarUiModel, artworkBinder
                 style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
             )
         } else {
-            ModernActionStrip(model, artworkBinder)
+            CompactPlaybackActionDock(model, artworkBinder)
         }
     }
 }
@@ -223,6 +172,14 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
     var displayedTimeshiftProgress by remember { mutableIntStateOf(timeshift?.progress ?: 0) }
     var displayedTimeshiftLabel by remember { mutableStateOf(timeshift?.statusLabel.orEmpty()) }
     val latestTimeshift by rememberUpdatedState(timeshift)
+    val accent = OfflineTvTheme.Colors.accentCyan
+    val secondary = OfflineTvTheme.Colors.accentSecondary
+    val progressBrush = remember(accent, secondary) { Brush.horizontalGradient(listOf(accent, secondary)) }
+    val trackInfo = model.playbackTrackInfo.ifBlank { model.streamInfo }
+    val headerMeta = remember(minimal, model.programMeta, trackInfo) {
+        if (minimal) listOf(model.programMeta, trackInfo).filter { it.isNotBlank() }.joinToString(" · ")
+        else model.programMeta
+    }
     LaunchedEffect(timeshift?.progress, timeshift?.statusLabel, timeshiftDragging) {
         if (!timeshiftDragging) {
             displayedTimeshiftProgress = timeshift?.progress ?: 0
@@ -257,9 +214,9 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                 overflow = TextOverflow.Ellipsis,
                 style = TextStyle(color = Color.White, fontSize = if (minimal) 18.sp else if (compact) 17.sp else 22.sp, fontWeight = FontWeight.Black)
             )
-            if (model.programMeta.isNotBlank()) {
+            if (headerMeta.isNotBlank()) {
                 Spacer(Modifier.height(3.dp))
-                BasicText(model.programMeta, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                BasicText(headerMeta, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 11.sp else 12.sp))
             }
             ProgrammeMetadataStrip(model.programmeMetadata, true)
@@ -268,9 +225,9 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                 BasicText(model.nextProgram, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = OfflineTvTheme.Colors.focus, fontSize = 11.sp, fontWeight = FontWeight.Bold))
             }
-            if (!minimal && model.streamInfo.isNotBlank()) {
+            if (!minimal && trackInfo.isNotBlank()) {
                 Spacer(Modifier.height(3.dp))
-                BasicText(model.streamInfo, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                BasicText(trackInfo, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(color = OfflineTvTheme.Colors.textSoft, fontSize = if (compact) 10.sp else 11.sp))
             }
             }
@@ -375,7 +332,7 @@ private fun ModernNowPlaying(model: TouchControlsNowPlayingUiModel, timeshift: T
                             }
                         }
                         Box(Modifier.fillMaxWidth(integratedProgress).height(5.dp)
-                            .background(Brush.horizontalGradient(listOf(OfflineTvTheme.Colors.accentCyan, OfflineTvTheme.Colors.accentSecondary)), OfflineTvTheme.Menu.shape))
+                            .background(progressBrush, OfflineTvTheme.Menu.shape))
                         if (minimal && timeshift != null) androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
                             val radius = 6.dp.toPx()
                             val x = (size.width * integratedProgress).coerceIn(radius, size.width-radius)
@@ -559,9 +516,12 @@ private fun ModernActionChip(item: ZapActionItem, focused: Boolean, focusRequest
     }
 }
 
-private enum class ModernActionIconKind { CHANNELS, PLATFORM, LIBRARY, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, ADD_SCREEN, OTHER }
+private enum class ModernActionIconKind { LIVE, CHANNELS, PLATFORM, LIBRARY, GUIDE, U7D, VOD, PREVIOUS, INFO, RECORD, REWIND, PLAY_PAUSE, FORWARD, AUDIO, SUBTITLES, QUALITY, ADD_SCREEN, OTHER }
 
 private fun modernActionIconKind(item: ZapActionItem): ModernActionIconKind {
+    if (item.iconHint == "live") return ModernActionIconKind.LIVE
+    if (item.iconHint == "audio") return ModernActionIconKind.AUDIO
+    if (item.iconHint == "subtitles") return ModernActionIconKind.SUBTITLES
     if (item.iconHint == "vod-library") return ModernActionIconKind.LIBRARY
     if (item.iconHint == "vod-detail") return ModernActionIconKind.INFO
     if (item.iconHint == "add-screen") return ModernActionIconKind.ADD_SCREEN
@@ -632,6 +592,16 @@ private fun ModernActionIcon(item: ZapActionItem, focused: Boolean, artworkBinde
                 val strokeWidth = 2.15.dp.toPx()
                 val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 when (kind) {
+                    ModernActionIconKind.LIVE -> {
+                        val center = Offset(w * .5f, h * .5f)
+                        drawCircle(iconColor, w * .07f, center)
+                        for (radius in listOf(.23f, .4f)) {
+                            val r = w * radius
+                            for (angle in listOf(-55f, 125f))
+                                drawArc(iconColor, angle, 110f, false,
+                                    Offset(center.x-r, center.y-r), Size(2*r, 2*r), style=stroke)
+                        }
+                    }
                     ModernActionIconKind.ADD_SCREEN -> {
                         drawRoundRect(iconColor, Offset(w * .08f, h * .10f), Size(w * .61f, h * .48f), CornerRadius(w * .06f), style = stroke)
                         drawRoundRect(iconColor, Offset(w * .33f, h * .40f), Size(w * .60f, h * .47f), CornerRadius(w * .06f), style = stroke)
@@ -1055,20 +1025,14 @@ private fun TouchControlChip(item: ZapActionItem, modifier: Modifier = Modifier,
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
-    val selected = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
-    val requester = rememberTvInitialFocusRequester(model.expanded && !model.archiveFocused && model.integratedTimeshift?.focused != true && model.actions.any { it.enabled }, model.actions.size, selected)
-    val scroll = rememberScrollState()
-    val density = LocalDensity.current
-    LaunchedEffect(selected, model.expanded) {
-        val distance = model.actions.take(selected).sumOf { if(it.iconHint == "live") 158 else 48 }
-        val offset = with(density) { (distance - 192).dp.roundToPx() }
-        scroll.animateScrollTo(offset.coerceIn(0, scroll.maxValue))
-    }
     val archiveLayout = model.expanded && model.archiveEntries.isNotEmpty()
+    val backdrop = remember(archiveLayout) {
+        if(archiveLayout) Brush.verticalGradient(0f to Color(0xD4090E16), .24f to Color.Transparent, .48f to Color.Transparent, .72f to Color(0xCD090E16), 1f to Color(0xF5090E16))
+        else Brush.verticalGradient(listOf(Color.Transparent, Color(0xDC090E16), Color(0xF5090E16)))
+    }
     Column(Modifier.fillMaxWidth()
         .then(if(archiveLayout) Modifier.height((LocalConfiguration.current.screenHeightDp - 28).dp) else Modifier)
-        .background(if(archiveLayout) Brush.verticalGradient(0f to Color(0xD4090E16), .24f to Color.Transparent, .48f to Color.Transparent, .72f to Color(0xCD090E16), 1f to Color(0xF5090E16))
-            else Brush.verticalGradient(listOf(Color.Transparent, Color(0xDC090E16), Color(0xF5090E16))))
+        .background(backdrop)
         .padding(horizontal = 24.dp, vertical = 6.dp)) {
         if (model.nowPlaying.visible) ModernNowPlaying(model.nowPlaying, model.integratedTimeshift, artworkBinder, minimal = true, timeline = !model.expanded)
         else if (model.contextTitle.isNotBlank()) ModernContextHeader(model)
@@ -1083,25 +1047,69 @@ private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: 
             ModernNowPlaying(model.nowPlaying, model.integratedTimeshift, artworkBinder, minimal = true, header = false)
             if(model.integratedTimeshift==null && model.archiveEntries.isNotEmpty()) BasicText(
                 "Progreso del programa · retroceso no disponible en esta emisión",style=TextStyle(OfflineTvTheme.Colors.textSoft,10.sp))
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-                model.actions.forEachIndexed { index, item ->
-                    val focused = index == selected && !model.archiveFocused && model.integratedTimeshift?.focused != true
-                    Box((if(item.iconHint == "live") Modifier.width(150.dp).height(40.dp) else Modifier.size(40.dp)).alpha(if (item.enabled) 1f else .35f)
-                        .background(if (focused) Color.White else Color.Transparent, OfflineTvTheme.Menu.shape)
-                        .border(1.dp, if (focused) Color.White else Color.Transparent, OfflineTvTheme.Menu.shape)
+            CompactPlaybackActionDock(model, artworkBinder)
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun CompactPlaybackActionDock(model: TouchControlsBarUiModel, artworkBinder: TouchControlsArtworkBinder?) {
+    val selected = model.focusedActionIndex.coerceIn(0, model.actions.lastIndex.coerceAtLeast(0))
+    val actionsFocused = !model.archiveFocused && model.integratedTimeshift?.focused != true
+    val requester = rememberTvInitialFocusRequester(
+        model.expanded && actionsFocused && model.actions.any { it.enabled }, model.actions.size, selected)
+    val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val localeKey = if (android.os.Build.VERSION.SDK_INT >= 24) configuration.locales.toLanguageTags()
+        else configuration.locale.toLanguageTag()
+    val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+    val zone = java.util.TimeZone.getDefault().id
+    val finishMinute = model.nowPlaying.estimatedFinishAtMs / 60_000L
+    val finishText = remember(finishMinute, localeKey, is24Hour, zone) {
+        if (finishMinute <= 0L) "" else context.getString(R.string.playback_finish_at,
+            android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(finishMinute * 60_000L)))
+    }
+    val reserveFinish = model.actions.any { it.iconHint == "vod_languages" }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val viewportPx = with(density) { maxWidth.roundToPx() }
+        val cellPx = with(density) { PlaybackDockGeometry.CELL_DP.dp.roundToPx() }
+        val gapPx = with(density) { PlaybackDockGeometry.GAP_DP.dp.roundToPx() }
+        LaunchedEffect(selected, model.actions.size, viewportPx, scroll.maxValue) {
+            val target = PlaybackDockGeometry.scrollTarget(selected, model.actions.size, cellPx, gapPx, viewportPx, scroll.value)
+            if (target != scroll.value) scroll.animateScrollTo(target.coerceAtMost(scroll.maxValue))
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(scroll),
+            horizontalArrangement = Arrangement.spacedBy(PlaybackDockGeometry.GAP_DP.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically) {
+            model.actions.forEachIndexed { index, item ->
+                key(index, item.iconHint) {
+                    val focused = index == selected && actionsFocused
+                    Box(Modifier.size(PlaybackDockGeometry.CELL_DP.dp)
+                        .alpha(if (item.enabled) 1f else .35f)
+                        .background(if (focused) Color.White else Color.Transparent, CircleShape)
+                        .border(if (focused) 2.dp else 1.dp,
+                            if (focused) Color.White else if (item.selected) OfflineTvTheme.Colors.accentCyan else Color.Transparent,
+                            CircleShape)
                         .then(if (focused) Modifier.focusRequester(requester) else Modifier)
                         .tvButtonSemantics(item.enabled, item.label, item.selected)
-                        .combinedClickable(enabled = item.enabled, onClick = { item.onClick?.run() }, onLongClick = item.onLongClick?.let { { it.run() } }),
+                        .combinedClickable(enabled = item.enabled, onClick = { item.onClick?.run() },
+                            onLongClick = item.onLongClick?.let { { it.run() } }),
                         contentAlignment = Alignment.Center) {
-                        if(item.iconHint == "live") BasicText("●  " + item.label,
-                            style=TextStyle(if(focused) Color(0xFF12211C) else Color(0xFF8DE0B8),12.sp,FontWeight.Bold))
-                        else Box(Modifier.scale(.8f)) { ModernActionIcon(item, focused, artworkBinder) }
+                        Box(Modifier.scale(.85f)) { ModernActionIcon(item, focused, artworkBinder) }
                     }
                 }
             }
-            BasicText(model.actions.getOrNull(selected)?.label.orEmpty(), Modifier.fillMaxWidth().height(20.dp).padding(top = 3.dp),
-                style = TextStyle(Color.White, 12.sp, FontWeight.Medium, textAlign = TextAlign.Center), maxLines = 1)
         }
+    }
+    Row(Modifier.fillMaxWidth().height(PlaybackDockGeometry.CAPTION_DP.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        BasicText(if (actionsFocused) model.actions.getOrNull(selected)?.label.orEmpty() else "",
+            Modifier.weight(1f).padding(top = 2.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = TextStyle(Color.White, 12.sp, FontWeight.Medium, textAlign = TextAlign.Center))
+        if (reserveFinish) BasicText(finishText, Modifier.width(136.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = TextStyle(OfflineTvTheme.Colors.textSoft, 10.sp, textAlign = TextAlign.End, fontFeatureSettings = "tnum"))
     }
 }

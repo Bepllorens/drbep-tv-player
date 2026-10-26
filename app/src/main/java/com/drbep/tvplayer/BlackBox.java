@@ -61,6 +61,9 @@ final class BlackBox {
     static void event(BlackBoxStore.Event e,long op,long a,long b,long c){BlackBoxStore s=store;if(s!=null)s.event(e,op,a,b,c);}
     static void foreground(boolean value){foreground=value;event(value?BlackBoxStore.Event.FOREGROUND:BlackBoxStore.Event.BACKGROUND,0,0,0,0);}
     static long sampleInterval(){BlackBoxStore s=store;return s!=null&&s.detailed()?5000:30000;}
+    static String detailLease(String client,long sequence,boolean active)throws Exception{
+        return store.detailLease(client,sequence,active);
+    }
     static String summary()throws Exception{return store.summary();}
     static byte[] export()throws Exception{return store.export();}
     static byte[] export(int minutes)throws Exception {

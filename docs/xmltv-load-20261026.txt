@@ -1,0 +1,80 @@
+XMLTV GRANDE - PREPARACION Y OPTIMIZACION DEL26/10/2026
+
+Estado
+Preparado y validado en el servidor185. El usuario confirma que la TV esta
+apagada y pide dejar la comprobacion del Fire para cuando vuelva. NO se ha
+usado ADB, instalado APK, abierto el panel del Fire ni alterado produccion.
+No hay publicacion nueva ni commit/push en este bloque.
+
+Corpus independiente
+1000 canales,168000 programas, siete dias. XML99.656.048bytes; gzip1.164.469.
+Sin logos ni contenidos reproducibles; titulos y metadatos sinteticos.
+Lectura en streaming, completada con limite de heap JVM128MiB.
+No se ha usado una base ni una guia de produccion como fixture.
+
+Cambio acotado
+XmltvStreamReader reutiliza SimpleDateFormat y ParsePosition SOLO durante una
+lectura. No los comparte entre hilos/lecturas. Restablece zona horaria y
+posicion para evitar arrastrar una fecha invalida o zona nominal.
+Comprueba los14 digitos UTC sin compilar una expresion regular cada vez.
+La seleccion de etiquetas usa switch en vez de construir una lista por nodo.
+No cambian SQL, esquema, lotes, cache, ventanas EPG, mapeos, DRM ni catchup.
+La proteccion DTD/entidades y los limites de texto permanecen intactos.
+
+Medicion Linux/JVM - NO confundir con importacion completa Android
+Mismo corpus, Java21, -Xms64m -Xmx128m, calentamiento con corpus completo.
+Orden de procesos A/B/B/A; tres rondas medidas en cada proceso, seis por variante.
+Medianas:
+                         Anterior       Candidata      Cambio
+Tiempo de lectura         1897,583ms     1601,771ms     -15,59%
+CPU hilo principal        1828,379ms     1564,857ms     -14,41%
+Asignacion acumulada      2321,792MiB    1266,409MiB    -45,46%
+Ciclos GC                   63            34          -46,03%
+
+Asignacion acumulada NO es memoria residente ni pico de RAM.
+Los tiempos incluyen gzip, parseo, metadatos y verificacion de huella; NO
+incluyen SQLite, descarga real, interfaz o concurrencia del Fire.
+Todas las rondas mantienen1000 canales/168000 eventos y la misma huella:
+bf6958ee233fad18b4eced3ff0ed0692be6ccd57142e992740185806be9d345f.
+Se incluyen nombres, fechas, sinopsis, episodios, categorias, edades,
+valoraciones, pais y creditos. No se retienen todos los eventos en memoria.
+
+Validacion
+918 unitarios,0 errores/fallos, incluida equivalencia con el lector anterior
+para fechas validas/invalidas, UTC implicito, offsets, zonas nominales,
+fechas fallidas consecutivas y lecturas simultaneas del mismo reader.
+assembleRelease y firma privada verificados. Perfil original; flags OFF.
+Servidor sintetico localhost probado en185: gzip exacto,304 condicional,
+404 fuera de rutas permitidas,1000 canales M3U. Se cerro al terminar.
+
+Artefactos privados en185
+/srv/drbep-dev/reviews/xmltv-load-20261026
+- xmltv-date-parser-fire.apk, beta774 ARM32, firma privada del Fire.
+  SHA256 d0a0f11a9ae6d28cf1bac8a7a51e28a5b2a9f8083072137f24ceccda669182b2
+- xmltv-helper.apk, paquete com.drbep.xmltvcheck, misma firma privada.
+  SHA256 bd6693989ff0be0d0e778bd03d9debde67583fe21131256ba443692b7ce61fd5
+- comparison.json, baseline-1/2.jsonl, candidate-1/2.jsonl y fuentes exactas.
+- prepared-manifest.json vincula fuentes/corpus/artefactos por SHA256.
+- READY.txt: pasos acotados de respaldo, medicion, cache, cancelacion y retirada.
+No incorporar APK, bases, PIN/sesiones, corpus ni carpeta reviews a Git.
+
+Pendiente con TV encendida y mando libre
+1. Respaldo NUEVO del estado actual del Fire y exportacion privada verificada.
+   El respaldo25Oct no sustituye al nuevo. No sobreescribir copias.
+2. Comparar A/B en la misma TV Movistar HLS y recorrido mientras importa168000.
+   Medir progreso/fin, latencia de interfaz, video y memoria externa local.
+   No sondear dumpsys meminfo completo durante trazas: fuerza GC en target.
+3. Verificar cada evento/campo y1000 nombres en SQLite con guia propia.
+4. Comprobar reutilizacion entre dos listas con la misma guia y cancelacion de
+   una tercera guia propia sin afectar a la completa ni al resto de fuentes.
+5. Retirar SOLO fuentes/jobs/feeds propios. Exigir huellas completas de datos
+   y esquema iguales al respaldo, sin restaurar copias antiguas ni VACUUM.
+   No ejecutar maintainGuides como limpieza: afectaria otras guias y retencion.
+6. Dejar TV reproduciendo y confirmar movimiento. Evaluar adopcion con medidas
+   reales Android; no presentar la cifra Linux como mejora del Fire.
+
+El auxiliar esta compilado, firmado y aun NO ejecutado en Android.
+Sus comprobaciones rechazan fuentes/feeds anteriores al respaldo y feeds
+referenciados. Solo elimina los UUIDs y caches del diario de este ensayo.
+Si el usuario cambia datos durante el ensayo, conservarlos: no restaurar
+una copia obsoleta para forzar la coincidencia de huellas.

@@ -8,7 +8,7 @@ final class PreferencesBackupCodec {
  static final String HIDE = "menu_hide_seconds";
  static final String PINNED = "settings_pinned_ids";
  static final Set<String> KEYS = new HashSet<>(Arrays.asList(
-   "startup_hub_disabled", "playback_repair_enabled", "ui_palette", "playback_quality_mode", WIDTH, HIDE, PINNED));
+   "startup_hub_disabled", "playback_repair_enabled", "ui_palette", "playback_quality_mode", WIDTH, HIDE, PINNED, MainRailLayout.PREF));
  static String encode(Map<String, ?> all) throws JSONException {
   JSONObject values = new JSONObject();
   for (String key : KEYS) {
@@ -37,6 +37,7 @@ final class PreferencesBackupCodec {
     case "playback_quality_mode": valid = v instanceof String && Arrays.asList("auto","data_saver","high").contains(v); break;
     case WIDTH: valid = v instanceof Integer && Arrays.asList(85,100,115).contains(v); break;
     case HIDE: valid = v instanceof Integer && Arrays.asList(0,3,5,8,12).contains(v); break;
+    case MainRailLayout.PREF: valid = v instanceof String && MainRailLayout.validBackup((String)v); break;
     case PINNED:
      valid = v instanceof JSONArray && ((JSONArray)v).length() <= 40;
      Set<String> pins = new LinkedHashSet<>();

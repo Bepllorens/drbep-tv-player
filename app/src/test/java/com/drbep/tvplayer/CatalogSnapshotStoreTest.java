@@ -22,6 +22,7 @@ public class CatalogSnapshotStoreTest {
         original.disneyplusVodEnabled = true;
         original.appleTVVodEnabled = true;
         original.netflixVodEnabled = true;
+ original.palantirEnabled=true;
         original.hboVodEnabled = true;
         original.skyVodEnabled = true;
         original.privateVodPermissionsExplicit = true;
@@ -34,11 +35,12 @@ public class CatalogSnapshotStoreTest {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         CatalogSnapshotStore.writeOfflinePermissions(new DataOutputStream(bytes), original);
         DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes.toByteArray()));
-        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 14);
+        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 16);
         assertTrue(restored.liveAccessMetadataKnown);
         assertTrue(restored.admin);
         assertEquals(original.allowedLiveGroups, restored.allowedLiveGroups);
         assertTrue(restored.allowsNetflixVod());
+ assertTrue(restored.allowsPalantir());
         assertTrue(restored.allowsDisneyplusVod());
         assertTrue(restored.allowsAppleTVVod());
         assertTrue(restored.allowsHboVod());

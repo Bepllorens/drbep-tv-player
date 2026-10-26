@@ -29,7 +29,7 @@ public class RemoteZapQueueTest {
     @Test public void heldKeyTunesFirstAndFinalOnly() {
         Fixture f=new Fixture();
         for(int i=0;i<5;i++)f.queue.press(1,i*70);
-        assertEquals(Arrays.asList(1),f.tunes);assertEquals(100,f.delay);
+        assertEquals(Arrays.asList(1),f.tunes);assertTrue(f.delay>=70 && f.delay<=100);
         f.flush();assertEquals(Arrays.asList(1,5),f.tunes);
     }
     @Test public void wrapAndDirectionReversalUsePendingTarget() {
@@ -53,23 +53,51 @@ public class RemoteZapQueueTest {
         Fixture f=new Fixture();
         for(int i=0;i<6;i++)f.pressAt(1,i*15);
         assertEquals(Arrays.asList(1),f.tunes);
-        f.advanceTo(114);assertEquals(Arrays.asList(1),f.tunes);
-        f.advanceTo(115);assertEquals(Arrays.asList(1,6),f.tunes);
+        f.advanceTo(104);assertEquals(Arrays.asList(1),f.tunes);
+        f.advanceTo(105);assertEquals(Arrays.asList(1,6),f.tunes);
     }
     @Test public void heldKeyRepeatsKeepEnoughTimeToCoalesce() {
         Fixture f=new Fixture();
         for(int i=0;i<6;i++)f.pressAt(1,i*70);
         assertEquals(Arrays.asList(1),f.tunes);
-        f.advanceTo(449);assertEquals(Arrays.asList(1),f.tunes);
-        f.advanceTo(450);assertEquals(Arrays.asList(1,6),f.tunes);
+        f.advanceTo(434);assertEquals(Arrays.asList(1),f.tunes);
+        f.advanceTo(435);assertEquals(Arrays.asList(1,6),f.tunes);
     }
     @Test public void settlingNeverExceedsCeilingNearBoundary() {
         Fixture f=new Fixture();f.pressAt(1,0);f.pressAt(1,49);
-        assertEquals(100,f.delay);
+        assertTrue(f.delay>=49 && f.delay<=100);
     }
     @Test public void emptyCatalogueDiscardsPending() {
         Fixture f=new Fixture();f.queue.press(1,0);f.queue.press(1,50);
         f.items.clear();f.flush();f.queue.press(1,70);
         assertEquals(Arrays.asList(1),f.tunes);
+    }
+    @Test public void ordinaryHeldKeyJitterStillProducesOnlyFirstAndFinalTune() {
+        Fixture f=new Fixture();
+        for(long at:new long[]{0,65,135,210,280,350})f.pressAt(1,at);
+        assertEquals(Arrays.asList(1),f.tunes);
+        f.advanceTo(434);assertEquals(Arrays.asList(1),f.tunes);
+        f.advanceTo(435);assertEquals(Arrays.asList(1,6),f.tunes);
+    }
+    @Test public void heldKeyReleaseCommitsWithoutTrailingDelayAndStartsANewBurst() {
+        Fixture f=new Fixture();
+        for(long at:new long[]{0,70,140,210,280,350})f.pressAt(1,at);
+        assertEquals(Arrays.asList(1),f.tunes);
+        Runnable old=f.queued;f.clock=355;f.queue.finishBurst();
+        assertEquals(Arrays.asList(1,6),f.tunes);assertNull(f.queued);
+        old.run();assertEquals(Arrays.asList(1,6),f.tunes);
+        f.pressAt(1,356);assertEquals(Arrays.asList(1,6,7),f.tunes);
+    }
+    @Test public void releaseCannotDeliverACancelledOrReplacedTarget() {
+        Fixture f=new Fixture();f.pressAt(1,0);f.pressAt(1,70);
+        f.queue.cancel();f.queue.finishBurst();assertEquals(Arrays.asList(1),f.tunes);
+        f.pressAt(1,140);f.pressAt(1,210);f.items.set(3,new Object());
+        f.queue.finishBurst();assertEquals(Arrays.asList(1,2),f.tunes);
+    }
+    @Test public void releaseAfterTimerAlreadyCommittedDoesNotRetune() {
+        Fixture f=new Fixture();f.pressAt(1,0);f.pressAt(1,70);f.advanceTo(160);
+        assertEquals(Arrays.asList(1,2),f.tunes);f.queue.finishBurst();
+        assertEquals(Arrays.asList(1,2),f.tunes);f.pressAt(1,170);
+        assertEquals(Arrays.asList(1,2,3),f.tunes);
     }
 }

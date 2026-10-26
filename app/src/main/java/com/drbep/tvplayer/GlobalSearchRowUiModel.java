@@ -6,6 +6,7 @@ public final class GlobalSearchRowUiModel {
     public static final int IMAGE_PROGRAM = 2;
     public static final int IMAGE_RECORDING = 3;
 
+    public String key = "";
     public final String title;
     public final String meta;
     public final String badge;

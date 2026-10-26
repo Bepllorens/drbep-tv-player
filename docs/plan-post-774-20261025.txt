@@ -1,0 +1,94 @@
+PLAN TRAS LA BETA 774 - ESTADO DEL 25/10/2026
+
+Entorno: desarrollo y compilacion en .185. Produccion .223.
+No se ha publicado una APK nueva ni se ha cambiado stable en esta continuacion.
+
+1. HLS: ACTIVADO CON AUTORIZACION, RESPALDO Y RETORNO
+Se leen en paralelo los manifiestos de audio y video. La candidata se construyo
+sobre las fuentes exactas del release activo; sus archivos de catchup se conservaron.
+No se cambiaron claves, asociaciones, entorno ni montajes del contenedor.
+Suite completa y race pasan. Binario activo: 31ca377f39f33bed3e7419b5c4cdbe0fe21b2bf50cc85c2418588e9dc774f55f.
+Con la MISMA APK, diez sintonizaciones Movistar HLS antes y despues:
+mediana hasta primera imagen 963,5 -> 807,5 ms; maximo 1984 -> 1747 ms.
+Ambas series tienen diez primeras imagenes y cero errores. Sigue habiendo picos.
+Es una comparacion corta; no garantiza la misma reduccion en todos los canales.
+Release/respaldo: /opt/drbep-releases/hls-manifest-pair-20261025 en .223.
+Fuentes, procedencia y pruebas: docs/hls-manifest-pair-20261025.txt del backend.
+
+2. TV: PRIMER DIBUJO TODAVIA EN SEGUIMIENTO
+Diferir detalles EPG se descarto: no mejoraba bajo condiciones equivalentes.
+Ampliar el perfil dio buenos resultados con compilacion ART completa, pero
+no con el modo basado en perfil: referencia 774 = 718 ms, ampliacion = 770 ms,
+candidata con perfil original = 428 ms. Se retiro la ampliacion.
+No afirmar que este pico este resuelto ni adoptar la variante de laboratorio.
+Se conserva exactamente el baseline-prof original. Ver tv-cold-20261025.txt.
+
+3. CLIENTE: CORRECCIONES PREPARADAS Y PROBADAS
+- Panel: reproducir catchup cierra solo el dialogo QR y mantiene la sesion web.
+- Panel: una precarga parcial no impide cargar otro dia. Refresco por peticion,
+  dos trabajos maximo, 32 claves, vigencia 60 s y reintento tras 5 s. Invalida
+  cuenta/asociaciones; no borra otros dias ni guardados ni cambia filtros nativos.
+  M+ Indie del 24/10 paso de cero a 15 eventos sin abrir catchup nativo.
+- Las ventanas Compose avisan de mando/tactil al presupuesto de segundo plano.
+  Antes faltaba esa informacion fuera de Activity y del listener de Inicio.
+- Retirado un listener duplicado de formato de video; queda el principal.
+- Diagnostico de tiempos numerico, sin URLs ni secretos.
+
+Candidata privada del Fire: dialog-budget-fire.apk, version 774, firma de pruebas
+ya instalada, SHA256 8342986e3a41357c9b561c9965d85b6c87a6fb444bdcf50f3abecd8064788f2d.
+915 pruebas unitarias sin fallos. No es un artefacto publicable.
+Directorio privado: /srv/drbep-dev/reviews/hls-dvr-20261025.
+
+4. EXPERIMENTOS: SIGUEN DESACTIVADOS
+Arranque rapido TS/DVR: 871,5 -> 864,5 ms en diez intentos; beneficio insuficiente.
+La ruta /drm/direct entrega TS continuo, no una lista M3U8.
+Mando: se corrigio la cancelacion prematura de flechas y se preparo agrupacion
+solo de repeats reales, nunca de pulsaciones separadas. Estas esperan 0-1 ms.
+Diez longpress ADB: cola final 2-9 ms, cero errores. ADB solo genera un repeat;
+la reduccion con seis repeats se verifica en unitarios, no en ese ensayo fisico.
+Seis pulsaciones separadas y Atras producen seis preparaciones, ninguna tardia.
+Los nueve flags experimentales permanecen OFF en la candidata conservada.
+No activar importaciones/metadatos/imagenes/transporte solo porque compilen.
+
+5. CATCHUP Y PRUEBAS FUNCIONALES
+Star Channel, Yo el Halcon: video de Star Channel visible; seek de 60 s conserva
+pausa. Reanudacion finalmente confirmada; la ultima repeticion necesita mas de
+5 s. Contadores de video avanzan a unos 25 fps, sin descartes en esas muestras.
+No usar el titulo del reproductor como prueba del contenido de toda la pelicula. Caja negra de esa prueba:
+cero PLAY_ERROR. No confundir esto con validar todos los canales.
+M+ Indie, Cinema Paradiso: ensayo prolongado de 60 s sin fotograma. Termina
+con U7D interrumpida: ERROR_CODE_IO_BAD_HTTP_STATUS / HTTP 502. Sigue abierto.
+No atribuir la causa a claves o derechos sin evidencia adicional.
+La 1 y Vamos no han sufrido cambios de resolucion ni asociaciones.
+
+6. PENDIENTES REALES
+- Coste inicial de filas y primera entrada TV, aun variable.
+- Importacion grande/guia mientras reproduce y navega: memoria y cancelacion.
+  Las pruebas SQL/Worker cerradas con 774 no sustituyen esta carga.
+- Cerrar el caso M+ Indie segun la prueba prolongada.
+- Probar OTA real de Xiaomi 774 a una proxima beta autorizada. Android rechazo
+  downgrade; no desinstalar ni borrar datos para forzar una prueba.
+- Reunir la proxima candidata universal, validarla, y solo publicar con
+  autorizacion expresa. Los cambios actuales aun no tienen commit/push.
+
+La beta publica sigue siendo 774; conservar las referencias anteriores de
+firma/hash para retorno. No presentar todos los puntos del plan como cerrados.
+
+Ultima verificacion: el perfil ampliado sigue retirado; se conserva la APK
+privada dialog-budget con el perfil original. Las capturas cambian y los
+contadores de Star avanzan (359 -> 1160 -> 1960 -> 2760 fotogramas en muestras
+separadas unos 32 s, cero descartados). No era una imagen congelada.
+Los errores recientes del panel incluyen el ensayo fallido de M+ Indie;
+no atribuirlos a Star ni afirmar que toda la sesion tiene cero errores.
+
+Importacion grande: la referencia A4 completa120000 titulos mientras reproduce
+TV, con huella de contenido identica y base original intacta al retirar el
+ensayo. La variante de cola dedicada C2 no mejora la fluidez medida y se retira
+del codigo; no se activa COOPERATIVE_IMPORTS. Su limpieza verificada esta cerrada: datos y esquema originales identicos.
+Queda por probar una guia XMLTV grande. Ver import-load-20261025.txt.
+
+XMLTV26Oct: preparacion completa en185; TV apagada por confirmacion del usuario.
+Parser candidato: -15,59% tiempo y -45,46% asignacion acumulada en JVM, mismos
+168000 eventos/metadatos;918 pruebas pasan. APK privada preparada, no instalada.
+La validacion de importacion completa/fluidez/cache/cancelacion en Fire sigue
+pendiente. Ver docs/xmltv-load-20261026.txt y READY.txt privado del ensayo.

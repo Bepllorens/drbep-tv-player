@@ -97,8 +97,21 @@ private fun GlobalSearchPanel(model: GlobalSearchListUiModel, imageBinder: Globa
             }
         }
         Spacer(modifier = Modifier.height(if (compact) 12.dp else 18.dp))
+        if (model.status.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BasicText(model.status,
+                    style = TextStyle(OfflineTvTheme.Colors.textMuted, 12.sp),
+                    modifier = Modifier.weight(1f).padding(vertical = 6.dp))
+                model.onRetry?.let { retry ->
+                    BasicText("Reintentar", style = TextStyle(OfflineTvTheme.Colors.accentCyan, 14.sp),
+                        modifier = Modifier.tvButtonSemantics(true).clickable { retry.run() }.padding(12.dp))
+                }
+            }
+        }
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            itemsIndexed(model.items) { _, item ->
+            itemsIndexed(model.items, key = { index, item ->
+                item.key.ifEmpty { "fallback:$index" }
+            }) { _, item ->
                 GlobalSearchRow(item, imageBinder)
             }
         }

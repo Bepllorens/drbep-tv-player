@@ -108,7 +108,7 @@ final class CatalogSnapshotStore {
     // Bump whenever a release learns a new catalog collection. Otherwise an APK
     // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
     // produced by an older parser (for example, before Plex VOD existed).
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 15;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 16;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -2035,6 +2035,7 @@ final class CatalogSnapshotStore {
         out.writeBoolean(p.liveAccessMetadataKnown);
         out.writeBoolean(p.admin);
         writeStringSet(out, p.allowedLiveGroups);
+ out.writeBoolean(p.palantirEnabled);
     }
 
     static OfflinePermissions readOfflinePermissions(DataInputStream in, int formatVersion) throws IOException {
@@ -2080,6 +2081,7 @@ final class CatalogSnapshotStore {
             p.admin = in.readBoolean();
             readStringSet(in, p.allowedLiveGroups);
         }
+        if(formatVersion>=16)p.palantirEnabled=in.readBoolean();
         return p;
     }
 

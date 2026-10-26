@@ -81,11 +81,12 @@ android {
         buildConfigField "boolean", "REUSE_PLAYBACK_TRANSPORT", (updateChannel == "beta" && (project.findProperty("reusePlaybackTransport") ?: "false").toString().toBoolean()).toString()
         buildConfigField "boolean", "COALESCE_REMOTE_ZAP", (updateChannel == "beta" && (project.findProperty("coalesceRemoteZap") ?: "false").toString().toBoolean()).toString()
         buildConfigField "boolean", "FAST_HLS_STARTUP", (updateChannel == "beta" && (project.findProperty("fastHlsStartup") ?: "false").toString().toBoolean()).toString()
+        buildConfigField "boolean", "FAST_HLS_DVR_STARTUP", (updateChannel == "beta" && (project.findProperty("fastHlsDvrStartup") ?: "false").toString().toBoolean()).toString()
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 774
-        versionName "2.0.774-beta-tv-series"
+        versionCode 776
+        versionName "2.0.776-beta-navigation-catalog"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (emulatorAbiOnly) {

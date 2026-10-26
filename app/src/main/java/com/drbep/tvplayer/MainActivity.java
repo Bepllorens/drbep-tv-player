@@ -310,6 +310,8 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, Long> recordingResumePositions = new HashMap<>();
     private final Map<String, Long> recordingResumeDurations = new HashMap<>();
     private final Map<String, Long> recordingResumeUpdatedAt = new HashMap<>();
+    private ResumeProgressStore resumeProgressStore;
+    private ResumeProgressStore.Session resumeProgressSession;
     private final Map<String, Long> vodResumePositions = new HashMap<>();
     private final Map<String, Long> vodResumeUpdatedAt = new HashMap<>();
     private final Map<String, ChannelItem> vodResumeItems = new HashMap<>();
@@ -325,7 +327,7 @@ public class MainActivity extends FragmentActivity {
     private NetworkConnectivityMonitor networkConnectivityMonitor;
     private boolean enteringPictureInPicture;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService searchExecutor = Executors.newSingleThreadExecutor();
+    private final ProgressiveSearch<GlobalSearchResult> globalSearch = new ProgressiveSearch<>();
     private final ExecutorService channelLogoExecutor = Executors.newFixedThreadPool(2);
     private final LruCache<String, Drawable> channelLogoFallbacks = new LruCache<>(64);
     private final ExecutorService epgExecutor = Executors.newSingleThreadExecutor();
@@ -484,6 +486,8 @@ public class MainActivity extends FragmentActivity {
     private RemoteInputRouter remoteInputRouter;
     private RemoteZapQueue<ChannelItem> remoteZapQueue;
     private boolean deliveringRemoteZap;
+    private int heldRemoteZapKey = -1;
+    private boolean remoteZapKeyRepeat;
     private long remoteZapSequence, remoteZapPressId, remoteZapPressedAt;
     private void executeRemoteZap(int index) {
         if (!isActivityReadyForUiWork() || channels.isEmpty()) { cancelRemoteZap(); return; }
@@ -497,6 +501,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void cancelRemoteZap() {
+        heldRemoteZapKey = -1;
         if (remoteZapQueue != null) remoteZapQueue.cancel();
     }
     private void tuneRelativeFromRemote(int delta) {
@@ -526,6 +531,9 @@ public class MainActivity extends FragmentActivity {
                 }
             });
         }
+        // Separate taps stay immediate. Only real held-key repeats are grouped;
+        // delaying unrelated taps to guess a burst makes the remote feel slower.
+        if (!remoteZapKeyRepeat) remoteZapQueue.cancel();
         remoteZapQueue.press(delta, android.os.SystemClock.elapsedRealtime());
     }
 
@@ -733,6 +741,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     static final class GlobalSearchResult {
+        String searchSource = "";
         Runnable action;
         final int type;
         final String title;
@@ -908,6 +917,8 @@ public class MainActivity extends FragmentActivity {
         appUpdateManager = new AppUpdateManager(this, catalogSnapshotStore);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        resumeProgressStore = ResumeProgressPersistence.forPreferences(prefs);
+        resumeProgressSession = resumeProgressStore.openSession(catalogSnapshotStore.getUserScope());
         OfflineTvTheme.applyPalette(prefs.getString(PREF_UI_PALETTE, OfflineTvTheme.PALETTE_AURORA));
         reminderStore = new ReminderStore(prefs, PREF_REMINDERS);
         recentChannelsStore = new RecentChannelsStore(prefs, PREF_RECENT_CHANNELS);
@@ -2681,6 +2692,7 @@ public class MainActivity extends FragmentActivity {
 
             @Override public String vodLibraryLabel() {
                 ChannelItem item = getCurrentPlaybackChannelItem();
+                if(item!=null && item.id.startsWith("palantir:"))return "Palantir";
                 return item != null && item.isVod && item.id.startsWith("m3u:")
                         ? (item.vodSeriesTitle.isEmpty() ? "Volver a películas" : "Volver a series")
                         : getString(R.string.touch_button_vod_library);
@@ -2689,7 +2701,7 @@ public class MainActivity extends FragmentActivity {
             @Override
             public boolean canOpenVod() {
                 ChannelItem item = getCurrentPlaybackChannelItem();
-                return (item != null && item.isVod && item.id.startsWith("m3u:")) || canOpenVodLibrary();
+                return (item != null && item.isVod && (item.id.startsWith("m3u:") || item.id.startsWith("palantir:"))) || canOpenVodLibrary();
             }
 
             @Override
@@ -2843,12 +2855,12 @@ public class MainActivity extends FragmentActivity {
         }
         if (channel.isVod && !isU7dReplayItem(channel)) {
             long positionMs = playerController == null ? 0L : Math.max(0L, playerController.getCurrentPlaybackPosition());
-            long durationMs = Math.max(0L, channel.vodDurationSeconds * 1_000L);
-            int progress = durationMs <= 0L ? 0 : (int) Math.min(100L, (positionMs * 100L) / durationMs);
+            long durationMs = PlaybackFinishEstimate.duration(playerController == null ? 0L : playerController.getHudVodDurationMs(channel.id), channel.vodDurationSeconds);
+            int progress = durationMs <= 0L ? 0 : (int) Math.min(100d, (positionMs * 100d) / durationMs);
             String remaining = durationMs > positionMs
                     ? getString(R.string.zap_banner_remaining, formatDurationShort(durationMs - positionMs))
                     : "";
-            return new TouchControlsNowPlayingUiModel(
+            TouchControlsNowPlayingUiModel model = new TouchControlsNowPlayingUiModel(
                     true,
                     channel.logoUrl,
                     "",
@@ -2862,8 +2874,10 @@ public class MainActivity extends FragmentActivity {
                     progress,
                     durationMs > 0L,
                     "",
-                    playerController == null ? "" : playerController.getVodStreamInfo()
+                    playerController == null ? "" : playerController.getPlaybackTrackInfo(channel.id)
             );
+            model.estimatedFinishAtMs = playerController == null ? 0L : playerController.getVodFinishEstimate(channel.id, System.currentTimeMillis());
+            return model;
         }
         if (isU7dReplayItem(channel)) {
             String programTitle = channel.nowProgram == null || channel.nowProgram.trim().isEmpty()
@@ -2884,6 +2898,7 @@ public class MainActivity extends FragmentActivity {
                     false,
                     ""
             );
+            model.playbackTrackInfo = playerController == null ? "" : playerController.getPlaybackTrackInfo(channel.id);
             model.programmeMetadata=currentPlaybackU7dPreviewEntry==null?null:currentPlaybackU7dPreviewEntry.programmeMetadata;
             return model;
         }
@@ -2921,6 +2936,7 @@ public class MainActivity extends FragmentActivity {
                 progressVisible,
                 endTimeText
         );
+        model.playbackTrackInfo = playerController == null ? "" : playerController.getPlaybackTrackInfo(channel.id);
         model.programmeMetadata=programmeMetadata(channel,currentProgram);
         return model;
     }
@@ -5917,7 +5933,7 @@ public class MainActivity extends FragmentActivity {
             archiveScope=scope;archiveKnownSaved=null;
             archiveState.setGenres(java.util.Collections.emptyList());
             archiveState.setFormat(prefs.getString("u7d_transport_"+android.net.Uri.encode(scope),"Auto"));
-            archiveGeneration++; pendingMovistarGuideChannels.clear(); archiveWindowKey="";archiveWindowLoading=false;archivePrograms.clear();archiveLoading.clear();archiveErrors.clear();
+            archiveGeneration++; panelGuideRefreshGate.clear(); pendingMovistarGuideChannels.clear(); archiveWindowKey="";archiveWindowLoading=false;archivePrograms.clear();archiveLoading.clear();archiveErrors.clear();
             archiveState.setEntries(java.util.Collections.emptyList()); archiveState.setQuery("");
             archiveState.setChannel("");archiveState.setGenre("");archiveState.setSelectedId("");
         }
@@ -5930,7 +5946,7 @@ public class MainActivity extends FragmentActivity {
                 && archiveAvailability.invalidateMismatchedIdentity(archiveScope,c))changed.add(c);
         if(changed.isEmpty())return;
         // Cancel old metadata jobs, retaining all unaffected channel programmes and playback.
-        archiveGeneration++;archiveWindowRevision++;archiveWindowKey="";archiveWindowLoading=false;
+        archiveGeneration++;panelGuideRefreshGate.clear();archiveWindowRevision++;archiveWindowKey="";archiveWindowLoading=false;
         archiveLoading.clear();pendingMovistarGuideChannels.clear();archivePrefetchedChannel="";
         final String scope=archiveScope;
         archiveEligible=new ArrayList<>(archiveChannels());
@@ -10220,6 +10236,13 @@ public class MainActivity extends FragmentActivity {
             public void returnToHome() {
                 rememberCurrentVodPosition();
                 ChannelItem playing = getCurrentPlaybackChannelItem();
+                if (playing != null && playing.id.startsWith("palantir:")
+                        && playing.id.equals(importedVodReturnId) && importedVodReturnAction != null) {
+                    liveReturnToHome = false;
+                    modalReturnAction = null;
+                    importedVodReturnAction.run();
+                    return;
+                }
                 if (vodCarouselReturn != null && playing != null && playing.isVod && playing.id.equals(vodCarouselReturnId)) {
                     Runnable back = vodCarouselReturn; vodCarouselReturn = null; liveReturnToHome = false;
                     back.run(); return;
@@ -10353,18 +10376,40 @@ public class MainActivity extends FragmentActivity {
         int key = event.getKeyCode();
         boolean channelKey = key == KeyEvent.KEYCODE_CHANNEL_UP || key == KeyEvent.KEYCODE_CHANNEL_DOWN
                 || key == KeyEvent.KEYCODE_PAGE_UP || key == KeyEvent.KEYCODE_PAGE_DOWN;
-        if (event.isCanceled() || (event.getAction() == KeyEvent.ACTION_DOWN && !channelKey)) cancelRemoteZap();
-
-        if (event.getAction() == KeyEvent.ACTION_DOWN) { lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime(); BackgroundWorkBudget.interaction(); }
-        if (handleSearchShortcut(event)) return true;
-        if (handleRemoteMessageKeyEvent(event)) {
-            return true;
+        boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        boolean directionKey = key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN;
+        // The same arrows navigate lists and zap in full-screen live TV. Decide
+        // cancellation after routing, so an actual arrow zap can retain its burst.
+        boolean deferArrowCancellation = down && directionKey;
+        if (event.isCanceled() || (down && !channelKey && !deferArrowCancellation)) cancelRemoteZap();
+        if (event.getAction() == KeyEvent.ACTION_UP && key == heldRemoteZapKey) {
+            heldRemoteZapKey = -1;
+            if (!event.isCanceled() && remoteZapQueue != null) remoteZapQueue.finishBurst();
         }
-        if (handleArchiveStripKey(event)) return true;
-        if (remoteInputRouter != null && remoteInputRouter.dispatchKeyEvent(event)) {
-            return true;
+        if (down && event.getRepeatCount() == 0) heldRemoteZapKey = -1;
+        long zapBefore = remoteZapSequence;
+        boolean previousKeyRepeat = remoteZapKeyRepeat;
+        remoteZapKeyRepeat = down && event.getRepeatCount() > 0;
+        try {
+            if (down) { lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime(); BackgroundWorkBudget.interaction(); }
+            if (handleSearchShortcut(event)) return true;
+            if (handleRemoteMessageKeyEvent(event)) {
+                return true;
+            }
+            if (handleArchiveStripKey(event)) return true;
+            if (remoteInputRouter != null && remoteInputRouter.dispatchKeyEvent(event)) {
+                return true;
+            }
+            return super.dispatchKeyEvent(event);
+        } finally {
+            remoteZapKeyRepeat = previousKeyRepeat;
+            boolean actuallyZapped = remoteZapSequence != zapBefore;
+            if (deferArrowCancellation && !actuallyZapped) cancelRemoteZap();
+            if (BuildConfig.COALESCE_REMOTE_ZAP && down && !event.isCanceled()
+                    && (channelKey || directionKey) && event.getRepeatCount() > 0 && actuallyZapped) {
+                heldRemoteZapKey = key;
+            }
         }
-        return super.dispatchKeyEvent(event);
     }
 
     @Override
@@ -10482,6 +10527,7 @@ public class MainActivity extends FragmentActivity {
         if (personalPlaylistController != null) personalPlaylistController.close();
         if (privateVodBrowser != null) privateVodBrowser.close();
         activityDestroyed = true;
+        panelGuideRefreshGate.clear();
         sleepTimer.cancel();
         uiHandler.removeCallbacks(sleepTimerTick);
         closeSleepTimerWarning();
@@ -10501,7 +10547,7 @@ public class MainActivity extends FragmentActivity {
             touchControlsController.cancelTimers();
         }
         uiHandler.removeCallbacksAndMessages(null);
-        searchExecutor.shutdownNow();
+        globalSearch.close();
         ioExecutor.shutdownNow();
         channelLogoExecutor.shutdownNow();
         epgExecutor.shutdownNow();
@@ -14515,6 +14561,7 @@ public class MainActivity extends FragmentActivity {
         groups.add(new SettingsCategory("Inicio y aspecto", "Personaliza cómo te recibe DRBEP", Arrays.asList(
                 new SettingsEntry("Portada al iniciar", "La televisión sigue reproduciéndose detrás", host.startupEnabled() ? "Activada" : "Desactivada", open.apply(() -> { host.toggleStartup(); returnHere.run(); })),
                 new SettingsEntry("Canal de inicio", "Usar el canal que estás viendo ahora", getCurrentPlaybackChannelItem() == null ? "Sin canal" : displayName(getCurrentPlaybackChannelItem()), open.apply(() -> { host.setStartupChannel(); returnHere.run(); })),
+                new SettingsEntry("Menú lateral", "Ordenar secciones, ocultarlas o restaurar el menú", "", open.apply(() -> showMainRailSettings(returnHere))),
                 new SettingsEntry("Colores y contraste", "Incluye un modo de alto contraste", uiPaletteLabel(OfflineTvTheme.activePaletteId()), open.apply(() -> showUiPaletteDialog(returnHere))),
                 new SettingsEntry("Anchura de los menús", "Ajustes y paneles laterales en televisión", menuWidthLabel(), open.apply(() -> showMenuWidthDialog(returnHere))),
                 new SettingsEntry("Ocultación de controles", "Tiempo de la lista de canales y los controles de reproducción", menuHideLabel(), open.apply(() -> showMenuHideDialog(returnHere)))
@@ -14564,6 +14611,8 @@ public class MainActivity extends FragmentActivity {
     private boolean preferencesPickerPending;
     private static final int REQUEST_PREFERENCES_EXPORT = 18660;
     private DeviceWebPanel deviceWebPanel;
+    private Dialog devicePanelDialog;
+    private final PanelGuideRefreshGate panelGuideRefreshGate = new PanelGuideRefreshGate();
     private final ExecutorService playlistStatusExecutor=Executors.newSingleThreadExecutor();
     private volatile String playlistImportSnapshot="[]";
     private final Runnable playlistImportTick=new Runnable(){public void run(){
@@ -14626,7 +14675,11 @@ public class MainActivity extends FragmentActivity {
             Runnable goBack = () -> dismissModalForNextAction(holder[0],back);
             Runnable stop = () -> { deviceWebPanel.close(); uiHandler.removeCallbacks(devicePanelStatusTick); goBack.run(); };
             DevicePanelComposeBinder.bind(view,devicePanelAddresses.trim().split("\\n")[0].trim(),deviceWebPanel.pin(),goBack,stop);
-            holder[0] = ComposeDialogHost.showFullscreen(this,view,this::handleModalDismissed);
+            holder[0] = ComposeDialogHost.showFullscreen(this,view,() -> {
+                if(devicePanelDialog==holder[0])devicePanelDialog=null;
+                handleModalDismissed();
+            });
+            devicePanelDialog=holder[0];
             handleModalShown();
             return;
         }
@@ -14649,6 +14702,7 @@ public class MainActivity extends FragmentActivity {
                     public String metadataIndexSelection(String command,String source,String kind,String group)throws Exception{return MetadataIndexWorker.command(getApplicationContext(),command,source,kind,group);}
                     public String metadataIndexSelection(String command,String source,String kind)throws Exception{return MetadataIndexWorker.command(getApplicationContext(),command,source,kind);}
                     public String metadataIndex(String command)throws Exception{return command.isEmpty()?MetadataIndexWorker.status(getApplicationContext()):MetadataIndexWorker.command(getApplicationContext(),command);}
+                    public String blackBoxLease(String client,long sequence,boolean active)throws Exception{return BlackBox.detailLease(client,sequence,active);}
                     public String blackBox()throws Exception{return BlackBox.summary();}
                     public byte[] blackBoxExport()throws Exception{return BlackBox.export();}
                     public byte[] blackBoxExport(int minutes)throws Exception{return BlackBox.export(minutes);}
@@ -14678,6 +14732,64 @@ public class MainActivity extends FragmentActivity {
                 });
             } catch(Exception e){if(pending[0]!=null)pending[0].close();postUiIfAlive(() -> showStatus("No se pudo abrir el panel. Comprueba la conexión a la red local."));}
         });
+    }
+
+    private void playFromDevicePanel(Runnable play) {
+        Dialog dialog=devicePanelDialog;
+        if(dialog!=null && dialog.isShowing())dismissModalForNextAction(dialog,play);
+        else play.run();
+    }
+
+    /** Refresh only the requested web day; native filters and saved metadata stay intact. */
+    private boolean queuePanelCatchupDay(JSONObject request,List<ChannelItem> permitted) throws Exception {
+        if(request.optBoolean("saved"))return panelGuideRefreshGate.busy();
+        String day=request.optString("day",java.time.LocalDate.now().toString());
+        if(day.isEmpty())day=java.time.LocalDate.now().toString();
+        java.time.LocalDate selected;
+        try {selected=java.time.LocalDate.parse(day);}
+        catch(Exception invalid){throw new DeviceWebPanel.PanelError("Día no válido.");}
+        java.time.LocalDate today=java.time.LocalDate.now();
+        if(selected.isAfter(today)||selected.isBefore(today.minusDays(7)))throw new DeviceWebPanel.PanelError("Día fuera de la ventana disponible.");
+        String requestedChannel=request.optString("channel");
+        List<ChannelItem> snapshot=new ArrayList<>();
+        boolean allowed=requestedChannel.isEmpty();
+        for(ChannelItem channel:permitted) {
+            if(!requestedChannel.isEmpty()&&!requestedChannel.equals(channel.id))continue;
+            allowed=true;if(!isOrangeChannel(channel))snapshot.add(channel);
+        }
+        if(!allowed)throw new DeviceWebPanel.PanelError("Canal no disponible.");
+        if(snapshot.isEmpty())return panelGuideRefreshGate.busy();
+        final String scope=archiveScope, requestedDay=day;
+        final int generation=archiveGeneration;
+        final String key=scope+"|"+generation+"|"+day+"|"+requestedChannel;
+        PanelGuideRefreshGate.Ticket ticket=panelGuideRefreshGate.begin(key,android.os.SystemClock.elapsedRealtime());
+        if(ticket!=null)try {
+            movistarGuideExecutor.execute(()->{
+                boolean success=false;
+                try {
+                    if(activityDestroyed||!panelGuideRefreshGate.current(ticket))return;
+                    MovistarGuideRepository.Guide guide=directMovistarGuide().day(requestedDay,snapshot,partial->{
+                        if(!panelGuideRefreshGate.current(ticket))return;
+                        java.util.Map<String,List<EpgRepository.EpgProgram>> changed=new java.util.LinkedHashMap<>();
+                        for(ChannelItem channel:snapshot) {
+                            JSONObject identity=partial.identity(channel);if(identity==null)continue;
+                            try{changed.put(channel.id,partial.programmes(channel,identity));}catch(Exception invalid){}
+                        }
+                        if(!changed.isEmpty())try{archiveStore.indexAll(scope,changed);}
+                        catch(Exception failure){throw new IllegalStateException("Panel guide index unavailable",failure);}
+                        if(!changed.isEmpty())postUiIfAlive(()->{
+                            if(generation==archiveGeneration&&archiveDialog!=null)archiveState.setRevision(archiveState.getRevision()+1);
+                        });
+                    });
+                    success=guide.complete;
+                }catch(Exception failure){Log.w(TAG,"Panel guide refresh unavailable: "+failure.getClass().getSimpleName());}
+                finally{panelGuideRefreshGate.complete(ticket,android.os.SystemClock.elapsedRealtime(),success);}
+            });
+        } catch(RuntimeException stopped) {
+            panelGuideRefreshGate.complete(ticket,android.os.SystemClock.elapsedRealtime(),false);
+            throw stopped;
+        }
+        return panelGuideRefreshGate.busy();
     }
 
     private byte[] devicePanelArtwork(String id)throws Exception {
@@ -14739,8 +14851,10 @@ public class MainActivity extends FragmentActivity {
             if(activityDestroyed)throw new DeviceWebPanel.PanelError("El reproductor está cerrado.");
             ensureArchiveScope();if(archiveWindowKey.isEmpty())loadArchiveCatalog(false);
             java.util.Map<String,String> allowed=new java.util.LinkedHashMap<>();
-            for(ChannelItem c:archiveChannels())allowed.put(c.id,displayName(c));
-            return new Object[]{archiveScope,allowed,archiveState.getLoading()};
+            List<ChannelItem> permitted=archiveChannels();
+            for(ChannelItem c:permitted)allowed.put(c.id,displayName(c));
+            boolean panelLoading=action.equals("catchup-list")&&queuePanelCatchupDay(request,permitted);
+            return new Object[]{archiveScope,allowed,archiveState.getLoading()||panelLoading};
         });
         uiHandler.post(capture);Object[] context;
         try{context=capture.get(5,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception e){capture.cancel(false);throw e;}
@@ -14766,7 +14880,7 @@ public class MainActivity extends FragmentActivity {
             ChannelItem c=findAllowedHomeLiveChannel(p.channelId);if(c==null||!supportsU7d(c))throw new DeviceWebPanel.PanelError("Canal no disponible.");
             long expires=EpgTimeCodec.parseEpochMillis(p.endTime)+7L*86400000;
             if(action.equals("catchup-save"))toggleArchiveSaved(p,expires);
-            else {if(expires<System.currentTimeMillis())throw new DeviceWebPanel.PanelError("El programa ha caducado.");runArchiveAction(c,()->playMovistarIsmU7dProgram(c,p));}
+            else {if(expires<System.currentTimeMillis())throw new DeviceWebPanel.PanelError("El programa ha caducado.");runArchiveAction(c,()->playFromDevicePanel(()->playMovistarIsmU7dProgram(c,p)));}
             return "{\"ok\":true}";
         });
         uiHandler.post(command);try{return command.get(5,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception e){command.cancel(false);throw e;}
@@ -14852,6 +14966,35 @@ public class MainActivity extends FragmentActivity {
         });
         return personalPlaylistController;
     }
+    private void showPalantirLibrary(Runnable back){
+        if(currentOfflinePermissions==null || !currentOfflinePermissions.allowsPalantir())return;
+        prepareModalSurface();
+        ComposeView view=new ComposeView(this);attachDialogViewTreeOwners(view);
+        Map<String,String> headers=new HashMap<>();
+        if(catalogSnapshotStore!=null){
+            headers.put("Authorization","Bearer "+catalogSnapshotStore.getAccessToken());
+            headers.put("X-DRBEP-Device-Id",catalogSnapshotStore.getDeviceId());
+        }
+        PalantirBrowser.open(this,view,catalogRepository.vodApiBaseUrl(),headers,new PalantirBrowser.Host(){
+            public void play(ChannelItem item,Dialog libraryDialog){
+                dismissModalForNextAction(libraryDialog,()->{
+                    importedVodReturnId=item.id;
+                    importedVodReturnAction=()->showPalantirLibrary(back);
+                    modalReturnAction=importedVodReturnAction;
+                    playChannelItem(item,true);
+                });
+            }
+            public void back(Dialog libraryDialog){dismissModalForNextAction(libraryDialog,back);}
+            public void closed(){handleModalDismissed();}
+            public void input(String value,java.util.function.Consumer<String> submit){
+                showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar en Palantir","","Buscar","Cancelar","",
+                    Arrays.asList(new TvTextInputFieldUiModel("Título",value,false,false)),
+                    values -> {if(values!=null&&!values.isEmpty())submit.accept(values.get(0));},null,null));
+            }
+        });
+        handleModalShown();
+    }
+
     private void showImportedMovies(String source, Runnable back) { showImportedLibrary(source,false,back); }
     private void showImportedSeries(String source, Runnable back) { showImportedLibrary(source,true,back); }
     private void showImportedLibrary(String source, boolean series, Runnable back) {
@@ -14936,6 +15079,49 @@ public class MainActivity extends FragmentActivity {
         showTvOptionsDialog("Ocultación de controles", "Se aplica a la lista de canales, al panel del canal y a los controles de reproducción. Los ajustes permanecen abiertos hasta que vuelvas atrás.", labels, actions, onBack);
     }
 
+    private MainRailLayout currentMainRailLayout() {
+        String raw = "";
+        if (prefs != null) try { raw = prefs.getString(MainRailLayout.PREF, ""); }
+        catch (ClassCastException ignored) { /* Fall back to a recoverable navigation layout. */ }
+        if (mainRailLayoutCache == null || !java.util.Objects.equals(raw, mainRailLayoutRaw)) {
+            mainRailLayoutRaw = raw;
+            mainRailLayoutCache = MainRailLayout.decode(raw);
+        }
+        return mainRailLayoutCache;
+    }
+
+    private void saveMainRailLayout(MainRailLayout layout) {
+        try {
+            String encoded = layout.encode();
+            prefs.edit().putString(MainRailLayout.PREF, encoded).apply();
+            mainRailLayoutRaw = encoded;
+            mainRailLayoutCache = layout;
+        } catch (Exception error) {
+            showError("No se pudo guardar el menú lateral");
+        }
+    }
+
+    private void showMainRailSettings(Runnable onBack) {
+        prepareModalSurface();
+        ComposeView view = new ComposeView(this);
+        attachDialogViewTreeOwners(view);
+        final Dialog[] holder = new Dialog[1];
+        Runnable back = () -> dismissModalForNextAction(holder[0], onBack);
+        final Runnable[] render = new Runnable[1];
+        render[0] = () -> MainRailSettingsComposeBinder.bind(view, currentMainRailLayout(),
+                (id, delta) -> { saveMainRailLayout(currentMainRailLayout().move(id, delta)); render[0].run(); },
+                (id, visible) -> { saveMainRailLayout(currentMainRailLayout().withVisible(id, visible)); render[0].run(); },
+                () -> { saveMainRailLayout(MainRailLayout.defaults()); render[0].run(); }, back);
+        render[0].run();
+        holder[0] = ComposeDialogHost.showFullscreen(this, view, this::handleModalDismissed);
+        holder[0].setOnKeyListener((dialog, code, event) -> {
+            if (code != KeyEvent.KEYCODE_BACK) return false;
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) back.run();
+            return true;
+        });
+        handleModalShown();
+    }
+
     private String preferencesJson() throws Exception {
         Map<String,Object> values = new HashMap<>();
         values.put("startup_hub_disabled", prefs.getBoolean(PREF_STARTUP_HUB_DISABLED, false));
@@ -14946,6 +15132,7 @@ public class MainActivity extends FragmentActivity {
         values.put(PreferencesBackupCodec.HIDE, prefs.getInt(PreferencesBackupCodec.HIDE,0));
         values.put(PreferencesBackupCodec.PINNED, new HashSet<>(prefs.getStringSet(PreferencesBackupCodec.PINNED,
                 new HashSet<>(Arrays.asList("temporizador","calidad-de-imagen","subtitulos","buscar-actualizaciones")))));
+        values.put(MainRailLayout.PREF, MainRailLayout.decode(prefs.getString(MainRailLayout.PREF, "")).encode());
         return PreferencesBackupCodec.encode(values);
     }
 
@@ -19081,7 +19268,7 @@ public class MainActivity extends FragmentActivity {
             catalogSnapshotStore.clearVodResumeItems();
         }
         if (prefs != null) {
-            prefs.edit().remove(PREF_VOD_RESUME_POSITIONS).apply();
+            saveVodResumePositions();
         }
         showStatus(getString(R.string.settings_status_vod_progress_cleared));
     }
@@ -19092,7 +19279,7 @@ public class MainActivity extends FragmentActivity {
         recordingResumeDurations.clear();
         recordingResumeUpdatedAt.clear();
         if (prefs != null) {
-            prefs.edit().remove(PREF_RECORDING_RESUME_POSITIONS).apply();
+            saveRecordingResumePositions();
         }
         scheduleUserPreferencePush();
         refreshRecordingsPanelSurface();
@@ -19706,6 +19893,8 @@ public class MainActivity extends FragmentActivity {
     private final java.util.Map<String, JSONObject> discoveryPrivatePages = new java.util.HashMap<>();
     private final java.util.Set<String> discoveryPrivatePending = new java.util.HashSet<>();
     private final java.util.Set<String> discoveryPrivateFailed = new java.util.HashSet<>();
+    private String mainRailLayoutRaw;
+    private MainRailLayout mainRailLayoutCache;
     private final StartupHomeHubUiModel.Discovery discoveryHomeState = new StartupHomeHubUiModel.Discovery();
 
     private Dialog homeExitDialog;
@@ -20180,9 +20369,13 @@ public class MainActivity extends FragmentActivity {
 
         if (BuildConfig.DEBUG || "beta".equalsIgnoreCase(BuildConfig.UPDATE_CHANNEL)) {
             primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("MIS LISTAS","Películas","Películas de tus listas M3U","",true,
-                open.apply(() -> personalPlaylists().showKind("movie",() -> showStartupHubDialog(state)))));
+                open.apply(() -> personalPlaylists().showKind("movie",() -> showStartupHubDialog(state))), MainRailLayout.MOVIES));
             primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("MIS LISTAS","Series","Temporadas y episodios","",true,
-                open.apply(() -> personalPlaylists().showKind("series",() -> showStartupHubDialog(state)))));
+                open.apply(() -> personalPlaylists().showKind("series",() -> showStartupHubDialog(state))), MainRailLayout.SERIES));
+        }
+        if(currentOfflinePermissions!=null && currentOfflinePermissions.allowsPalantir()){
+            primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("CATÁLOGO","Palantir","Películas, series y colecciones","",true,
+                open.apply(() -> showPalantirLibrary(() -> showStartupHubDialog(state))),MainRailLayout.PALANTIR));
         }
         phase = logHomeModelPhase("primary", phase);
         List<StartupHomeHubUiModel.ContinueCard> continueCards = new ArrayList<>();
@@ -20507,6 +20700,7 @@ public class MainActivity extends FragmentActivity {
             homeModel.homeChannels.addAll(buildStartupLiveFeed(homeFavorites, visibleLive, homeGroup, open));
         }
         discoveryHomeState.page = (section, providerKey) -> buildDiscoveryHomePage(section, providerKey, open, state);
+        homeModel.railLayout = currentMainRailLayout();
         homeModel.discovery = discoveryHomeState;
         phase = logHomeModelPhase("homeFeed", phase);
         return homeModel;
@@ -22695,7 +22889,7 @@ public class MainActivity extends FragmentActivity {
         final String[] queryHolder = new String[]{initialQuery == null ? "" : initialQuery.trim()};
         renderGlobalSearchResults(searchComposeView, queryHolder[0].isEmpty() ? buildGlobalSearchLocalResults("", globalSearchFilter) : new ArrayList<>(), dialogHolder, queryHolder);
 
-        Dialog dialog = ComposeDialogHost.showFullscreen(this, searchComposeView, () -> { globalSearchGeneration++; if(pendingGlobalSearchRunnable!=null)uiHandler.removeCallbacks(pendingGlobalSearchRunnable); handleModalDismissed(); });
+        Dialog dialog = ComposeDialogHost.showFullscreen(this, searchComposeView, () -> { globalSearchGeneration++; globalSearch.cancel(); if(pendingGlobalSearchRunnable!=null)uiHandler.removeCallbacks(pendingGlobalSearchRunnable); handleModalDismissed(); });
         dialogHolder[0] = dialog;
 
         handleModalShown();
@@ -22725,7 +22919,11 @@ public class MainActivity extends FragmentActivity {
             return;
         }
         String query = queryHolder == null ? "" : queryHolder[0];
-        GlobalSearchListComposeBinder.bind(composeView, buildGlobalSearchListUiModel(results, dialogHolder, queryHolder, composeView, query), (imageView, item) -> {
+        bindGlobalSearchResults(composeView, buildGlobalSearchListUiModel(results, dialogHolder, queryHolder, composeView, query));
+    }
+
+    private void bindGlobalSearchResults(ComposeView composeView, GlobalSearchListUiModel model) {
+        GlobalSearchListComposeBinder.bind(composeView, model, (imageView, item) -> {
             if (imageView == null || item == null || item.header) {
                 if (imageView != null) {
                     imageView.setImageDrawable(null);
@@ -22862,6 +23060,7 @@ public class MainActivity extends FragmentActivity {
             queryHolder[0] = query == null ? "" : query;
         }
         int generation = ++globalSearchGeneration;
+        globalSearch.cancel();
         if (pendingGlobalSearchRunnable != null) {
             uiHandler.removeCallbacks(pendingGlobalSearchRunnable);
             pendingGlobalSearchRunnable = null;
@@ -22876,79 +23075,131 @@ public class MainActivity extends FragmentActivity {
         postUiDelayedIfAlive(pendingGlobalSearchRunnable, 450L);
     }
 
-    private void fetchGlobalSearchRemoteResults(ComposeView composeView, Dialog[] dialogHolder, String[] queryHolder, String query, int generation, int requestedFilter) {
-        final PersonalPlaylistController personal=personalPlaylists();
-        final List<ChannelItem> snapshot=new ArrayList<>(allChannels);
-        searchExecutor.execute(() -> {
-            if(generation!=globalSearchGeneration)return;
-            List<GlobalSearchResult> local=buildGlobalSearchLocalResults(query,requestedFilter,snapshot);
-            List<GlobalSearchResult> remoteResults = new ArrayList<>();
-            if(requestedFilter==GLOBAL_SEARCH_FILTER_ALL || requestedFilter==GLOBAL_SEARCH_FILTER_VOD) {
-                VoiceSearchCommand command=VoiceSearchCommand.parse(query);
-                for(boolean series:new boolean[]{false,true}) try {
-                    ImportedMovieRepository repository=new ImportedMovieRepository(this,personal,baseUrl,java.util.Collections.emptyMap(), item -> !shouldHideProtectedItem(item),series);
-                    List<ImportedMovie> matches=repository.searchLocal(command.query,command.kind==VoiceSearchCommand.Kind.RECOMMEND,command.kind==VoiceSearchCommand.Kind.SIMILAR);
-                    if(!matches.isEmpty())remoteResults.add(globalSearchHeader(series?"Series · Mis listas":"Películas · Mis listas"));
-                    for(ImportedMovie movie:matches) {
-                        GlobalSearchResult row=new GlobalSearchResult(GLOBAL_SEARCH_VOD,movie.getTitle(),movie.getMeta(),"Mis listas",movie.getChannel(),null,null,"");
-                        row.action=()-> {
-                            if(series) {
-                                ImportedMovies.prepareSearch(movie.getSource(),movie.getTitle(),true);
-                                showImportedSeries(movie.getSource(),this::showGlobalSearchDialog);
+    private void fetchGlobalSearchRemoteResults(ComposeView view, Dialog[] dialogs, String[] queryHolder,
+                                               String query, int generation, int filter) {
+        fetchGlobalSearchRemoteResults(view, dialogs, queryHolder, query, generation, filter, false);
+    }
+
+    private void fetchGlobalSearchRemoteResults(ComposeView view, Dialog[] dialogs, String[] queryHolder,
+                                               String query, int generation, int filter, boolean retry) {
+        if (generation != globalSearchGeneration || !isActivityReadyForUiWork()) return;
+        final PersonalPlaylistController personal = personalPlaylists();
+        final List<ChannelItem> channelsSnapshot = new ArrayList<>(allChannels);
+        final VoiceSearchCommand command = VoiceSearchCommand.parse(query);
+        List<ProgressiveSearch.Source<GlobalSearchResult>> sources = new ArrayList<>();
+        sources.add(new ProgressiveSearch.Source<>("local", 12_000L, false,
+                () -> buildGlobalSearchLocalResults(query, filter, channelsSnapshot)));
+        if (filter == GLOBAL_SEARCH_FILTER_ALL || filter == GLOBAL_SEARCH_FILTER_VOD) {
+            for (boolean series : new boolean[]{false, true}) {
+                sources.add(new ProgressiveSearch.Source<>(series ? "series" : "movies", 12_000L, false, () -> {
+                    List<GlobalSearchResult> rows = new ArrayList<>();
+                    ImportedMovieRepository repository = new ImportedMovieRepository(this, personal, baseUrl,
+                            java.util.Collections.emptyMap(), item -> !shouldHideProtectedItem(item), series);
+                    List<ImportedMovie> matches = repository.searchLocal(command.query,
+                            command.kind == VoiceSearchCommand.Kind.RECOMMEND,
+                            command.kind == VoiceSearchCommand.Kind.SIMILAR);
+                    if (!matches.isEmpty()) rows.add(globalSearchHeader(series ? "Series · Mis listas" : "Películas · Mis listas"));
+                    for (ImportedMovie movie : matches) {
+                        GlobalSearchResult row = new GlobalSearchResult(GLOBAL_SEARCH_VOD, movie.getTitle(),
+                                movie.getMeta(), "Mis listas", movie.getChannel(), null, null, "");
+                        row.action = () -> {
+                            if (series) {
+                                ImportedMovies.prepareSearch(movie.getSource(), movie.getTitle(), true);
+                                showImportedSeries(movie.getSource(), this::showGlobalSearchDialog);
                             } else showVodInfoDialog(movie.getChannel());
                         };
-                        remoteResults.add(row);
+                        rows.add(row);
                     }
-                } catch(Exception e) { Log.w(TAG,"Local library search unavailable"); }
+                    return rows;
+                }));
             }
-            publishSearchResults(composeView,dialogHolder,queryHolder,generation,local,remoteResults);
-            if(generation!=globalSearchGeneration)return;
-            VoiceSearchCommand command=VoiceSearchCommand.parse(query);
-            if((requestedFilter==GLOBAL_SEARCH_FILTER_ALL || requestedFilter==GLOBAL_SEARCH_FILTER_VOD)
-                    && command.kind==VoiceSearchCommand.Kind.SEARCH && catalogRepository!=null
-                    && (currentOfflinePermissions==null || currentOfflinePermissions.allowsPlexVod())) {
-                try {
-                    List<ChannelItem> plex=catalogRepository.fetchPlexVodPage("all",0L,"",command.query,0,12).items;
-                    boolean header=false;
-                    for(ChannelItem item:plex) {
-                        if(shouldHideProtectedItem(item))continue;
-                        boolean duplicate=false;
-                        for(GlobalSearchResult row:local)if(row.channel!=null && row.channel.id.equals(item.id)){duplicate=true;break;}
-                        if(duplicate)continue;
-                        if(!header){remoteResults.add(globalSearchHeader("Plex"));header=true;}
-                        remoteResults.add(new GlobalSearchResult(GLOBAL_SEARCH_VOD,displayName(item),buildGlobalVodMeta(item),"Plex",item,null,null,""));
+            if (command.kind == VoiceSearchCommand.Kind.SEARCH && catalogRepository != null
+                    && (currentOfflinePermissions == null || currentOfflinePermissions.allowsPlexVod())) {
+                sources.add(new ProgressiveSearch.Source<>("plex", 8_000L, true, () -> {
+                    List<GlobalSearchResult> rows = new ArrayList<>();
+                    for (ChannelItem item : catalogRepository.fetchPlexVodPage("all", 0L, "", command.query, 0, 12).items) {
+                        if (shouldHideProtectedItem(item)) continue;
+                        if (rows.isEmpty()) rows.add(globalSearchHeader("Plex"));
+                        rows.add(new GlobalSearchResult(GLOBAL_SEARCH_VOD, displayName(item), buildGlobalVodMeta(item),
+                                "Plex", item, null, null, ""));
                     }
-                } catch(Exception ignored) { /* Local results remain available when Plex is offline. */ }
+                    return rows;
+                }));
             }
-            if(generation!=globalSearchGeneration)return;
-            try {
-                if (requestedFilter != GLOBAL_SEARCH_FILTER_ALL && requestedFilter != GLOBAL_SEARCH_FILTER_EPG) {
-                    throw new IllegalStateException("EPG search skipped by filter");
-                }
-                List<EpgSearchResult> epgResults = buildEpgSearchResults(query);
-                if (!epgResults.isEmpty()) {
-                    appendGroupedGlobalEpgResults(remoteResults, epgResults, 12);
-                }
-            } catch (IllegalStateException ignored) {
-            } catch (Exception e) {
-                Log.w(TAG, "global EPG search failed", e);
+        }
+        if (filter == GLOBAL_SEARCH_FILTER_ALL || filter == GLOBAL_SEARCH_FILTER_EPG) {
+            sources.add(new ProgressiveSearch.Source<>("epg", 12_000L, false, () -> {
+                List<GlobalSearchResult> rows = new ArrayList<>();
+                appendGroupedGlobalEpgResults(rows, buildEpgSearchResults(query), 12);
+                return rows;
+            }));
+        }
+        if (!isOfflineRecordingsDisabled() && (filter == GLOBAL_SEARCH_FILTER_ALL || filter == GLOBAL_SEARCH_FILTER_RECORDINGS)) {
+            sources.add(new ProgressiveSearch.Source<>("recordings", 8_000L, true,
+                    () -> buildGlobalRecordingResults(query)));
+        }
+        globalSearch.start(sources, retry, snapshot -> {
+            List<GlobalSearchResult> merged = new ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            java.util.Set<String> localChannelIds = new java.util.HashSet<>();
+            for (ProgressiveSearch.Part<GlobalSearchResult> part : snapshot.parts) {
+                if ("local".equals(part.id)) for (GlobalSearchResult row : part.rows)
+                    if (row.channel != null) localChannelIds.add(row.channel.id);
             }
-            try {
-                if (!isOfflineRecordingsDisabled() && (requestedFilter == GLOBAL_SEARCH_FILTER_ALL || requestedFilter == GLOBAL_SEARCH_FILTER_RECORDINGS)) {
-                    remoteResults.addAll(buildGlobalRecordingResults(query));
+            List<String> pending = new ArrayList<>(), failed = new ArrayList<>();
+            GlobalSearchResult emptyHeader = null;
+            for (ProgressiveSearch.Part<GlobalSearchResult> part : snapshot.parts) {
+                String label = globalSearchSourceLabel(part.id);
+                if (part.state == ProgressiveSearch.State.LOADING) pending.add(label);
+                else if (part.state != ProgressiveSearch.State.READY) failed.add(label);
+                GlobalSearchResult header = null;
+                for (GlobalSearchResult row : part.rows) {
+                    if (row.type == GLOBAL_SEARCH_HEADER) { header = row; emptyHeader = row; continue; }
+                    // Preserve distinct origins/actions. Only Plex duplicates already present
+                    // in the base catalog are omitted, as in the previous search path.
+                    if ("plex".equals(part.id) && row.channel != null && localChannelIds.contains(row.channel.id)) continue;
+                    if (!seen.add(part.id + "|" + GlobalSearchUiFactory.identity(row))) continue;
+                    if (header != null) { merged.add(scopedGlobalSearchResult(part.id, header)); header = null; }
+                    merged.add(scopedGlobalSearchResult(part.id, row));
                 }
-            } catch (Exception e) {
-                Log.w(TAG, "global recording search failed", e);
             }
-            publishSearchResults(composeView,dialogHolder,queryHolder,generation,local,remoteResults);
+            if (merged.isEmpty() && snapshot.complete() && failed.isEmpty() && emptyHeader != null)
+                merged.add(emptyHeader);
+            String status = pending.isEmpty() ? "" : "Buscando: " + android.text.TextUtils.join(" · ", pending);
+            if (!failed.isEmpty()) status += (status.isEmpty() ? "" : "\n") + "Sin respuesta: " + android.text.TextUtils.join(" · ", failed);
+            final String displayStatus = status;
+            final boolean canRetry = !failed.isEmpty();
+            postUiIfAlive(() -> {
+                if (generation != globalSearchGeneration || dialogs[0] == null || !dialogs[0].isShowing()) return;
+                GlobalSearchListUiModel model = buildGlobalSearchListUiModel(merged, dialogs, queryHolder, view, query);
+                model.status = displayStatus;
+                model.onRetry = canRetry ? () -> {
+                    int next = ++globalSearchGeneration;
+                    fetchGlobalSearchRemoteResults(view, dialogs, queryHolder, query, next, filter, true);
+                } : null;
+                bindGlobalSearchResults(view, model);
+            });
         });
     }
 
-    private void publishSearchResults(ComposeView view,Dialog[] dialogs,String[] query,int generation,List<GlobalSearchResult> local,List<GlobalSearchResult> remote) {
-        final List<GlobalSearchResult> merged=new ArrayList<>(local);
-        if(!remote.isEmpty() && merged.size()==1 && merged.get(0).type==GLOBAL_SEARCH_HEADER)merged.clear();
-        merged.addAll(remote);
-        postUiIfAlive(()->{if(generation==globalSearchGeneration && dialogs[0]!=null && dialogs[0].isShowing())renderGlobalSearchResults(view,merged,dialogs,query);});
+    private static GlobalSearchResult scopedGlobalSearchResult(String source, GlobalSearchResult row) {
+        GlobalSearchResult scoped = new GlobalSearchResult(row.type, row.title, row.meta, row.badge,
+                row.channel, row.epgResult, row.recording, row.recordingBasePath);
+        scoped.action = row.action;
+        // A catalog/Plex duplicate keeps its UI identity if the base catalog arrives later.
+        scoped.searchSource = "plex".equals(source) ? "local" : source;
+        return scoped;
+    }
+
+    private static String globalSearchSourceLabel(String id) {
+        switch (id) {
+            case "movies": return "Películas";
+            case "series": return "Series";
+            case "plex": return "Plex";
+            case "epg": return "Guía";
+            case "recordings": return "Grabaciones";
+            default: return "Canales";
+        }
     }
 
     private void appendGroupedGlobalEpgResults(List<GlobalSearchResult> out, List<EpgSearchResult> epgResults, int limit) {
@@ -23401,6 +23652,7 @@ public class MainActivity extends FragmentActivity {
         }
         int maxChannels = Math.min(80, searchScope.size());
         for (int i = 0; i < maxChannels; i++) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException("EPG search cancelled");
             ChannelItem channel = searchScope.get(i);
             List<EpgRepository.EpgProgram> programs = epgRepository.fetchChannelPrograms(channel, 18);
             for (EpgRepository.EpgProgram program : programs) {
@@ -25073,6 +25325,12 @@ public class MainActivity extends FragmentActivity {
         }
         PlayerController.PlaybackSeekState seekState = playerController.getPlaybackSeekState();
         long durationMs = seekState == null ? 0L : Math.max(0L, seekState.endMs - seekState.startMs);
+        long retainedDuration = durationMs > 60_000L ? durationMs : recordingResumeDurations.getOrDefault(currentPlaybackRecordingId, 0L);
+        if (recordingResumePositions.getOrDefault(currentPlaybackRecordingId, 0L) == positionMs
+                && recordingResumeDurations.getOrDefault(currentPlaybackRecordingId, 0L) == retainedDuration) {
+            if (ownsResumeProgressSession()) resumeProgressStore.retry(resumeProgressSession, PREF_RECORDING_RESUME_POSITIONS);
+            return;
+        }
         recordingResumePositions.put(currentPlaybackRecordingId, positionMs);
         if (durationMs > 60_000L) {
             recordingResumeDurations.put(currentPlaybackRecordingId, durationMs);
@@ -25116,8 +25374,14 @@ public class MainActivity extends FragmentActivity {
                 resolveNextHboEpisode(currentPlaybackVodId);
             saveHboHistory();scheduleUserPreferencePush();return;
         }
-        vodResumePositions.put(currentPlaybackVodId, positionMs);
         long detectedDuration = playerController.getCurrentVodDurationMs();
+        long retainedDuration = detectedDuration > 60_000L ? detectedDuration : vodResumeDurations.getOrDefault(currentPlaybackVodId, 0L);
+        if (vodResumePositions.getOrDefault(currentPlaybackVodId, 0L) == positionMs
+                && vodResumeDurations.getOrDefault(currentPlaybackVodId, 0L) == retainedDuration) {
+            if (ownsResumeProgressSession()) resumeProgressStore.retry(resumeProgressSession, PREF_VOD_RESUME_POSITIONS);
+            return;
+        }
+        vodResumePositions.put(currentPlaybackVodId, positionMs);
         if (detectedDuration > 60_000L) vodResumeDurations.put(currentPlaybackVodId, detectedDuration);
         vodResumeUpdatedAt.put(currentPlaybackVodId, System.currentTimeMillis());
         ChannelItem item = currentPlaybackTransientItem;
@@ -25162,6 +25426,11 @@ public class MainActivity extends FragmentActivity {
         if (prefs == null) {
             return;
         }
+        ResumeProgressStore.Snapshot latest = resumeProgressStore.latest(resumeProgressSession, PREF_VOD_RESUME_POSITIONS);
+        if (latest != null) {
+            latest.restore(vodResumePositions, vodResumeDurations, vodResumeUpdatedAt);
+            return;
+        }
         String raw = prefs.getString(PREF_VOD_RESUME_POSITIONS, "");
         if (raw == null || raw.trim().isEmpty()) {
             return;
@@ -25197,30 +25466,27 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void saveVodResumePositions(boolean scheduleSync) {
-        if (prefs == null) {
-            return;
-        }
+        if (prefs == null || !ownsResumeProgressSession()) return;
         try {
-            JSONObject json = new JSONObject();
-            for (Map.Entry<String, Long> entry : vodResumePositions.entrySet()) {
-                if (entry.getKey() == null || entry.getKey().trim().isEmpty()) {
-                    continue;
-                }
-                long value = entry.getValue() == null ? 0L : Math.max(0L, entry.getValue());
-                if (value > 0L) {
-                    json.put(entry.getKey(), new JSONObject()
-                            .put("position", value)
-                            .put("duration", vodResumeDuration(entry.getKey()))
-                            .put("updated_at", Math.max(0L, vodResumeUpdatedAt.getOrDefault(entry.getKey(), System.currentTimeMillis()))));
-                }
+            Map<String, Long> durations = new HashMap<>();
+            for (String id : vodResumePositions.keySet()) {
+                if (id != null && !id.trim().isEmpty()) durations.put(id, vodResumeDuration(id));
             }
-            prefs.edit().putString(PREF_VOD_RESUME_POSITIONS, json.toString()).apply();
-            if (scheduleSync) {
-                scheduleUserPreferencePush();
-            }
+            ResumeProgressStore.Snapshot snapshot = ResumeProgressStore.Snapshot.capture(false,
+                    vodResumePositions, durations, vodResumeUpdatedAt, System.currentTimeMillis());
+            resumeProgressStore.submit(resumeProgressSession, PREF_VOD_RESUME_POSITIONS, snapshot);
+            if (scheduleSync) scheduleUserPreferencePush();
         } catch (Exception e) {
-            Log.w(TAG, "failed to save vod resume positions", e);
+            Log.w(TAG, "failed to queue vod resume positions");
         }
+    }
+
+    private boolean ownsResumeProgressSession() {
+        if (resumeProgressStore == null || !resumeProgressStore.current(resumeProgressSession)) return false;
+        String scope = catalogSnapshotStore == null ? "" : catalogSnapshotStore.getUserScope();
+        if (!java.util.Objects.equals(scope, resumeProgressSession.scope))
+            resumeProgressSession = resumeProgressStore.openSession(scope);
+        return true;
     }
 
     static boolean shouldPreserveLocalVodProgress(long localTime, long remoteTime, boolean remoteHasEntry, long durationMs) {
@@ -25391,6 +25657,11 @@ public class MainActivity extends FragmentActivity {
         if (prefs == null) {
             return;
         }
+        ResumeProgressStore.Snapshot latest = resumeProgressStore.latest(resumeProgressSession, PREF_RECORDING_RESUME_POSITIONS);
+        if (latest != null) {
+            latest.restore(recordingResumePositions, recordingResumeDurations, recordingResumeUpdatedAt);
+            return;
+        }
         String raw = prefs.getString(PREF_RECORDING_RESUME_POSITIONS, "");
         if (raw == null || raw.trim().isEmpty()) {
             return;
@@ -25415,27 +25686,13 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void saveRecordingResumePositions() {
-        if (prefs == null) {
-            return;
-        }
+        if (prefs == null || !ownsResumeProgressSession()) return;
         try {
-            JSONObject json = new JSONObject();
-            for (Map.Entry<String, Long> entry : recordingResumePositions.entrySet()) {
-                if (entry.getKey() == null || entry.getKey().trim().isEmpty()) {
-                    continue;
-                }
-                long value = entry.getValue() == null ? 0L : Math.max(0L, entry.getValue());
-                if (value > 0L) {
-                    JSONObject row = new JSONObject();
-                    row.put("position_ms", value);
-                    row.put("duration_ms", Math.max(0L, recordingResumeDurations.getOrDefault(entry.getKey(), 0L)));
-                    row.put("updated_at", Math.max(0L, recordingResumeUpdatedAt.getOrDefault(entry.getKey(), System.currentTimeMillis())));
-                    json.put(entry.getKey(), row);
-                }
-            }
-            prefs.edit().putString(PREF_RECORDING_RESUME_POSITIONS, json.toString()).apply();
+            resumeProgressStore.submit(resumeProgressSession, PREF_RECORDING_RESUME_POSITIONS,
+                    ResumeProgressStore.Snapshot.capture(true, recordingResumePositions,
+                            recordingResumeDurations, recordingResumeUpdatedAt, System.currentTimeMillis()));
         } catch (Exception e) {
-            Log.w(TAG, "failed to save recording resume positions", e);
+            Log.w(TAG, "failed to queue recording resume positions");
         }
     }
 

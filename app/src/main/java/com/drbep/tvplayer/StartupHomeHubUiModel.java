@@ -20,6 +20,7 @@ public final class StartupHomeHubUiModel {
     public final Runnable onSearch;
     public final Runnable onSettings;
     public final Runnable onBack;
+    public MainRailLayout railLayout = MainRailLayout.defaults();
     public Discovery discovery;
     public ContinueCard currentLive;
     public boolean livePlaybackError;
@@ -108,6 +109,7 @@ public final class StartupHomeHubUiModel {
     }
 
     public static final class PrimaryCard {
+        public final String navigationId;
         public final String eyebrow;
         public final String title;
         public final String subtitle;
@@ -116,6 +118,10 @@ public final class StartupHomeHubUiModel {
         public final Runnable onClick;
 
         public PrimaryCard(String eyebrow, String title, String subtitle, String metric, boolean vod, Runnable onClick) {
+            this(eyebrow, title, subtitle, metric, vod, onClick, "");
+        }
+        public PrimaryCard(String eyebrow, String title, String subtitle, String metric, boolean vod, Runnable onClick, String navigationId) {
+            this.navigationId = safe(navigationId);
             this.eyebrow = safe(eyebrow);
             this.title = safe(title);
             this.subtitle = safe(subtitle);

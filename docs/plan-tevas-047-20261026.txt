@@ -239,3 +239,5 @@ caché y cancelación terminó sin alterar datos originales. Publicación por ve
 
 BETA776 PUBLICADA — SHA y validación en cierre-beta-776-20261026.txt.
 Stable/rescue intactas. Plex preparado sin activar; autorización pendiente.
+
+26/10: Plex incremental activado con migración13 y retorno probado. Catálogo y permisos idénticos; primera sincronización real y medida de ahorro pendientes. Véase cierre-beta-776-20261026.txt.

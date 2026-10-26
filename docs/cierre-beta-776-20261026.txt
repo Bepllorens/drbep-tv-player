@@ -94,3 +94,28 @@ se han preservado adrede sus rutas de catchup en esta candidata aislada.
 
 La publicación no significa que todo el plan opcional esté terminado:
 agenda deportiva/DNS, pruebas Xiaomi y fluidez extrema XMLTV siguen pendientes.
+
+ACTIVACIÓN PLEX CONFIRMADA — 26/10/2026
+Autorización expresa recibida para reinicio con respaldo y retorno.
+Primer intento: el guard detectó ausencia de la tabla incremental en bases existentes;
+retorno automático al binario anterior verificado. Causa: cambio añadido al baseline
+versionado ya aplicado. Corregido mediante migración aditiva 13, probada con esquema12
+y datos sintéticos, dos aperturas y respaldo automático; regresión completa DB correcta.
+Pruebas aisladas Plex/Palantir/migraciones: correctas. Caché dashboard renovada.
+
+Release activo: /opt/drbep-releases/plex-incremental-20261026-v2
+Imagen: drbep-backend:plex-incremental-20261026-v2
+SHA256: c17d9060a94add1cdc4f0ec7aa6a465dc84c06633b33eb5ea24e5f94e0117db1
+Respaldo privado: before/ en ese release, integridad SQLite verificada.
+Retorno: rollback.sh en ese release. Restaura binario/recursos/compose;
+conserva datos actuales y el esquema aditivo, sin restaurar una DB antigua.
+Procedencia: base exacta palantir-links-20261026,41 archivos de reproducción idénticos.
+Contenedor, configuración y asociaciones de canales preservados.
+
+Comparación completa por hashes de tablas: fuentes, bibliotecas y títulos Plex,
+permisos y cuentas/preferencias Palantir idénticos antes/después.
+123552 títulos almacenados en28 bibliotecas/2 fuentes;119644 disponibles según API.
+Estado Plex HTTP200, ready correcto, sin sincronización en curso.
+No se lanzó una sincronización real: este pase verifica despliegue e integridad,
+no constituye una medición de ahorro con servidores Plex reales ni prueba de playback.
+La beta776 ya estaba publicada sin excepción; stable/rescue no se modifican.

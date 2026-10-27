@@ -69,6 +69,7 @@ la validación de dispositivo se mantiene pendiente.
 
 PROTECCIÓN DE REPRODUCCIÓN
 Parada por usuario/dispositivo, aviso de inactividad y detección de salida
-implementados en .185. Backend/dashboard aún sin activar en producción.
+implementados en .185. Backend/dashboard activos con respaldo en producción
+desde27/10; ver playback-control-despliegue-20261027.txt.
 Pruebas físicas y publicación pendientes; no confundir APK preparada con
 funcionalidad ya disponible en el dashboard de producción.

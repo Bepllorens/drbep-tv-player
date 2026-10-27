@@ -1,0 +1,112 @@
+ACTIVACIÓN DEL CONTROL DE REPRODUCCIÓN — 27/10/2026
+
+Estado actual
+Backend y dashboard offline activos en .223, autorizados expresamente por el
+usuario con respaldo y retorno. Contenedores drbep y drbep-offline-dashboard
+verificados healthy, readiness HTTP200 y rutas administrativas protegidas.
+No se publicó ni instaló la beta778; permanece preparada en .185.
+Stable582, beta777 y rescue543 conservan exactamente sus metadatos.
+No se enviaron órdenes de parada a usuarios ni se cambiaron sus políticas.
+
+Dónde están los controles
+Dashboard offline: Dispositivos, política general y parada por dispositivo.
+Usuarios > Seguridad: política heredada/personalizada y parada del usuario.
+Las nuevas confirmaciones y protección automática requieren cliente compatible.
+La beta778 está preparada para esa prueba; los clientes antiguos no demuestran
+el nuevo flujo. No confundir la activación del servidor con validación del Fire.
+
+Procedencia y preservación
+Base activa: /opt/drbep-releases/palantir-dashboard-20261027/source.
+Sus667 archivos coinciden con la copia de revisión .185.
+Base recompilada en su ruta original: SHA idéntico al binario activo anterior,
+d5c0637ab449678d4f2947e3e55cbe19397a8d0f9cac754ede398be1f14af204.
+Una compilación preliminar en otra carpeta tenía otra huella por rutas de
+depuración; se identificó y NO se desplegó como sustitución de la base.
+Candidata sobre esa fuente: siete archivos existentes modificados y dos nuevos;
+otros660 archivos idénticos. No se cambian fuentes de catchup, formatos,
+asociaciones, claves, EPG ni canales. La1/Vamos quedan preservados por fuente;
+su reproducción real no se ha probado hoy.
+Funcionalidad del commit backend0b0965b; se mantiene la base activa y no se
+despliega el binario canónico de desarrollo de forma indiscriminada.
+Dashboard anterior reproducido: siete chunks JavaScript idénticos al paquete
+activo. Cinco archivos del cambio aplicados sobre esa base.
+Se usa DRBEP_API_BASE=http://drbep:8080 en la build de producción.
+
+Release activo y retorno
+Directorio: /opt/drbep-releases/playback-control-20261027 en .223.
+Binario activo SHA256:
+3439a16bf5a90023b21d7dc17c7653932b576919f2b8440e80263d9b171204d2
+Imágenes para futuras recreaciones:
+drbep-backend:playback-control-20261027
+drbep-offline-dashboard:playback-control-20261027
+El backend actual conserva su contenedor/configuración; su nombre de imagen
+original en docker inspect no identifica por sí solo el binario reemplazado.
+
+before/server conserva el binario exacto anterior.
+before/compose.yml conserva el compose anterior.
+before/database.sqlite es una copia privada consistente de recuperación.
+No copiarla a Git ni a desarrollo; no se usa como fixture.
+La vuelta normal NO restaura DB ni sobrescribe progreso/sesiones nuevos.
+Imágenes conservadas:
+drbep-backend:rollback-playback-control-20261027
+drbep-offline-dashboard:rollback-playback-control-20261027
+Retorno manual autorizado si hace falta:
+python3 /opt/drbep-releases/playback-control-20261027/deploy.py rollback
+El watchdog independiente devuelve ambos servicios si falla la activación o
+si no termina en240 segundos. Los fallos de comprobación retornan inmediatamente.
+
+Incidencia de activación y corrección
+El primer intento retornó automáticamente al estado previo y verificó salud.
+El comparador trataba el orden de Env como parte de la configuración.
+Se demostró reproduciendo la huella original que valores y demás campos eran
+idénticos; solo cambió el orden de las primeras cuatro variables al recrear.
+Se normalizó el orden para comparar, conservando todos los valores y todas
+las comprobaciones. No se eliminó el control de configuración.
+El primer intento/retorno se conserva en attempt-1/ y el detalle en
+configuration-ordering-check.json. No hay datos sensibles en este informe.
+El segundo intento completó y verificó en3,5s.
+No se ha interpretado ese tiempo como duración total de todas las pruebas.
+
+Validación realizada
+Regresión sobre la fuente activa: Go internal/api174,293s,
+internal/service/user0,003s, internal/database58,759s; build estática correcta.
+Web/reproductor165/165. Una expectativa heredada exigía un nombre de recurso
+de septiembre: se reprodujo el mismo fallo en la base intacta y se trasladó
+la expectativa ya corregida del checkout canónico. Solo prueba, no código runtime.
+Dashboard:20/20, typecheck, lint y build correctos.
+La primera build aislada rechazó node_modules enlazado fuera del proyecto;
+se repitió con las dependencias locales existentes dentro de la carpeta.
+Verificación activa repetida tras el arranque:
+- Ambos servicios healthy y accesibles.
+- GET de política/control y POST de parada sin autenticar rechazados.
+- Consulta administrativa global y por usuario correcta.
+- Proxy del dashboard hacia el backend devuelve la misma política.
+- Doce recursos JS/CSS nuevos servidos con huellas exactas.
+- webapp.js servido con huella exacta.
+- Páginas de películas/series de Palantir accesibles.
+- Metadatos de4113 canales y totales/revisión del catálogo conservados.
+- Configuración y políticas existentes conservadas; no se fuerza una excepción.
+- Canales de actualización stable/beta/rescue idénticos antes/después.
+
+Pruebas pendientes del Fire
+El usuario está fuera de casa; ADB .190 continúa unauthorized.
+No instalar, autorizar ni manipular el Fire a distancia para eludir ese aviso.
+Cuando vuelva: aceptar la depuración, confirmar TV en HDMI y mando libre;
+verificar/respaldar APK y firma instaladas antes de instalar una candidata.
+Beta778 universal firmada en .185; si Fire tiene firma privada, seguir el
+procedimiento compatible sin desinstalar/borrar datos ni publicar esa variante.
+Validar stop individual y de usuario en miniatura, TV, VOD, catchup, multiview
+y PiP; ausencia de vídeo/audio/tráfico, progreso conservado y otros usuarios
+sin interrupción. Verificar caducidad, confirmación y reintento.
+Validar aviso/inactividad con mando/táctil, reconexión HDMI breve y apagado
+prolongado con el usuario presente. Los cuatro horas solo tienen test de reloj.
+La publicación de beta778 sigue pendiente de pruebas y autorización específica.
+No modificar stable por dar por terminada esta activación.
+
+Evidencias
+.185: /srv/drbep-dev/reviews/playback-control-deploy-20261027/
+source/, logs, base reproducida, candidata, manifiestos, overlay y recibos.
+.223: /opt/drbep-releases/playback-control-20261027/
+before/, imágenes, deploy.py, rollback.sh, prepared.json, deployment.json y
+post-verification.json. Los archivos privados permanecen restringidos.
+No registrar tokens, claves, contraseñas ni contenido de configuración privada.

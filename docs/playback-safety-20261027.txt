@@ -1,11 +1,13 @@
 Protección de reproducción y parada administrativa — 27/10/2026
 
 Estado
-Implementado y validado en desarrollo .185. NO activado en .223.
+Implementado y validado en .185; backend/dashboard ACTIVADOS en .223 el27/10.
+Ver playback-control-despliegue-20261027.txt para respaldo, retorno y comprobaciones.
 NO publicado en beta/stable. NO instalado en Fire.
 El Fire .190 sigue como unauthorized en ADB. El usuario confirmó que no está en casa.
 Conservar la implementación y retomar las pruebas físicas cuando pueda autorizar ADB.
-No se han modificado sesiones, dispositivos ni configuraciones de producción.
+No se han enviado órdenes de parada, revocado sesiones ni cambiado políticas
+de usuarios. La configuración de release se actualizó con respaldo.
 
 Repositorios
 Backend/dashboard: /srv/drbep-dev/repos/drbep
@@ -147,7 +149,7 @@ Artefactos y evidencias
 Los datos ficticios y credenciales de prueba están solo en esta carpeta privada;
 no deben entrar en Git ni utilizarse en producción.
 
-Pendiente antes de activar/publicar
+Pendiente de dispositivo/publicación (backend ya activado con respaldo)
 1. Autorizar ADB .190 desde la TV. Verificar TV encendida, entrada HDMI y mando libre.
 2. Verificar firma/versión instaladas antes de instalar la candidata778 universal.
    Si Fire usa firma privada, conservar sus datos y preparar variante de prueba
@@ -159,10 +161,9 @@ Pendiente antes de activar/publicar
 4. Validar PiP, reconexión HDMI breve y apagado prolongado con el usuario presente.
 5. Validar aviso/inactividad y pulsación/táctil real. La lógica de cuatro horas
    está probada con reloj simulado; no se ha dejado un Fire cuatro horas reproduciendo.
-6. Para probar el flujo real con producción hacen falta backend y cliente
-   compatibles. Preparar candidato sobre el release activo preservando el resto
-   de sus fuentes; no sustituir a ciegas por el binario canónico de desarrollo.
-7. Pedir la autorización específica exigida por AGENTS.md para activar backend
-   y dashboard con respaldo/retorno y el breve reinicio correspondiente.
+6. COMPLETADO: backend/dashboard compatibles activos sobre la fuente del release
+   vigente, conservando todos los demás archivos. Falta la prueba real del cliente.
+7. COMPLETADO: autorización específica recibida y activación con respaldo/retorno.
+   Estado y comprobaciones en playback-control-despliegue-20261027.txt.
 8. La candidata778 universal queda preparada; solo tras validación y autorización
    se podrá publicar exactamente el APK firmado validado, sin tocar stable.

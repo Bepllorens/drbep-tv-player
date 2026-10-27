@@ -2,7 +2,8 @@ BETA778 PREPARADA — 27/10/2026
 
 ESTADO DE LA ENTREGA
 Candidata universal de distribución compilada y firmada en .185.
-No publicada, no instalada, no activación de backend/dashboard en .223.
+No publicada ni instalada. Backend/dashboard activados en .223 con respaldo
+y retorno el27/10: ver playback-control-despliegue-20261027.txt.
 No se cambian stable/rescue ni el canal beta actual.
 Esta entrega cierra en Git los cambios pendientes tras beta777; los commits
 finales y la comprobación del remoto constan en el recibo privado:
@@ -82,15 +83,14 @@ PRUEBAS AL LLEGAR A CASA (EN ESTE ORDEN)
     actualización universal, gestos, aviso, cierre y progreso. No borrar datos.
 
 DEPENDENCIA DEL BACKEND
-El nuevo control completo no está activo en el dashboard de producción todavía.
-Para probar allí el flujo completo hace falta una candidata sobre el release
-ACTIVO, preservando los demás archivos y el comportamiento de La1/Vamos.
-No desplegar a ciegas el binario del checkout canónico.
-La activación/reinicio de backend/dashboard requiere autorización específica,
-respaldo y retorno. Este encargo autoriza Git y preparar la APK; no ese despliegue.
+El backend y dashboard compatibles ya están activos en producción, con respaldo
+y retorno verificados. Ver playback-control-despliegue-20261027.txt.
+El nuevo cliente sigue pendiente de instalar/validar en Fire y tablet.
+La publicación de beta778 no forma parte de esa activación y sigue pendiente.
 
 RETORNO / LÍMITES
-No se cambió ningún dispositivo o release remoto; hoy no hace falta retorno.
+No se instaló ningún dispositivo. Backend/dashboard actualizados con respaldo;
+el retorno se documenta en playback-control-despliegue-20261027.txt.
 Para futura instalación: conservar APK/versión/firma instalada y datos. No
 desinstalar ni borrar datos para cambiar identidad. Una vuelta a777 puede exigir
 ADB y compatibilidad Android; no prometer downgrade automático del actualizador.

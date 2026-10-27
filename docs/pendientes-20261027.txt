@@ -1,0 +1,74 @@
+ESTADO ÚNICO DEL PLAN — 27/10/2026
+Prevalece sobre estados históricos del plan del26/10. Entorno de trabajo .185.
+
+YA IMPLANTADO (no volver a empezar)
+Buscador por origen, progreso agrupado, controles compactos, lateral configurable,
+Plex incremental y agenda deportiva. Cierre/limitaciones Fire de bloques0-4:
+cierre-beta-776-20261026.txt.
+Plex real:97,471s->0,463s;25bibliotecas reutilizadas, sin pérdida registrada.
+Agenda: backend desplegado con respaldo, pantalla/favoritos validados en Fire.
+Beta777 universal publicada y descarga verificada según registro del27/10
+reviews/beta777-agenda-20261027/state.txt. Esta es la última publicación
+registrada en esta revisión; no se vuelve a consultar producción.
+Diagnóstico manual de red probado en Fire/panel, sin modificar DNS.
+Palantir/cuentas y enlaces de origen ya implementados; no confundir notas
+históricas de primera fase con estado actual.
+
+DESARROLLO NUEVO PREPARADO, AÚN SIN PUBLICAR
+1. Diagnóstico de red: código pendiente de integrar en la próxima candidata universal.
+2. FanartRepository: menos asignaciones al normalizar, equivalencia Unicode y
+   benchmark.986tests en ese punto. Pico global de TV NO se declara corregido.
+   Ver tv-memory-20261027.txt.
+3. Caja negra: primeros manifiesto/datos e inicialización de vídeo, correlación
+   por operación/generación, cargas y acumulados separados en panel.
+  995tests y navegador Chromium correctos. Ver startup-phases-20261027.txt.
+   Candidata privada ARM32 preparada; no instalada ni publicada.
+   Resolución anterior a prepare y desglose HTTP detallado siguen como extensión.
+
+PENDIENTE DEL FIRE (cuando se acepte ADB)
+- Usuario está fuera; autorizó reiniciar. Reinicio completado, dispositivo exige
+  confirmar Permitir depuración USB. Claves existentes185/Mac/223 rechazadas.
+  No sustituir claves ni eludir autorización. Aceptar aviso y Permitir siempre.
+- Leer memoria real tras reinicio y verificar app instalada; no asumir curado.
+- Primera entrada a TV: portada lista comprobada antes y En directo después,
+  mismo grupo Movistar HLS y recorridos fríos/calientes. Separar CPU/espera
+  de frame completo. Preferir gfxinfo; no trazas con buffers enormes.
+- Mando, miniatura, pantalla completa/retorno y continuidad real de vídeo.
+- Nuevos hitos de caja negra con zapeo/reintentos y multiview; ninguna mezcla
+  entre reproductores. Confirmar también que hay fuentes sin hitos y se muestran bien.
+- XMLTV grande: importación/cancelación/caché ya comparadas funcionalmente;
+  sigue pendiente fluidez extrema con vídeo. No repetir carga masiva sin necesidad.
+- M+Indie/HLS: no está resuelto por estos cambios. Mantener aparte del caso TV.
+  La1/Vamos y asociaciones/rutas existentes se conservan.
+
+PENDIENTE XIAOMI
+Actualización real con universal de distribución compatible, gestos y controles,
+agenda deportiva y foco/retorno. Comprobar IP/puerto actuales cuando esté disponible.
+El APK privado de Fire no sirve como candidata de distribución/tablet.
+No desinstalar ni borrar datos para cambiar firma.
+
+GIT / ENTREGA
+Conservar cambios locales previos de red, memoria y este bloque.
+Cierre solicitado: integrar en Git los cambios de red, memoria, caja negra y
+protección de reproducción. La candidata conjunta es la beta778 universal;
+ver beta778-preparada-20261027.txt y playback-safety-20261027.txt.
+La publicación requiere autorización expresa y artefacto universal de distribución
+validado; no publicar por haber pasado tests locales ni por terminar este documento.
+No cambiar stable ni reiniciar producción.
+
+OPCIONALES SIN INICIAR (no bloquean estabilidad)
+Proveedor deportivo externo/avisos; Trakt; AceStream/torrents; configuración DNS.
+No activarlos ni instalar motores por interpretar que son pendientes obligatorios.
+El diagnóstico de red actual no cambia el DNS del usuario.
+
+TRABAJO POSIBLE SIN FIRE
+Regresión y estrés con datos sintéticos, revisión de permisos/fallos/cancelación,
+cronología y panel en Chromium, compilación y preparación de candidatas.
+El bloque de cargas/decoder se ha completado en este pase con estos medios;
+la validación de dispositivo se mantiene pendiente.
+
+PROTECCIÓN DE REPRODUCCIÓN
+Parada por usuario/dispositivo, aviso de inactividad y detección de salida
+implementados en .185. Backend/dashboard aún sin activar en producción.
+Pruebas físicas y publicación pendientes; no confundir APK preparada con
+funcionalidad ya disponible en el dashboard de producción.

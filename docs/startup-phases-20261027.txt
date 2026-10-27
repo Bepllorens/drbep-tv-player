@@ -1,0 +1,74 @@
+CAJA NEGRA: fases de arranque de reproducción — 27/10/2026
+
+Implementado exclusivamente en .185. No se usa Fire, no se despliega/publica,
+no se modifica stable ni se contacta con producción.
+
+CAMBIO
+AnalyticsListener registra, antes del primer fotograma, la primera carga completa
+no vacía de manifiesto y de datos multimedia, y la primera inicialización de vídeo.
+PLAY_MANIFEST_LOADED / PLAY_MEDIA_LOADED: a=duración Media3 ms,b=bytes,c=tipo pista.
+PLAY_VIDEO_DECODER: a=duración de inicialización ms,b/c=0.
+MediaItem conserva generación y añade la operación global de diagnóstico.
+Gate de espacio constante: máximo tres hitos por preparación; rechaza duplicados,
+otra generación, otra operación y callbacks antiguos de reintentos en la misma
+generación. Cada reproductor tiene su propio gate.
+Los datos nuevos solo se producen en beta; no se registran URLs, títulos, cabeceras,
+tokens, claves ni nombres de servidor. No se cambian MediaSource, transporte,
+selección de formato, búfer, decoder, superficie, reintentos o reproducción.
+
+SEMÁNTICA Y LIMITACIONES
+Son cargas de Media3; NO son una medición separada de DNS, TCP, TLS o TTFB.
+No se suman todas las listas HLS. El primer fragmento puede ser audio o vídeo:
+trackType conserva el dato numérico. Se excluye la carga de inicialización.
+Una película progresiva puede dibujar antes de terminar la descarga: en ese caso
+el hito de carga completa puede no existir y no se inventa un tiempo.
+Un decodificador reutilizado o un motor VLC no ofrece necesariamente ese callback.
+Cuando no hay timeline/tag verificable se omite el evento en vez de atribuirlo
+a la operación nueva. Tras FRAME la cronología no añade fases nuevas de arranque.
+Los tiempos acumulados del panel corresponden al instante de observación en el
+cliente desde preparar; las duraciones de Media3 se muestran aparte. No sumarlos.
+La latencia del callback/UI puede influir en el instante observado. No se presenta
+como inicio de conexión o resolución de la URL.
+La resolución anterior a prepare y el desglose de cada petición HTTP siguen siendo
+una extensión futura; este bloque aporta cargas y decodificador, no esos tiempos.
+
+PANEL Y COMPATIBILIDAD
+Hitos ordenados por tiempo observado. Duración de carga/inicialización y bytes
+visibles aparte del acumulado. Registros antiguos y trazas sin esos hitos funcionan.
+Exportación schema1 aditiva con explicación de los eventos; solo números.
+Se mantiene el emparejamiento, detalle por pestaña, caducidad y exportación existentes.
+
+VALIDACIÓN
+995 tests Android: cero fallos/errores. Build beta release perfilableARM32:3m8s.
+Nuevos casos: duplicados, concurrencia, operaciones/generaciones antiguas,
+reintentos en misma generación, jugadores independientes, datos negativos,
+eventos posteriores al primer frame y separación duración/acumulado.
+Chromium real sobre fixture local: flujo completo del panel correcto,
+cronología con los tres hitos, estado válido y móvil sin desbordamiento.
+Fixture completa los contadores obligatorios de blackbox; no representa un dispositivo.
+El primer intento usó Node del sistema18: se repitió con env.sh del proyecto.
+La primera integración también afectó al inicializador de campo y no compilaba;
+corregida antes de cualquier artefacto. No hubo instalación en dispositivo.
+
+COSTE SINTÉTICO
+Solo gate Java en JVM Linux. 5000 preparaciones,1500000 callbacks por muestra,
+15000 aceptados (=3por preparación), resto descartado.
+Con objeto publicado y -XX:-EliminateLocks para evitar eliminación de la medida:
+22,045 /23,787 /21,864 /22,387 /22,998ms. Mediana22,387ms.
+No mide Media3, HTTP, JSON, disco ni fluidez del Fire. El primer microbenchmark
+sin control fue optimizado por la JVM y se conserva pero no se usa como resultado.
+
+ARTEFACTO
+/srv/drbep-dev/reviews/startup-phases-20261027/phases-fire.apk
+Version777,ARM32,firma privada Fire compatible. NO publicable.
+SHA256 bcf72d3fc579394464a4442de274211ffdf7777e804c823962bcec32df5a783b.
+No instalado. Incluye los cambios previos de red y memoria, sin retirarlos.
+Antes de instalar: verificar autorización ADB, paquete/firma y respaldo de APK actual;
+conservar datos y no desinstalar. Prueba real de cargas/decoder y multiview pendiente.
+
+EVIDENCIAS
+/srv/drbep-dev/reviews/startup-phases-20261027
+before/ contiene fuentes previas de este bloque, no un snapshot de producción.
+build-tests.log, browser.log, browser/diagnostico-fases-movil.png,
+overhead-controlled.json, phases-identity.json y APK privada.
+Los cambios están sin commit/push; no se ha publicado una beta ni tocado el .223.

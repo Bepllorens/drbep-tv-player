@@ -1,0 +1,40 @@
+TV: construcción y colocación inicial — 27/10/2026
+
+Se ensayó una candidata que no reconstruía el modelo completo de Inicio al
+seleccionar En directo. Conservaba ensureHomeLiveEpg, resumen y actualizaciones
+de catálogo. Sólo cambiaba el callback refreshHome en MainActivity.java.
+
+Comparación real Fire .190, Movistar HLS, release perfilable, firma existente.
+Cada muestra se alinea con deliverInputEvent src=0x1002 (tap real de apertura),
+ventana de8s. No alinear con el primer frame de atrace: el envío ADB puede
+tardar y dejar fuera la apertura. Control1/candidata1 además recorren18abajo/18arriba.
+Los controles/candidatas son procesos nuevos; segundo par reinstala ambas APK.
+No se modifica política ART ni se cierran otras apps. Presión de memoria presente.
+Las muestras no son un benchmark estadístico ni aíslan CPU de tiempo transcurrido.
+
+                        Control1 Candidata1 Control2 Candidata2 (ms máximos)
+Modelo Inicio             185,8       0       166,6       0
+Composición               295,9     369,5     274,0     600,8
+Aplicación cambios        128,7     180,4     149,3     394,1
+Medida y colocación       367,8     521,8     422,4    1138,0
+Frame completo           1057,3    1520,1    1250,6    2858,3
+
+Son ámbitos parcialmente anidados: no sumar. El trabajo de modelo se elimina,
+pero NO hay mejora de entrada. El experimento queda RETIRADO.
+982 tests sin fallos, build3m3s. Esto no compensa el resultado real del Fire.
+La captura candidata1 confirma133 canales, EPG, foco La Sexta e imagen de miniatura.
+No usar esa captura como prueba de fluidez.
+
+Código restaurado EXACTO a MainActivity.before.java, con comprobación de igualdad.
+Se conservan cambios previos de diagnóstico de red. La candidata experimental
+sólo queda en reviews, no en Git ni en canales de publicación.
+APK anterior para retorno: reviews/network-diagnostic-20261027/network-fire.apk,
+SHA25664863311135ae23ac5405e2fd8a178fcde9c60a5e6f74f8adfe197f5d84a3288.
+APK experimental: SHA256732ddef6e70bd529fe5e61f5ec24022d0fed9496124e90d0b93e806faf647b69.
+
+Evidencias .185: /srv/drbep-dev/reviews/tv-transition-20261027/
+comparison.json, cuatro trazas, capturas, *-entry.json, build.log,
+MainActivity.before.java y MainActivity.experiment.java.
+Pendiente: aislar trabajo CPU/espera de primera composición/layout bajo presión
+de memoria; no reactivar este cambio ni otros experimentos descartados sin
+evidencia nueva. No se declara corregido el pico. Producción/stable sin cambios.

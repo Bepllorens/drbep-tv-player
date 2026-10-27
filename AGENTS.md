@@ -103,3 +103,17 @@ Comprobar IP/puerto actuales; emparejar mediante el codigo que facilite el usuar
 sin guardar ese codigo en archivos, Git o informes. La Xiaomi puede mostrar un
 aviso Instalar via USB con denegacion automatica a los10s: confirmar solo la APK
 autorizada; no recordar decisiones generales ni desactivar verificaciones.
+
+Instrumentacion de memoria/rendimiento en Fire con RAM limitada
+- El parametro atrace -b es por CPU:32768 KiB en cuatro CPU puede reservar128MiB
+  y provocar recuperacion de memoria, retrasos o cierres inducidos por la prueba.
+  No interpretar esas muestras como comportamiento normal de la APK.
+- Preferir dumpsys gfxinfo <paquete> reset/framestats para tiempos de dibujo;
+  verificar portada estable antes y pantalla En directo despues. Un temporizador
+  fijo de20s no garantiza que el arranque haya terminado ni que el tap abra TV.
+- Si hace falta atrace, usar ventanas cortas y un presupuesto pequeno y explicito
+  (ensayo actual2048KiB/CPU,8MiB total); no combinar sched y buffers grandes.
+  Verificar que todos los CPU conservan el inicio real del evento antes de comparar.
+- Al acabar comprobar tracing_on=0 y buffer_size_kb=1. Conservar muestras
+  desfavorables y separar tiempo de hilo UI, espera previa y frame completo.
+- Diagnostico y correccion del27/10: docs/tv-memory-20261027.txt.

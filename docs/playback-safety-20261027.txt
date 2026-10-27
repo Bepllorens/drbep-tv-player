@@ -1,0 +1,168 @@
+Protección de reproducción y parada administrativa — 27/10/2026
+
+Estado
+Implementado y validado en desarrollo .185. NO activado en .223.
+NO publicado en beta/stable. NO instalado en Fire.
+El Fire .190 sigue como unauthorized en ADB. El usuario confirmó que no está en casa.
+Conservar la implementación y retomar las pruebas físicas cuando pueda autorizar ADB.
+No se han modificado sesiones, dispositivos ni configuraciones de producción.
+
+Repositorios
+Backend/dashboard: /srv/drbep-dev/repos/drbep
+Rama codex/backend-migration-20261015. Base b9600e0.
+Android: /srv/drbep-dev/repos/drbep-tv-player
+Rama qoder/disneyplus-vod-582.
+Android ya tenía cambios pendientes de rendimiento y diagnóstico. Se conservaron.
+Las copias anteriores de los cuatro archivos compartidos están en:
+  /srv/drbep-dev/reviews/playback-safety-20261027/before/
+El parche Android exclusivo de esta tarea se conserva junto al informe.
+Entrega Git solicitada el27/10: este código y los cambios previos conservados
+se integran en las ramas indicadas. Identidad y pasos de prueba en
+beta778-preparada-20261027.txt. Los hashes finales constan en el recibo privado
+/srv/drbep-dev/reviews/playback-safety-20261027/git-delivery.json.
+
+Funcionalidad implementada
+1. Dashboard offline:
+- Dispositivos: botón Detener reproducción en cada dispositivo.
+- Usuarios > Seguridad: Detener todas las reproducciones del usuario.
+- Se conservan cuenta, permisos, activación y progreso. La app se cierra después
+  de detener sus reproductores. El usuario puede abrir DRBEP de nuevo.
+- Confirmación previa, estado pendiente/recibida/confirmada/sin confirmar.
+- Las órdenes caducan a los dos minutos. No se ejecutan al conectar al día siguiente.
+- Una orden sin confirmación no se presenta como éxito. Se puede reintentar.
+- Una reproducción iniciada después se distingue de la que se pidió detener.
+- La política general se configura en Dispositivos y puede heredarse o
+  personalizarse en la ficha de seguridad de cada usuario.
+- Se distinguen dispositivos vistos recientemente de dispositivos reproduciendo.
+  Conectado se estima por un estado recibido en los últimos 90 segundos.
+
+2. App Android:
+- Cuatro horas sin interacción como valor inicial; aviso de 60 segundos.
+- Cualquier pulsación o toque continúa y reinicia el contador.
+- Latidos, descargas, cambios automáticos y recuperación de vídeo no son interacción.
+- Reloj monotónico para la inactividad. El tiempo no se reinicia en cada canal.
+- Política guardada localmente y recibida por estado/SSE; herencia por usuario.
+- HDMI, pantalla apagada y salvapantallas: salida perdida con margen de 20 segundos.
+  Reconexiones breves no ejecutan una parada.
+- Algunas TVs no notifican el apagado: la inactividad es el respaldo.
+- No se inicia automáticamente el vídeo desde el monitor de salida.
+- Parada cancela preparaciones/recuperaciones, miniatura, vídeo principal y multiview.
+  Se conserva el progreso, se envía stop y se confirma por la API antes de cerrar.
+- Las órdenes remotas siguen disponibles durante PiP.
+- Continúan existiendo el temporizador manual y los flujos habituales de reproducción.
+
+3. Compatibilidad del reproductor web:
+- Recibe la parada administrativa existente, comprueba su caducidad, descarga el
+  reproductor y cierra también la multipantalla.
+- Confirma la parada o comunica fallo, sin fingir éxito si falla la liberación.
+- La política automática de inactividad/salida se implementa en Android en esta tarea.
+  El navegador solo incorpora aquí la compatibilidad de parada/confirmación.
+- Los clientes Android anteriores pueden recibir el stop legado, pero no confirmar
+  ni aplicar la nueva política. El dashboard informa de que necesitan actualizarse.
+
+Backend
+Archivos principales:
+  internal/api/playback_control.go
+  internal/api/playback_control_test.go
+  internal/api/offline_device_status.go
+  internal/api/offline_device_events.go
+  internal/api/live_activity.go
+  internal/api/webapp_remote.go
+  internal/api/router.go
+  internal/api/webapp.js
+  internal/api/webapp.test.js
+Endpoints administrativos:
+  GET /api/admin/playback-control (filtros user_id, device_id, request_id)
+  POST /api/admin/playback-stop {user_id y/o device_id}
+  GET/PUT /api/admin/playback-policy
+  GET/PUT /api/users/{id}/playback-policy
+Confirmación autenticada del propio dispositivo:
+  POST /api/offline/device/playback-stop/ack
+Política:
+  {inherit: true/false, policy: {
+    idle_timeout_minutes: 240, warning_seconds: 60,
+    stop_on_output_loss: true, output_loss_grace_seconds: 20
+  }}
+idle_timeout_minutes puede ser 0 o 60..1440; el margen HDMI es 10..120.
+Se guarda en settings; no hay migración de esquema nueva.
+Solo administración puede pedir paradas y configurar la política.
+La confirmación exige usuario/dispositivo/orden coincidentes y vigentes.
+Una orden no revoca ni borra sesiones/tokens.
+
+Confirmación y protección
+El ACK no elimina ni cambia los contadores de reproducción/tráfico.
+Se espera a que no haya reproducción activa del dispositivo ni tráfico asociado
+reciente, con al menos 15 segundos desde la confirmación del cliente.
+Las órdenes sin éxito se limitan en el tiempo.
+Los flujos con X-DRBEP-Device-Id se contabilizan separadamente incluso si dos
+dispositivos usan la misma IP y el mismo agente.
+El guard de cambios sigue intacto, incluidas las grabaciones. Confirmar que un
+dispositivo se ha detenido no implica que todo el servidor esté libre.
+En reproducción directa el servidor depende de la confirmación del cliente para
+conocer el cierre del reproductor: no ve el tráfico externo del proveedor.
+
+Dashboard
+  offline-dashboard/app/components/playback-control.tsx
+  offline-dashboard/app/components/playback-control.module.css
+  offline-dashboard/lib/playback-control.ts
+  offline-dashboard/lib/playback-control.test.ts
+  offline-dashboard/app/page.tsx (cuatro puntos de integración)
+La política solo se carga en las pantallas correspondientes; las tarjetas no
+crean una consulta por dispositivo hasta solicitar una parada.
+Se mantiene el borrador de configuración durante los refrescos.
+Los mensajes de error son legibles y no exponen detalles arbitrarios del servidor.
+
+Android
+  app/src/main/java/com/drbep/tvplayer/PlaybackIdleGuard.java
+  app/src/main/java/com/drbep/tvplayer/PlaybackOutputMonitor.java
+  app/src/main/java/com/drbep/tvplayer/PlaybackIdleWarningComposeBinder.kt
+  app/src/main/java/com/drbep/tvplayer/ComposeDialogHost.java
+  app/src/main/java/com/drbep/tvplayer/MainActivity.java
+  app/src/main/java/com/drbep/tvplayer/CatalogSnapshotStore.java
+  app/src/main/java/com/drbep/tvplayer/PlayerController.java
+  app/src/test/java/com/drbep/tvplayer/PlaybackIdleGuardTest.java
+
+Validación realizada
+- Regresión completa Go: internal/api, internal/service/user, internal/database.
+- Pruebas específicas de control: aislamiento, autenticación, permisos, tráfico,
+  herencia, telemetría, caducidad y reintento.
+- Web clásico/reproductor: 214 pruebas correctas.
+- Dashboard offline: pruebas, typecheck, lint y build de producción.
+- Android: 1005 pruebas sin fallos; incluye 10 nuevas con reloj simulado.
+- Primera APK release beta ARM32 perfilable compilada; no publicada.
+- Cierre de entrega: candidata778 universal de distribución, ver informe adjunto.
+- Navegador real en .185 con base de datos y usuarios ficticios:
+  se guardó el valor general de 2 horas y una excepción de 3 horas para un usuario;
+  se envió stop al Fire ficticio, se observó pendiente, se confirmó con el endpoint
+  real y después se observó Parada confirmada; el otro dispositivo no recibió stop.
+  La ficha en móvil 390x844 no presenta desbordamiento horizontal.
+- Los servidores de revisión se cerraron al terminar.
+- No hubo pruebas físicas ni reproducciones reales: ADB requiere la intervención
+  del usuario. No interpretar la simulación como una prueba de hardware.
+
+Artefactos y evidencias
+/srv/drbep-dev/reviews/playback-safety-20261027/
+  logs, copias anteriores, parche exclusivo Android, huellas, APK candidata,
+  binario backend y capturas output/playwright/.
+Los datos ficticios y credenciales de prueba están solo en esta carpeta privada;
+no deben entrar en Git ni utilizarse en producción.
+
+Pendiente antes de activar/publicar
+1. Autorizar ADB .190 desde la TV. Verificar TV encendida, entrada HDMI y mando libre.
+2. Verificar firma/versión instaladas antes de instalar la candidata778 universal.
+   Si Fire usa firma privada, conservar sus datos y preparar variante de prueba
+   compatible por el procedimiento existente. No desinstalar ni borrar datos;
+   esa variante no sustituye a la universal de distribución.
+3. Validar parada de TV en miniatura, TV completa, VOD, catchup y multiview;
+   verificar progreso conservado, ausencia de vídeo/audio/tráfico tras cerrar,
+   y que otro usuario o dispositivo siga funcionando.
+4. Validar PiP, reconexión HDMI breve y apagado prolongado con el usuario presente.
+5. Validar aviso/inactividad y pulsación/táctil real. La lógica de cuatro horas
+   está probada con reloj simulado; no se ha dejado un Fire cuatro horas reproduciendo.
+6. Para probar el flujo real con producción hacen falta backend y cliente
+   compatibles. Preparar candidato sobre el release activo preservando el resto
+   de sus fuentes; no sustituir a ciegas por el binario canónico de desarrollo.
+7. Pedir la autorización específica exigida por AGENTS.md para activar backend
+   y dashboard con respaldo/retorno y el breve reinicio correspondiente.
+8. La candidata778 universal queda preparada; solo tras validación y autorización
+   se podrá publicar exactamente el APK firmado validado, sin tocar stable.

@@ -877,6 +877,13 @@ final class CatalogSnapshotStore {
         }
     }
 
+    void acknowledgePlaybackStop(String baseUrl, String commandId) throws Exception {
+        JSONObject payload = new JSONObject().put("device_id", getDeviceId()).put("command_id", commandId).put("stopped", true);
+        HttpClient.Response response = httpClient.postJson(joinUrl(baseUrl, "/api/offline/device/playback-stop/ack"),
+            payload, 3000, 5000, buildSnapshotHeaders());
+        httpClient.requireSuccess(response, "confirmando parada");
+    }
+
     void reportPlaybackHeartbeat(String baseUrl, JSONObject payload) throws Exception {
         if (payload == null) {
             throw new IllegalArgumentException("heartbeat vacio");

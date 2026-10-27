@@ -1,0 +1,113 @@
+BETA778 PREPARADA — 27/10/2026
+
+ESTADO DE LA ENTREGA
+Candidata universal de distribución compilada y firmada en .185.
+No publicada, no instalada, no activación de backend/dashboard en .223.
+No se cambian stable/rescue ni el canal beta actual.
+Esta entrega cierra en Git los cambios pendientes tras beta777; los commits
+finales y la comprobación del remoto constan en el recibo privado:
+  /srv/drbep-dev/reviews/playback-safety-20261027/git-delivery.json
+Este documento prevalece sobre las notas históricas que dicen sin commit.
+
+ARTEFACTO EXACTO PARA FUTURA VALIDACIÓN
+APK: /srv/drbep-dev/artifacts/beta778/drbep-2.0.778-beta-playback-safety-universal.apk
+Versión: 2.0.778-beta-playback-safety (versionCode778).
+Paquete: com.drbep.tvplayer.offline
+ABI: armeabi-v7a + arm64-v8a. No sirve para el emulador Windows x86_64.
+Tamaño: 104814848 bytes.
+SHA256: 3ad3ae859b31920e2c90eccb7602a75f384a0e0b8faa09446f1023d02946b6c7
+Certificado SHA256: 0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b
+Firma de distribución comprobada e idéntica a la beta777 descargada previamente.
+Canal beta verificado en BuildConfig; release optimizada y perfilable.
+Manifest.json junto al APK conserva huellas de fuentes, versión y firma.
+No recompilar/sustituir este APK después de validarlo para una futura publicación.
+
+INCLUYE
+- Parada administrativa por dispositivo y por usuario desde el dashboard.
+  Caducidad y confirmación autenticada; distinción de conectado/reproduciendo.
+  No revoca cuentas, activaciones ni permisos ni finge inactividad del servidor.
+- Política general y por usuario: cuatro horas sin interacción, aviso60s;
+  pérdida de salida con margen20s. Configurable en el nuevo dashboard.
+  La app conserva política local y puede aplicar los valores iniciales.
+- Cancelación de preparaciones/recuperaciones y cierre de miniatura,
+  reproducción y multiview, conservando el progreso.
+- Cambios pendientes conservados de diagnóstico de conexión, normalización
+  de fanart y fases de reproducción en la caja negra/panel del dispositivo.
+- Instrucciones de medición de memoria y todos los informes de esos bloques.
+No se modifica el transporte, los formatos ni las asociaciones de catchup,
+ni se incorporan claves, sesiones, credenciales o datos reales de producción.
+
+VALIDADO EN .185
+Android:1005 pruebas,218 suites,0fallos/errores/omitidas.
+Build universal firmada: correcto. Ver signed-beta778-build.log.
+Web clásico/reproductor:214 pruebas.
+Dashboard offline:20 pruebas, typecheck, lint y build correctos.
+Regresión Go:internal/api, internal/service/user, internal/database; build correcto.
+Pruebas de control: permisos, aislamiento, caducidad, tráfico y reintento.
+Prueba del panel del dispositivo en Chromium: correcta, incluidos diagnóstico,
+filtros, temporadas, reproducción/catchup simulado, importación y sesión.
+Primera ejecución del panel no encontró Playwright; repetida correctamente
+con NODE_PATH y Chromium existentes del entorno de revisión.
+Dashboard real con datos ficticios: política general y excepción por usuario,
+parada pendiente->confirmada, otro dispositivo sin recibir la orden y móvil390px.
+No confundir estas pruebas con reproducción real o notificaciones HDMI reales.
+
+PRUEBAS AL LLEGAR A CASA (EN ESTE ORDEN)
+[ ] Aceptar Permitir depuración USB en Fire .190 y dejar TV encendida en HDMI,
+    mando libre. Estado al preparar: ADB unauthorized, no se elude autorización.
+[ ] Leer versión/firma/ABI realmente instaladas y guardar la APK anterior del
+    Fire con su huella antes de actualizar. La APK oficial777 también se conserva:
+    /srv/drbep-dev/reviews/beta777-agenda-20261027/downloaded-777.apk
+[ ] Si la firma coincide con distribución, instalar -r conservando datos.
+    Si usa firma privada de pruebas, no instalar a ciegas ni desinstalar:
+    preparar la variante privada compatible por el flujo existente y registrar
+    otra identidad; no publicar esa variante ni decir que fue la universal probada.
+[ ] Verificar arranque, activación y progreso conservados, foco inicial, mando,
+    TV con miniatura, pantalla completa y retorno, zapeo y multiview.
+[ ] Repetir entrada fría/caliente y paginación del mismo grupo Movistar HLS;
+    separar primera creación de filas del recorrido caliente. Usar gfxinfo,
+    evitar buffers de traza que induzcan presión de memoria.
+[ ] Verificar hitos manifiesto/fragmento/decoder, reintentos y ventanas multiview
+    separados; el diagnóstico de conexión no altera reproducción ni DNS.
+[ ] Probar aviso y pulsación para continuar con mando/táctil, sin perder foco.
+    Lógica de4h simulada en tests; no se afirma validación de4h de reproducción.
+[ ] Con backend compatible, detener por dispositivo en miniatura, TV completa,
+    VOD, catchup y multiview; verificar ausencia de vídeo/audio/tráfico y que
+    conserva progreso. Otro dispositivo del usuario no recibe stop individual.
+[ ] Probar parada de todo un usuario: todos sus dispositivos, sin otros usuarios;
+    orden recibida/confirmada, caducidad y reintento sin falsas confirmaciones.
+[ ] Probar PiP, HDMI desconectado brevemente y apagado prolongado con el usuario
+    presente; confirmar que reconexión breve no detiene y que no autoarranca.
+[ ] Xiaomi: pedir IP/puerto actuales cuando esté disponible, comprobar firma,
+    actualización universal, gestos, aviso, cierre y progreso. No borrar datos.
+
+DEPENDENCIA DEL BACKEND
+El nuevo control completo no está activo en el dashboard de producción todavía.
+Para probar allí el flujo completo hace falta una candidata sobre el release
+ACTIVO, preservando los demás archivos y el comportamiento de La1/Vamos.
+No desplegar a ciegas el binario del checkout canónico.
+La activación/reinicio de backend/dashboard requiere autorización específica,
+respaldo y retorno. Este encargo autoriza Git y preparar la APK; no ese despliegue.
+
+RETORNO / LÍMITES
+No se cambió ningún dispositivo o release remoto; hoy no hace falta retorno.
+Para futura instalación: conservar APK/versión/firma instalada y datos. No
+desinstalar ni borrar datos para cambiar identidad. Una vuelta a777 puede exigir
+ADB y compatibilidad Android; no prometer downgrade automático del actualizador.
+Para futuro backend: respaldo de binario/imagen/configuración exactos activos,
+salud y pruebas funcionales antes de dar por cerrado; documentar retorno.
+La1/Vamos, diales/EPG y rutas funcionales se conservan.
+El pico global de primera entrada TV y el caso M+Indie/HLS siguen abiertos;
+XMLTV grande con vídeo y las demás pruebas físicas del plan siguen pendientes.
+No publicar por tener una compilación correcta: validar y pedir autorización
+para el canal beta. Stable no forma parte de esta entrega.
+
+CONTEXTO Y EVIDENCIAS
+Backend: rama codex/backend-migration-20261015.
+Android: rama qoder/disneyplus-vod-582.
+Fuentes: /srv/drbep-dev/repos/drbep y /srv/drbep-dev/repos/drbep-tv-player.
+docs/playback-safety-20261027.txt detalla arquitectura, endpoints y límites.
+Android docs/pendientes-20261027.txt mantiene el estado único del plan.
+Evidencias privadas: /srv/drbep-dev/reviews/playback-safety-20261027/.
+APK y manifiesto fuera de Git; no se suben bases ficticias, registros privados,
+archivos de firma ni secretos al repositorio.

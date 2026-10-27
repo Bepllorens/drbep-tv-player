@@ -16,6 +16,24 @@ public class DeviceWebPanelTest {
             ByteArrayOutputStream response=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=s.getInputStream().read(b))!=-1)response.write(b,0,n);return response.toString("UTF-8");
         }
     }
+    @Test public void networkProbeRequiresSessionPostAndEmptyBody() throws Exception {
+        AtomicInteger calls=new AtomicInteger();
+        DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+            public String status(){return "{}";}public long importPlaylist(InputStream in){return 0;}
+            public String networkCheck(){calls.incrementAndGet();return "{}";}
+        };
+        try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+            int port=panel.start();
+            assertTrue(request(port,"POST","/network-check","","",0).startsWith("HTTP/1.1 401"));
+            String login=request(port,"POST","/session","",panel.pin(),6);
+            String token=new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token");
+            String auth="X-Panel-Token: "+token+"\r\n";
+            assertTrue(request(port,"GET","/network-check",auth,"",0).startsWith("HTTP/1.1 400"));
+            assertTrue(request(port,"POST","/network-check",auth,"x",1).startsWith("HTTP/1.1 400"));
+            assertTrue(request(port,"POST","/network-check",auth,"",0).startsWith("HTTP/1.1 200"));
+            assertEquals(1,calls.get());
+        }
+    }
     @Test public void diagnosticObserverRequiresSessionAndValidBoundedBody() throws Exception {
         AtomicInteger calls=new AtomicInteger();
         DeviceWebPanel.Host host=new DeviceWebPanel.Host(){

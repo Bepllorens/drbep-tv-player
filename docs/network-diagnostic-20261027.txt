@@ -1,0 +1,25 @@
+BLOQUE7A — DIAGNÓSTICO MANUAL DE RED — 27/10
+Implementado en .185 tras preparar y subir a Git la beta777 de agenda.
+No incluido en la APK universal de agenda preservada en reviews/beta777-agenda-20261027.
+Panel autenticado: POST /network-check, sin cuerpo ni destinos aportados por el navegador.
+Destino: origen configurado DRBEP + /health; elimina ruta, consulta y fragmento,
+rechaza credenciales embebidas. HEAD sin redirecciones ni cabeceras de sesión.
+Usa DNS del sistema; no cambia transporte, claves, rutas de reproducción ni DNS.
+Una tarea global, un hilo daemon, sin cola de peticiones: rechazo busy si hay otra;
+espera máxima6s al solicitante, conexión/lectura2s, repetición limitada30s.
+Si DNS ignora cancelación, conserva el puesto ocupado hasta que termina:
+no acumula tareas/hilos. No se ejecuta al abrir el panel ni por temporizador.
+Resultados sanitizados: tiempos DNS/conexión y estadoHTTP, sin URL/IP/secretos.
+La fase conexión incluye resolución del sistema/TCP/TLS; no mide ancho de banda
+ni prueba derechos de reproducción. HTTP200 no demuestra reproducción.
+Validación:982 tests Android0fallos, navegador fixture completo correcto.
+Fire .190 candidata privada network-fire.apk instalada conservando datos/firma.
+SHA64863311135ae23ac5405e2fd8a178fcde9c60a5e6f74f8adfe197f5d84a3288.
+Medida inicial DNS6ms,conexión26ms,HTTP200,total46,95ms.
+Repetición inmediata:cooldown en8,8ms; reproductorREADY antes/después.
+Navegador conectado al Fire:DNS0ms,caché;conexión25ms,HTTP200,sin erroresJS.
+Prueba visual de la sección correcta. No afirmar mejoras de zapeo ni latencia
+de vídeo por este diagnóstico. No modifica configuración DNS ni adopta DNS externos.
+Evidencias /srv/drbep-dev/reviews/network-diagnostic-20261027
+APK anterior before-fire.apk, SHA1cc82e0ce6b8f4c491b913859e1fd170ebceb2fa15d770d43ab8661c2323281e.
+Cambios de este bloque aún sin commit/push/publicación.

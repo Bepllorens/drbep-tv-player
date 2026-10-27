@@ -516,9 +516,41 @@ final class PlayerController {
 
     private HlsStartupLoadControl hlsStartupLoadControl;
     private final RemoteZapTrace remoteZapTrace = new RemoteZapTrace();
+    private final PlaybackStartupPhaseGate startupPhaseGate=new PlaybackStartupPhaseGate();
     private static final class PlaybackAttemptTag {
         final int generation;
-        PlaybackAttemptTag(int generation) { this.generation = generation; }
+        final long operation;
+        PlaybackAttemptTag(int generation,long operation) { this.generation=generation;this.operation=operation; }
+    }
+
+    private PlaybackAttemptTag startupEventTag(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime time) {
+        if (!"beta".equals(BuildConfig.UPDATE_CHANNEL) || firstFrameRenderedForCurrentItem
+                || time.windowIndex<0 || time.windowIndex>=time.timeline.getWindowCount())return null;
+        MediaItem item=time.timeline.getWindow(time.windowIndex,new Timeline.Window()).mediaItem;
+        Object tag=item.localConfiguration==null?null:item.localConfiguration.tag;
+        if (!(tag instanceof PlaybackAttemptTag))return null;
+        PlaybackAttemptTag attempt=(PlaybackAttemptTag)tag;
+        return attempt.generation==playbackAttemptGeneration.get()?attempt:null;
+    }
+
+    private void recordStartupLoad(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime time,
+            androidx.media3.exoplayer.source.LoadEventInfo info,
+            androidx.media3.exoplayer.source.MediaLoadData data) {
+        if(info.bytesLoaded<=0 || info.loadDurationMs<0)return;
+        int phase=data.dataType==C.DATA_TYPE_MANIFEST?PlaybackStartupPhaseGate.MANIFEST:
+                data.dataType==C.DATA_TYPE_MEDIA?PlaybackStartupPhaseGate.MEDIA:0;
+        PlaybackAttemptTag tag=startupEventTag(time);
+        if(tag==null || !startupPhaseGate.accept(tag.operation,tag.generation,phase))return;
+        BlackBox.event(phase==PlaybackStartupPhaseGate.MANIFEST
+                ?BlackBoxStore.Event.PLAY_MANIFEST_LOADED:BlackBoxStore.Event.PLAY_MEDIA_LOADED,
+                tag.operation,info.loadDurationMs,info.bytesLoaded,data.trackType);
+    }
+
+    private void recordStartupDecoder(androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime time,long durationMs) {
+        if(durationMs<0)return;
+        PlaybackAttemptTag tag=startupEventTag(time);
+        if(tag!=null && startupPhaseGate.accept(tag.operation,tag.generation,PlaybackStartupPhaseGate.VIDEO_DECODER))
+            BlackBox.event(BlackBoxStore.Event.PLAY_VIDEO_DECODER,tag.operation,durationMs,0,0);
     }
     void noteRemoteZap(long operation, long pressMs, String channelId) {
         if (!"beta".equals(BuildConfig.UPDATE_CHANNEL)) return;
@@ -948,11 +980,12 @@ final class PlayerController {
                 }
             }
 
-            @Override public void onVideoDecoderInitialized(EventTime eventTime,String decoderName,long initializedTimestampMs,long initializationDurationMs) { panelVideoDecoder=decoderName; perfStage("decoder initMs=" + initializationDurationMs); }
+            @Override public void onVideoDecoderInitialized(EventTime eventTime,String decoderName,long initializedTimestampMs,long initializationDurationMs) { panelVideoDecoder=decoderName; recordStartupDecoder(eventTime,initializationDurationMs); perfStage("decoder initMs=" + initializationDurationMs); }
             @Override public void onVideoDecoderReleased(EventTime eventTime,String decoderName) { if(decoderName.equals(panelVideoDecoder))panelVideoDecoder=""; }
             @Override public void onLoadCompleted(EventTime time,
                     androidx.media3.exoplayer.source.LoadEventInfo info,
                     androidx.media3.exoplayer.source.MediaLoadData data) {
+                recordStartupLoad(time,info,data);
                 if (firstFrameRenderedForCurrentItem || !"beta".equals(BuildConfig.UPDATE_CHANNEL)) return;
                 perfStage("load type=" + data.dataType + " track=" + data.trackType
                         + " durationMs=" + info.loadDurationMs + " bytes=" + info.bytesLoaded);
@@ -1416,6 +1449,7 @@ final class PlayerController {
         transitionPlaybackPhase("buffering");
         currentPrepareStartedMs = SystemClock.elapsedRealtime();
         blackBoxPlayback=BlackBox.operation();
+        startupPhaseGate.begin(blackBoxPlayback,playbackAttemptGeneration.get());
         BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,blackBoxPlayback,0,0,1);
         multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
         perfStage("prepare");
@@ -2931,6 +2965,22 @@ final class PlayerController {
         if (player != null) player.pause();
     }
 
+    boolean hasPlaybackForSafety() {
+        return isVlcDirectPlayActive() || (player != null && player.getMediaItemCount() > 0
+            && player.getPlaybackState() != Player.STATE_ENDED);
+    }
+
+    void stopByPlaybackPolicy() {
+        playbackAttemptGeneration.incrementAndGet();
+        uiHandler.removeCallbacks(networkRecoveryRunnable);
+        uiHandler.removeCallbacks(forceLiveEdgeRunnable);
+        stopForSourceSwitch();
+        currentRequest = null;
+        currentStreamInfo = null;
+        currentRecordingUrl = "";
+        transitionPlaybackPhase("stopped_by_policy");
+    }
+
     void stopForSourceSwitch() {
         pausedU7dPositionMs = -1L;
         pausedU7dResumePending = false;
@@ -3334,6 +3384,7 @@ final class PlayerController {
             + " resumeMs=" + resumePositionMs);
         currentPrepareStartedMs = SystemClock.elapsedRealtime();
         blackBoxPlayback=BlackBox.operation();
+        startupPhaseGate.begin(blackBoxPlayback,playbackAttemptGeneration.get());
         BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,blackBoxPlayback,0,0,1);
         multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
         perfStage("prepare");
@@ -3346,7 +3397,7 @@ final class PlayerController {
                 decision.mimeType);
         hlsStartupLoadControl.arm(fastHls, safeString(request.channelId));
         perfStage("startup fastHls=" + fastHls + " initialMs=" + (fastHls ? 500 : 1500) + " dvr=" + liveDvr + " format=" + safeString(decision.mimeType));
-        builder.setTag(new PlaybackAttemptTag(generation));
+        builder.setTag(new PlaybackAttemptTag(generation,blackBoxPlayback));
         player.setMediaItem(builder.build());
         if (resumePositionMs > 0L) {
             player.seekTo(resumePositionMs);

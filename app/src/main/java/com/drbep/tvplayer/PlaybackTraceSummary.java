@@ -28,8 +28,19 @@ final class PlaybackTraceSummary {
             stage="FRAME";trace.put("preview",event.optLong("b")==1);
         } else if(kind.equals("SURFACE_FRAME"))stage="SURFACE";
         else if(kind.equals("PLAY_ERROR")){stage="ERROR";trace.put("error",event.optLong("a"));}
+        if(kind.equals("PLAY_MANIFEST_LOADED"))stage="MANIFEST";
+        else if(kind.equals("PLAY_MEDIA_LOADED"))stage="MEDIA";
+        else if(kind.equals("PLAY_VIDEO_DECODER"))stage="VIDEO_DECODER";
         if(stage!=null) {
             JSONObject stages=trace.getJSONObject("stages");
+            if((stage.equals("MANIFEST")||stage.equals("MEDIA")||stage.equals("VIDEO_DECODER"))
+                    && !stages.has(stage)) {
+                if(stages.has("FRAME") || event.optLong("a",-1)<0 || event.optLong("b",-1)<0)return;
+                JSONObject details=trace.optJSONObject("details");
+                if(details==null){details=new JSONObject();trace.put("details",details);}
+                details.put(stage,new JSONObject().put("durationMs",event.optLong("a"))
+                        .put("bytes",event.optLong("b")).put("trackType",event.optLong("c")));
+            }
             if(!stages.has(stage))stages.put(stage,elapsed-trace.getLong("started"));
         }
     }

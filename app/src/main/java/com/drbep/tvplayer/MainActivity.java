@@ -1136,6 +1136,7 @@ public class MainActivity extends FragmentActivity {
     protected void onResume() {
         super.onResume();
         BlackBox.foreground(true);
+        startPlaybackSafety();
         uiHandler.removeCallbacks(sleepTimerTick);
         if (sleepTimer.active()) {
             sleepTimerTick.run();
@@ -1171,13 +1172,12 @@ public class MainActivity extends FragmentActivity {
         if (playerController != null) {
             playerController.onHostPaused();
         }
-        uiHandler.removeCallbacks(remoteCommandPollRunnable);
-        if (remoteCommandEventClient != null) {
-            remoteCommandEventClient.stop();
-        }
-        // Playback continues while Android places the video in PiP, so keep the
-        // monitoring session alive instead of reporting a false stop event.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || (!isInPictureInPictureMode() && !enteringPictureInPicture)) {
+        // PiP still owns a live player: retain remote stop delivery as well as monitoring.
+        boolean continuesInPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                && (isInPictureInPictureMode() || enteringPictureInPicture);
+        if (!continuesInPip) {
+            uiHandler.removeCallbacks(remoteCommandPollRunnable);
+            if (remoteCommandEventClient != null) remoteCommandEventClient.stop();
             stopPlaybackHeartbeat("stop");
         }
         BlackBox.foreground(false);
@@ -3917,6 +3917,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void playChannelItemInternal(ChannelItem requestedChannel, boolean autoPlay, long resumePositionMs) {
+        if (playbackSafetyStopping) return;
         if (!deliveringRemoteZap) cancelRemoteZap();
         HboNativeCapabilities.configureDisplay(this);
         final ChannelItem ch = catalogRepository == null ? requestedChannel : catalogRepository.withNativeHbomaxPlayback(requestedChannel);
@@ -3999,7 +4000,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isActivityReadyForUiWork() {
-        return !isFinishing() && (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 || !isDestroyed());
+        return !playbackSafetyStopping && !isFinishing() && (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 || !isDestroyed());
     }
 
     static boolean shouldKeepLoadingUntilFirstFrame(PlayerController.PlaybackRequest request) {
@@ -10366,6 +10367,7 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN && recordPlaybackHumanInteraction()) return true;
         if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) cancelRemoteZap();
         return super.dispatchTouchEvent(event);
     }
@@ -10391,6 +10393,7 @@ public class MainActivity extends FragmentActivity {
         boolean previousKeyRepeat = remoteZapKeyRepeat;
         remoteZapKeyRepeat = down && event.getRepeatCount() > 0;
         try {
+            if (down && recordPlaybackHumanInteraction()) return true;
             if (down) { lastRemoteInputElapsedMs = android.os.SystemClock.elapsedRealtime(); BackgroundWorkBudget.interaction(); }
             if (handleSearchShortcut(event)) return true;
             if (handleRemoteMessageKeyEvent(event)) {
@@ -10414,6 +10417,7 @@ public class MainActivity extends FragmentActivity {
 
     @Override
     public void onUserInteraction() {
+        recordPlaybackHumanInteraction();
         BackgroundWorkBudget.interaction();
         super.onUserInteraction();
     }
@@ -10531,6 +10535,7 @@ public class MainActivity extends FragmentActivity {
         sleepTimer.cancel();
         uiHandler.removeCallbacks(sleepTimerTick);
         closeSleepTimerWarning();
+        if (playbackOutputMonitor != null) playbackOutputMonitor.close();
         dismissAppUpdatePanel();
         if (startupSummaryRequests != null) startupSummaryRequests.close();
         rememberCurrentVodPosition();
@@ -10546,6 +10551,7 @@ public class MainActivity extends FragmentActivity {
         if (touchControlsController != null) {
             touchControlsController.cancelTimers();
         }
+        if (playbackOutputMonitor != null) playbackOutputMonitor.close();
         uiHandler.removeCallbacksAndMessages(null);
         globalSearch.close();
         ioExecutor.shutdownNow();
@@ -14704,6 +14710,7 @@ public class MainActivity extends FragmentActivity {
                     public String metadataIndex(String command)throws Exception{return command.isEmpty()?MetadataIndexWorker.status(getApplicationContext()):MetadataIndexWorker.command(getApplicationContext(),command);}
                     public String blackBoxLease(String client,long sequence,boolean active)throws Exception{return BlackBox.detailLease(client,sequence,active);}
                     public String blackBox()throws Exception{return BlackBox.summary();}
+                    public String networkCheck()throws Exception{return NetworkDiagnostic.SHARED.check(catalogRepository.vodApiBaseUrl());}
                     public byte[] blackBoxExport()throws Exception{return BlackBox.export();}
                     public byte[] blackBoxExport(int minutes)throws Exception{return BlackBox.export(minutes);}
                     public String blackBoxCommand(String command)throws Exception{return BlackBox.command(command);}
@@ -15319,6 +15326,94 @@ public class MainActivity extends FragmentActivity {
                         } catch (Exception e) { postUiIfAlive(() -> showError("No se pudo restaurar: " + e.getMessage())); }
                     });
                 }), onBack);
+    }
+
+    private final PlaybackIdleGuard playbackIdleGuard = new PlaybackIdleGuard(android.os.SystemClock.elapsedRealtime());
+    private PlaybackOutputMonitor playbackOutputMonitor;
+    private Dialog playbackIdleWarning;
+    private volatile boolean playbackSafetyStopping;
+    private final Runnable playbackIdleTick = new Runnable() {
+        @Override public void run() {
+            if (activityDestroyed || isFinishing() || playbackSafetyStopping) return;
+            if ((playerController != null && playerController.hasPlaybackForSafety()) || !multiPlayerControllers.isEmpty())
+                playbackIdleGuard.playback(true, android.os.SystemClock.elapsedRealtime());
+            PlaybackIdleGuard.Event event = playbackIdleGuard.poll(android.os.SystemClock.elapsedRealtime());
+            if (event == PlaybackIdleGuard.Event.STOP_IDLE || event == PlaybackIdleGuard.Event.STOP_OUTPUT) {
+                stopPlaybackForSafety(event == PlaybackIdleGuard.Event.STOP_IDLE ? "inactividad" : "salida de pantalla desconectada", "");
+                return;
+            }
+            if (event != PlaybackIdleGuard.Event.WARN && playbackIdleWarning != null) {
+                Dialog warning = playbackIdleWarning; playbackIdleWarning = null; warning.dismiss();
+            }
+            if (event == PlaybackIdleGuard.Event.WARN && playbackIdleWarning == null) {
+                ComposeView view = new ComposeView(MainActivity.this);
+                attachDialogViewTreeOwners(view);
+                PlaybackIdleWarningComposeBinder.bind(view,
+                    () -> String.valueOf(playbackIdleGuard.warningRemainingSeconds(android.os.SystemClock.elapsedRealtime())),
+                    () -> recordPlaybackHumanInteraction());
+                playbackIdleWarning = ComposeDialogHost.showFullscreen(MainActivity.this, view, () -> playbackIdleWarning = null);
+            }
+            uiHandler.postDelayed(this, event == PlaybackIdleGuard.Event.WARN ? 1000L : 5000L);
+        }
+    };
+
+    boolean recordPlaybackHumanInteraction() {
+        playbackIdleGuard.interaction(android.os.SystemClock.elapsedRealtime());
+        if (playbackIdleWarning == null) return false;
+        Dialog warning = playbackIdleWarning;
+        playbackIdleWarning = null;
+        warning.dismiss();
+        return true;
+    }
+
+    private void startPlaybackSafety() {
+        if (prefs != null) {
+            try { applyPlaybackIdlePolicy(new JSONObject(prefs.getString("playback_idle_policy", "{}"))); }
+            catch (Exception ignored) {}
+        }
+        if (playbackOutputMonitor == null) {
+            playbackOutputMonitor = new PlaybackOutputMonitor(this, uiHandler,
+                available -> playbackIdleGuard.output(available, android.os.SystemClock.elapsedRealtime()));
+            playbackOutputMonitor.start();
+        }
+        uiHandler.removeCallbacks(playbackIdleTick);
+        uiHandler.post(playbackIdleTick);
+    }
+
+    private void applyPlaybackIdlePolicy(JSONObject policy) {
+        if (policy == null) return;
+        playbackIdleGuard.configure(policy.optInt("idle_timeout_minutes", 240),
+            policy.optInt("warning_seconds", 60), policy.optBoolean("stop_on_output_loss", true),
+            policy.optInt("output_loss_grace_seconds", 20));
+        if (prefs != null && policy.has("idle_timeout_minutes"))
+            prefs.edit().putString("playback_idle_policy", policy.toString()).apply();
+    }
+
+    private void stopPlaybackForSafety(String reason, String commandId) {
+        if (playbackSafetyStopping) return;
+        playbackSafetyStopping = true;
+        playbackIdleGuard.playback(false, android.os.SystemClock.elapsedRealtime());
+        uiHandler.removeCallbacks(playbackIdleTick);
+        cancelRemoteZap();
+        cancelPendingU7dSeek();
+        rememberCurrentVodPosition();
+        rememberCurrentRecordingPosition();
+        ComposeDialogHost.dismissAll(this);
+        stopStartupLivePreview();
+        releaseMultiViewControllers();
+        if (playerController != null) playerController.stopByPlaybackPolicy();
+        stopPlaybackHeartbeat("stop");
+        showStatus("Reproducción detenida · " + reason);
+        if (commandId == null || commandId.isEmpty() || catalogSnapshotStore == null) {
+            exitPlaybackAndFinish();
+            return;
+        }
+        boolean submitted = submitControlTask("playback-stop-ack", () -> {
+            try { catalogSnapshotStore.acknowledgePlaybackStop(baseUrl, commandId); }
+            catch (Exception error) { Log.w(TAG, "No se pudo confirmar la parada remota"); }
+            finally { postUiIfAlive(this::exitPlaybackAndFinish); }
+        });
+        if (!submitted) exitPlaybackAndFinish();
     }
 
     private final SleepTimerState sleepTimer = new SleepTimerState();
@@ -16809,6 +16904,8 @@ public class MainActivity extends FragmentActivity {
         if (response == null || uiHandler == null) {
             return;
         }
+        JSONObject idlePolicy = response.optJSONObject("playback_policy");
+        if (idlePolicy != null) postUiIfAlive(() -> applyPlaybackIdlePolicy(idlePolicy));
         boolean forceCatalogRefresh = response.optBoolean("force_catalog_refresh_requested", false);
         boolean appUpdateCheck = response.optBoolean("app_update_check_requested", false);
         boolean wipeRequested = response.optBoolean("wipe_requested", false);
@@ -16818,6 +16915,14 @@ public class MainActivity extends FragmentActivity {
         String playbackContentId = response.optString("play_content_id", "").trim();
         long playbackPositionMs = Math.max(0L, response.optLong("play_position_ms", 0L));
         String commandId = response.optString("command_id", "").trim();
+        String commandExpiry = response.optString("command_expires_at", "").trim();
+        if ("stop".equals(playbackCommand) && !commandExpiry.isEmpty()) {
+            boolean expired = true;
+            try { expired = java.time.Instant.parse(commandExpiry).toEpochMilli() <= System.currentTimeMillis(); }
+            catch (Exception ignored) {}
+            if (expired) { playbackCommand = ""; playChannelId = ""; }
+        }
+
         String messageId = response.optString("message_id", "").trim();
         String remoteMessage = response.optString("message", "").trim();
         String messagePriority = response.optString("message_priority", "info").trim().toLowerCase(Locale.ROOT);
@@ -16847,6 +16952,8 @@ public class MainActivity extends FragmentActivity {
         if (!forceCatalogRefresh && !appUpdateCheck && !wipeRequested && playChannelId.isEmpty() && playbackCommand.isEmpty() && remoteMessage.isEmpty()) {
             return;
         }
+        String finalCommandId = commandId;
+        boolean administrativeStop = "stop".equals(playbackCommand) && !commandExpiry.isEmpty();
         String finalPlaybackCommand = playbackCommand;
         String finalPlaybackContentType = playbackContentType;
         String finalPlaybackContentId = playbackContentId;
@@ -16871,7 +16978,9 @@ public class MainActivity extends FragmentActivity {
             if (!finalRemoteMessage.isEmpty()) {
                 showRemoteMessage(finalMessageId, finalRemoteMessage, finalMessagePriority, finalMessageRequireAck);
             }
-            if (!finalPlaybackCommand.isEmpty()) {
+            if (administrativeStop) {
+                stopPlaybackForSafety("administración", finalCommandId);
+            } else if (!finalPlaybackCommand.isEmpty()) {
                 applyRemotePlaybackCommand(finalPlaybackCommand, finalPlaybackContentType, finalPlaybackContentId, finalPlaybackPositionMs);
             } else if (!finalPlayChannelId.isEmpty()) {
                 tuneChannelById(finalPlayChannelId);
@@ -17206,9 +17315,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void startPlaybackHeartbeat(ChannelItem channel) {
+        if (playbackSafetyStopping) return;
         if (!BuildConfig.STANDALONE_MODE || channel == null || catalogSnapshotStore == null) {
             return;
         }
+        playbackIdleGuard.playback(true, android.os.SystemClock.elapsedRealtime());
         playbackHeartbeatChannel = channel;
         playbackHeartbeatSessionId = catalogSnapshotStore.getDeviceId()
                 + "-"
@@ -17551,6 +17662,9 @@ public class MainActivity extends FragmentActivity {
     private JSONObject buildOfflineDeviceStatusExtra() {
         JSONObject extra = new JSONObject();
         try {
+            extra.put("playback_control_version", 1);
+            extra.put("last_interaction_age_ms", playbackIdleGuard.interactionAge(android.os.SystemClock.elapsedRealtime()));
+            if (playbackOutputMonitor != null) extra.put("output_available", playbackOutputMonitor.available());
             extra.put("standalone_mode", BuildConfig.STANDALONE_MODE)
                     .put("device_label", buildOfflineActivationDeviceLabel())
                     .put("device_name", buildReadableDeviceName())

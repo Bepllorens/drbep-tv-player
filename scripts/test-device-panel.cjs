@@ -20,6 +20,12 @@ const server = http.createServer(async (req,res) => {
  if(expired||req.headers['x-panel-token']!=='fixture-session'){send({},401);return}
  if(req.url==='/status'||req.url==='/report'){send({'Versión':'2.0.700-beta-device-panel','Dispositivo':'Fire TV','Memoria de la app':'124 MB / 384 MB','Espacio disponible':'4380 MB','Reproductor':'READY','Resolución':'1920 × 1080','Códec de vídeo':'AVC','Preparación':'820 ms','Interrupciones de búfer':0,'Tiempo en búfer':'0 ms','Red':'Disponible','Recuperaciones recientes':[]});return}
  if(req.url==='/playlist'){requests.push({action:'upload',size:body.length});send({queued:true,job:'upload-1'});return}
+ if(req.url==='/network-check'){assert.equal(req.method,'POST');assert.equal(body,'');requests.push({action:'network-check'});send({state:'complete',dns:'ok',dns_ms:12,connection:'ok',connection_ms:28,http_status:200});return}
+ if(req.url==='/blackbox'){send({enabled:true,detailed:false,bytes:4096,lost:0,writeErrors:0,session:'fixture',detailObservers:0,events:[],startups:[],playbacks:[{at:1791636000000,operation:7,stages:{PREPARE:0,MANIFEST:45,MEDIA:80,VIDEO_DECODER:110,READY:140,FRAME:160},details:{MANIFEST:{durationMs:20,bytes:1200,trackType:-1},MEDIA:{durationMs:30,bytes:8192,trackType:2},VIDEO_DECODER:{durationMs:12,bytes:0,trackType:0}}}],stats:[]});return}
+ if(req.url==='/metadata-index'){send({state:'idle',groups:[],sources:[]});return}
+ if(req.url==='/ui'){send({nodes:[],dialog:false});return}
+ if(req.url==='/screen'){res.writeHead(200,{'Content-Type':'image/png'});res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6VDEAAAAASUVORK5CYII=','base64'));return}
+ if(!body){send({error:'Unknown fixture endpoint'},404);return}
  const data=JSON.parse(body);requests.push(data);
  if(data.action==='guide-channels'){send({mode:data.source==='__drbep'?'server':'manual',feed:'example.com',channels:[{id:'c1',name:'Canal de prueba',epgId:'canal1',occurrence:0}]});return}
  if(data.action==='guide-day'||data.action==='guide-detail'){
@@ -50,7 +56,7 @@ const server = http.createServer(async (req,res) => {
 });
 (async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- const browser=await chromium.launch({channel:'chrome',headless:true});
+ const browser=await chromium.launch(process.env.PANEL_BROWSER_EXECUTABLE?{executablePath:process.env.PANEL_BROWSER_EXECUTABLE,headless:true}:{channel:'chrome',headless:true});
  try {
  const page=await browser.newPage({viewport:{width:1440,height:1000}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -84,6 +90,18 @@ const server = http.createServer(async (req,res) => {
  await page.locator('#guideDay').fill('2026-10-10');await page.locator('#guideDay').dispatchEvent('change');await page.waitForTimeout(30);await page.locator('#guideDay').fill('2026-10-11');await page.locator('#guideDay').dispatchEvent('change');await page.waitForTimeout(400);assert.match(await page.locator('#guideCards').innerText(),/Día anterior/);assert.doesNotMatch(await page.locator('#guideCards').innerText(),/Respuesta antigua/);
  await page.screenshot({path:path.join(output,'programacion.png'),fullPage:true});await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,'guide mobile overflow');await page.screenshot({path:path.join(output,'programacion-movil.png'),fullPage:true});
  await page.locator('[data-view="diagnostics"]').click();await page.locator('#stats dt').first().waitFor();
+ await page.locator('#bbPlaybacks').getByText('Primer manifiesto: 45 ms desde preparar · carga 20 ms · 1200 bytes',{exact:true}).waitFor();
+ assert.match(await page.locator('#bbPlaybacks').innerText(),/Primer fragmento: 80 ms desde preparar · carga 30 ms · 8192 bytes/);
+ assert.match(await page.locator('#bbPlaybacks').innerText(),/Decodificador de vídeo: 110 ms desde preparar · inicialización 12 ms/);
+ assert.doesNotMatch(await page.locator('#bbStatus').innerText(),/NaN|undefined/);
+ await page.screenshot({path:path.join(output,'diagnostico-fases-movil.png'),fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,'diagnostics mobile overflow');
+
+ assert.equal(requests.filter(r=>r.action==='network-check').length,0);
+ await page.locator('#networkCheck').click();
+ await page.waitForFunction(()=>document.querySelector('#networkResult').textContent.includes('HTTP 200'));
+ assert.equal(requests.filter(r=>r.action==='network-check').length,1);
+ assert.ok((await page.locator('#networkResult').textContent()).includes('12 ms'));
  expired=true;await page.evaluate(()=>refresh());await page.locator('#loginShell:not([hidden])').waitFor();assert.match(await page.locator('#loginError').innerText(),/sesión ha terminado/);
  assert.deepEqual(errors,[]);console.log('PASS: PIN, text safety, navigation, filters, pagination, edit, source retention, URL/file import, mobile layout, diagnostics, remote controls, seasons, progress, watched state, catchup filters/play/save and session expiry.');
  }finally{await browser.close()}

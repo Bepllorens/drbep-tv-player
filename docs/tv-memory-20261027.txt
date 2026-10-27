@@ -1,0 +1,96 @@
+TV / presión de memoria — diagnóstico y corrección 27/10/2026
+
+Desarrollo exclusivo .185. Fire .190, Movistar HLS, La Sexta. No despliegue,
+publicación ni cambio de servidor, canales, claves o reproducción.
+
+Causa de asignaciones demostrada
+La precarga pública FanartRepository leía el índice completo. Por cada programa
+volvía a normalizar el mismo nombre de canal, compilaba String.matches para el
+identificador y creaba varios Matcher nativos ICU para limpiar canal/título.
+Una sonda temporal de métodos confirmó pool-17-thread-1 dentro de esas funciones,
+coincidiendo con recuperación de memoria. No se conservan la sonda ni su llamada.
+Esto demuestra trabajo y asignaciones evitables; no demuestra por sí solo que
+cada pico de layout proceda exclusivamente de este lector.
+
+Corrección retenida
+- ReadKeys local a cada lectura, LRU de512 nombres, resultados canónicos idénticos.
+- Identificador ASCII validado con límites y caracteres exactos, sin regex nativa.
+- Limpieza: lower ROOT, NFD cuando es necesario y conservación de ASCII a-z/0-9.
+  Eliminar marcas y después todo lo no ASCII equivale a este filtro; no se cambian
+  reglas de episodios, calidad, alias, ventanas horarias o ambigüedad de imágenes.
+- Marcador DRBEP.fanartRead para futuras medidas puntuales.
+
+Equivalencia / benchmark .185
+986 tests correctos. Incluye4000 cadenas Unicode generadas (y sustitutos aislados),
+casos de acentos/turco/episodios, límites de identificador y expulsión de caché.
+100000 entradas sintéticas, cinco muestras tras calentamiento, checksum idéntico.
+Normalización completa canal+título+ID:
+mediana164,816ms ->73,320ms; asignaciones332000000 ->71365288 bytes (~78,5% menos).
+Es JVM Linux, no un tiempo de renderizado de Fire ni tamaño del proceso completo.
+final-normalization-benchmark.json conserva todas las muestras.
+
+Identidad / retorno
+Candidata final ARM32, release perfilable, versión777, firma privada ya instalada.
+SHA2564df9526dfaa4621209127548f959b576ef9e6ac6355c9379a00f0e6707850f72.
+No publicable con esa firma. Compilación final2m45s, resultados en final-build.log.
+Retorno network-diagnostic-20261027/network-fire.apk:
+64863311135ae23ac5405e2fd8a178fcde9c60a5e6f74f8adfe197f5d84a3288.
+MainActivity idéntico a la copia inicial del turno (con diagnóstico de red previo).
+
+Errores de instrumentación y límites
+-b32768 de atrace es POR CPU: reserva hasta128MiB en este Fire. La captura ampliada
+agravó la memoria e hizo la prueba intrusiva; sus tiempos se descartan para afirmar
+rendimiento normal. Hubo un FinalizerWatchdog durante esa fase.
+-b512 perdió eventos; no usar el frame pequeño aparente como mejora.
+Con -b2048 se conserva la ventana de entrada, pero sigue habiendo instrumentación.
+En small-candidate2 hubo pérdida ANTERIOR a la entrada; todos los CPU conservaban
+al menos7,3s anteriores al primer toque y ambos eventos táctiles estaban presentes.
+No extrapolar las comparaciones de una sola muestra a toda la sesión.
+
+Las comparaciones pequeñas provisionales mostraron ahorro en algunas muestras,
+pero otras variaron y no acreditan una mejora uniforme. La medida gfx-final1
+correspondía aún a Inicio y se descarta como entrada a TV. Se verifican capturas
+antes/después y se prefieren gfxinfo reset/framestats sin atrace.
+gfx-final-actual1 sí corresponde a En directo:766,136ms de frame,639,188ms
+de hilo UI transcurrido. Es una observación, no un par de control equivalente.
+
+Presión persistente del dispositivo
+Se observaron SIGKILL tanto del control como de la candidata. No hay excepción
+Java nueva asociada a esos cierres. No atribuir causalidad exclusiva al lector.
+Con DRBEP cerrado, sistema en estado crítico, ~100MiB disponibles y~831MiB ION.
+Trazas detenidas: tracing_on=0,buffer_size_kb=1.
+Usuario autorizó expresamente reiniciar sólo Fire .190 y continuar. Reinicio enviado.
+Validación posterior al reinicio: pendiente de completar en este documento.
+
+Evidencias privadas: /srv/drbep-dev/reviews/tv-memory-20261027 (permisos700).
+No usar dumps de configuración/credenciales como fixtures. Las pilas sólo incluyen
+nombres de métodos y las pruebas de equivalencia usan datos sintéticos.
+
+ESTADO FINAL DE ESTA ENTREGA
+Reinicio del Fire autorizado y ejecutado. Después el Fire exige confirmación ADB.
+Se probaron las claves existentes del .185, del Mac (por túnel SSH a través del185,
+sin copiar claves) y del223 a petición expresa del usuario. Las tres rechazadas.
+El usuario está fuera de casa: no se puede confirmar el aviso físicamente.
+No se borran ni sustituyen autorizaciones del dispositivo ni se intenta eludirlas.
+El túnel temporal del Mac se cerró. El servidor ADB auxiliar recién iniciado en223
+se cerró; backend/servicios de producción no cambiaron.
+La candidata final se instaló correctamente ANTES de reiniciar; su verificación
+posterior al reinicio, memoria limpia, primera entrada, pantalla completa/retorno
+y continuidad de miniatura quedan pendientes de la autorización ADB.
+
+Medidas sin atrace:
+gfx-control1:1392,739ms pero procedimiento inicial no garantiza portada estable.
+gfx-final1:corresponde a Inicio: NO comparar como TV.
+gfx-final-actual1:TV confirmada visualmente,133canales,MovistarHLS,
+frame766,136ms/UI639,188ms; después de portada asentada, no es control equivalente.
+gfx-ready-control:portada estable y TV verificadas visualmente,frame1126,450ms,
+UI964,892ms. La candidata equivalente no se pudo medir: proceso terminóSIGKILL
+antes del reinicio y después falta autorización ADB.
+NO afirmar una reducción sostenida del pico con estas muestras.
+Sí se retiene la corrección de asignaciones y normalización con equivalencia
+demostrada y benchmark sintético completo. El pico global sigue abierto.
+
+Para continuar: aceptar Permitir depuración USB, marcar Permitir siempre para
+el equipo de desarrollo .185, verificar boot/memoria y hash instalado. Capturar
+portada real antes del toque y TV después. Usar gfxinfo sin atrace; repetir control
+y candidata con mismas condiciones. No activar experimentos anteriores retirados.

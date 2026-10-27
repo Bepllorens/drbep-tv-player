@@ -43,6 +43,7 @@ public final class ComposeDialogHost {
                 // Dialog windows receive input without Activity.dispatchKeyEvent.
                 // Give cooperative background jobs the same quiet period here.
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    if (context instanceof MainActivity && ((MainActivity)context).recordPlaybackHumanInteraction()) return true;
                     BackgroundWorkBudget.interaction();
                 }
                 if(context instanceof MainActivity && ((MainActivity)context).handleSearchShortcut(event)) return true;
@@ -54,6 +55,7 @@ public final class ComposeDialogHost {
             }
             @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
                 int action = event.getActionMasked();
+                if (action == android.view.MotionEvent.ACTION_DOWN && context instanceof MainActivity && ((MainActivity)context).recordPlaybackHumanInteraction()) return true;
                 if (action == android.view.MotionEvent.ACTION_DOWN
                         || action == android.view.MotionEvent.ACTION_MOVE) {
                     BackgroundWorkBudget.interaction();

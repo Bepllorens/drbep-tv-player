@@ -12,7 +12,7 @@ import java.util.zip.*;
 final class BlackBoxStore implements AutoCloseable {
     enum Event { SESSION, ACTIVITY, FOREGROUND, BACKGROUND, WINDOW, PLAYER_READY, STARTUP_FRAME,
         CATALOG_READY, CATALOG_APPLY, HOME_MODEL, NAV_HOME, NAV_SECTION, NAV_KEY, PLAY_PREPARE, PLAY_STATE,
-        PLAY_FRAME, SURFACE_FRAME, PLAY_ERROR, VIDEO_COUNTERS, AUDIO_COUNTERS, PLAYBACK_SAMPLE, MEMORY, MEMORY_PRESSURE, UI_STALL, CRASH,
+        PLAY_FRAME, PLAY_MANIFEST_LOADED, PLAY_MEDIA_LOADED, PLAY_VIDEO_DECODER, SURFACE_FRAME, PLAY_ERROR, VIDEO_COUNTERS, AUDIO_COUNTERS, PLAYBACK_SAMPLE, MEMORY, MEMORY_PRESSURE, UI_STALL, CRASH,
         PROCESS_EXIT, MARK, DETAIL, ENABLED, EPG_LOAD, GUIDE_LOAD, GUIDE_CACHE, GUIDE_HTTP, GUIDE_PARSE, GUIDE_FALLBACK, CATCHUP_PAGE, CATCHUP_STRIP, CATCHUP_DB_OPEN, CATCHUP_DB_COUNT, CATCHUP_DB_FETCH, CATCHUP_DB_DECODE, MULTI_OPEN, MULTI_CLOSE, MULTI_PREPARE, MULTI_STATE, MULTI_FRAME, MULTI_ERROR, MULTI_COUNTERS, ZAP_PRESS, ZAP_TUNE, ZAP_FRAME, ARTWORK_QUEUE_REJECT, PROGRESS_WRITE, DETAIL_LEASE }
     private static final class Entry {
         final Event type; final long wall,elapsed,op,a,b,c;
@@ -138,6 +138,7 @@ final class BlackBoxStore implements AutoCloseable {
                 "at=UTC epoch ms; elapsed=monotonic ms; session=process; op=playback attempt.\n"+
                 "PLAYBACK_SAMPLE a=position ms,b=buffer ms,c=flags (state low 3 bits,requested 8,playing 16,loading 32,suppressed 64). AUDIO_COUNTERS a=rendered,b=skipped,c=buffer ms; not proof of audible output.\n"+
                 "Timing events: a=ms. VIDEO_COUNTERS a=rendered,b=dropped,c=buffer ms. MEMORY a=used heap bytes,b=max heap bytes.\n"+
+                "PLAY_MANIFEST_LOADED/PLAY_MEDIA_LOADED a=load duration ms,b=bytes,c=Media3 track type; first completed nonempty load before first frame, not DNS/TCP or sum of playlists. PLAY_VIDEO_DECODER a=initialization duration ms.\n"+
                 "PLAY_FRAME b=1 preview,c=1 repeated. PLAY_STATE a=Media3 state. PLAY_ERROR a=Media3 code.\n"+
                 "NAV_KEY a=Android keycode. MEMORY_PRESSURE a=Android level. PROCESS_EXIT a=Android exit reason,b=importance.\n"+
                 "CRASH a=1 OOM,2 runtime,3 other; no exception text. MARK=incident marker.\n"+

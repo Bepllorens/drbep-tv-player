@@ -12,13 +12,20 @@ final class FanartRepository {
  private volatile Map<String,List<Entry>> index=Collections.emptyMap();
  private volatile String origin="";
  private volatile long checked;
- private static final Pattern MARKS=Pattern.compile("\\p{M}+");
- private static final Pattern NON_WORD=Pattern.compile("[^a-z0-9]");
  private static final Pattern QUALITY=Pattern.compile("(?i)\\s+(?:uhd|fhd|hd|sd|4k)$");
  private static final Pattern EPISODE=Pattern.compile("(?i)\\s*(?:[-:]?\\s*(?:t\\d+\\s*e\\d+|s\\d+e\\d+|ep(?:isodio)?\\.?\\s*\\d+)).*$");
  static String titleKey(String s){return clean(EPISODE.matcher(s==null?"":s).replaceFirst(""));}
  static String channelKey(String s){return clean(QUALITY.matcher(s==null?"":s.trim()).replaceFirst("").replace("Movistar+","M+").replace("Movistar Plus+","M+"));}
- private static String clean(String s){return NON_WORD.matcher(MARKS.matcher(java.text.Normalizer.normalize(s.toLowerCase(Locale.ROOT),java.text.Normalizer.Form.NFD)).replaceAll("")).replaceAll("");}
+ private static String clean(String s){
+  String lower=s.toLowerCase(Locale.ROOT);boolean ascii=true;
+  for(int i=0;i<lower.length();i++)if(lower.charAt(i)>127){ascii=false;break;}
+  String normalized=ascii?lower:java.text.Normalizer.normalize(lower,java.text.Normalizer.Form.NFD);
+  // Keeping only ASCII letters/digits also drops every combining mark. Avoid
+  // creating two ICU/native matchers for every programme in the public index.
+  StringBuilder key=new StringBuilder(normalized.length());
+  for(int i=0;i<normalized.length();i++){char c=normalized.charAt(i);if((c>='a'&&c<='z')||(c>='0'&&c<='9'))key.append(c);}
+  return key.toString();
+ }
  static final class Entry {final long start;final String title,id;Entry(long s,String t,String i){start=s;title=t;id=i;}}
  FanartRepository(File dir){cache=new File(dir,"public-fanart-index.json");}
  synchronized boolean refresh(String base) throws IOException {
@@ -38,15 +45,33 @@ final class FanartRepository {
    if(!tmp.renameTo(cache))throw new IOException("Cannot save artwork index");index=next;checked=now;return true;
   } finally {tmp.delete();}
  }
+ // One bounded normalization cache per import. Repeated channel names must not
+ // allocate several native regex matchers for every programme in the guide.
+ static final class ReadKeys {
+  private final LinkedHashMap<String,String> channels=new LinkedHashMap<String,String>(64,0.75f,true){
+   @Override protected boolean removeEldestEntry(Map.Entry<String,String> e){return size()>512;}
+  };
+  String channel(String raw){String key=channels.get(raw);if(key==null){key=channelKey(raw);channels.put(raw,key);}return key;}
+  int size(){return channels.size();}
+ }
+ static boolean validArtworkId(String id){
+  if(id.isEmpty()||id.length()>80)return false;
+  for(int i=0;i<id.length();i++){char c=id.charAt(i);if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='-'))return false;}
+  return true;
+ }
  private static Map<String,List<Entry>> read(File f)throws IOException{
-  Map<String,List<Entry>> out=new HashMap<>();int count=0;
+  android.os.Trace.beginSection("DRBEP.fanartRead");
+  try { return readIndex(f); } finally { android.os.Trace.endSection(); }
+ }
+ private static Map<String,List<Entry>> readIndex(File f)throws IOException{
+  Map<String,List<Entry>> out=new HashMap<>();int count=0;ReadKeys keys=new ReadKeys();
   try(JsonReader r=new JsonReader(new InputStreamReader(new FileInputStream(f),java.nio.charset.StandardCharsets.UTF_8))){
    r.beginObject();while(r.hasNext()){
     if(!r.nextName().equals("programmes")){r.skipValue();continue;}
     r.beginArray();while(r.hasNext()){
      r.beginArray();String channel=r.nextString();long start=r.nextLong();r.nextLong();String title=r.nextString(),id=r.nextString();while(r.hasNext())r.skipValue();r.endArray();
      if(++count>150000)throw new IOException("Too many artwork rows");
-     if(id.matches("[A-Za-z0-9_-]{1,80}"))out.computeIfAbsent(channelKey(channel),k->new ArrayList<>()).add(new Entry(start,titleKey(title),id));
+     if(validArtworkId(id))out.computeIfAbsent(keys.channel(channel),k->new ArrayList<>()).add(new Entry(start,titleKey(title),id));
     }r.endArray();
    }r.endObject();
   }

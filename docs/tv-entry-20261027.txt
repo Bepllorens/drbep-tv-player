@@ -1,0 +1,37 @@
+TV: primera entrada y recorrido — 27/10/2026
+
+Objetivo: localizar el pico restante de entrada en TV con miniatura.
+Entorno: desarrollo .185, Fire .190, televisión encendida y mando libre.
+APK privada release perfilable de diagnóstico de red, versión777:
+SHA256 64863311135ae23ac5405e2fd8a178fcde9c60a5e6f74f8adfe197f5d84a3288.
+No es el APK universal publicado de agenda777.
+
+Recorrido: Inicio -> En directo, grupo Movistar HLS, 18 pasos abajo y18 arriba.
+No se modificó código, APK, datos ni política de compilación entre pasadas.
+Primera pasada: doFrame mediana5,641ms, p95 50,083ms, máximo678,122ms.
+Repetición caliente: mediana3,379ms, p95 24,943ms, máximo190,776ms.
+Estos números NO demuestran una mejora: son variación primera entrada/cachés.
+
+Pico de678,122ms, ámbitos inclusivos y solapados (NO sumarlos):
+- recompose274,417ms
+- applyChanges95,512ms
+- measureAndLayout284,605ms
+- logoBind dentro del pico15,595ms
+Los logotipos no explican por sí solos el pico.
+En toda la primera ruta: logoCreate10 llamadas máximo1,30ms;
+logoContrast153 llamadas máximo21,46ms; texto de filas46 medidas máximo48,28ms.
+El muestreo adicional de métodos devolvió0bytes y no ofrece evidencia utilizable.
+El perfilador se detuvo. No se modificó ART ni se cerraron apps ajenas.
+
+Retorno: Inicio con foco en miniatura confirmado por jerarquía UI.
+Captura return-home.png muestra imagen de La Sexta; una captura no demuestra
+continuidad de vídeo ni ausencia de tirones. No se declara resuelto el pico.
+
+Evidencias: /srv/drbep-dev/reviews/tv-entry-20261027/
+baseline-warm.trace/json/png, baseline-repeat.trace/json/png, return-home.png.
+methods.trace vacío; no usar cpu-summary.txt como resultado.
+
+Pendiente: aislar coste de composición/aplicación y primer layout con trazas
+por fase o muestreo válido, después comparar candidata contra control con
+igual estado de caché. No reintroducir los experimentos descartados documentados
+en tv-cold-20261025.txt. Sin cambios de reproducción, canales, producción o publicación.

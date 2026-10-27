@@ -1,3 +1,5 @@
+Estado único actualizado: docs/pendientes-20261027.txt. Las notas que siguen incluyen historia.
+
 PLAN DRBEP — revisión de Te Vas 0.4.7
 Fecha: 2026-10-26
 Estado: implantación iniciada en .185 el 26 de octubre.
@@ -256,3 +258,13 @@ Siguiente bloque: diagnóstico de red bajo demanda, sin cambiar DNS ni transport
 Opcionales no iniciados: proveedor deportivo externo/avisos, AceStream/torrents.
 Pendientes reales: Xiaomi/actualizador y fluidez XMLTV extrema; M+Indie no se
 considera resuelto por estas pruebas. No activar experimentos descartados.
+
+27/10: Bloque7A diagnóstico manual DNS/conexión implementado y probado en Fire/panel;982tests. Véase network-diagnostic-20261027.txt. Sin cambio de DNS. Código pendiente de commit; no incluido en universal777 de agenda. Esta última preparada y respaldada, preflightOK; publicación409 por sesiones activas, esperando autorización específica.
+
+27/10: Primera entrada TV medida en Fire: pico678ms; repetición caliente191ms, sin cambio de código. No es mejora acreditada. Predomina composición/layout; muestreo de métodos vacío. Pendiente aislar causa y corregir. Detalle tv-entry-20261027.txt. Retorno a Inicio con foco e imagen comprobado.
+
+27/10: Ensayo de evitar modelo de Inicio al entrar en TV RETIRADO: elimina trabajo duplicado pero empeora el pico en dos pasadas Fire. Código restaurado, datos conservados. Ver tv-transition-20261027.txt y comparison.json en reviews. Sigue pendiente la corrección del primer layout.
+
+27/10: Corregidas asignaciones repetidas en FanartRepository;986tests y equivalencia Unicode. Benchmark100k entradas332MB->71MB,164,816->73,320ms enJVM. Candidata privada instalada enFire antes del reinicio autorizado. Validación final del pico ABIERTA: Fire exige autorizarADB de nuevo;185/Mac/223 rechazados, usuario fuera. Detalle tv-memory-20261027.txt. No publicación ni cambios backend/stable.
+
+27/10: Extensión cargas/decoder de caja negra implementada en185,995tests y Chromium correctos; candidata privada preparada sin instalar. Ver startup-phases-20261027.txt. Fire y Xiaomi pendientes; no publicación. Beta777 de agenda sí consta publicada en el registro del27/10.

@@ -10,6 +10,8 @@ y mantiene permisos, telemetría y dispositivos asociados al usuario.
 
 - [Contexto de DRBEP y acceso al servidor de desarrollo](https://github.com/Bepllorens/drbep/blob/codex/backend-migration-20261015/docs/CONTEXTO_DRBEP_PARA_OTRA_IA.md): conexión SSH al `.185`, repositorios, arquitectura, pruebas y precauciones de producción.
 - [Mensaje de inicio para otra IA](https://github.com/Bepllorens/drbep/blob/codex/backend-migration-20261015/docs/INICIO_OTRA_IA.txt): instrucciones listas para copiar y retomar el trabajo desde el servidor de desarrollo.
+- [Estado técnico y respaldos (27/10/2026)](docs/estado-tecnico-y-respaldos-20261027.txt): inventario de cambios, artefactos, respaldos y comprobaciones pendientes.
+- [Mensaje de inicio para revisar los cambios pendientes](docs/INICIO_REVISION_PENDIENTES_20261027.txt): revisión desde el .185, sin modificar producción ni los canales de actualización.
 
 ## Fire Stick controls
 

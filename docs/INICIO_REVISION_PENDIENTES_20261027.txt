@@ -1,0 +1,29 @@
+Revisa el estado pendiente de DRBEP únicamente desde el servidor de desarrollo 192.168.93.185, usando el usuario drbep-dev.
+
+Repositorios y ramas:
+
+- Backend: /srv/drbep-dev/repos/drbep
+  Rama: codex/backend-migration-20261015
+  Commit del documento: 224720e1fa0755be1639343d549da1384390e9ab.
+
+- Android: /srv/drbep-dev/repos/drbep-tv-player
+  Rama: qoder/disneyplus-vod-582
+  Commit del documento: 5b18af18558d8d0e7f9fecbdd2571a19ae0ae0c2.
+
+Conéctate por SSH a drbep-dev@192.168.93.185. Lee primero los AGENTS.md de ambos repositorios y estos documentos del backend:
+
+- /srv/drbep-dev/repos/drbep/docs/CONTEXTO_DRBEP_PARA_OTRA_IA.md
+- /srv/drbep-dev/repos/drbep/docs/INICIO_OTRA_IA.txt
+- /srv/drbep-dev/repos/drbep/docs/estado-tecnico-y-respaldos-20261027.txt
+
+El último documento también existe en el repositorio Android.
+
+Solo se ha subido a Git el inventario técnico. Los cambios de código pendientes siguen sin commit en los árboles de trabajo del .185. Clonar las ramas no recupera esos cambios.
+
+Comprueba las ramas y el estado real antes de actuar. No cambies de rama, hagas pull ni descartes archivos sobre esos árboles modificados.
+
+La tarea es de revisión: inventaría las diferencias, contrástalas con los respaldos y distingue lo preparado, instalado, desplegado y realmente probado. No habilites fuentes ni accedas a su contenido.
+
+No modifiques producción en 192.168.93.223, beta ni stable. No despliegues, reinicies, publiques, ejecutes sincronizadores ni cambies permisos. No muestres secretos ni incorpores respaldos privados a Git.
+
+Devuélveme el estado encontrado, las diferencias pendientes y las comprobaciones que faltan, sin aplicar cambios.

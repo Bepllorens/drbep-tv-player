@@ -1,0 +1,12 @@
+BETA777 UNIVERSAL — AGENDA DEPORTIVA
+Candidata basada en la agenda validada en Fire el26/10; incremento de versión777.
+Incluye ARM32/ARM64 y firma original de distribución; no usar firma privada Fire.
+Cambios: agenda por día, búsqueda, favoritos locales por cuenta y dispositivo,
+horarios con zona, canal/plataforma explícitos y foco tras guardar.
+Backend: permiso EPG por canal/petición, paginación y contrato generado.
+Validación anterior:978 tests Android; API/EPG/DB correctos; Fire consulta real,
+favoritos/persistencia, paginación, reproducción World Poker Tour y miniatura.
+No cambios a reproducción, La1/Vamos, asociaciones, stable o rescue.
+Prueba táctil Xiaomi pendiente. Respaldo y evidencias del release:
+ /srv/drbep-dev/reviews/beta777-agenda-20261027
+Estado de publicación se registrará tras comprobar metadatos y APK descargada.

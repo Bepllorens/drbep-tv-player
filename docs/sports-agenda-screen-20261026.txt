@@ -1,0 +1,70 @@
+AGENDA DEPORTIVA — PANTALLA Y FAVORITOS — 26/10/2026
+
+Implementación en .185. Backend activado el 26/10 con autorización expresa, respaldo y retorno; candidata privada instalada en Fire. Véase validación actual al final.
+Backend conserva el filtro optimizado del bloque6A, pendiente de commit.
+Nueva ruta GET /api/epg/sports en puerta offline existente:
+- permiso EPG y acceso exacto por canal antes de paginar y contar;
+- start/end RFC3339, intervalo de hasta26h (permite horario de verano),
+  horizonte acotado8d, búsqueda literal hasta80caracteres, páginas de60;
+- orden inicio/canal/evento, sin fusionar canales de nombres parecidos;
+- devuelve solo DTO EPG existente; no entrega URLs de reproducción o credenciales.
+- contrato OpenAPI regenerado; no modifica asociaciones, sincronizadores ni DB.
+
+Android:
+- Agenda deportiva al final del lateral, ordenable/ocultable con ajustes existentes.
+- Entrada no hace consultas: solo se consulta al abrir y cambiar día/filtro/página.
+- Hoy y6 días siguientes en zona horaria del dispositivo.
+- Lista sin tarjetas, degradado oscuro, foco visible y objetivos táctiles amplios.
+- Estados de carga/vacío/error, Actualizar, páginas anterior/siguiente.
+- Consulta cancelable y respuesta limitada2MiB/60elementos; host valida cuenta y
+  catálogo autorizado al recibir y antes de reproducir. No búsqueda por parecido.
+- Abrir una emisión en directo usa tuneChannelById existente. Próximas emisiones
+  informan de que aún no han comenzado. No añade catchup o grabaciones nuevas.
+- Fecha/estado en directo usan el refresco visible existente; para con pantalla
+  oculta/no reanudada y no realiza red. Revalida la hora al pulsar.
+- Regreso usa los mismos callbacks de modal/portada; foco inicial de miniatura intacto.
+
+Favoritos deportivos:
+- Seguir una búsqueda literal de equipo/competición, hasta32 por cuenta/dispositivo.
+- Nombre normalizado, sin duplicados por mayúsculas; máximo80caracteres.
+- Clave local separada por servidor y usuario, derivada SHA256 (sin tokens).
+- Guardado fuera de UI, commit comprobado; errores visibles; quitar favorito
+  desde Dejar de seguir. No se sincronizan todavía entre dispositivos.
+- Se basan en el texto de título/categoría EPG; no se inventan identificadores de
+  equipos ni se promete información que el proveedor no facilita.
+- Sin proveedor externo, descargas nuevas o recordatorios automáticos.
+
+Validación:
+- Tests API de permisos antes de paginar70autorizados entre140eventos,
+  401sin sesión,403revocación EPG, ventanas/filtros inválidos,
+  horario de invierno y duplicados con canal distinto.
+- Tests Android: persistencia, límites, corrupción, cuentas/servidores distintos,
+  días de23/25horas; regresión del lateral adaptada sin alterar orden previo.
+- Primera compilación release y suite Android correctas; resultados finales
+  documentados al terminar en reviews/sports-agenda-20261026.
+- API/EPG/DB y pruebas Android completas como regresión.
+- No se afirma prueba visual ni reproducción real de esta pantalla:
+  pendientes instalación autorizada en Fire, foco al filtrar/paginar, teclado,
+  vuelta a portada/miniatura y táctil Xiaomi.
+- No cambia stable, beta publicada, La1/Vamos, tokens ni claves.
+
+Evidencias:
+ /srv/drbep-dev/reviews/sports-agenda-20261026/android-final.log
+ /srv/drbep-dev/reviews/sports-agenda-20261026/screen-api-tests.log
+ /srv/drbep-dev/reviews/sports-agenda-20261026/screen-regression.log
+
+VALIDACIÓN FINAL: release beta ARM32 compilada (3m35s),977 pruebas Android sin fallos/errores. API166,631s correcta; EPG/DB correctas. Artefacto y SHA en reviews/sports-agenda-20261026/screen-validation.json. No firma de distribución/publicación ni instalación. Cambios sin commit/push en esta entrega.
+
+VALIDACIÓN REAL 26/10 — actualización posterior a la nota inicial:
+Backend activo /opt/drbep-releases/sports-agenda-20261026.
+SHA256 servidor 1e058358196a98fda4e7083c914991a2d596982cc78ce254c159afae9734348c.
+Activación con respaldo y retorno automático; guardas de canales, configuración,
+conteos Plex y 41 archivos protegidos de reproducción conservados.
+Fire: consulta real, filtro NFL, cambio de día, página2 y vuelta a página1,
+persistencia del favorito tras instalar-r, apertura exacta World Poker Tour,
+vídeo visible y regreso a miniatura con foco comprobados.
+Corregido lector de fechas con offset mediante EpgTimeCodec; etiquetas incluyen
+plataforma para distinguir el mismo canal en listas distintas.
+Prueba táctil Xiaomi pendiente. No publicación ni commit/push en esta validación.
+
+CIERRE FIRE: candidata agenda-final-fire.apk instalada, SHA256 1cc82e0ce6b8f4c491b913859e1fd170ebceb2fa15d770d43ab8661c2323281e. 978 tests,0fallos; build2m49s. Foco de Seguir/Dejar de seguir restaurado tras persistencia y verificado con OK. Favorito NFL de prueba eliminado. Evidencia favorite-focus-final.txt; APK anterior before-fire.apk conservada. No commit/push/publicación.

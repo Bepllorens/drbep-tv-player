@@ -241,3 +241,18 @@ BETA776 PUBLICADA — SHA y validación en cierre-beta-776-20261026.txt.
 Stable/rescue intactas. Plex preparado sin activar; autorización pendiente.
 
 26/10: Plex incremental activado con migración13 y retorno probado. Catálogo y permisos idénticos; primera sincronización real y medida de ahorro pendientes. Véase cierre-beta-776-20261026.txt.
+
+BLOQUE6A — base EPG de agenda: filtro por canal y petición optimizado en backend .185. Mismos resultados; filtro 8400 programas:485,734->5,244ms. Sin despliegue. Pantalla/favoritos deportivos pendientes. Detalle en backend docs/sports-agenda-access-20261026.txt. Plex real validado:97,471->0,463s;25 bibliotecas reutilizadas sin pérdida.
+
+BLOQUE6B — Agenda y seguimientos deportivos implementados en .185: días, páginas60, búsqueda literal, favoritos por cuenta/dispositivo, permiso EPG y canal exacto. No desplegado/instalado. Detalle sports-agenda-screen-20261026.txt. Pendiente prueba visual Fire/tablet; proveedor externo y avisos siguen opcionales.
+
+ESTADO VIGENTE 27/10 (prevalece sobre las notas históricas):
+Bloques0-4: validación Fire y límites en cierre-beta-776-20261026.txt.
+Bloque5: Plex activo y sincronización real medida97,471s->0,463s sin pérdidas.
+Bloque6: agenda desplegada con respaldo; pantalla y favoritos comprobados en Fire,
+incluidas fechas con offset, foco al guardar, páginas, canal exacto y miniatura.
+Beta777 universal en preparación para validación táctil Xiaomi por el usuario.
+Siguiente bloque: diagnóstico de red bajo demanda, sin cambiar DNS ni transporte.
+Opcionales no iniciados: proveedor deportivo externo/avisos, AceStream/torrents.
+Pendientes reales: Xiaomi/actualizador y fluidez XMLTV extrema; M+Indie no se
+considera resuelto por estas pruebas. No activar experimentos descartados.

@@ -7,7 +7,7 @@ import static org.junit.Assert.*;
 public class MainRailLayoutTest {
  @Test public void defaultOrderMatchesExistingMenuAndHomeCannotBeHidden(){
   MainRailLayout layout=MainRailLayout.defaults();
-  assertEquals(Arrays.asList("search","home","live","library","movies","series","guide","catchup","palantir"),layout.order);
+  assertEquals(Arrays.asList("search","home","live","library","movies","series","guide","catchup","palantir","sports"),layout.order);
   for(String id:MainRailLayout.IDS)layout=layout.withVisible(id,false);
   assertEquals(Arrays.asList("home"),layout.visibleOrder(MainRailLayout.IDS));
   assertEquals(Arrays.asList("home"),layout.visibleOrder(Collections.emptyList()));
@@ -39,7 +39,7 @@ public class MainRailLayoutTest {
  }
  @Test public void boundariesAndUnknownIdsDoNotMutateTheLayout(){
   MainRailLayout layout=MainRailLayout.defaults();
-  assertSame(layout,layout.move("search",-1));assertSame(layout,layout.move("palantir",1));
+  assertSame(layout,layout.move("search",-1));assertSame(layout,layout.move("sports",1));
   assertSame(layout,layout.move("unknown",1));assertSame(layout,layout.withVisible("settings",false));
   MainRailLayout changed=layout.move("live",-1);
   assertEquals("home",layout.order.get(1));assertEquals("live",changed.order.get(1));

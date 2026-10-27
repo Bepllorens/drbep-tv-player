@@ -488,6 +488,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                 Spacer(Modifier.height(10.dp))
                 Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val sports = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.SPORTS }
                     val palantir = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.PALANTIR }
  val movie = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.MOVIES }
                     val series = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.SERIES }
@@ -497,6 +498,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                         if (movie != null) add(MainRailLayout.MOVIES)
                         if (series != null) add(MainRailLayout.SERIES)
  if(palantir!=null)add(MainRailLayout.PALANTIR)
+ if(sports!=null)add(MainRailLayout.SPORTS)
                         if (model.onLiveGuide != null) add(MainRailLayout.GUIDE)
                         if (model.onLiveHistory != null) add(MainRailLayout.CATCHUP)
                     }
@@ -509,6 +511,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                                 MainRailLayout.LIBRARY -> R.drawable.rail_library
                                 MainRailLayout.MOVIES -> R.drawable.rail_movies
                                 MainRailLayout.SERIES -> R.drawable.rail_series
+ MainRailLayout.SPORTS -> R.drawable.rail_sports
  MainRailLayout.PALANTIR -> R.drawable.rail_palantir
                                 MainRailLayout.GUIDE -> R.drawable.rail_guide
                                 else -> R.drawable.rail_history
@@ -524,6 +527,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                                         MainRailLayout.LIBRARY -> openSection("Mi biblioteca")
                                         MainRailLayout.MOVIES -> movie?.onClick?.run()
                                         MainRailLayout.SERIES -> series?.onClick?.run()
+ MainRailLayout.SPORTS -> sports?.onClick?.run()
  MainRailLayout.PALANTIR -> palantir?.onClick?.run()
                                         MainRailLayout.GUIDE -> model.onLiveGuide?.run()
                                         MainRailLayout.CATCHUP -> model.onLiveHistory?.run()

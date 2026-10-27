@@ -14966,6 +14966,42 @@ public class MainActivity extends FragmentActivity {
         });
         return personalPlaylistController;
     }
+    private void showSportsAgenda(Runnable back) {
+        if(currentOfflinePermissions==null || !currentOfflinePermissions.liveEnabled || catalogSnapshotStore==null)return;
+        final String account=catalogSnapshotStore.getUserScope();
+        prepareModalSurface();
+        ComposeView view=new ComposeView(this);attachDialogViewTreeOwners(view);
+        Map<String,String> headers=new HashMap<>();
+        headers.put("Authorization","Bearer "+catalogSnapshotStore.getAccessToken());
+        headers.put("X-DRBEP-Device-Id",catalogSnapshotStore.getDeviceId());
+        SportsAgendaBrowser.open(this,view,catalogRepository.vodApiBaseUrl(),headers,account,new SportsAgendaBrowser.Host(){
+            public boolean valid(){return catalogSnapshotStore!=null && account.equals(catalogSnapshotStore.getUserScope())
+                && currentOfflinePermissions!=null && currentOfflinePermissions.liveEnabled;}
+            public boolean allowed(String id){
+                ChannelItem item=findChannelItemById(id);
+                return valid() && item!=null && !item.isVod && LiveHomePolicy.visibleInHome(item,currentOfflinePermissions)
+                    && !shouldHideProtectedItem(item) && !PrivateChannelPolicy.privateItem(item,currentOfflinePermissions);
+            }
+            public String channelLabel(String id){
+                ChannelItem item=findChannelItemById(id);
+                if(item==null)return "";
+                return item.name + (item.platformName==null || item.platformName.trim().isEmpty() ? "" : " · "+item.platformName.trim());
+            }
+            public void play(String id,Dialog dialog){
+                if(!allowed(id))return;
+                dismissModalForNextAction(dialog,()->{if(allowed(id))tuneChannelById(id);});
+            }
+            public void back(Dialog dialog){dismissModalForNextAction(dialog,back);}
+            public void closed(){handleModalDismissed();}
+            public void input(String value,java.util.function.Consumer<String> submit){
+                showTvTextInputPanel(new TvTextInputPanelUiModel("Equipo o competición","","Buscar","Cancelar","",
+                    Arrays.asList(new TvTextInputFieldUiModel("Nombre",value,false,false)),
+                    values->{if(values!=null&&!values.isEmpty())submit.accept(values.get(0));},null,null));
+            }
+        });
+        handleModalShown();
+    }
+
     private void showPalantirLibrary(Runnable back){
         if(currentOfflinePermissions==null || !currentOfflinePermissions.allowsPalantir())return;
         prepareModalSurface();
@@ -20376,6 +20412,10 @@ public class MainActivity extends FragmentActivity {
         if(currentOfflinePermissions!=null && currentOfflinePermissions.allowsPalantir()){
             primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("CATÁLOGO","Palantir","Películas, series y colecciones","",true,
                 open.apply(() -> showPalantirLibrary(() -> showStartupHubDialog(state))),MainRailLayout.PALANTIR));
+        }
+        if(currentOfflinePermissions!=null && currentOfflinePermissions.liveEnabled) {
+            primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("EPG","Agenda deportiva","Equipos y competiciones","",true,
+                open.apply(()->showSportsAgenda(()->showStartupHubDialog(state))),MainRailLayout.SPORTS));
         }
         phase = logHomeModelPhase("primary", phase);
         List<StartupHomeHubUiModel.ContinueCard> continueCards = new ArrayList<>();

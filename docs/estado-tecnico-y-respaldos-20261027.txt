@@ -1,0 +1,333 @@
+DRBEP - ESTADO TECNICO E INVENTARIO DE RESPALDOS
+Fecha de redaccion: 2026-10-27T16:08:27+01:00 (Europe/Madrid).
+Alcance: inventario documental, procedencia, evidencias y recuperacion.
+No es una guia de activacion de fuentes ni una autorizacion de despliegue.
+No contiene credenciales, tokens, claves, PIN, enlaces de contenido ni datos de usuarios.
+
+1. ENTORNO Y REGLAS DE CONTINUIDAD
+
+Desarrollo: 192.168.93.185, usuario drbep-dev.
+Repositorios canonicos:
+  /srv/drbep-dev/repos/drbep
+  /srv/drbep-dev/repos/drbep-tv-player
+Herramientas: /srv/drbep-dev/env.sh
+Produccion: 192.168.93.223. No modificarla por esta tarea.
+Fire habitual: 192.168.93.190:5555.
+Leer AGENTS.md en ambos repositorios y:
+  /srv/drbep-dev/repos/drbep/docs/CONTEXTO_DRBEP_PARA_OTRA_IA.md
+  /srv/drbep-dev/repos/drbep/docs/INICIO_OTRA_IA.txt
+Estos documentos tienen referencias historicas; comprobar siempre el estado real.
+No usar las copias antiguas del Mac como codigo canonico.
+No descartar cambios sin commit ni cambiar ramas a ciegas.
+Preservar La 1, Vamos, EPG, asociaciones manuales, canales y reproduccion existentes.
+Este documento no concede permisos para publicar, reiniciar, instalar o restaurar.
+
+2. ESTADO VERIFICADO Y DIFERENCIA ENTRE PREPARACION Y ACTIVACION
+
+La integracion inicial de Alfa se desplego anteriormente. No se ha revertido.
+La ampliacion posterior tiene codigo y artefactos preparados, pero NO se activo
+el backend/dashboard nuevo ni se habilitaron las nuevas fuentes en esta operacion.
+
+Comprobacion de SOLO LECTURA del .223 realizada al redactar:
+  Binario activo /app/server:
+  SHA256 9adcb91470249e99f8a0b9740d15fb1832affab601873dc8be3814539cc15c14
+  Release anterior de referencia:
+  /opt/drbep-releases/alfa-adult-20261027
+  Candidata preparada, no activada:
+  /opt/drbep-releases/alfa-sources-20261027
+  prepared.json existe; deployment.json, rollback.json y enabled-state.json
+  NO existen en esa candidata. El hash activo sigue siendo el anterior.
+  Esto se ha verificado sin reiniciar ni modificar contenedores, configuracion o DB.
+
+Metadatos completos de actualizacion comparados con prepared.json:
+  stable: version_code 582; sin cambios.
+  beta: version_code 777; sin cambios.
+  rescue: version_code 543; sin cambios.
+La version instalada en un dispositivo NO acredita publicacion de un canal.
+
+La configuracion historica del piloto inicial tenia tres fuentes y actualizacion
+manual. Esa descripcion procede de la comprobacion anterior; no se ha realizado
+una nueva importacion ni se han revisado cuentas o permisos individuales al
+preparar este documento. No asumir que la configuracion del usuario no cambio.
+
+3. ESTADO DEL FIRE Y ARTEFACTOS ANDROID
+
+Comprobantes guardados en:
+  /srv/drbep-dev/reviews/alfa-fire-20261027/install-result.json
+  /srv/drbep-dev/reviews/alfa-fire-20261027/apk-identity.json
+La APK privada 780 fue instalada antes de esta tarea documental mediante
+actualizacion que conserva datos. No hubo desinstalacion ni borrado de datos.
+No se reinstalo ni manipulo el Fire para redactar este inventario.
+
+Identificador: com.drbep.tvplayer.offline
+versionCode: 780
+versionName: 2.0.780-beta-alfa-sources
+ABI: armeabi-v7a y arm64-v8a.
+Fire: ARM32. ADB se habia autorizado desde .185.
+
+APK PRIVADA instalada (NO publicable como artefacto de distribucion):
+  /srv/drbep-dev/reviews/alfa-fire-20261027/drbep-2.0.780-beta-alfa-sources-fire-private.apk
+  SHA256 a0ba4fe6c9710bc9c03bde1ffce1b37aaa75f74196e4ecf575a102bf84145626
+  Certificado publico SHA256:
+  9f76a326703c87666c247a743679b5bf696aacf5f34d835bea53d369fcdfd200
+
+APK de DISTRIBUCION preparada, NO instalada y NO publicada:
+  /srv/drbep-dev/artifacts/beta780/drbep-2.0.780-beta-alfa-sources-universal.apk
+  SHA256 7f007a197dd4a3ea34a8763d5087605de266acf1aa288262cbcda2b73375731d
+  Certificado publico SHA256:
+  0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b
+  Manifiesto: /srv/drbep-dev/artifacts/beta780/manifest.json
+
+Los contenidos se verificaron iguales salvo metadatos de firma.
+No intercambiar estas identidades ni desinstalar para resolver incompatibilidades.
+Beta y stable comparten applicationId; no son aplicaciones aisladas.
+Las huellas de las tres APK enumeradas se han vuelto a calcular al redactar.
+
+Respaldo exacto del Fire ANTES de instalar 780:
+  /srv/drbep-dev/reviews/alfa-fire-20261027/before-fire-777.apk
+  SHA256 4df9526dfaa4621209127548f959b576ef9e6ac6355c9379a00f0e6707850f72
+  Version: 777 / 2.0.777-beta-sports-agenda.
+  Recibo: /srv/drbep-dev/reviews/alfa-fire-20261027/before-fire.json
+Es respaldo del APK, NO una copia de los datos privados de la app.
+Un retorno de version requiere revisar compatibilidad y permiso especifico;
+no se ha ejecutado ningun retorno.
+
+4. CANDIDATA BACKEND/DASHBOARD Y PROCEDENCIA
+
+En .185:
+  /srv/drbep-dev/reviews/alfa-fire-20261027/backend-source
+  /srv/drbep-dev/reviews/alfa-fire-20261027/dashboard-candidate
+  /srv/drbep-dev/reviews/alfa-fire-20261027/backend-overlay-server
+  /srv/drbep-dev/reviews/alfa-fire-20261027/backend-overlay.json
+  /srv/drbep-dev/reviews/alfa-fire-20261027/release-manifest.json
+
+Binario candidato sobre el release anterior:
+  SHA256 42d937a21d97865b2896a9131e01273f16cba79edf65c2007998292ac9e873b0
+El overlay registra 11 archivos de backend cambiados y 672 preservados.
+El dashboard candidato actualiza su componente de catalogo.
+Se mantiene esquema14; la ampliacion no introduce otra migracion.
+No equiparar la compilacion del checkout canonico con el overlay del release:
+pueden tener diferente base y distinto hash.
+
+El directorio de candidata en .223 contiene recursos de operacion preparados.
+No se han ejecutado para activar nada. No ejecutarlos de forma automatica
+por encontrarlos en el inventario ni usarlo como permiso para desplegar.
+
+5. RESPALDOS DE PRODUCCION (PRIVADOS, SOLO INVENTARIADOS)
+
+Directorio en .223:
+  /opt/drbep-releases/alfa-sources-20261027/before
+
+Archivos comprobados por lectura y SHA256:
+  server (28.845.872 bytes)
+  9adcb91470249e99f8a0b9740d15fb1832affab601873dc8be3814539cc15c14
+
+  compose.yml (3.091 bytes)
+  57f96c5cd077c5f00a88c9d15552482220f28e0950680010d209bdc1a7fbe9d0
+
+  database.sqlite (343.896.064 bytes)
+  941cf2efd7cec7baee87f22630c43c972893e0e74d61834bb4436882aa87038c
+
+  alfa-catalog.sqlite (155.648 bytes)
+  ef86f23b479c352f34099e7954342f022609f071656a51a1b3f26c490349396b
+
+Hay imagenes anteriores etiquetadas de retorno; no se han borrado.
+Los respaldos SQLite pueden contener datos privados. No incorporarlos a Git,
+no transferirlos a otro proveedor IA y no usarlos como fixtures de desarrollo.
+No copiar ni mostrar el contenido de compose/configuracion privada.
+
+La recuperacion normal de codigo no debe restaurar una DB antigua: perderia
+cambios posteriores. Los SQLite se conservaron para recuperacion excepcional.
+Inventariar un respaldo no significa que se haya ensayado su restauracion.
+No se hizo restauracion en esta tarea.
+
+6. EVIDENCIAS Y ALCANCE REAL DE LAS PRUEBAS
+
+Registros .185 de la ampliacion:
+  /srv/drbep-dev/reviews/alfa-adapters-20261027/
+Pruebas registradas anteriormente:
+  backend-regression.log: paquetes cmd e internal, 31 paquetes superados.
+  service-race.log: comprobacion de concurrencia superada.
+  dashboard-lint.log, dashboard-types.log, dashboard-tests.log (20 tests),
+  dashboard-build.log.
+  android-tests-build.log: 1012 tests Android y compilacion debug ARM32.
+Estos son resultados previos guardados; no se han repetido para escribir el doc.
+
+Overlay de produccion:
+  /srv/drbep-dev/reviews/alfa-fire-20261027/backend-overlay-tests.log
+  /srv/drbep-dev/reviews/alfa-fire-20261027/backend-overlay-build.log
+  /srv/drbep-dev/reviews/alfa-fire-20261027/dashboard-lint.log
+  /srv/drbep-dev/reviews/alfa-fire-20261027/dashboard-types.log
+  /srv/drbep-dev/reviews/alfa-fire-20261027/dashboard-tests.log
+  /srv/drbep-dev/reviews/alfa-fire-20261027/dashboard-build.log
+API, base de datos y servicio superaron las pruebas del overlay.
+El build firmado 780 esta registrado en beta780-build.log del mismo directorio.
+
+Prueba REAL anterior en Fire con TV convencional:
+  /srv/drbep-dev/reviews/alfa-fire-20261027/tv-navigation.json
+  OK desde miniatura abre pantalla completa; Atras vuelve a la portada y recupera
+  el foco de la miniatura. Estado playing=true, fotogramas 6887 -> 7085 y
+  dropped=4 en ambos extremos.
+Esto verifica ese recorrido concreto, no ausencia total de tirones.
+No se produjo una medicion de movimiento por pixeles: faltaba PIL.
+No hubo validacion real de reproduccion de las nuevas fuentes en el Fire.
+La instalacion correcta y los HTTP de comprobaciones anteriores no prueban
+reproduccion completa ni equivalen a permiso de acceso.
+
+La categoria privada no aparecia en Ajustes durante las pruebas anteriores.
+catalog-permission-check.json NO permite concluir la causa: la extraccion de
+la interfaz no fue concluyente. No afirmar que el usuario carece de permiso,
+ni atribuirlo a un PIN, ni eludir la proteccion parental.
+
+7. PENDIENTES TECNICOS NEUTRALES
+
+- Revisar separadamente cambios del piloto inicial y de la ampliacion.
+- Preservar los cambios sin commit; no asumir que Git remoto contiene este estado.
+- Comprobar permisos y foco con fixtures y contenido de prueba no explicito.
+- Verificar navegacion, retorno a TV, miniatura y privacidad del historial.
+- Validar que el catalogo general no cargue datos masivos al arrancar.
+- No dar por validada tablet, actualizador o reproduccion completa.
+- Cualquier futura operacion de restauracion o publicacion necesita su alcance
+  autorizado y comprobacion de identidad del artefacto.
+No se incluye una secuencia para activar fuentes o facilitar su acceso.
+
+8. CAMBIOS LOCALES INVENTARIADOS
+
+Las siguientes rutas son absolutas en .185; los SHA son de la captura actual.
+Incluyen trabajo acumulado del piloto inicial y la ampliacion, no solo la ultima
+solicitud. ?? significa que el archivo no esta seguido por Git; M que difiere del
+HEAD. No se ha hecho commit, push, reset ni despliegue por esta tarea documental.
+
+Repositorio: /srv/drbep-dev/repos/drbep
+Rama: codex/backend-migration-20261015
+HEAD: d7fd0e522a37dde084f30fcbb49e13b1c518b8ee
+Cambios sin consolidar (M=modificado; ??=nuevo):
+ M /srv/drbep-dev/repos/drbep/cmd/server/main.go
+   SHA256 173b3efd008deb29bfca067c602320840f620b628b0f06ff4d936b14bd718368
+ M /srv/drbep-dev/repos/drbep/internal/api/handlers.go
+   SHA256 99f6441c08a2e22d9447bf2fc26ff810dd791c636468646bb2c46b1977426390
+ M /srv/drbep-dev/repos/drbep/internal/api/offline_snapshot.go
+   SHA256 f433289b1e3f1ad4ccb10f41bb9168d5b45bde844efeac6cf97621165670536e
+ M /srv/drbep-dev/repos/drbep/internal/api/offline_user_access_templates.go
+   SHA256 3b322044033da266297bc3966a431cf29d4610bd07189a36576c5d691d866055
+ M /srv/drbep-dev/repos/drbep/internal/api/router.go
+   SHA256 15c89f060d2f23d82c3ab0fbc24b9a2cfef2dd1c7acead0b15452e22f0958a30
+ M /srv/drbep-dev/repos/drbep/internal/api/user_auth.go
+   SHA256 b43e7998c0fde6b2e9110d27e73a514377c4a65a80627aaaf4be901b4f2a942e
+ M /srv/drbep-dev/repos/drbep/internal/database/database.go
+   SHA256 55431293cb14991b748f33284e49737cc8e0608239b86c0128c79a4a86d26d78
+ M /srv/drbep-dev/repos/drbep/internal/database/migrations_test.go
+   SHA256 6be602610fc2dcac38531f09537fbd8dee41e8366cbd73a66d36e2d49fa6f0e3
+ M /srv/drbep-dev/repos/drbep/internal/database/models.go
+   SHA256 2cb5e6ff47cc06ef9ea3c7a2efc149fe9450b37fc25870a8d077ec44f1eadd78
+ M /srv/drbep-dev/repos/drbep/internal/database/users.go
+   SHA256 07dcce990a835cb843f2a5a6da7c96a58203eccbc31a12bc77e688477daf8eb2
+ M /srv/drbep-dev/repos/drbep/offline-dashboard/app/components/dashboard-navigation.tsx
+   SHA256 b608d825af5d2622d6038bbdcb433878267d8adf28c1c97c59058c0a16bc614d
+ M /srv/drbep-dev/repos/drbep/offline-dashboard/app/page.tsx
+   SHA256 bec83c7bf321201ae8440dea98e825f762d5a246f4951808328aa77af703f1dd
+ M /srv/drbep-dev/repos/drbep/offline-dashboard/lib/dashboard-tabs.ts
+   SHA256 241da49c8d43801f3f067de0cd14bf30cb09065546b423086365afb093926562
+?? /srv/drbep-dev/repos/drbep/cmd/alfaadult-audit/main.go
+   SHA256 7e1c3f701de2e09a824553ac58520f4f7db58c5f223e45ed179f05e752a569f9
+?? /srv/drbep-dev/repos/drbep/docs/alfa-adaptadores-adicionales-20261027.txt
+   SHA256 d97b84de3de38b990257f037aec8bee99c057acb37cd5139f0dbb9b01e0a1768
+?? /srv/drbep-dev/repos/drbep/docs/alfa-adult-despliegue-20261027.txt
+   SHA256 741f640bad4988622b2bacbf3e06d34b221d389897441d65bf501f4fa395adc1
+?? /srv/drbep-dev/repos/drbep/docs/alfa-adult-implantacion-20261027.txt
+   SHA256 1a750c7705ee33be899f1cfe4d572d8cc8cd74297cea50fe4521d63728246760
+?? /srv/drbep-dev/repos/drbep/docs/alfa-adult-piloto-activo-20261027.txt
+   SHA256 f6876a9bcd70bb5e3a93ab4d0a68166d85fa2311328d9e3b74926ad7ebb4b891
+?? /srv/drbep-dev/repos/drbep/internal/api/alfa_adult.go
+   SHA256 ac50f0aa41ffc73178b181368301188869d7bad64bbab869f947cf79065a15ad
+?? /srv/drbep-dev/repos/drbep/internal/api/alfa_adult_additional_test.go
+   SHA256 01bb43a1d07fe52842bf7fe43656e0f869e56daf6cdc862da48e036bd90769b6
+?? /srv/drbep-dev/repos/drbep/internal/api/alfa_adult_preview_test.go
+   SHA256 ced5357ea93825263834ebdcf888a894e991f17e4f4fc6e79eed2e4507c3c6c5
+?? /srv/drbep-dev/repos/drbep/internal/api/alfa_adult_test.go
+   SHA256 3fa8b7638cb760b9077c66f4ac714712d9cf02fa08eb0d251fbf8cc5b1479854
+?? /srv/drbep-dev/repos/drbep/internal/database/alfa_adult_test.go
+   SHA256 e08c01778f954d3fb150c5ee87cd0ffa30ceafc081de578f6a03d1653cbd807c
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/PROVENANCE.txt
+   SHA256 db46d4953b44b8b5d2e29cc215e113728c60a242502e5fba78f14f07c82eaacc
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/adapters.go
+   SHA256 c0ae359cbdcfb4ec2505e7c4e795fc56a9e524f476b470949bffe7f59b3c27d0
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/additional_adapters.go
+   SHA256 570c4532843c23fdbcaafed6e4102f772a9b86ee5a126d89b5892af85a49857e
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/additional_adapters_test.go
+   SHA256 44675923c169062b1441787c38b22ee3592b2dd4435a1afd976b8a75154b0501
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/alfaadult_test.go
+   SHA256 9fd2db821482c906940fbdf64d03603083d9930008bd4eff7c0757126c17996e
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/registry.go
+   SHA256 4707e9551cc1ffe6001d800c2186cc659ebac57241945720e8e9e6c1e24ff78b
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/sources.json
+   SHA256 4e0757ad95328e6e63c5ba597e0c92bc3602965391c5f786f93e943b7929c9be
+?? /srv/drbep-dev/repos/drbep/internal/service/alfaadult/store.go
+   SHA256 904f2bec2402ea1611813a7a3c10416e213e4b082af826fca754dd04b42533ea
+?? /srv/drbep-dev/repos/drbep/offline-dashboard/app/components/alfa-adult.module.css
+   SHA256 e5e18c69b2bca68bfcd51978e5d0796b4018f220843faf34023599e418fb7434
+?? /srv/drbep-dev/repos/drbep/offline-dashboard/app/components/alfa-adult.tsx
+   SHA256 8d6e274fc33b4070c580f9b9aa107a96d013d617958145d331da29afa6980db6
+
+Repositorio: /srv/drbep-dev/repos/drbep-tv-player
+Rama: qoder/disneyplus-vod-582
+HEAD: f198539dec813b55cdcc9365c874b3906e24d413
+Cambios sin consolidar (M=modificado; ??=nuevo):
+ M /srv/drbep-dev/repos/drbep-tv-player/app/build.gradle
+   SHA256 bc16c47473bc952e217635797414924baf5754adc070e2b4bf476e183a177fca
+ M /srv/drbep-dev/repos/drbep-tv-player/app/src/main/java/com/drbep/tvplayer/CatalogRepository.java
+   SHA256 7aa6ca0a2e208e38d3b89bd017513427b6bbaf8aa4d0609b51e9997855176678
+ M /srv/drbep-dev/repos/drbep-tv-player/app/src/main/java/com/drbep/tvplayer/CatalogSnapshotStore.java
+   SHA256 cff01a629bf0a6b8426487afdc051ba772647eb060951e60b75f487bdf29bf7a
+ M /srv/drbep-dev/repos/drbep-tv-player/app/src/main/java/com/drbep/tvplayer/MainActivity.java
+   SHA256 def10ce6255be40863dbbf32338390025fcda1d6effeb71283acd698d07142e1
+ M /srv/drbep-dev/repos/drbep-tv-player/app/src/main/java/com/drbep/tvplayer/PlayerController.java
+   SHA256 6206e2fec3d5a26b8f17f4bfa8322a98f5dddf3cf3d0afada801f5f36880ac10
+ M /srv/drbep-dev/repos/drbep-tv-player/app/src/test/java/com/drbep/tvplayer/CatalogSnapshotStoreTest.java
+   SHA256 0398ec5d9ce3074ecbc82d7516aa8e351adda7edd227e8ccfeb0aa86b4d221b9
+ M /srv/drbep-dev/repos/drbep-tv-player/app/src/test/java/com/drbep/tvplayer/PalantirPermissionsTest.java
+   SHA256 686117d52999949c51311885f3372c2687998aa06ac2d799af83b9f1edd857f0
+?? /srv/drbep-dev/repos/drbep-tv-player/app/src/main/java/com/drbep/tvplayer/AlfaAdultBrowser.kt
+   SHA256 2f3f055a99471b7f5aa60c93de2cea88cdd88671fbdcd379da4b1b5fa2679aa3
+?? /srv/drbep-dev/repos/drbep-tv-player/app/src/main/java/com/drbep/tvplayer/AlfaAdultPrivacy.java
+   SHA256 86b79be85292d63c50e2fefb7ac9a92900c7f0d5fe621cfae54a41c8f1473aeb
+?? /srv/drbep-dev/repos/drbep-tv-player/app/src/test/java/com/drbep/tvplayer/AlfaAdultTest.kt
+   SHA256 ffe28e2db11a0b538affee7e4cf173e7a2d79e343fbbbe6d7eedfa23aff77888
+?? /srv/drbep-dev/repos/drbep-tv-player/docs/alfa-adaptadores-adicionales-20261027.txt
+   SHA256 d97b84de3de38b990257f037aec8bee99c057acb37cd5139f0dbb9b01e0a1768
+?? /srv/drbep-dev/repos/drbep-tv-player/docs/alfa-adult-despliegue-20261027.txt
+   SHA256 741f640bad4988622b2bacbf3e06d34b221d389897441d65bf501f4fa395adc1
+?? /srv/drbep-dev/repos/drbep-tv-player/docs/alfa-adult-implantacion-20261027.txt
+   SHA256 1a750c7705ee33be899f1cfe4d572d8cc8cd74297cea50fe4521d63728246760
+?? /srv/drbep-dev/repos/drbep-tv-player/docs/alfa-adult-piloto-activo-20261027.txt
+   SHA256 f6876a9bcd70bb5e3a93ab4d0a68166d85fa2311328d9e3b74926ad7ebb4b891
+
+9. OTROS DOCUMENTOS EXISTENTES (HISTORICOS)
+
+En docs/ de ambos repositorios:
+  alfa-adult-implantacion-20261027.txt
+  alfa-adult-despliegue-20261027.txt
+  alfa-adult-piloto-activo-20261027.txt
+  alfa-adaptadores-adicionales-20261027.txt
+Representan etapas anteriores. Si dicen que aun no existe la APK 780 o que
+la version instalada es 777, prevalecen los comprobantes fechados de este
+inventario. No confundir la etapa inicial ya desplegada con la ampliacion parada.
+
+10. QUE SE CAMBIO PARA ESCRIBIR ESTE DOCUMENTO
+
+Solo este archivo de texto en docs/ de ambos repositorios del .185 y una copia
+de entrega al usuario. Ningun cambio de codigo, fuentes, permisos, APK, canales,
+base de datos ni contenedores. Las consultas al .223 fueron de solo lectura.
+La copia para el usuario contiene el inventario, no los respaldos privados.
+
+
+11. ALCANCE DE LA ENTREGA EN GIT
+
+La peticion posterior de commit/push se atiende SOLO para este documento de
+inventario en ambos repositorios. Los adaptadores y los demas cambios de codigo
+enumerados en la seccion 8 permanecen locales, sin commit, en .185.
+Clonar las ramas remotas permite obtener este inventario, pero NO obtiene esos
+cambios de codigo pendientes. No confundir el documento con un respaldo completo
+del arbol de trabajo ni afirmar que el codigo de la ampliacion esta en Git.
+Las huellas de la seccion 8 corresponden al inventario anterior a esta entrega.
+La entrega documental no despliega, publica ni habilita fuentes.

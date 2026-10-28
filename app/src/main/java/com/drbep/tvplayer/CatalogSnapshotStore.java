@@ -108,7 +108,7 @@ final class CatalogSnapshotStore {
     // Bump whenever a release learns a new catalog collection. Otherwise an APK
     // upgrade can keep a valid snapshot fingerprint while reusing a parsed cache
     // produced by an older parser (for example, before Plex VOD existed).
-    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 16;
+    private static final int STARTUP_PARSED_BINARY_FORMAT_VERSION = 17;
     private static final int MAX_BINARY_CACHE_ITEMS = 1_000_000;
     private static final int MAX_BINARY_CACHE_STR_BYTES = 4 * 1024 * 1024;
     static final int MAX_SNAPSHOT_HTTP_BYTES = 24 * 1024 * 1024;
@@ -500,7 +500,7 @@ final class CatalogSnapshotStore {
              GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1 << 16);
              DataInputStream in = new DataInputStream(new BufferedInputStream(gzipInputStream, 1 << 16))) {
             int formatVersion = in.readInt();
-            if (formatVersion != 2 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
+            if (formatVersion != 2 && formatVersion != 16 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
                 return matches;
             }
             String payloadFingerprint = readStr(in);
@@ -567,7 +567,7 @@ final class CatalogSnapshotStore {
              GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1 << 16);
              DataInputStream in = new DataInputStream(new BufferedInputStream(gzipInputStream, 1 << 16))) {
             int formatVersion = in.readInt();
-            if (formatVersion != 2 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
+            if (formatVersion != 2 && formatVersion != 16 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
                 return false;
             }
             String payloadFingerprint = readStr(in);
@@ -1711,7 +1711,7 @@ final class CatalogSnapshotStore {
     }
 
     synchronized void saveVodResumeItem(ChannelItem item) {
-        if (item == null || !item.isVod || item.id.isEmpty()) {
+        if (item == null || !item.isVod || item.id.isEmpty() || AlfaAdultPrivacy.privateID(item.id)) {
             return;
         }
         try {
@@ -1917,7 +1917,7 @@ final class CatalogSnapshotStore {
              GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream, 1 << 16);
              DataInputStream in = new DataInputStream(new BufferedInputStream(gzipInputStream, 1 << 16))) {
             int formatVersion = in.readInt();
-            if (formatVersion != 2 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
+            if (formatVersion != 2 && formatVersion != 16 && formatVersion != STARTUP_PARSED_BINARY_FORMAT_VERSION) {
                 throw new IllegalStateException("version de cache binaria invalida: " + formatVersion);
             }
             String payloadFingerprint = readStr(in);
@@ -2043,6 +2043,7 @@ final class CatalogSnapshotStore {
         out.writeBoolean(p.admin);
         writeStringSet(out, p.allowedLiveGroups);
  out.writeBoolean(p.palantirEnabled);
+ out.writeBoolean(p.alfaAdultEnabled);
     }
 
     static OfflinePermissions readOfflinePermissions(DataInputStream in, int formatVersion) throws IOException {
@@ -2089,6 +2090,7 @@ final class CatalogSnapshotStore {
             readStringSet(in, p.allowedLiveGroups);
         }
         if(formatVersion>=16)p.palantirEnabled=in.readBoolean();
+ if(formatVersion>=17)p.alfaAdultEnabled=in.readBoolean();
         return p;
     }
 

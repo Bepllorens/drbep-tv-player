@@ -1,0 +1,139 @@
+Actualizacion 27/10/2026: backend y dashboard ya desplegados con respaldo y retorno.
+Consultar alfa-adult-despliegue-20261027.txt. La APK y las pruebas Fire siguen pendientes.
+El contenido siguiente conserva la fotografia anterior al despliegue.
+
+DRBEP - Piloto Alfa Adultos
+Fecha: 2026-10-27
+Estado: implementado en desarrollo .185; sin despliegue, instalacion ni publicacion.
+
+Alcance
+- Solo las fuentes para adultos elegidas por el usuario. No se incorpora el resto de Alfa.
+- Registro de 152 fuentes: tres adaptadores revisados (eporner, xvideos, xnxx).
+  Las otras 149 aparecen como pendientes, no se pueden habilitar ni ejecutar.
+- El ZIP de Alfa se inspecciono estaticamente. No se ejecuta Kodi ni codigo remoto
+  del addon. Los adaptadores son independientes y acotados.
+- Las filas de los adjuntos son paginas de catalogo/categorias, no una lista M3U
+  de enlaces de video permanentes. El enlace temporal se resuelve al reproducir.
+- Solo fuentes publicas HTTPS y MP4/HLS claros. No se extraen claves, no se
+  incorporan credenciales de fuentes ni se eluden verificaciones interactivas.
+- Es un piloto, no paridad completa con todas las funciones ni fuentes de Alfa.
+
+Configuracion y uso una vez desplegado y probado
+1. Dashboard offline > Gestion > Alfa Adultos. Habilitar la integracion y elegir
+   fuentes. Por defecto esta deshabilitada y la actualizacion es manual.
+2. Actualizar una fuente, de una a tres paginas por operacion. Se puede cancelar.
+   Las fuentes se administran en un desplegable separado del catalogo.
+3. En el usuario, activar VOD y el permiso explicito Alfa Adultos con Guardar
+   permisos. Administradores tampoco reciben este permiso implicitamente.
+4. Configurar el PIN parental de la cuenta. La app lo desbloquea mediante la
+   ruta parental existente; la concesion esta vinculada a la sesion y caduca.
+5. El usuario hereda las fuentes globales o tiene una seleccion propia. Guardar
+   fuentes es independiente de Guardar permisos y vale para sus dispositivos.
+6. App: Ajustes > Catalogos privados > Alfa Adultos. Filtros, busqueda, detalle,
+   paginacion y retorno al catalogo; no se incluye en portada ni busqueda general.
+7. Esta tarea no ha desplegado esos controles; no son visibles aun en produccion.
+
+Almacenamiento, costes y privacidad
+- SQLite separado en /data/alfa-adult/catalog.sqlite; desarrollo puede cambiarlo
+  con DRBEP_ALFA_ADULT_DIR. No reutilizar una DB de produccion en pruebas.
+- WAL e indices de fuente/fecha. Consultas de hasta 60 filas, UI de 30; limite
+  de 5000 entradas por fuente. Fechas completas cuando existen en el origen,
+  sin inventarlas. Si no hay fecha, se utiliza la primera incorporacion.
+- Dos actualizaciones simultaneas, una por fuente; enfriamiento de un minuto,
+  plazo maximo de 90 s, hasta tres paginas por operacion manual.
+- Programacion opcional cada 6 o 24 horas, una pagina por fuente. El planificador
+  no descarga nada si esta deshabilitado o en modo manual.
+- Actualizaciones vacias, fallidas o canceladas conservan los datos previos.
+- Resolucion limitada a cuatro solicitudes simultaneas, con tiempos acotados.
+- Destinos y redirecciones validados; no se permiten destinos privados ni
+  cabeceras de autenticacion de DRBEP hacia las fuentes.
+- El reproductor usa solo Referer/User-Agent de la fuente. Estas entradas no se
+  guardan en Continuar viendo, favoritos, listas personales ni ultimo VOD.
+- Las miniaturas privadas del navegador no usan cache persistente de Glide.
+  El catalogo del servidor si es persistente y esta sometido a permisos.
+- No se garantiza ocultacion frente al proveedor de red ni anonimato.
+- Este piloto no incorpora AllDebrid/1fichier ni conversion automatica de fuentes.
+
+Mapa de codigo
+Backend /srv/drbep-dev/repos/drbep:
+- internal/service/alfaadult/{registry.go,sources.json,adapters.go,store.go}
+- internal/api/alfa_adult.go y sus pruebas; handlers.go, router.go, user_auth.go.
+- internal/api/offline_snapshot.go y offline_user_access_templates.go.
+- internal/database/{database.go,models.go,users.go} y pruebas de migracion.
+- cmd/server/main.go registra el trabajo; cmd/alfaadult-audit permite diagnostico
+  sin red por defecto, y pruebas publicas acotadas solo con -live/-resolve.
+- offline-dashboard/app/components/alfa-adult.tsx y alfa-adult.module.css.
+- offline-dashboard/app/page.tsx, dashboard-navigation.tsx, lib/dashboard-tabs.ts.
+
+Android /srv/drbep-dev/repos/drbep-tv-player:
+- app/src/main/java/com/drbep/tvplayer/AlfaAdultBrowser.kt, AlfaAdultPrivacy.java.
+- CatalogRepository.java, CatalogSnapshotStore.java, MainActivity.java,
+  PlayerController.java; pruebas AlfaAdultTest, CatalogSnapshotStoreTest y
+  PalantirPermissionsTest.
+- Snapshot binario v17; lectura de v16 compatible, permiso nuevo denegado.
+- app/build.gradle: candidata 779, 2.0.779-beta-alfa-adult-pilot, universal ARM32/64.
+
+Rutas API
+- Admin: GET/PUT /api/admin/alfa-adult; GET /api/admin/alfa-adult/catalog.
+- Admin: POST /api/admin/alfa-adult/sources/{source}/refresh y /cancel.
+- Admin: GET/PUT /api/admin/users/{id}/alfa-adult.
+- Usuario: GET /api/vod/alfa-adult/sources y /catalog.
+- Usuario: POST /api/vod/alfa-adult/play.
+- Desbloqueo: la ruta parental existente /api/webapp/parental/unlock.
+
+Validacion y alcance de la evidencia
+- Pruebas Go de API, base de datos, servicio nuevo y usuarios: correctas.
+- Servicio nuevo tambien comprobado con detector de carreras: correcto.
+- Comparacion independiente de 2000 entradas: mismos resultados de busqueda,
+  ambito por fuente y paginacion; sin perdidas ni duplicados.
+- Consulta de pagina en cache, 1000 filas/200 iteraciones: 0,46 ms de media.
+  Es un microbenchmark del .185; no mide el Fire ni mejora relativa.
+- Panel: lint, tipado, 20 pruebas y compilacion correctos.
+- Navegador con datos ficticios: buscar, Ver todo, pagina siguiente, detalle,
+  actualizar catalogo, fuentes por usuario, habilitar/deshabilitar y ancho
+  de 1440/390 px sin desbordamiento ni excepciones JavaScript.
+- Android: 1010 pruebas sin fallos; compilacion universal de distribucion firmada.
+- Pruebas publicas limitadas: 60/48/48 entradas; resolucion de un ejemplo por
+  fuente y lectura parcial HTTP 206 de MP4/HLS. Tiempos combinados de
+  946/491/516 ms. Esto NO demuestra reproduccion completa en dispositivo.
+- Evidencias: /srv/drbep-dev/reviews/alfa-audit-20261027.
+- El servidor y panel temporales de datos ficticios se cierran al terminar.
+- El informe de artefacto privado y su SHA256 se guardan en
+  /srv/drbep-dev/artifacts/beta779/manifest.json.
+  La 778 anterior no contiene Alfa y se conserva intacta.
+
+Migracion y despliegue FUTURO: requisitos pendientes
+- Main DB recibe migracion 14: columna can_view_alfa_adult, deshabilitada por
+  defecto. No se ha aplicado en produccion.
+- Antes de desplegar, comprobar compatibilidad del binario anterior con esquema
+  14 y preparar retorno que conserve nuevas escrituras. Un respaldo por si solo
+  no basta: no restaurar a ciegas toda la DB y perder progreso/sesiones.
+- Preparar candidata sobre el release activo, conservar todos los cambios de
+  produccion, comprobar identidad y respaldo. No sustituirlo con un binario de
+  procedencia distinta ni usar esta tarea como autorizacion de despliegue.
+- La API debe estar disponible antes de probar Alfa en la app; un backend viejo
+  conserva los permisos previos y no anuncia Alfa.
+- Verificar en Fire (ADB pendiente de autorizacion): PIN/expiracion, foco inicial,
+  filtros/volver, paginas, reproduccion/pausa/avance, retorno a TV/miniatura,
+  denegacion tras revocar permiso y ausencia de historial general.
+- Verificar en Xiaomi: tactil, teclado/PIN, retorno y compatibilidad ARM64.
+- Ninguna fuente nueva debe pasar de pendiente a habilitable sin adaptador,
+  pruebas de red, fallos, privacidad y reproduccion real.
+- No se ha tocado La 1, Vamos, asociaciones, EPG, catchup ni rutas ya funcionales.
+- Produccion, stable y beta publicados siguen sin cambios por esta tarea.
+- No hay commit/push de estos cambios todavia; conservar el arbol de trabajo.
+  Bases: backend d7fd0e522a37dde084f30fcbb49e13b1c518b8ee
+  (codex/backend-migration-20261015); Android
+  f198539dec813b55cdcc9365c874b3906e24d413 (qoder/disneyplus-vod-582).
+
+Identidad final de candidata privada
+- APK: /srv/drbep-dev/artifacts/beta779/drbep-2.0.779-beta-alfa-adult-pilot-universal.apk
+- SHA256: c08c89ecd8a12d1d0be0726d61bf9d77ef751b06818b5de095cd70c2564370ce
+- Firma SHA256: 0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b
+- Tamano: 104831201 bytes. ABI: ARM32 y ARM64.
+- 1010 tests Android, cero fallos y cero errores. No instalada ni publicada.
+
+Cierre de validacion
+- go test ./cmd/... ./internal/...: correcto (sincronizadores no ejecutados).
+- git diff --check: correcto en ambos repositorios.
+- Panel temporal y API ficticia cerrados; captura final revisada visualmente.

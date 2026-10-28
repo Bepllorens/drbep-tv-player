@@ -1,0 +1,131 @@
+AMPLIACION ALFA: NUBILEFILM, BEEG Y CHATURBATE - 27/10/2026
+
+Estado
+Implementada y validada en el servidor de desarrollo .185.
+No se ha conectado con .223 para esta tarea, ni desplegado, publicado o instalado.
+Stable, beta publicados y Fire no se han modificado.
+Las pruebas reales del Fire quedan pendientes de autorizacion ADB del usuario.
+No hay commit/push de esta ampliacion; se conservan los cambios anteriores.
+
+Fuentes nuevas
+- Nubilefilm: listado publico de80 fichas en la prueba. Se usa la portada para
+  la primera pagina y /latest-updates/N/ para las siguientes; la antigua busqueda
+  vacia del addon no devolvia ese listado. El adaptador conserva las80 tarjetas
+  de la pagina, no las corta a60. Resuelve las URLs publicas MP4/HLS del player
+  y solo admite los dominios revisados. No sigue iframes de terceros a ciegas.
+- Beeg: listado JSON de48 fichas por pagina, offset de48 en48. Conserva id de
+  archivo, titulo, duracion, altura y fecha completa cuando se aporta.
+  Su frontend actual usa /video/play_url/{id}; la respuesta es una ruta HLS
+  relativa, que se resuelve sobre el origen de video correspondiente.
+  Se contrasto con el JavaScript publico actual, sin ejecutarlo.
+  Se conserva un fallback al formato historico hls_resources solo para el MISMO
+  id confirmado; no se selecciona otro contenido para rellenar un fallo.
+- Chaturbate: lista de hasta48 salas publicas verificadas, sin contrasena.
+  Se descartan privadas, offline, no verificadas, edades conocidas inferiores
+  a18 y nombres de sala invalidos. Se usa el nombre de sala, no su descripcion.
+  Al abrir se solicita otra vez el dossier publico y se comprueban estado,
+  permiso de visualizacion, verificacion, contrasena y correspondencia de sala.
+  Las salas privadas/no disponibles devuelven409 con mensaje legible, sin URL.
+  El HLS se resuelve fresco y las cabeceras incluyen Origin limitado al proveedor.
+  No se accede a salas de pago, privadas o de contrasena, ni a cuentas personales.
+
+Contrato y persistencia
+- Registro152 fuentes:6 con adaptador y146 pendientes en el codigo de desarrollo.
+- La seleccion GLOBAL predeterminada conserva SOLO eporner/xvideos/xnxx.
+  Las tres nuevas son seleccionables tras un despliegue futuro, pero no se
+  habilitan ni se conceden a usuarios automaticamente.
+- Permiso Alfa explicito, permiso VOD y PIN de cuenta se conservan sin cambios.
+- Metadato opcional live en la fuente e is_live en el item/respuesta de playback.
+  Se deriva del tipo de fuente al leer; no hay columna ni migracion SQL nueva.
+- DIRECTO indica tipo de emision, no garantiza que la sala siga online despues
+  de importar el listado. La disponibilidad se verifica al intentar abrirla.
+  La lista es una fotografia de la ultima actualizacion; se mantiene el control
+  manual/6h/24h existente, sin nuevo sondeo permanente en pantallas ocultas.
+- No se guardan URLs de playback temporales en el catalogo. Se conservan solo
+  los identificadores/paginas estables. Cabeceras de DRBEP, cookies y tokens de
+  usuario nunca se envian a estos CDN.
+- Chaturbate permanece en el contenedor de navegacion privada VOD del cliente
+  para que no pase a ultimo canal, historial ni Continuar viendo. Media3 reconoce
+  la naturaleza dinamica del manifiesto HLS. Las pantallas nuevas lo etiquetan
+  como emision en directo y ofrecen Ver directo.
+- Se mantienen los limites de concurrencia, paginacion, cancelacion y red.
+  No se ejecuta codigo del addon ni JS de los sitios, no se eluden captchas,
+  autenticacion ni bloqueos de acceso.
+
+Archivos en .185
+Backend /srv/drbep-dev/repos/drbep:
+ internal/service/alfaadult/additional_adapters.go (nuevo)
+ internal/service/alfaadult/additional_adapters_test.go (nuevo)
+ internal/service/alfaadult/adapters.go (dispatch adicional y Origin de Beeg)
+ internal/service/alfaadult/registry.go, sources.json (solo3 registros actualizados)
+ internal/service/alfaadult/store.go (tipo live derivado; SQL sin cambios)
+ internal/service/alfaadult/alfaadult_test.go (recuento de soportados)
+ internal/api/alfa_adult.go (tipo live y error especifico de sala)
+ internal/api/alfa_adult_additional_test.go (nuevo)
+ cmd/alfaadult-audit/main.go (opcion --sources; por defecto conserva las3 previas)
+ offline-dashboard/app/components/alfa-adult.tsx (indicadores de directo)
+
+Android /srv/drbep-dev/repos/drbep-tv-player:
+ app/src/main/java/com/drbep/tvplayer/AlfaAdultBrowser.kt
+ app/src/main/java/com/drbep/tvplayer/AlfaAdultPrivacy.java
+ app/src/test/java/com/drbep/tvplayer/AlfaAdultTest.kt
+Se amplian solo los dominios revisados y se limita Origin exactamente al valor
+publico de Chaturbate. Los casos VOD anteriores conservan su presentacion.
+
+Pruebas
+- Regresion Go ./cmd/... ./internal/...:31 paquetes con pruebas correctos.
+- Detector de carreras del servicio Alfa: correcto.
+- Pruebas especificas de los nuevos contratos de API: correctas.
+- Nuevos tests: paginacion,80 tarjetas sin perdida, fechas, id exacto en Beeg,
+  variantes publicas, doble JSON del dossier, sala que cambia a privada,
+  contrasena/edad/verificacion, dominios maliciosos y cabeceras.
+- Android:1012 pruebas,0 fallos,0 errores; assembleDebug beta ARM32 correcto.
+- Dashboard: lint, typecheck,20 pruebas y build correctos.
+- Prueba publica limitada a listado +1 ejemplo por fuente + primeros1024 bytes:
+   Eporner60, MP4 HTTP206,1119ms.
+   xvideos48, HLS HTTP206,469ms.
+   xnxx48, HLS HTTP206,564ms.
+   Nubilefilm80, MP4 HTTP206,1709ms.
+   Beeg48, HLS HTTP200,351ms.
+   Chaturbate48, HLS HTTP200,775ms.
+  Son medidas de la comprobacion completa desde .185 en esa ejecucion; no son
+  tiempos de primera imagen ni demuestran reproduccion audiovisual completa.
+- Los3 registros originales del inventario son semanticamente identicos.
+- MainActivity.java, PlayerController.java, CatalogSnapshotStore.java y
+  CatalogRepository.java Android tienen hashes identicos a la fotografia previa.
+- No se han cambiado EPG, catchup, asociaciones ni rutas de La1/Vamos.
+
+Artefactos y precauciones para la continuacion
+/srv/drbep-dev/reviews/alfa-adapters-20261027/
+ before/, logs, listing/detail shapes sin titulos, live-six-sources.jsonl,
+ preservation.json, delivery.json, drbep-delta.patch, drbep-tv-player-delta.patch.
+Binario privado de la candidata canonica:
+ /srv/drbep-dev/reviews/alfa-adapters-20261027/candidate-server
+ SHA256 bf99c13cb5db577aad0f044451c71bacb1a7ca1b1c72810147e94297e4c83f49
+Las pruebas Android solo generaron APK debug para comprobar compilacion:
+ no es una release de distribucion y no debe instalarse como actualizacion.
+La779 universal FIRMADA anterior se conserva exacta:
+ c08c89ecd8a12d1d0be0726d61bf9d77ef751b06818b5de095cd70c2564370ce
+Esa779 no contiene los nuevos dominios/compatibilidad del cliente. Antes de
+instalar/publicar, generar una nueva version firmada (780 o siguiente libre),
+conservar el artefacto exacto y validar firma/arquitecturas/version y retorno.
+No sobrescribir ni publicar como779 el nuevo codigo.
+
+Pendientes
+- Despliegue AUTORIZADO futuro: preparar overlay sobre las fuentes del release
+  activo de .223 y respaldo/retorno; no sustituir por el binario canonico a ciegas.
+- Seleccionar/habilitar las3 nuevas fuentes en la configuracion global y en los
+  subconjuntos de usuario que corresponda, despues del despliegue.
+- Instalar cliente actualizado compatible cuando el usuario autorice ADB.
+- Fire: navegar, PIN, paginar, reproducir los3, pausa/avance en VOD, estado de
+  directo y retorno a TV/miniatura. Revalidar las3 fuentes originales.
+- Tablet: validacion tactil y retorno cuando este disponible.
+- Las49 miniaturas faltantes del piloto anterior no se han retocado en esta tarea.
+
+Referencias
+Se estudio estaticamente plugin.video.alfa3.12.3 ya archivado, sin copiar su
+implementacion ni distribuir el addon. El adaptador Go es independiente.
+El formato Beeg historico tambien se contrasto con el extractor publico:
+ https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/beeg.py
+El frontend actual de Beeg difiere de ese formato; su nuevo endpoint publico
+fue comprobado directamente. No se guardaron sus enlaces temporales en informes.

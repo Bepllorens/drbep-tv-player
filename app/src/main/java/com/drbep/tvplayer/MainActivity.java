@@ -1620,6 +1620,11 @@ public class MainActivity extends FragmentActivity {
             }
 
             @Override
+            public boolean renewAlfaLive(String channelId) {
+                return MainActivity.this.renewAlfaLivePlayback(channelId);
+            }
+
+            @Override
             public boolean isCompactTouchDeviceMode() {
                 // Playback buffering/recovery applies to every touch device,
                 // including large-screen tablets. EPG compactness is unrelated.
@@ -3918,6 +3923,7 @@ public class MainActivity extends FragmentActivity {
 
     private void playChannelItemInternal(ChannelItem requestedChannel, boolean autoPlay, long resumePositionMs) {
         if (playbackSafetyStopping) return;
+        if (requestedChannel != null && AlfaAdultPrivacy.privateID(requestedChannel.id) && (currentOfflinePermissions==null || !currentOfflinePermissions.allowsAlfaAdult())) return;
         if (!deliveringRemoteZap) cancelRemoteZap();
         HboNativeCapabilities.configureDisplay(this);
         final ChannelItem ch = catalogRepository == null ? requestedChannel : catalogRepository.withNativeHbomaxPlayback(requestedChannel);
@@ -3962,8 +3968,8 @@ public class MainActivity extends FragmentActivity {
         if (recentChannelsStore != null && !PrivateChannelPolicy.privateItem(ch, currentOfflinePermissions)) {
             recentChannelsStore.add(ch.id, displayName(ch));
         }
-        if (ch.isVod) {
-            currentPlaybackVodId = ch.id;
+        if (ch.isVod) currentPlaybackVodId = ch.id;
+        if (ch.isVod && !AlfaAdultPrivacy.privateID(ch.id)) {
             lastVodId = ch.id;
             rememberVodResumeItem(ch);
             if (prefs != null) {
@@ -7722,6 +7728,37 @@ public class MainActivity extends FragmentActivity {
         });
     }
 
+    private boolean renewAlfaLivePlayback(String channelId) {
+        ChannelItem current = currentPlaybackTransientItem;
+        if (current == null || !current.alfaChaturbateLive || current.alfaLiveRenewed
+                || current.alfaLiveKey.isEmpty() || !current.id.equals(channelId)) return false;
+        current.alfaLiveRenewed = true;
+        showStatus("Renovando la emisión…");
+        ioExecutor.execute(() -> {
+            try {
+                JSONObject request = new JSONObject();
+                request.put("key", current.alfaLiveKey);
+                HttpClient.Response response = httpClient.postJson(
+                        catalogRepository.vodApiBaseUrl() + "/api/vod/alfa-adult/play",
+                        request, 10000, 25000, buildAuthenticatedJsonHeaders());
+                if (!response.isSuccessful()) throw new IllegalStateException("Alfa live HTTP " + response.code);
+                ChannelItem refreshed = AlfaAdultBrowserKt.alfaPlaybackItem(
+                        new JSONObject(response.body), current.alfaLiveKey, true);
+                postUiIfAlive(() -> {
+                    if (currentPlaybackTransientItem == current && current.id.equals(currentPlaybackRequestedChannelId)) {
+                        playChannelItemInternal(refreshed, true, 0L);
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "Alfa live renewal failed", e);
+                postUiIfAlive(() -> {
+                    if (currentPlaybackTransientItem == current) showError("No se pudo renovar la emisión; vuelve a abrir la sala.");
+                });
+            }
+        });
+        return true;
+    }
+
     private java.util.Map<String, String> buildAuthenticatedJsonHeaders() {
         java.util.Map<String, String> headers = new java.util.HashMap<>();
         headers.put("Content-Type", "application/json");
@@ -9170,6 +9207,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void toggleFavoriteForChannel(ChannelItem channelItem) {
+        if (channelItem != null && AlfaAdultPrivacy.privateID(channelItem.id)) { showStatus("Este contenido privado no se guarda en las listas generales"); return; }
         if (channelItem == null || channelItem.id == null || channelItem.id.trim().isEmpty()) {
             showStatus(getString(R.string.diagnostics_none));
             return;
@@ -10237,7 +10275,7 @@ public class MainActivity extends FragmentActivity {
             public void returnToHome() {
                 rememberCurrentVodPosition();
                 ChannelItem playing = getCurrentPlaybackChannelItem();
-                if (playing != null && playing.id.startsWith("palantir:")
+                if (playing != null && (playing.id.startsWith("palantir:") || AlfaAdultPrivacy.privateID(playing.id))
                         && playing.id.equals(importedVodReturnId) && importedVodReturnAction != null) {
                     liveReturnToHome = false;
                     modalReturnAction = null;
@@ -10773,6 +10811,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showPersonalListsDialog(ChannelItem channelItem) {
+        if (channelItem != null && AlfaAdultPrivacy.privateID(channelItem.id)) { showStatus("Este contenido privado no se guarda en las listas generales"); return; }
         if (channelItem == null || channelCollectionStore == null) {
             return;
         }
@@ -13033,6 +13072,12 @@ public class MainActivity extends FragmentActivity {
     private final Map<String, JSONObject> hboNextCandidates = new HashMap<>();
 
     private boolean showFinishedVod(String id) {
+        if (AlfaAdultPrivacy.privateID(id)) {
+            stopPlaybackHeartbeat("stop");
+            if (playerController != null) playerController.stopForSourceSwitch();
+            if (importedVodReturnAction != null) postUiIfAlive(importedVodReturnAction);
+            return true;
+        }
         ChannelItem finished = getCurrentPlaybackChannelItem();
         if (finished == null || !finished.isVod || !finished.id.equals(id) || !id.equals(currentPlaybackVodId) || isU7dReplayItem(finished)) return false;
         if (id.equals(endedVodId)) return true;
@@ -14584,6 +14629,11 @@ public class MainActivity extends FragmentActivity {
                 new SettingsEntry("Panel web del dispositivo", "Cargar listas desde el móvil y consultar el estado", "Red local", open.apply(() -> showDeviceWebPanel(returnHere)))
             )));
         }
+        if(currentOfflinePermissions!=null && currentOfflinePermissions.allowsAlfaAdult()) {
+            groups.add(new SettingsCategory("Catálogos privados", "Acceso mediante PIN de la cuenta", Arrays.asList(
+                new SettingsEntry("Alfa Adultos", "Fuentes privadas habilitadas para tu usuario", "PIN", open.apply(()->showAlfaAdultLibrary(returnHere)))
+            )));
+        }
         groups.add(new SettingsCategory("Control parental", "Protege el acceso a contenido restringido", Arrays.asList(
                 new SettingsEntry("PIN y bloqueo", "Configurar, desbloquear o volver a bloquear", host.parentalPinConfigured() ? (host.parentalUnlocked() ? "Desbloqueado temporalmente" : "Bloqueo activado") : "PIN sin configurar", open.apply(host::openParental))
         )));
@@ -15003,6 +15053,41 @@ public class MainActivity extends FragmentActivity {
             public void input(String value,java.util.function.Consumer<String> submit){
                 showTvTextInputPanel(new TvTextInputPanelUiModel("Equipo o competición","","Buscar","Cancelar","",
                     Arrays.asList(new TvTextInputFieldUiModel("Nombre",value,false,false)),
+                    values->{if(values!=null&&!values.isEmpty())submit.accept(values.get(0));},null,null));
+            }
+        });
+        handleModalShown();
+    }
+
+
+    private void showAlfaAdultLibrary(Runnable back) {
+        if (currentOfflinePermissions == null || !currentOfflinePermissions.allowsAlfaAdult()) return;
+        prepareModalSurface();
+        ComposeView view = new ComposeView(this); attachDialogViewTreeOwners(view);
+        Map<String,String> headers = new HashMap<>();
+        if (catalogSnapshotStore != null) {
+            headers.put("Authorization", "Bearer " + catalogSnapshotStore.getAccessToken());
+            headers.put("X-DRBEP-Device-Id", catalogSnapshotStore.getDeviceId());
+        }
+        AlfaAdultBrowser.open(this, view, catalogRepository.vodApiBaseUrl(), headers, new AlfaAdultBrowser.Host() {
+            public void play(ChannelItem item, Dialog dialog) {
+                dismissModalForNextAction(dialog, () -> {
+                    importedVodReturnId=item.id;
+                    importedVodReturnAction=()->showAlfaAdultLibrary(back);
+                    modalReturnAction=importedVodReturnAction;
+                    playChannelItem(item,true);
+                });
+            }
+            public void back(Dialog dialog) { dismissModalForNextAction(dialog,back); }
+            public void closed() { handleModalDismissed(); }
+            public void input(String value,java.util.function.Consumer<String> submit) {
+                showTvTextInputPanel(new TvTextInputPanelUiModel("Buscar en Alfa Adultos","","Buscar","Cancelar","",
+                    Arrays.asList(new TvTextInputFieldUiModel("Título",value,false,false)),
+                    values->{if(values!=null&&!values.isEmpty())submit.accept(values.get(0));},null,null));
+            }
+            public void pin(java.util.function.Consumer<String> submit) {
+                showTvTextInputPanel(new TvTextInputPanelUiModel("PIN de la cuenta","Usa el PIN configurado por usuario en el dashboard.","Desbloquear","Cancelar","",
+                    Arrays.asList(new TvTextInputFieldUiModel("PIN","",true,true)),
                     values->{if(values!=null&&!values.isEmpty())submit.accept(values.get(0));},null,null));
             }
         });
@@ -20527,6 +20612,10 @@ public class MainActivity extends FragmentActivity {
             primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("CATÁLOGO","Palantir","Películas, series y colecciones","",true,
                 open.apply(() -> showPalantirLibrary(() -> showStartupHubDialog(state))),MainRailLayout.PALANTIR));
         }
+        if(currentOfflinePermissions!=null && currentOfflinePermissions.allowsAlfaAdult()){
+            primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("CATÁLOGO","Alfa Adultos","Fuentes privadas habilitadas para tu usuario","",true,
+                open.apply(() -> showAlfaAdultLibrary(() -> showStartupHubDialog(state))),MainRailLayout.ALFA_ADULT));
+        }
         if(currentOfflinePermissions!=null && currentOfflinePermissions.liveEnabled) {
             primaryCards.add(new StartupHomeHubUiModel.PrimaryCard("EPG","Agenda deportiva","Equipos y competiciones","",true,
                 open.apply(()->showSportsAgenda(()->showStartupHubDialog(state))),MainRailLayout.SPORTS));
@@ -22135,6 +22224,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isVodItemAuthorized(ChannelItem item) {
+        if (item != null && AlfaAdultPrivacy.privateID(item.id)) return currentOfflinePermissions!=null && currentOfflinePermissions.allowsAlfaAdult();
         if (item == null || !canOpenVodLibrary()) return false;
         if (item.isAdultVod) return currentOfflinePermissions.allowsTivifyAdultVod();
         for (VodVisualPlatformFilter origin : VodVisualPlatformFilter.values()) {
@@ -25515,6 +25605,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void rememberCurrentVodPosition() {
+        if (AlfaAdultPrivacy.privateID(currentPlaybackVodId)) return;
         if (currentPlaybackVodId != null && currentPlaybackVodId.equals(endedVodId)) return;
         if (playerController == null || currentPlaybackVodId == null || currentPlaybackVodId.trim().isEmpty()) {
             return;
@@ -25656,6 +25747,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void rememberVodResumeItem(ChannelItem item) {
+        if (item != null && AlfaAdultPrivacy.privateID(item.id)) return;
         if (item == null || !item.isVod || item.id.isEmpty()) {
             return;
         }

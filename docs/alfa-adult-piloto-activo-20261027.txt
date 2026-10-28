@@ -1,0 +1,65 @@
+PILOTO ALFA ACTIVO - 27/10/2026
+Autorizacion: activar Alfa, actualizar sus tres fuentes y comprobar el catalogo
+desde el dashboard, dejando Fire pendiente y sin modificar stable.
+
+Resultado
+- Integracion habilitada con eporner, xvideos y xnxx; intervalo0 (solo manual).
+- Activacion, guardado y actualizaciones realizadas con los botones del
+  dashboard real en .223:3010, no con un panel simulado.
+- Comprobacion final: Eporner89, xvideos48, xnxx48; total185 claves unicas.
+  Las tres fuentes en estado ready, sin trabajos pendientes ni errores.
+- La primera lectura conjunta mostro156. La comprobacion final y el refresco
+  del dashboard reflejaron185; no se redujo el catalogo para fijar un numero.
+- El dashboard muestra30 tarjetas por pagina. Se comprobo pagina2,
+  filtro por cada fuente, busqueda sin coincidencias y Ver todo.
+- Al terminar: pagina1, filtro Todas y busqueda limpia;185 resultados.
+- Todas las paginas por fuente se consultaron a traves del proxy real Next:
+ 185 entradas sin duplicados, perdida de registros ni mezcla entre fuentes.
+- Hay136 entradas con URL de miniatura en sus metadatos;49 aun no tienen
+  miniatura importada. Queda pendiente mejorar la extraccion de esas imagenes.
+- En el navegador de revision se ocultaron titulos y miniaturas solo al
+  presentar los resultados. El catalogo real no se modifico ni se sustituyo
+  por datos ficticios. No se comprobo la descarga visual de miniaturas.
+
+Preservacion y pruebas
+- Canales de actualizacion stable, beta y rescue: identicos antes/despues.
+- Permisos de usuarios: huella exacta conservada. No se concedio acceso Alfa.
+- Acceso anonimo a rutas privadas rechazado.
+- SQLite quick_check correcto y backend ready.
+- Sin reinicios, instalaciones, publicacion de APK ni operaciones Fire.
+- Consultas API en .223 mediante su proxy de dashboard local:
+  minimo1,855 ms, mediana2,272 ms, maximo2,901 ms.
+  No son tiempos del Fire ni una comparacion de rendimiento antes/despues.
+- Navegador aislado cerrado. Acceso administrativo temporal de revision
+  limitado a Alfa y resumen, cerrado; no se grabo la clave en argumentos,
+  navegador, capturas ni registros.
+
+Respaldos y retorno de la configuracion
+.223 /opt/drbep-releases/alfa-adult-20261027/pilot-activation/
+- before.json: configuracion anterior, huellas y metadatos de actualizacion.
+- before-catalog.sqlite: respaldo consistente del catalogo anterior.
+- after.json: resultados agregados, sin titulos ni URLs de contenido.
+- verify-pilot.py: verificacion de esta fotografia de estado.
+Para devolver solo la configuracion anterior, si se decide hacerlo:
+ python3 /opt/drbep-releases/alfa-adult-20261027/pilot-activation/verify-pilot.py restore-config
+El catalogo importado se conserva; no se restaura toda la base ni se pierden
+datos nuevos. Este retorno NO se ha ejecutado porque la comprobacion fue correcta.
+El retorno de backend/dashboard sigue en el release principal y conserva DB.
+El verificador inicial deploy.py verify comprobaba global off/catalogo vacio
+en el momento del despliegue. Ahora, para esta nueva fotografia habilitada,
+usar pilot-activation/verify-pilot.py. Ninguno es un monitor permanente que deba
+impedir posteriores cambios autorizados de configuracion/permisos/catalogo.
+
+Evidencias de desarrollo y revision
+.185 /srv/drbep-dev/reviews/alfa-pilot-20261027/
+ after.json, browser-checks.log y output/playwright/catalog-redacted-final.png.
+Las capturas no muestran material explicito.
+Registro de fuentes:152, con3 adaptadores piloto y149 pendientes.
+No se habilitan automaticamente esas fuentes pendientes.
+
+Pendiente
+- Autorizar ADB del Fire e instalar una candidata compatible, previa comprobacion
+  de firma/version y respaldo. La779 sigue privada, sin instalar ni publicar.
+- Probar PIN, permisos, expiracion, foco, reproduccion, avance y retorno a TV.
+- Mejorar las49 miniaturas ausentes y verificar imagenes en el cliente.
+- Commit/push de los cambios/documentos, cuando el usuario lo solicite.

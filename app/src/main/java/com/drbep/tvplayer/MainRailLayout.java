@@ -6,10 +6,10 @@ import java.util.*;
 /** Local, portable navigation preference. IDs never depend on translated labels or catalogue counts. */
 final class MainRailLayout {
     static final String PREF="ui_main_rail_v1";
-    static final String SPORTS="sports",PALANTIR="palantir",SEARCH="search",HOME="home",LIVE="live",LIBRARY="library",
+    static final String SPORTS="sports",PALANTIR="palantir",ALFA_ADULT="alfa-adult",SEARCH="search",HOME="home",LIVE="live",LIBRARY="library",
             MOVIES="movies",SERIES="series",GUIDE="guide",CATCHUP="catchup";
     static final List<String> IDS=Collections.unmodifiableList(Arrays.asList(
-            SEARCH,HOME,LIVE,LIBRARY,MOVIES,SERIES,GUIDE,CATCHUP,PALANTIR,SPORTS));
+            SEARCH,HOME,LIVE,LIBRARY,MOVIES,SERIES,GUIDE,CATCHUP,PALANTIR,ALFA_ADULT,SPORTS));
     private static final MainRailLayout DEFAULT=new MainRailLayout(IDS,Collections.emptySet());
     final List<String> order;
     final Set<String> hidden;
@@ -100,6 +100,7 @@ final class MainRailLayout {
             case GUIDE:return "Guía";
             case CATCHUP:return "Últimos 7 días";
  case PALANTIR:return "Palantir";
+ case ALFA_ADULT:return "Alfa Adultos";
  case SPORTS:return "Agenda deportiva";
             default:return "";
         }

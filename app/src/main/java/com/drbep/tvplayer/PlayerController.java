@@ -33,6 +33,7 @@ import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.decoder.CryptoConfig;
 import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
@@ -227,6 +228,10 @@ final class PlayerController {
         }
 
         default void onBackendTransportFailure(String operation, Throwable error) {
+        }
+
+        default boolean renewAlfaLive(String channelId) {
+            return false;
         }
     }
 
@@ -1941,6 +1946,19 @@ final class PlayerController {
         }
     }
 
+    static boolean expiredAlfaLiveError(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof HttpDataSource.InvalidResponseCodeException) {
+                int status = ((HttpDataSource.InvalidResponseCodeException) current).responseCode;
+                return status == 403 || status == 404 || status == 410;
+            }
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return false;
+    }
+
     private boolean tryAutoRecovery(PlaybackRequest request, PlaybackRouteResolver.Decision decision, PlaybackException error) {
         if (request == null || decision == null) {
             return false;
@@ -2030,6 +2048,10 @@ final class PlayerController {
                 }
                 attemptedVlcAudioDecoderFallback = false;
             }
+        }
+        if (AlfaAdultPrivacy.privateID(request.channelId) && expiredAlfaLiveError(error)
+                && host.renewAlfaLive(request.channelId)) {
+            return true;
         }
         if (request.directPlayback) {
             return false;
@@ -4832,6 +4854,7 @@ final class PlayerController {
     }
 
     private Map<String, String> buildPlaybackRequestHeaders() {
+        if (currentRequest != null && AlfaAdultPrivacy.privateID(currentRequest.channelId)) return AlfaAdultPrivacy.mediaHeaders(currentRequest.playlistStreamHeaders);
         if (currentRequest != null && currentRequest.channelId.startsWith("m3u:")) return new HashMap<>(currentRequest.playlistStreamHeaders);
         Map<String, String> headers = new HashMap<>();
         headers.put("Accept", "*/*");

@@ -35,7 +35,7 @@ public class CatalogSnapshotStoreTest {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         CatalogSnapshotStore.writeOfflinePermissions(new DataOutputStream(bytes), original);
         DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes.toByteArray()));
-        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 16);
+        OfflinePermissions restored = CatalogSnapshotStore.readOfflinePermissions(input, 17);
         assertTrue(restored.liveAccessMetadataKnown);
         assertTrue(restored.admin);
         assertEquals(original.allowedLiveGroups, restored.allowedLiveGroups);

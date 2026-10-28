@@ -7,7 +7,7 @@ import static org.junit.Assert.*;
 public class MainRailLayoutTest {
  @Test public void defaultOrderMatchesExistingMenuAndHomeCannotBeHidden(){
   MainRailLayout layout=MainRailLayout.defaults();
-  assertEquals(Arrays.asList("search","home","live","library","movies","series","guide","catchup","palantir","sports"),layout.order);
+  assertEquals(Arrays.asList("search","home","live","library","movies","series","guide","catchup","palantir","alfa-adult","sports"),layout.order);
   for(String id:MainRailLayout.IDS)layout=layout.withVisible(id,false);
   assertEquals(Arrays.asList("home"),layout.visibleOrder(MainRailLayout.IDS));
   assertEquals(Arrays.asList("home"),layout.visibleOrder(Collections.emptyList()));

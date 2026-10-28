@@ -490,6 +490,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val sports = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.SPORTS }
                     val palantir = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.PALANTIR }
+                    val alfaAdult = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.ALFA_ADULT }
  val movie = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.MOVIES }
                     val series = model.primaryCards.firstOrNull { it.navigationId == MainRailLayout.SERIES }
                     val available = buildList {
@@ -498,6 +499,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                         if (movie != null) add(MainRailLayout.MOVIES)
                         if (series != null) add(MainRailLayout.SERIES)
  if(palantir!=null)add(MainRailLayout.PALANTIR)
+ if(alfaAdult!=null)add(MainRailLayout.ALFA_ADULT)
  if(sports!=null)add(MainRailLayout.SPORTS)
                         if (model.onLiveGuide != null) add(MainRailLayout.GUIDE)
                         if (model.onLiveHistory != null) add(MainRailLayout.CATCHUP)
@@ -513,6 +515,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                                 MainRailLayout.SERIES -> R.drawable.rail_series
  MainRailLayout.SPORTS -> R.drawable.rail_sports
  MainRailLayout.PALANTIR -> R.drawable.rail_palantir
+ MainRailLayout.ALFA_ADULT -> R.drawable.rail_alfa_adult
                                 MainRailLayout.GUIDE -> R.drawable.rail_guide
                                 else -> R.drawable.rail_history
                             }
@@ -529,6 +532,7 @@ private fun DiscoveryHome(model: StartupHomeHubUiModel, artwork: StartupHomeHubA
                                         MainRailLayout.SERIES -> series?.onClick?.run()
  MainRailLayout.SPORTS -> sports?.onClick?.run()
  MainRailLayout.PALANTIR -> palantir?.onClick?.run()
+ MainRailLayout.ALFA_ADULT -> alfaAdult?.onClick?.run()
                                         MainRailLayout.GUIDE -> model.onLiveGuide?.run()
                                         MainRailLayout.CATCHUP -> model.onLiveHistory?.run()
                                     }

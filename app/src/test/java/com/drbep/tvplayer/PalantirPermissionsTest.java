@@ -22,9 +22,9 @@ public class PalantirPermissionsTest {
   original.allowedLiveGroups.add("deportes");original.protectedFilterKeys.add("vod:palantir");
   ByteArrayOutputStream bytes=new ByteArrayOutputStream();CatalogSnapshotStore.writeOfflinePermissions(new DataOutputStream(bytes),original);
   DataInputStream current=new DataInputStream(new ByteArrayInputStream(bytes.toByteArray()));
-  OfflinePermissions decoded=CatalogSnapshotStore.readOfflinePermissions(current,16);
+  OfflinePermissions decoded=CatalogSnapshotStore.readOfflinePermissions(current,17);
   assertTrue(decoded.allowsPalantir());assertEquals(-1,current.read());
-  byte[] legacy=Arrays.copyOf(bytes.toByteArray(),bytes.size()-1);
+  byte[] legacy=Arrays.copyOf(bytes.toByteArray(),bytes.size()-2);
   OfflinePermissions previous=CatalogSnapshotStore.readOfflinePermissions(new DataInputStream(new ByteArrayInputStream(legacy)),15);
   assertFalse(previous.allowsPalantir());assertEquals(original.allowedLiveGroups,previous.allowedLiveGroups);
   assertEquals(original.protectedFilterKeys,previous.protectedFilterKeys);

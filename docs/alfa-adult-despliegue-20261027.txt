@@ -1,0 +1,98 @@
+ACTUALIZACION 27/10/2026: piloto habilitado, tres fuentes actualizadas,185 entradas.
+Ver alfa-adult-piloto-activo-20261027.txt. El texto siguiente conserva el estado
+inicial del despliegue, cuando la integracion todavia estaba deshabilitada.
+
+DESPLIEGUE ALFA ADULTOS - 27/10/2026
+Estado: backend y dashboard activos en .223, con respaldo y retorno.
+Autorizacion: peticion expresa del usuario en este hilo para este despliegue.
+No se instalo ni publico APK; stable/beta/rescue permanecen sin cambios.
+Fire .190: pruebas pendientes de autorizacion ADB del usuario.
+
+Acceso para la prueba
+Dashboard offline > Gestion > Alfa Adultos.
+Recargar la pagina para obtener la nueva version del dashboard.
+La integracion sigue deshabilitada por defecto. Habilitarla en su panel, elegir
+una de las tres fuentes piloto y pulsar Actualizar para poblar el catalogo.
+Los permisos no se concedieron a ningun usuario durante el despliegue.
+Para usarla en el cliente: VOD + permiso Alfa Adultos explicito + PIN de cuenta,
+y cliente compatible (candidata779 privada). No aparecerá en clientes antiguos.
+Las otras149 fuentes siguen pendientes de adaptador.
+
+Procedencia y alcance
+Base fuente: /opt/drbep-releases/playback-control-20261027/source.
+La fuente se copio a .185 y se aplico solo el parche Alfa, sin fuzz.
+Se conservaron los archivos restantes, incluidas rutas de reproduccion,
+catchup, EPG y proteccion de asociaciones de La1/Vamos y otras listas.
+No se modificaron URLs, diales, asociaciones, claves ni politica de inactividad.
+Backend anterior exacto:
+3439a16bf5a90023b21d7dc17c7653932b576919f2b8440e80263d9b171204d2
+Backend nuevo:
+9adcb91470249e99f8a0b9740d15fb1832affab601873dc8be3814539cc15c14
+Dashboard construido sobre la fuente anterior y con las dependencias fijadas.
+DRBEP_API_BASE=http://drbep:8080 en la build.
+La candidata canonica del desarrollo no se desplego indiscriminadamente.
+
+Pruebas previas
+- Go sobre fuente activa: API194,072s, base59,576s, Alfa0,360s, usuarios0,002s.
+- Dashboard: lint, tipado,20 pruebas y build correctos.
+- La version nueva introduce migracion14, columna can_view_alfa_adult default0.
+- Prueba sintetica de esquema13 ->14 -> codigo anterior -> codigo nuevo:
+  permisos nuevos y escrituras de ambas versiones preservados.
+- Binario anterior EXACTO arranca y devuelve ready con el esquema14 sintetico.
+  La comprobacion de ready exige un canal, por eso se uso uno ficticio;
+  no se reprodujo ni se contacto con un proveedor durante esa prueba.
+- El retorno normal NO restaura una copia de la base ni pierde progreso nuevo.
+
+Preparacion y activacion
+Release y respaldo privados:
+  .223 /opt/drbep-releases/alfa-adult-20261027/
+Respaldo consistente de SQLite mediante API backup, binario anterior exacto,
+Compose e imagenes anteriores conservados en before/ y Docker.
+El respaldo de produccion no se ha copiado al .185 ni usado como fixture.
+Se construyeron imagenes aditivas sobre las anteriores:
+  drbep-backend:alfa-adult-20261027
+  drbep-offline-dashboard:alfa-adult-20261027
+La activacion paso sus comprobaciones en5,144s. No interpretar ese tiempo
+como medida de duracion de todas las pruebas o de playback.
+Un watchdog independiente devuelve los servicios si falla la activacion
+o no termina dentro de240s; los fallos de comprobacion retornan inmediatamente.
+Retorno manual disponible:
+  python3 /opt/drbep-releases/alfa-adult-20261027/deploy.py rollback
+No devolver la DB a una version antigua para un retorno normal.
+
+Comprobaciones tras activacion, repetidas
+- Backend y dashboard listos; binario activo con SHA256 exacto.
+- Doce recursos JS/CSS servidos con sus hashes exactos.
+- webapp.js identico al anterior.
+- Rutas administrativas Alfa y de control protegidas sin autenticar.
+- Proxy dashboard/backend equivalente.
+- Registro152 fuentes, tres adaptadores; catalogo nuevo vacio y global off.
+- Seleccion por usuario heredada y vacia, sin concesiones implicitas.
+- Esquema14 y quick_check correctos.
+- Metadatos de4112 canales, totales/revision Palantir, configuracion,
+  permisos existentes y politicas conservados.
+- Canales de actualizacion beta/stable/rescue identicos antes y despues.
+- No se enviaron ordenes de parada ni se cambiaron politicas.
+- No se ejecutaron importaciones Alfa ni sincronizadores reales nuevos.
+
+Evidencias
+.185 /srv/drbep-dev/reviews/alfa-deploy-20261027/
+  source-base/, source/, alfa-overlay.patch, active-source-hashes.json,
+  source-overlay.json, logs, compat/, rollback-schema-compatibility.json,
+  candidate-server, dashboard/, payload/, release-manifest.json,
+  deployment.json y post-verification.json.
+.223 /opt/drbep-releases/alfa-adult-20261027/
+  before/, deploy.py, rollback.sh, prepared.json, deployment.json,
+  post-verification.json, logs de imagenes y watchdog.
+APK779 universal privada e inmutable, sin instalar ni publicar:
+  /srv/drbep-dev/artifacts/beta779/
+SHA256:
+c08c89ecd8a12d1d0be0726d61bf9d77ef751b06818b5de095cd70c2564370ce
+
+Pendiente
+- Autorizar ADB del Fire cuando el usuario pueda hacerlo.
+- Verificar firma/version y respaldo antes de instalar la candidata compatible.
+- PIN/expiracion/revocacion, foco/filtros/paginas, playback/pausa/avance,
+  retorno a TV/miniatura, sin historial general. Xiaomi tactil y ARM64.
+- No confundir API/HTTP o bytes de un stream con playback real.
+- Git: cambios del piloto y documento aun pendientes de commit/push.

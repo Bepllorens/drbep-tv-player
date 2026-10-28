@@ -1908,6 +1908,7 @@ final class CatalogRepository {
         permissions.movistarVodEnabled = payload.optBoolean("movistar_vod", false);
         permissions.plexVodEnabled = payload.optBoolean("plex_vod", false);
  permissions.palantirEnabled = payload.optBoolean("palantir_vod",false);
+ permissions.alfaAdultEnabled = payload.optBoolean("alfa_adult_vod",false);
         permissions.primeVodEnabled = payload.optBoolean("prime_vod", false);
         permissions.daznVodEnabled = payload.optBoolean("dazn_vod", false);
         Set<String> vodGroups = parseStringArray(payload.optJSONArray("groups"));
@@ -2048,6 +2049,9 @@ final class ChannelItem implements Serializable {
     final long vodDurationSeconds;
     Map<String,String> playlistStreamHeaders;
     Map<String,String> playlistLicenseHeaders;
+    transient String alfaLiveKey = "";
+    transient boolean alfaChaturbateLive;
+    transient boolean alfaLiveRenewed;
     String playlistMimeType = "";
     String playlistPlaybackError = "";
     String vodReleaseDate = "";
@@ -2267,6 +2271,7 @@ final class OfflinePermissions implements Serializable {
     boolean movistarVodEnabled = true;
     boolean plexVodEnabled = true;
  boolean palantirEnabled = false;
+ boolean alfaAdultEnabled = false;
     boolean primeVodEnabled = true;
     boolean daznVodEnabled = true;
     boolean disneyplusVodEnabled = false;
@@ -2317,6 +2322,7 @@ final class OfflinePermissions implements Serializable {
     }
 
     boolean allowsPalantir() {return vodEnabled && palantirEnabled;}
+ boolean allowsAlfaAdult() {return vodEnabled && alfaAdultEnabled;}
  boolean allowsPlexVod() {
         return vodEnabled && plexVodEnabled;
     }

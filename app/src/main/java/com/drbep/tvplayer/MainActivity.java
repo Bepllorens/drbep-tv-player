@@ -1772,6 +1772,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void applyOverlayPanelMode() {
+        if(liveChannelGuideVisible&&liveGuideChannel!=null){compactLiveGuidePanel(liveGuideChannel);return;}
         if (overlayNowPlayingSection != null) {
             overlayNowPlayingSection.setVisibility(View.VISIBLE);
         }
@@ -1790,6 +1791,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void applyChannelOverlayWidth(int screenWidthPx) {
+        if(liveChannelGuideVisible&&liveGuideChannel!=null){compactLiveGuidePanel(liveGuideChannel);return;}
         if (channelOverlay == null) {
             return;
         }
@@ -5227,7 +5229,7 @@ public class MainActivity extends FragmentActivity {
         activeTimelineRows=merged;
         for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> entry:updates.entrySet())if(!entry.getValue().isEmpty()) {
             liveGuideCache.put(entry.getKey(),entry.getValue());
-            while(liveGuideCache.size()>32)liveGuideCache.remove(liveGuideCache.keySet().iterator().next());
+            while(liveGuideCache.size()>12)liveGuideCache.remove(liveGuideCache.keySet().iterator().next());
         }
         TimelineGuideRowsUiModel model=buildTimelineGuideRowsUiModel(merged,activeTimelineWindowStartMs,activeTimelineWindowStartMs+TIMELINE_WINDOW_MS,
             activeTimelineStripWidth/(float)(TIMELINE_WINDOW_MS/60000L),activeTimelineLabelWidth,activeTimelineStripWidth,activeTimelineScheduledItems,
@@ -10289,6 +10291,7 @@ public class MainActivity extends FragmentActivity {
                 if (liveReturnToHome) {
                     liveReturnToHome = false;
                     discoveryHomeState.restoreLiveFocus = "En directo".equals(discoveryHomeState.section);
+                    if (discoveryHomeState.restoreLiveFocus) prepareLiveBrowseReturn();
                     showStartupHubDialog(null);
                 } else {
                     discoveryHomeState.section = "Inicio";
@@ -10437,6 +10440,7 @@ public class MainActivity extends FragmentActivity {
             if (handleRemoteMessageKeyEvent(event)) {
                 return true;
             }
+            if (handleLiveGuideKey(event)) return true;
             if (handleArchiveStripKey(event)) return true;
             if (remoteInputRouter != null && remoteInputRouter.dispatchKeyEvent(event)) {
                 return true;
@@ -11421,75 +11425,214 @@ public class MainActivity extends FragmentActivity {
     }
 
 
-    private boolean liveChannelGuideVisible;
-    private int liveChannelGuideGeneration;
+    private volatile boolean liveChannelGuideVisible;
+    private volatile int liveChannelGuideGeneration;
+    private ChannelItem liveGuideChannel;
+    private int liveGuideOriginalWidth=-1;
+    private boolean liveGuidePanelRight;
+    private final java.util.Map<Integer,Integer> liveGuideOriginalVisibility=new java.util.HashMap<>();
+    private void compactLiveGuidePanel(ChannelItem channel){
+        if(liveGuideOriginalWidth<0){
+            liveGuideOriginalWidth=channelOverlay.getLayoutParams().width;
+            liveGuidePanelRight=channelOverlay.getX()>getResources().getDisplayMetrics().widthPixels/2f;
+            for(int id:new int[]{R.id.overlayNowPlayingSection,R.id.overlayExploreSection,R.id.overlayListSection}){
+                View child=findViewById(id);liveGuideOriginalVisibility.put(id,child.getVisibility());child.setVisibility(View.GONE);
+            }
+        }
+        ViewGroup.LayoutParams params=channelOverlay.getLayoutParams();
+        int screenDp=(int)(getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density);
+        params.width=dp(LiveGuidePanelLayout.rail(screenDp));channelOverlay.setLayoutParams(params);
+        ComposeView rail=findViewById(R.id.liveGuideRail);rail.setVisibility(View.VISIBLE);
+        LiveGuideRailComposeBinder.bind(rail,displayName(channel),()->closeLiveChannelGuide());
+    }
+    private void restoreLiveGuidePanel(){
+        if(liveGuideOriginalWidth<0)return;
+        ViewGroup.LayoutParams params=channelOverlay.getLayoutParams();params.width=liveGuideOriginalWidth;channelOverlay.setLayoutParams(params);
+        liveGuideOriginalWidth=-1;
+        for(java.util.Map.Entry<Integer,Integer> entry:liveGuideOriginalVisibility.entrySet())findViewById(entry.getKey()).setVisibility(entry.getValue());
+        liveGuideOriginalVisibility.clear();findViewById(R.id.liveGuideRail).setVisibility(View.GONE);
+    }
+    private final LiveGuideSelection liveGuideSelection=new LiveGuideSelection();
+    private java.time.LocalDate liveGuideDay=java.time.LocalDate.now();
+    private int liveGuideScrollRequest;
+    private String liveGuideKey(ChannelItem channel) { return archiveScope+"|"+TimelineEpgStore.key(channel)+"|"+liveGuideDay; }
+    private void moveLiveGuideDay(int step) {
+        java.time.LocalDate next=LiveGuideDay.move(liveGuideDay,step,java.time.LocalDate.now());
+        if(next.equals(liveGuideDay))return;
+        liveGuideDay=next;liveGuideScrollRequest=0;requestLiveChannelGuide();
+    }
+    private boolean handleLiveGuideKey(KeyEvent event) {
+        if(!liveChannelGuideVisible || ComposeDialogHost.topWindow(this)!=null)return false;
+        if(event.isCanceled())return true;
+        int key=event.getKeyCode();
+        if(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if(event.getAction()==KeyEvent.ACTION_DOWN)moveLiveGuideDay(key==KeyEvent.KEYCODE_DPAD_LEFT?-1:1);
+            return true;
+        }
+        if(key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_DPAD_DOWN) {
+            if(event.getAction()==KeyEvent.ACTION_DOWN) {
+                liveGuideScrollRequest+=key==KeyEvent.KEYCODE_DPAD_UP?-1:1;
+                if(liveGuideChannel!=null) {
+                    ChannelItem c=liveGuideChannel;
+                    List<EpgRepository.EpgProgram> rows=liveGuideCache.get(liveGuideKey(c));
+                    if(rows!=null)liveGuideSelection.move(liveGuideKey(c),liveGuideIds(rows),liveGuideCurrent(rows),key==KeyEvent.KEYCODE_DPAD_UP?-1:1);
+                    bindLiveChannelGuide(c,rows,"");
+                }
+            }
+            return true;
+        }
+        if(key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER){
+            if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0)openSelectedLiveGuideProgramme();
+            return true;
+        }
+        return false;
+    }
+    private List<String> liveGuideIds(List<EpgRepository.EpgProgram> rows){
+        List<String> ids=new ArrayList<>();for(EpgRepository.EpgProgram p:rows)ids.add(p.startTime);return ids;
+    }
+    private int liveGuideCurrent(List<EpgRepository.EpgProgram> rows){
+        long now=System.currentTimeMillis();
+        for(int i=0;i<rows.size();i++)if(parseIsoMillis(rows.get(i).endTime)>now)return i;
+        return 0;
+    }
+    private void openSelectedLiveGuideProgramme(){
+        ChannelItem c=liveGuideChannel;if(c==null)return;
+        List<EpgRepository.EpgProgram> rows=liveGuideCache.get(liveGuideKey(c));if(rows==null||rows.isEmpty())return;
+        int index=liveGuideSelection.resolve(liveGuideKey(c),liveGuideIds(rows),liveGuideCurrent(rows));
+        openLiveGuideProgramme(c,rows.get(index));
+    }
+    private void openLiveGuideProgramme(ChannelItem source,EpgRepository.EpgProgram program){
+        ChannelItem c=findAllowedHomeLiveChannel(source.id);
+        if(c==null||isProtectedItem(c)||!TimelineEpgStore.key(c).equals(TimelineEpgStore.key(source)))return;
+        final java.time.LocalDate day=liveGuideDay;
+        long start=parseIsoMillis(program.startTime),end=parseIsoMillis(program.endTime),now=System.currentTimeMillis();
+        LiveGuideActionPolicy.Phase phase=LiveGuideActionPolicy.phase(start,end,now);
+        if(phase==LiveGuideActionPolicy.Phase.INVALID)return;
+        ensureArchiveScope();
+        final Dialog[] dialog={null};final boolean[] leaving={false};
+        java.util.function.Consumer<Runnable> leave=action->{
+            ChannelItem allowed=findAllowedHomeLiveChannel(c.id);
+            if(allowed==null||isProtectedItem(allowed)||!TimelineEpgStore.key(c).equals(TimelineEpgStore.key(allowed)))return;
+            leaving[0]=true;dismissModalForNextAction(dialog[0],action);
+        };
+        List<TvMessageActionUiModel> actions=new ArrayList<>();
+        if(phase==LiveGuideActionPolicy.Phase.LIVE)
+            actions.add(new TvMessageActionUiModel("Ver en directo",false,()->leave.accept(()->tuneChannelById(c.id))));
+        boolean supports=supportsU7d(c);
+        boolean confirmed=archiveAvailability!=null&&archiveAvailability.cached(archiveScope,c)==ArchiveAvailability.State.AVAILABLE;
+        if(LiveGuideActionPolicy.replay(start,end,now,supports,confirmed))
+            actions.add(new TvMessageActionUiModel("Ver desde el inicio",false,()->leave.accept(()->runArchiveAction(c,()->playMovistarIsmU7dProgram(c,program)))));
+        else if(supports&&(phase==LiveGuideActionPolicy.Phase.LIVE||phase==LiveGuideActionPolicy.Phase.PAST))
+            actions.add(new TvMessageActionUiModel("Consultar catchup",false,()->leave.accept(()->openArchiveCatalog(c,false))));
+        if(!isOfflineRecordingsDisabled()&&end>now)
+            actions.add(new TvMessageActionUiModel(getString(R.string.menu_record),false,()->leave.accept(()->scheduleProgram(c,program))));
+        if(supports&&(phase==LiveGuideActionPolicy.Phase.LIVE||phase==LiveGuideActionPolicy.Phase.PAST))
+            actions.add(new TvMessageActionUiModel("Guardar programa",false,()->leave.accept(()->setArchiveSaved(program,end+7L*86400000,true))));
+        actions.add(new TvMessageActionUiModel("Volver a la guía",false,()->{if(dialog[0]!=null)dialog[0].dismiss();}));
+        prepareModalSurface();
+        ComposeView view=new ComposeView(this);attachDialogViewTreeOwners(view);
+        ProgramInfoPanelComposeBinder.bind(view,new ProgramInfoPanelUiModel("Programa",
+            buildTimelineProgramDetailModel(c,program,phase==LiveGuideActionPolicy.Phase.LIVE,false),actions),
+            (image,item)->bindProgramPoster(image,item==null?"":item.imageUrl));
+        dialog[0]=ComposeDialogHost.showFullscreen(this,view,()->{
+            handleModalDismissed();
+            if(!leaving[0]&&!activityDestroyed)postUiIfAlive(()->{
+                ChannelItem allowed=findAllowedHomeLiveChannel(c.id);
+                if(allowed==null||isProtectedItem(allowed))return;
+                showOverlay();liveGuideChannel=allowed;liveGuideDay=day;liveChannelGuideVisible=true;
+                requestLiveChannelGuide();uiHandler.removeCallbacks(liveGuideTick);uiHandler.postDelayed(liveGuideTick,30000L);
+            });
+        });
+        handleModalShown();
+    }
     private String liveGuideLoadingId="";
     private final java.util.LinkedHashMap<String,List<EpgRepository.EpgProgram>> liveGuideCache=new java.util.LinkedHashMap<>();
     private Runnable liveGuideFetch;
     private final Runnable liveGuideTick = new Runnable() { public void run() {
         if (!liveChannelGuideVisible || activityDestroyed) return;
-        int index = overlayNavigationState.selectedOverlayIndex;
-        if (index >= 0 && index < channels.size()) {
-            ChannelItem channel = channels.get(index);
-            if (!isProtectedItem(channel) && liveGuideCache.containsKey(channel.id))
-                bindLiveChannelGuide(channel, liveGuideCache.get(channel.id), "");
+        if (liveGuideChannel != null) {
+            ChannelItem channel = liveGuideChannel;
+            if (!isProtectedItem(channel) && liveGuideCache.containsKey(liveGuideKey(channel)))
+                bindLiveChannelGuide(channel, liveGuideCache.get(liveGuideKey(channel)), "");
         }
         uiHandler.postDelayed(this, 30000L);
     }};
     private boolean closeLiveChannelGuide(){
         if(!liveChannelGuideVisible)return false;
-        liveChannelGuideVisible=false;liveChannelGuideGeneration++;uiHandler.removeCallbacks(liveGuideTick);
+        liveChannelGuideVisible=false;liveGuideChannel=null;restoreLiveGuidePanel();liveChannelGuideGeneration++;uiHandler.removeCallbacks(liveGuideTick);
         if(liveGuideFetch!=null)uiHandler.removeCallbacks(liveGuideFetch);
-        View view=findViewById(R.id.liveChannelGuide);if(view!=null)view.setVisibility(View.GONE);return true;
+        View view=findViewById(R.id.liveChannelGuide);if(view!=null){LiveChannelGuideComposeBinder.bind((ComposeView)view,new LiveChannelGuideUiModel("","",new ArrayList<>()));view.setVisibility(View.GONE);}return true;
     }
     private boolean toggleLiveChannelGuide(){
         if(closeLiveChannelGuide())return true;
-        liveChannelGuideVisible=true;requestLiveChannelGuide();uiHandler.postDelayed(liveGuideTick,30000L);return true;
+        int selected=overlayNavigationState.selectedOverlayIndex;
+        if(selected<0||selected>=channels.size())return true;
+        liveGuideChannel=channels.get(selected);
+        liveGuideDay=java.time.LocalDate.now();liveGuideScrollRequest=0;liveChannelGuideVisible=true;requestLiveChannelGuide();uiHandler.postDelayed(liveGuideTick,30000L);return true;
     }
     private void requestLiveChannelGuide(){
         if(!liveChannelGuideVisible)return;
-        int index=overlayNavigationState.selectedOverlayIndex;
-        if(index<0||index>=channels.size()){closeLiveChannelGuide();return;}
-        ChannelItem channel=channels.get(index);int generation=++liveChannelGuideGeneration;
+        ChannelItem channel=liveGuideChannel;
+        if(channel==null||findAllowedHomeLiveChannel(channel.id)==null){closeLiveChannelGuide();return;}
+        int generation=++liveChannelGuideGeneration;
+        final java.time.LocalDate requestedDay=liveGuideDay;
+        ensureArchiveScope();
+        final String requestedScope=archiveScope;
+        final boolean useArchive=supportsU7d(channel)&&requestedDay.isBefore(java.time.LocalDate.now());
+        final long windowStart=LiveGuideDay.start(requestedDay,java.time.ZoneId.systemDefault());
+        final long windowEnd=LiveGuideDay.end(requestedDay,java.time.ZoneId.systemDefault());
         ComposeView view=findViewById(R.id.liveChannelGuide);
         int screen=getResources().getDisplayMetrics().widthPixels;
-        int overlayWidth=channelOverlay.getWidth()>0?channelOverlay.getWidth():channelOverlay.getLayoutParams().width;
-        int width=Math.min(dp(320),Math.max(dp(180),screen-overlayWidth-dp(16)));
+        compactLiveGuidePanel(channel);
+        int overlayWidth=channelOverlay.getLayoutParams().width;
+        int width=dp(LiveGuidePanelLayout.guide((int)(screen/getResources().getDisplayMetrics().density)));
         FrameLayout.LayoutParams layout=new FrameLayout.LayoutParams(width,ViewGroup.LayoutParams.MATCH_PARENT);
         layout.gravity=android.view.Gravity.TOP|android.view.Gravity.LEFT;
-        boolean right=channelOverlay.getX()>screen/2f;
+        boolean right=liveGuidePanelRight;
         layout.leftMargin=right?Math.max(0,screen-overlayWidth-width):overlayWidth;
         view.setLayoutParams(layout);view.setVisibility(View.VISIBLE);
         if(channel.isVod||isProtectedItem(channel)){
             LiveChannelGuideComposeBinder.bind(view,new LiveChannelGuideUiModel(decorateProtectedItemTitle(channel,displayName(channel)),"Guía no disponible",new ArrayList<>()));return;
         }
-        List<EpgRepository.EpgProgram> cached=liveGuideCache.get(channel.id);
+        List<EpgRepository.EpgProgram> cached=liveGuideCache.get(liveGuideKey(channel));
         bindLiveChannelGuide(channel,cached,cached==null?"Cargando programación…":"");
         if(liveGuideFetch!=null)uiHandler.removeCallbacks(liveGuideFetch);
         if(timelineStore==null)timelineStore=new TimelineEpgStore(this);
         liveGuideFetch=() -> submitExecutorTask(timelineCacheExecutor,"channel guide cache",() -> {
+            if(generation!=liveChannelGuideGeneration||!liveChannelGuideVisible)return;
             try {
                 long now=System.currentTimeMillis();
-                List<EpgRepository.EpgProgram> local=timelineStore.read(channel,now,now+30*86400000L);
-                if(!local.isEmpty())postUiIfAlive(()->publishLiveGuide(channel,generation,local));
+                List<EpgRepository.EpgProgram> local=readLiveGuideWindow(channel,windowStart,windowEnd,requestedDay.toString(),requestedScope,useArchive);
+                if(!local.isEmpty())postUiIfAlive(()->publishLiveGuide(channel,generation,requestedScope,local));
                 if(!local.isEmpty()&&timelineStore.fresh(channel))return;
             }catch(Exception e){Log.w(TAG,"Channel guide cache failed",e);}
             submitExecutorTask(timelineDownloads,"channel guide refresh",()->{
+                if(generation!=liveChannelGuideGeneration||!liveChannelGuideVisible)return;
                 try {
                     List<EpgRepository.EpgProgram> fetched=epgRepository.fetchChannelProgramsForChannelsDirect(java.util.Collections.singletonList(channel),0).get(channel.id);
                     if(fetched!=null&&!fetched.isEmpty()) {
                         timelineStore.save(channel,fetched);
-                        postUiIfAlive(()->publishLiveGuide(channel,generation,fetched));
-                    } else postUiIfAlive(()->{if(generation==liveChannelGuideGeneration&&liveChannelGuideVisible&&!liveGuideCache.containsKey(channel.id))bindLiveChannelGuide(channel,new ArrayList<>(),"Sin programación disponible");});
-                }catch(Exception e){Log.w(TAG,"Channel guide refresh failed",e);}
+                        long now=System.currentTimeMillis();
+                        List<EpgRepository.EpgProgram> window=readLiveGuideWindow(channel,windowStart,windowEnd,requestedDay.toString(),requestedScope,useArchive);
+                        postUiIfAlive(()->publishLiveGuide(channel,generation,requestedScope,window));
+                    } else postUiIfAlive(()->{if(generation==liveChannelGuideGeneration&&liveChannelGuideVisible&&!liveGuideCache.containsKey(liveGuideKey(channel)))bindLiveChannelGuide(channel,new ArrayList<>(),"Sin programación disponible");});
+                }catch(Exception e){Log.w(TAG,"Channel guide refresh failed",e);
+                    postUiIfAlive(()->{if(generation==liveChannelGuideGeneration&&liveChannelGuideVisible)
+                        bindLiveChannelGuide(channel,liveGuideCache.get(liveGuideKey(channel)),"No se pudo actualizar. Cambia de día para reintentar");});
+                }
             });
         });
         uiHandler.postDelayed(liveGuideFetch,180L);
         uiHandler.removeCallbacks(hideOverlayRunnable);
     }
-    private void publishLiveGuide(ChannelItem channel,int generation,List<EpgRepository.EpgProgram> rows) {
-        if(generation!=liveChannelGuideGeneration||!liveChannelGuideVisible)return;
-        liveGuideCache.put(channel.id,rows);while(liveGuideCache.size()>32)liveGuideCache.remove(liveGuideCache.keySet().iterator().next());
+    private List<EpgRepository.EpgProgram> readLiveGuideWindow(ChannelItem channel,long from,long to,String day,String scope,boolean archiveAllowed){
+        List<EpgRepository.EpgProgram> rows=timelineStore.readUpcoming(channel,from,to,240);
+        if(rows.isEmpty()&&archiveAllowed&&archiveStore!=null)rows=archiveStore.readGuideDay(scope,channel.id,day,240);
+        return rows;
+    }
+    private void publishLiveGuide(ChannelItem channel,int generation,String scope,List<EpgRepository.EpgProgram> rows) {
+        if(generation!=liveChannelGuideGeneration||!liveChannelGuideVisible||!scope.equals(archiveScope))return;
+        liveGuideCache.put(liveGuideKey(channel),rows);while(liveGuideCache.size()>12)liveGuideCache.remove(liveGuideCache.keySet().iterator().next());
         bindLiveChannelGuide(channel,rows,rows.isEmpty()?"Sin programación disponible":"");
     }
     private void bindLiveChannelGuide(ChannelItem channel,List<EpgRepository.EpgProgram> programs,String message){
@@ -11498,16 +11641,24 @@ public class MainActivity extends FragmentActivity {
         java.text.SimpleDateFormat clock=new java.text.SimpleDateFormat("HH:mm",Locale.getDefault());
         java.util.Calendar tomorrow=java.util.Calendar.getInstance();tomorrow.add(java.util.Calendar.DATE,1);
         String tomorrowLabel=dayFormat.format(tomorrow.getTime());
+        int selected=programs==null?-1:liveGuideSelection.resolve(liveGuideKey(channel),liveGuideIds(programs),liveGuideCurrent(programs));
         if(programs!=null){List<EpgRepository.EpgProgram> sorted=new ArrayList<>(programs);sorted.sort(java.util.Comparator.comparingLong(p -> parseIsoMillis(p.startTime)));
-            for(EpgRepository.EpgProgram p:sorted){long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);if(end<=now||end<=start)continue;
-                boolean current=start<=now;String day=dayFormat.format(new java.util.Date(start));String heading=day.equals(previousDay)?"":day.equals(tomorrowLabel)?"Mañana · "+day:day;previousDay=day;
+            for(EpgRepository.EpgProgram p:sorted){long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);if(end<=start)continue;
+                boolean current=start<=now&&end>now;String day=dayFormat.format(new java.util.Date(start));String heading=day.equals(previousDay)?"":day.equals(tomorrowLabel)?"Mañana · "+day:day;previousDay=day;
                 String time=(current?"Ahora · ":"")+clock.format(new java.util.Date(start))+" – "+clock.format(new java.util.Date(end))+" · "+Math.max(1,(end-(current?now:start))/60000)+(current?" min restantes":" min");
                 LiveChannelGuideUiModel.Row row=new LiveChannelGuideUiModel.Row(heading,time,p.title,p.description,current?(now-start)/(float)(end-start):0f,current);
-                if(current)row.programmeMetadata=programmeMetadata(channel,p);
-                rows.add(row);if(rows.size()>=16)break;
+                row.selected=programs.indexOf(p)==selected;
+                if(row.selected)row.programmeMetadata=programmeMetadata(channel,p);
+                row.onClick=()->{liveGuideSelection.select(liveGuideKey(channel),p.startTime);openLiveGuideProgramme(channel,p);};
+                rows.add(row);
             }
         }
-        LiveChannelGuideComposeBinder.bind((ComposeView)findViewById(R.id.liveChannelGuide),new LiveChannelGuideUiModel(displayName(channel),rows.isEmpty()&&message.isEmpty()?"Sin próximas emisiones":message,rows));
+        LiveChannelGuideUiModel model=new LiveChannelGuideUiModel(displayName(channel),rows.isEmpty()&&message.isEmpty()?"Sin programación disponible para este día":message,rows);
+        model.windowKey=liveGuideKey(channel);model.selectedIndex=selected;
+        model.dateLabel=liveGuideDay.equals(java.time.LocalDate.now())?"Hoy":liveGuideDay.format(java.time.format.DateTimeFormatter.ofPattern("EEE dd/MM",Locale.getDefault()));
+        model.scrollRequest=liveGuideScrollRequest;
+        model.previousDay=()->moveLiveGuideDay(-1);model.nextDay=()->moveLiveGuideDay(1);
+        LiveChannelGuideComposeBinder.bind((ComposeView)findViewById(R.id.liveChannelGuide),model);
     }
     private void refreshOverlayChannelList() {
         requestChannelOverlaySurfaceRender();
@@ -20898,6 +21049,7 @@ public class MainActivity extends FragmentActivity {
             discoveryHomeState.selectedProviders.put("En directo", initialGroup);
         }
         discoveryHomeState.selectLiveProvider = key -> {
+            discoveryHomeState.liveReturn.clear();
             prefs.edit().putString(orderKey + ":selected", privateHomeProvider(key) ? safeHomeProvider() : key).apply();
             if (privateHomeProvider(key)) rememberSafeLiveFallback();
             discoveryHomeState.selectedProviders.put("En directo", key);
@@ -20963,6 +21115,29 @@ public class MainActivity extends FragmentActivity {
             }
             return result;
         } finally { logHomeModelPhase("homeFeedResolved", started); }
+    }
+
+    private void prepareLiveBrowseReturn() {
+        ChannelItem playing = currentPlaybackU7dChannel != null && currentPlaybackU7dItem != null
+                ? currentPlaybackU7dChannel : getCurrentPlaybackChannelItem();
+        discoveryHomeState.liveReturn.clear();
+        if (playing == null || playing.isVod || isProtectedItem(playing)
+                || findAllowedHomeLiveChannel(playing.id) == null) return;
+        String group = discoveryHomeState.selectedProviders.getOrDefault("En directo", "");
+        if (!LiveHomePolicy.matches(playing, group)) {
+            group = "";
+            for (StartupHomeHubUiModel.Provider option : discoveryHomeState.liveProviders) {
+                if (!privateHomeProvider(option.key) && LiveHomePolicy.matches(playing, option.key)) {
+                    group = option.key; break;
+                }
+            }
+        }
+        if (group.isEmpty()) return;
+        discoveryHomeState.selectedProviders.put("En directo", group);
+        discoveryHomeState.selectedLiveChannel = playing.id;
+        discoveryHomeState.selectedLiveChannels.put(group, playing.id);
+        discoveryHomeState.liveQuery = "";
+        discoveryHomeState.liveReturn.request(group, playing.id);
     }
 
     private void syncHomeLiveSelection(String providerKey, String channelId) {

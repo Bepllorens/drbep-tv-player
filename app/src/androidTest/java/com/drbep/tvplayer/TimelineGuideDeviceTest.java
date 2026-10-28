@@ -15,6 +15,17 @@ public class TimelineGuideDeviceTest {
    for(int i=-24;i<48;i++) rows.add(new EpgRepository.EpgProgram(c.id,c.name,"Programme "+i,"","",java.time.Instant.ofEpochMilli(now+i*3600000L).toString(),java.time.Instant.ofEpochMilli(now+(i+1)*3600000L).toString(),0));
    store.save(c,rows);assertEquals(72,store.read(c,now-24*3600000L,now+48*3600000L).size());assertTrue(store.fresh(c));
    assertEquals(3,store.read(c,now+24*3600000L,now+27*3600000L).size());
+   List<EpgRepository.EpgProgram> full=store.read(c,now,now+48*3600000L);
+   List<EpgRepository.EpgProgram> bounded=store.readUpcoming(c,now,now+48*3600000L,16);
+   assertEquals(16,bounded.size());
+   for(int i=0;i<bounded.size();i++) {
+    assertEquals(full.get(i).startTime,bounded.get(i).startTime);
+    assertEquals(full.get(i).title,bounded.get(i).title);
+   }
+   assertEquals(3,store.readUpcoming(c,now+24*3600000L,now+27*3600000L,40).size());
+   assertTrue(store.readUpcoming(c,now+80*3600000L,now+81*3600000L,40).isEmpty());
+   try {store.readUpcoming(c,now,now+3600000L,0);fail("Unbounded request rejected");}catch(IllegalArgumentException expected){}
+
    store.save(c,Collections.singletonList(new EpgRepository.EpgProgram(c.id,c.name,"Replacement","","",java.time.Instant.ofEpochMilli(now).toString(),java.time.Instant.ofEpochMilli(now+3*3600000L).toString(),0)));
    assertEquals(1,store.read(c,now,now+3*3600000L).size());
    ChannelItem other=new ChannelItem("other","Test","","","","","",0,0,false,false,0,"",new ArrayList<>(),"","","",false);

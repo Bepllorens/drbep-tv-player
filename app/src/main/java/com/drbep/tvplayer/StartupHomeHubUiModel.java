@@ -62,6 +62,7 @@ public final class StartupHomeHubUiModel {
         public java.util.function.BiConsumer<String, java.util.List<String>> saveChannelOrder;
         public java.util.function.Consumer<java.util.List<String>> saveLiveOrder;
         public boolean restoreLiveFocus = false;
+        public final LiveBrowseReturnState liveReturn = new LiveBrowseReturnState();
         public final java.util.Map<String, String> selectedProviders = new java.util.HashMap<>();
     }
     public static final class Provider {

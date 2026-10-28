@@ -1,0 +1,33 @@
+TeVas 0.4.9: primer bloque DRBEP, 28/10/2026
+
+Aplicado en desarrollo: retorno al canal reproducido mediante identidad de canal y grupo; solicitud versionada que no consume una solicitud posterior; espera cancelable hasta que la fila este colocada, con limite de 2 segundos; entrada del mando cancela la restauracion pendiente.
+
+Validacion tecnica: assembleRelease beta ARM32 perfilable completado. testDebugUnitTest: 1015 pruebas, cero fallos, errores u omitidas. Tres pruebas nuevas del estado de retorno.
+
+Fire .190: candidata privada versionCode 782, misma firma que la instalada, actualizacion sin borrar datos. APK anterior respaldada en /srv/drbep-dev/reviews/tevas-049-20261028/before-fire.apk. Retorno: adb install -r de ese archivo; no desinstalar.
+Candidata: focus-fire.apk; SHA256 446e50d9dd0bff41ef7c3c07ec5dabefdd9c89cd9790b01b8528a6eea8acc20a. Consultar el SHA del fichero antes de usar; identidad autoritativa en focus-fire-validation.json.
+
+Pruebas funcionales:
+- Movistar HLS / La 1: OK y Atras devuelven el foco a La 1. Abajo alcanza La 2.
+- Movistar HLS / Antena 3: OK y Atras devuelven el foco a Antena 3.
+- Cambio a TDT: OK y Atras conservan TDT y devuelven el foco a La 1 UHD.
+- Capturas preview-b.png y preview-c.png muestran escenas distintas de La 1 despues del retorno a miniatura. Esto confirma avance entre capturas, no mide fluidez sostenida ni audio.
+Evidencias XML e imagenes en /srv/drbep-dev/reviews/tevas-049-20261028.
+
+Pendiente: retorno rapido con carga concurrente, medicion sostenida de video/audio, miniguia por dias y consultas acotadas, paneles progresivos/cabecera, QA sintetica adicional y evaluacion OpenWebif opcional. No presentar esos bloques como implementados.
+Produccion .223, publicacion beta y stable sin cambios. No commit/push en este bloque.
+
+Bloque consultas miniguia (desarrollo, aun no instalado en Fire):
+- readUpcoming aplica LIMIT 40 en SQLite antes de materializar filas; mantiene el rango de cobertura y la presentacion de 16 eventos. La lectura general de la guia no cambia.
+- Caché en memoria separada por id, plataforma y tvg-id mediante TimelineEpgStore.key; evita reutilizacion entre asociaciones distintas.
+- Tras descarga se conserva el guardado completo existente pero solo se publica la ventana limitada. No se reduce aun el volumen descargado.
+- Prueba sintetica .185: 8928 eventos, 8640 filas antes frente a 40 despues; primeros 40 identicos. Medianas 30.33 ms / 0.153 ms, 30 repeticiones. No equivale a rendimiento en Fire. Evidencia: guide-query-benchmark.json.
+- compileDebugKotlin, testDebugUnitTest y assembleDebugAndroidTest correctos; git diff --check limpio. Prueba instrumental ampliada de equivalencia y limites compilada, pendiente de ejecutar en dispositivo.
+- Pendiente compilar/instalar esta segunda candidata y validar miniguia; Fire conserva la candidata de foco. Selector por dias todavia no implementado.
+
+Validacion posterior del bloque consultas en Fire:
+- Prueba instrumental TimelineGuideDeviceTest#localStoreRetainsDaysAndSeparatesSources: OK (1 test), 0,5 segundos; incluye equivalencia, intervalo, lista vacia y limite invalido. Datos sinteticos en base independiente, eliminada por finally.
+- Instalada candidata release perfilable privada 782 (guide-fire.apk), SHA256 c6cd7faef85ba9ac45fc08d74742818bb56d710efa70b00ba7fe4aedd23c4173. Conserva firma/datos; retorno a focus-fire.apk.
+- Captura guide-screen2.png: miniguia La 1 UHD/TDT abierta durante reproduccion, programa actual, sinopsis y proximas emisiones visibles. No se ha medido latencia integral ni fluidez sostenida.
+- Fire queda en release, no debug. Sin publicacion, commit/push ni cambios .223/stable.
+- Siguiente: selector de dias y navegacion/detalles; aun pendientes.

@@ -194,6 +194,14 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         return out;
     }
     /** Read only the days needed by the visible archive window, using programs_channel. */
+    List<EpgRepository.EpgProgram> readGuideDay(String scope,String channel,String day,int limit) {
+        if(limit<1||limit>240)throw new IllegalArgumentException("Guide limit");
+        List<EpgRepository.EpgProgram> out=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM programs WHERE scope=? AND channel=? AND day=? ORDER BY start,id LIMIT ?",new String[]{scope,channel,day,Integer.toString(limit)})){
+            while(c.moveToNext())try{out.add(decode(new JSONObject(c.getString(0))));}catch(org.json.JSONException ignored){}
+        }
+        return out;
+    }
     List<EpgRepository.EpgProgram> readDays(String scope,String channel,java.util.Set<String> days) {
         List<EpgRepository.EpgProgram> out=new ArrayList<>();
         if(days.isEmpty())return out;

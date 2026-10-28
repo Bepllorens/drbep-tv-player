@@ -1,0 +1,30 @@
+Plan TeVas 0.4.9 adaptado a DRBEP — 28/10/2026
+
+Entorno: /srv/drbep-dev/repos/drbep-tv-player, rama qoder/disneyplus-vod-582. Cambios de desarrollo, sin commit/push/publicacion ni modificaciones .223/stable. Referencia del analisis: /srv/drbep-dev/reviews/tevas-049-20261028/informe.txt.
+
+1. Foco/retorno: implementado y probado en Fire. Destino estable con numero de solicitud, espera de fila colocada, cancelacion ante mando y memoria por canal/grupo. La 1 y Antena 3 en HLS; La 1 UHD en TDT.
+2. Miniguia: implementados dias, consultas acotadas, cache de 12 ventanas, canal fijo mientras se consulta, seleccion de programa por identidad con memoria entre dias. Hoy entra en programa actual. Fechas calculadas con ZoneId/LocalDate. Arriba/abajo selecciona; izquierda/derecha cambia dia; OK ficha; Atras canales.
+3. Detalles/acciones: metadatos diferidos solo para seleccionado con cargador existente; ficha/imagen y permisos existentes. Acciones condicionadas por fase/retencion/disponibilidad: directo, inicio si confirmado, consulta al catalogo si desconocido, grabacion autorizada y guardado. El clic revalida acceso. No modifica rutas/licencias/DRM. Atras recupera guia/seleccion. No se han ejecutado grabaciones ni guardados reales durante pruebas.
+4. Historico: si falta EPG de un dia anterior, lectura local limitada del archivo ya guardado, por usuario/canal/dia; no obtiene nuevos derechos ni manifiestos. Las fuentes sin datos muestran mensaje vacio. No se garantiza que todos los proveedores conserven siete dias. Limite por ventana: 240 programas.
+5. Paneles: lista lateral se reduce a columna de 64dp durante guia, y se restaura ancho/visibilidad al volver. Guia limitada a 320dp y al espacio disponible; degradados conservados. Cabecera de controles separa canal/picon, programa, siguiente/hora actual y datos tecnicos. No duplica ni mueve la logica de timeshift/carrusel.
+6. QA: pantalla debug LiveGuideQaActivity de 48 programas ficticios, sin repositorios/red/reproductor. Excluida del manifest release. Tests de seleccion/LRU, dias 23/25 horas, huecos/limites/caducidad/permisos y anchura. Tres tests instrumentales pasan en Fire: navegacion, equivalencia SQLite y aislamiento historico. 1024 pruebas unitarias, cero fallos en la candidata final.
+7. Selector de grupos: ya desplaza y enfoca la seleccion actual; no se duplica.
+8. OpenWebif: opcional y condicionado a disponer de receptor Enigma2, como indica el plan original. Sin caso de uso/receptor aportado, queda fuera de la candidata; no se explora la LAN ni se activan fuentes. No confundir sus cambios HTTP con una mejora general de HLS.
+
+Evidencias: /srv/drbep-dev/reviews/tevas-049-20261028. Medicion SQLite sintetica .185: 30.33ms a 0.153ms para ventana de 40, igualdad exacta. No extrapolar a red o fluidez Fire; selector diario usa hasta 240.
+
+Validacion final completada en Fire .190, 28/10/2026:
+- Candidata privada instalada: tevas049-verified-fire.apk, version 782.
+- SHA256 e79bbede13c032009c7357413cc586ba23d6eaf8ed4b1e84b6e7cd0e69bdfa12.
+- Compilacion release perfilable y 1024 tests unitarios correctos; log complete-verified-release.log.
+- Tres tests instrumentales correctos (6,136s): navegacion sintetica, equivalencia SQLite y aislamiento del historico. Log history-device-test.log. La actividad QA no aparece en el manifest release.
+- Recorrido release real: pantalla completa, lista, guia, siguiente programa, ficha con acciones, Atras a guia, ayer/hoy, seis programas abajo y seis arriba, Atras a lista. XML verified-* confirma las pantallas y restauracion.
+- Controles: Arriba accede al carrusel; Abajo lo abandona hacia la zona temporal; cabecera no tapa controles. Capturas verified-control-up/up2/down. Esta comprobacion de acceso no acredita una nueva prueba de seek/replay completo, cuya logica no se ha modificado.
+- Vuelta a portada con miniatura reproduciendo: verified-miniature-a/b muestran video distinto y foco sobre miniatura. Sin pantalla negra persistente.
+- Registro del mismo proceso al finalizar: 0 FATAL EXCEPTION, 0 ANR, 0 Playback error, 0 OutOfMemoryError en los ultimos 4000 registros leidos. No acredita ausencia absoluta de errores fuera de esa ventana.
+- Navegacion release de guia: 27 frames, 8 janky (29,63%), p50 10ms, p90 20ms, p95 21ms, p99 24ms. Muestra corta sin referencia anterior equivalente: NO afirmar eliminacion de tirones ni mejora global porcentual. Archivo verified-guide-gfx.txt.
+- Un volcado uiautomator final salio con codigo137; la app siguio viva (mismo PID18497) y reproduciendo. Se repitieron controles y retorno con resultado correcto. No se borra ni oculta esa incidencia; no se atribuye sin evidencia a un cierre de DRBEP.
+- En carrusel se observaron dos entradas solapadas del programa actual, con horas iniciales diferentes. Los cambios de esta candidata no alteran la fusion de la EPG/carrusel; no se ha corregido ni validado esa duplicidad de datos en este trabajo.
+- Sin pruebas nuevas de tablet, sin grabaciones ni guardados reales y sin despliegue backend. Acciones con efectos comprobadas mediante politicas/fixtures y UI, no ejecutadas sobre cuentas reales.
+Retorno disponible: guide-days-fixed-fire.apk (candidata anterior) y before-fire.apk (inicio del trabajo), en el mismo directorio privado, sin desinstalar ni borrar datos.
+No commit/push/publicacion realizados. .223, beta y stable sin cambios.

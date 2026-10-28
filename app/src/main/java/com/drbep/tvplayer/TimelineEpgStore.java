@@ -17,8 +17,18 @@ final class TimelineEpgStore extends SQLiteOpenHelper {
     @Override public void onUpgrade(SQLiteDatabase db,int old,int next) { }
     static String key(ChannelItem c) { return c.id+"|"+c.platformId+"|"+c.tvgId; }
     synchronized List<EpgRepository.EpgProgram> read(ChannelItem c,long from,long to) {
+        return readWindow(c, from, to, 0);
+    }
+    synchronized List<EpgRepository.EpgProgram> readUpcoming(ChannelItem c,long from,long to,int limit) {
+        if (limit < 1 || limit > 240) throw new IllegalArgumentException("Invalid guide limit");
+        return readWindow(c, from, to, limit);
+    }
+    private List<EpgRepository.EpgProgram> readWindow(ChannelItem c,long from,long to,int limit) {
         List<EpgRepository.EpgProgram> result=new ArrayList<>();
-        try(Cursor cur=getReadableDatabase().rawQuery("SELECT start,end,name,tvg,title,icon,description,category FROM programmes WHERE channel=? AND end>? AND start<? ORDER BY start",new String[]{key(c),Long.toString(from),Long.toString(to)})) {
+        String bounded = limit > 0 ? " AND end>start" : "";
+        String sql="SELECT start,end,name,tvg,title,icon,description,category FROM programmes WHERE channel=? AND end>? AND start<?"+bounded+" ORDER BY start"+(limit>0?" LIMIT ?":"");
+        String[] args=limit>0?new String[]{key(c),Long.toString(from),Long.toString(to),Integer.toString(limit)}:new String[]{key(c),Long.toString(from),Long.toString(to)};
+        try(Cursor cur=getReadableDatabase().rawQuery(sql,args)) {
             while(cur.moveToNext()) result.add(new EpgRepository.EpgProgram(c.id,cur.getString(2),cur.getString(3),cur.getString(4),cur.getString(5),cur.getString(6),java.time.Instant.ofEpochMilli(cur.getLong(0)).toString(),java.time.Instant.ofEpochMilli(cur.getLong(1)).toString(),cur.getString(7),0));
         } return result;
     }

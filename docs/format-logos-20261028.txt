@@ -1,0 +1,3 @@
+Logotipos beta 783
+Dolby y Dolby Atmos: SVG proporcionados por el usuario el 28/10/2026, convertidos a VectorDrawable blanco conservando paths, rect y proporciones. Marcas de sus respectivos titulares; no acredita certificacion.
+HDR: TeVas v0.4.9 FormatBadges.kt usa BadgeGlyph.SUN (sol), no SVG externo. Reinterpretacion independiente mediante vector propio. La deteccion de formatos no cambia: solo pistas informadas por Media3, no nombres de peliculas ni promesa de salida HDR/Atmos del equipo.

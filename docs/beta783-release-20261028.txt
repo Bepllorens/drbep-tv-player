@@ -1,0 +1,10 @@
+Beta 783 — 2.0.783-beta-guide-formats
+Incluye los cambios Android pendientes de TeVas0.4.9 (foco, miniguia diaria, consultas acotadas, paneles/cabecera y QA) y los logotipos solicitados por el usuario.
+Universal ARM32/ARM64. Firma distribucion verificada:
+0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b
+SHA256: 78f7a912d734ac67913c25fb098fe15d9aedfe6ba885d8ea0c2c17a565895ae8
+Build release correcto; 1024 tests unitarios sin fallos. Prueba visual instrumental de los logos correcta en Fire .190 (5,986s), captura revisada. Pruebas de miniguia documentadas en plan-tevas-049-estado-20261028.txt.
+Fire conserva identidad privada: se instalo copia release con firma de pruebas, verificando igualdad SHA de todas las entradas fuera de META-INF respecto a distribucion. La APK con firma publica NO se instalo en Fire; no se desinstalo ni borro datos para cambiar de firma. Tablet no disponible para esta validacion.
+Respaldo de beta777 descargado y verificado; stable582 y rescue543 registrados. Evidencias privadas en /srv/drbep-dev/reviews/beta783-logos-20261028.
+La subida multipart excedio el limite HTTP. Se transfirio exclusivamente la APK a una ruta nueva por SSH, se verifico su SHA y el preflight devolvio ok=true. No se modifico la configuracion del servidor ni se reinicio.
+Estado al preparar commit: preflight correcto, publicacion todavia pendiente.

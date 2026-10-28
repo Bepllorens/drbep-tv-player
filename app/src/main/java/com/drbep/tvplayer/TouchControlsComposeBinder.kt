@@ -1034,7 +1034,10 @@ private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: 
         .then(if(archiveLayout) Modifier.height((LocalConfiguration.current.screenHeightDp - 28).dp) else Modifier)
         .background(backdrop)
         .padding(horizontal = 24.dp, vertical = 6.dp)) {
-        if (model.nowPlaying.visible) ModernNowPlaying(model.nowPlaying, model.integratedTimeshift, artworkBinder, minimal = true, timeline = !model.expanded)
+        if (model.nowPlaying.visible) {
+            CompactLiveHeader(model.nowPlaying, artworkBinder)
+            if(!model.expanded) ModernNowPlaying(model.nowPlaying,model.integratedTimeshift,artworkBinder,minimal=true,header=false)
+        }
         else if (model.contextTitle.isNotBlank()) ModernContextHeader(model)
         if(archiveLayout) Spacer(Modifier.weight(1f))
         if (model.expanded) {
@@ -1049,6 +1052,43 @@ private fun MinimalTvControlsBar(model: TouchControlsBarUiModel, artworkBinder: 
                 "Progreso del programa · retroceso no disponible en esta emisión",style=TextStyle(OfflineTvTheme.Colors.textSoft,10.sp))
             CompactPlaybackActionDock(model, artworkBinder)
         }
+    }
+}
+
+@Composable
+private fun CompactLiveHeader(model: TouchControlsNowPlayingUiModel, artworkBinder: TouchControlsArtworkBinder?) {
+    val clock = remember(model) {
+        java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+    }
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.Top, horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.weight(.28f),verticalAlignment=Alignment.CenterVertically) {
+                TouchChannelLogo(model,artworkBinder,true)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    BasicText(model.channelName,maxLines=2,overflow=TextOverflow.Ellipsis,
+                        style=TextStyle(Color.White,14.sp,FontWeight.Bold))
+                    BasicText(model.channelBadge,maxLines=1,style=TextStyle(OfflineTvTheme.Colors.textSoft,10.sp))
+                }
+            }
+            Column(Modifier.weight(.48f)) {
+                BasicText(model.programTitle,maxLines=2,minLines=2,overflow=TextOverflow.Ellipsis,
+                    style=TextStyle(Color.White,17.sp,FontWeight.Bold))
+                BasicText(model.programMeta,maxLines=1,overflow=TextOverflow.Ellipsis,
+                    style=TextStyle(OfflineTvTheme.Colors.textSoft,10.sp))
+                ProgrammeMetadataStrip(model.programmeMetadata,true)
+            }
+            Column(Modifier.weight(.24f)) {
+                BasicText("Hora actual · $clock",style=TextStyle(OfflineTvTheme.Colors.accentCyan,11.sp,FontWeight.Bold))
+                if(model.nextProgramVisible) BasicText(model.nextProgram,Modifier.padding(top=5.dp),
+                    maxLines=2,overflow=TextOverflow.Ellipsis,style=TextStyle(OfflineTvTheme.Colors.textSoft,11.sp))
+                else if(model.remainingText.isNotBlank()) BasicText(model.remainingText,Modifier.padding(top=5.dp),
+                    maxLines=2,style=TextStyle(OfflineTvTheme.Colors.textSoft,11.sp))
+            }
+        }
+        val technical=model.playbackTrackInfo.ifBlank { model.streamInfo }
+        if(technical.isNotBlank()) BasicText(technical,Modifier.padding(top=2.dp),maxLines=1,
+            overflow=TextOverflow.Ellipsis,style=TextStyle(OfflineTvTheme.Colors.textMuted,9.sp))
     }
 }
 

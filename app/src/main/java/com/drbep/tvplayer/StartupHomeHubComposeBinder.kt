@@ -872,6 +872,10 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
     var previewChannelId by remember { mutableStateOf(model.currentLive?.channelId ?: "") }
     var selectedId by remember(provider) { mutableStateOf(discovery.selectedLiveChannels[provider] ?: discovery.selectedLiveChannel) }
     val selectedChannel = { channels.firstOrNull { it.channelId == selectedId } }
+    var attachedFocusedChannel by remember(provider) { mutableStateOf("") }
+    var entryFocusPending by remember(provider) { mutableStateOf(true) }
+    val returnTarget = discovery.liveReturn.pending()
+
     val navigationCadence = remember(provider, query) { TvNavigationCadence() }
     val channelNavigationScope = androidx.compose.runtime.rememberCoroutineScope()
     val channelFocusQueue = remember(provider, query, channels) { TvChannelFocusQueue() }
@@ -905,41 +909,35 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
         }
     }
 
-    LaunchedEffect(provider, channels.isEmpty()) {
-        if (searchOpen || groupsOpen || movingChannel != null) return@LaunchedEffect
-        // Explore replaces the focused home button. Give the new screen a
-        // concrete focus target instead of leaving focus on a removed node.
-        val target = selectedChannel() ?: channels.getOrNull(gridState.firstVisibleItemIndex) ?: channels.firstOrNull()
-        if (target == null) {
+    LaunchedEffect(provider, channels, entryFocusPending, returnTarget?.request, searchOpen, groupsOpen) {
+        if (!entryFocusPending || searchOpen || groupsOpen || movingChannel != null) return@LaunchedEffect
+        if (returnTarget != null && returnTarget.group != provider) return@LaunchedEffect
+        val target = returnTarget?.let { saved -> channels.firstOrNull { it.channelId == saved.channel } }
+            ?: selectedChannel() ?: channels.getOrNull(gridState.firstVisibleItemIndex) ?: channels.firstOrNull()
+        val restored = if (target == null) {
             withFrameNanos { }
-            runCatching { groupButtonFocus.requestFocus() }
+            runCatching { groupButtonFocus.requestFocus(); true }.getOrDefault(false)
         } else {
             val index = channels.indexOf(target).coerceAtLeast(0)
-            android.os.Trace.beginSection("DRBEP.tvEntryPosition")
-            try {
-                if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
-                    // Schedule positioning for the regular layout pass. Avoid
-                    // a synchronous extra measure while the TV screen is built.
-                    gridState.requestScrollToItem(index)
-                }
-            } finally { android.os.Trace.endSection() }
-            withFrameNanos { }; withFrameNanos { }
-            var restored = false
-            repeat(3) {
-                if (!restored) {
-                    withFrameNanos { }
-                    restored = runCatching {
-                        val requester = channelFocus[target.channelId] ?: return@runCatching false
-                        requester.requestFocus()
-                        true
-                    }.getOrDefault(false)
-                }
-            }
-            if (!restored) runCatching { groupButtonFocus.requestFocus() }
+            if (gridState.layoutInfo.visibleItemsInfo.none { it.key == target.channelId }) gridState.requestScrollToItem(index)
+            awaitAttachedRowFocus(gridState, target.channelId,
+                { channelFocus[target.channelId] }, { attachedFocusedChannel == target.channelId })
         }
+        if (!restored) runCatching { groupButtonFocus.requestFocus() }
+        entryFocusPending = false
+        returnTarget?.let { discovery.liveReturn.complete(it.request) }
         discovery.restoreLiveFocus = false
     }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+        val key = event.nativeKeyEvent
+        if (key.action == android.view.KeyEvent.ACTION_DOWN && key.keyCode in listOf(
+                android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            entryFocusPending = false
+            discovery.liveReturn.clear()
+        }
+        false
+    }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BasicText("En directo", style = TextStyle(Color.White, 21.sp, FontWeight.Bold))
         Box {
@@ -1105,7 +1103,7 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                                     if (focused) drawRoundRect(Color(0xFFFFA348), size = Size(3.dp.toPx(), size.height), cornerRadius = radius)
                                 }
                             }
-                            .onFocusChanged { focused = it.isFocused; if (it.isFocused) { channelFocusQueue.focused(index); selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId } }
+                            .onFocusChanged { focused = it.isFocused; if (it.isFocused) { attachedFocusedChannel = channel.channelId; channelFocusQueue.focused(index); selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId } }
                             .tvButtonSemantics(true, (if (movingChannel == channel.channelId) "Moviendo " else "") + channel.title + ". " + channel.subtitle)
                             .clickable { selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId; channel.onClick?.run() }
                             .padding(9.dp), horizontalAlignment = Alignment.CenterHorizontally) {

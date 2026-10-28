@@ -113,6 +113,13 @@
         android:visibility="gone">
 
         <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/liveGuideRail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            android:focusable="false" />
+
+        <androidx.compose.ui.platform.ComposeView
             android:id="@+id/overlayNowPlayingSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

@@ -1,0 +1,18 @@
+Miniguia por dias, 28/10/2026
+
+Alcance: lectura de EPG local por canal y dia. No cambia resolucion, DRM, tokens ni reproduccion catchup. Consulta acotada a 240 eventos/dia; cache de 12 ventanas identificadas por canal/plataforma/tvg-id/fecha. La descarga existente sigue siendo por canal; no se presenta como optimizacion de red.
+
+Mando con guia abierta: izquierda/derecha cambian fecha (-7 a +7 respecto de hoy); arriba/abajo desplazan programas; Atras devuelve a canales. Flechas tactiles en cabecera. La apertura de Hoy comienza en el evento actual cuando existe. Esta fase permite consultar, no activar eventos historicos.
+
+LocalDate/ZoneId calculan cada limite de medianoche, incluyendo dias de 23/25 horas. Generacion de solicitudes impide publicar respuestas de un dia anterior. Error de red mantiene cache y muestra aviso. Al cerrar se elimina el temporizador existente y el fetch diferido.
+
+Pruebas automaticas: 1017, cero fallos/errores, incluyendo cambio horario y limites de navegacion. Compilacion release y validacion Fire en curso; no considerar validadas hasta actualizar esta nota.
+
+Pendiente: prueba real dias/scroll/Atras, detalles bajo demanda y acciones por evento, paneles progresivos y cabecera compacta. No commit/push/publicacion ni cambios de produccion.
+
+Cierre de validacion Fire:
+- Detectada y corregida variacion del canal consultado al restaurarse el foco de la lista. Se fija liveGuideChannel durante toda la ventana y se libera al cerrar.
+- Candidata final guide-days-fixed-fire.apk, SHA256 b0e736041c5bee65d900ac95dd97db1ab9209e118a2214a6361d0aaf5aca8a37, version privada 782, misma firma/datos. Retorno: guide-fire.apk (consulta limitada anterior, sin selector por dias).
+- Prueba con aserciones: LA 1 / Hoy -> jue. 29/10 -> Hoy conserva el canal y la fecha; Abajo desplaza manteniendo ambos; Atras cierra guia y devuelve entrada a la lista. Resultado y XML fixed-* en directorio de evidencias.
+- Build release y regresion completos correctos. No mide fluidez sostenida ni valida todos los proveedores.
+- Guia instalada; no se ha publicado ni enviado a Git. Pendientes detalles/acciones de programas y paneles compactos.

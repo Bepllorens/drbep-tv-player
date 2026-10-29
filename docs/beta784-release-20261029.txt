@@ -1,0 +1,29 @@
+Beta784 —2.0.784-beta-guide-refresh —29/10/2026
+Publicada en beta por peticion expresa. Sin excepcion administrativa.
+Universal ARM32/ARM64, firma distribucion verificada:
+0ddf793032d3f3a9c3a3939e9a501719e15d3f5c5b0a3e10b33eac01b412e34b
+SHA256:89f3857def0d093d7cdb39731822c5885d2aa49358face164c15289724f853d6
+
+Incluye commit129ebb3: sustitucion atomica por dia de la guia para evitar
+duplicados de horarios antiguos conservando Guardados, cache miniguia,
+desplazamiento estable y menor trabajo grafico por fila TV.
+No declara resueltos los picos de primera entrada ni todos los tirones.
+Pruebas previas en Fire y pendientes:docs/pendientes-20261028.txt.
+
+Build release universal correcto (3min13s).
+1025tests unitarios:0fallos/errores.
+Version, ABI y certificado verificados contra la APK final.
+Beta783 anterior descargada y verificada como respaldo.
+PreflightHTTP200 ok=true y publicacionHTTP200.
+APK descargada desde el canal coincide con la huella firmada.
+Metadatos completos stable582 y rescue543 iguales antes/despues.
+Sin reinicio del backend. Esta publicacion no instala APK en Fire/tablet.
+La validacion fisica de esta nueva784 queda para la prueba del usuario;
+el codigo del bloque ya se probo previamente en la candidata privada783.
+
+Evidencias privadas:
+/srv/drbep-dev/reviews/beta784-release-20261029/
+artifact.json, build.log, tests.log, preflight.json, publish.json,
+channels-before.json, channels-after.json, published-beta-before.apk,
+candidate-784-beta.apk y downloaded-784.apk.
+No incorporar credenciales ni APK a Git.

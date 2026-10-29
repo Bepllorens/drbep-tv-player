@@ -6083,10 +6083,15 @@ public class MainActivity extends FragmentActivity {
                             archiveAvailability.registerOfficial(scope,c,identity);
                             List<EpgRepository.EpgProgram> merged=new ArrayList<>(aggregate.get(c.id));
                             merged.removeIf(p->ArchiveWindow.day(p.startTime).equals(day));
-                            try{merged.addAll(guide.programmes(c,identity));}catch(Exception invalid){continue;}
+                            try{
+                                List<EpgRepository.EpgProgram> fresh=guide.programmes(c,identity);
+                                fresh.removeIf(p->!ArchiveWindow.day(p.startTime).equals(day));
+                                if(fresh.isEmpty())continue; // Never erase a day after an empty/partial response.
+                                archiveStore.replaceGuideDay(scope,c.id,day,fresh);
+                                merged.addAll(fresh);
+                            }catch(Exception invalid){continue;}
                             aggregate.put(c.id,merged);changed.put(c.id,merged);
                         }
-                        if(!changed.isEmpty())try{archiveStore.indexAll(scope,changed);}catch(Exception failure){Log.w(TAG,"Catchup index unavailable",failure);}
                         if(!changed.isEmpty())postUiIfAlive(()->{if(generation==archiveGeneration){
                             for(String id:changed.keySet())archivePrograms.put(id,windowArchive(changed.get(id)));
                             archiveState.setLoading(false);mergeArchiveSaved(saved);publishArchiveEntries(saved);
@@ -6094,8 +6099,8 @@ public class MainActivity extends FragmentActivity {
                     });
                     if(!result.complete)failed=true;
                     loaded++;
-                    final java.util.Map<String,List<EpgRepository.EpgProgram>> diskSnapshot=new java.util.LinkedHashMap<>(aggregate);
-                    archiveStorageExecutor.execute(()->{try{if(generation==archiveGeneration)archiveStore.writeAll(scope,diskSnapshot);}catch(Exception ignored){}});
+                    // Each provider day is already committed atomically in the callback.
+                    // Replaying an older aggregate asynchronously can resurrect changed schedules.
                 }catch(Exception e){failed=true;android.util.Log.w("DirectGuide","Day failed: "+e.getClass().getSimpleName());}
             }
             final boolean error=failed;final boolean noGuide=loaded==0;
@@ -11452,6 +11457,7 @@ public class MainActivity extends FragmentActivity {
         for(java.util.Map.Entry<Integer,Integer> entry:liveGuideOriginalVisibility.entrySet())findViewById(entry.getKey()).setVisibility(entry.getValue());
         liveGuideOriginalVisibility.clear();findViewById(R.id.liveGuideRail).setVisibility(View.GONE);
     }
+    private final LiveGuideRenderCache<List<LiveChannelGuideUiModel.Row>> liveGuideRenderCache=new LiveGuideRenderCache<>();
     private final LiveGuideSelection liveGuideSelection=new LiveGuideSelection();
     private java.time.LocalDate liveGuideDay=java.time.LocalDate.now();
     private int liveGuideScrollRequest;
@@ -11559,7 +11565,7 @@ public class MainActivity extends FragmentActivity {
     }};
     private boolean closeLiveChannelGuide(){
         if(!liveChannelGuideVisible)return false;
-        liveChannelGuideVisible=false;liveGuideChannel=null;restoreLiveGuidePanel();liveChannelGuideGeneration++;uiHandler.removeCallbacks(liveGuideTick);
+        liveChannelGuideVisible=false;liveGuideChannel=null;liveGuideRenderCache.clear();restoreLiveGuidePanel();liveChannelGuideGeneration++;uiHandler.removeCallbacks(liveGuideTick);
         if(liveGuideFetch!=null)uiHandler.removeCallbacks(liveGuideFetch);
         View view=findViewById(R.id.liveChannelGuide);if(view!=null){LiveChannelGuideComposeBinder.bind((ComposeView)view,new LiveChannelGuideUiModel("","",new ArrayList<>()));view.setVisibility(View.GONE);}return true;
     }
@@ -11636,22 +11642,31 @@ public class MainActivity extends FragmentActivity {
         bindLiveChannelGuide(channel,rows,rows.isEmpty()?"Sin programación disponible":"");
     }
     private void bindLiveChannelGuide(ChannelItem channel,List<EpgRepository.EpgProgram> programs,String message){
-        List<LiveChannelGuideUiModel.Row> rows=new ArrayList<>();long now=System.currentTimeMillis();String previousDay="";
-        java.text.SimpleDateFormat dayFormat=new java.text.SimpleDateFormat("EEEE dd/MM",Locale.getDefault());
-        java.text.SimpleDateFormat clock=new java.text.SimpleDateFormat("HH:mm",Locale.getDefault());
-        java.util.Calendar tomorrow=java.util.Calendar.getInstance();tomorrow.add(java.util.Calendar.DATE,1);
-        String tomorrowLabel=dayFormat.format(tomorrow.getTime());
-        int selected=programs==null?-1:liveGuideSelection.resolve(liveGuideKey(channel),liveGuideIds(programs),liveGuideCurrent(programs));
-        if(programs!=null){List<EpgRepository.EpgProgram> sorted=new ArrayList<>(programs);sorted.sort(java.util.Comparator.comparingLong(p -> parseIsoMillis(p.startTime)));
-            for(EpgRepository.EpgProgram p:sorted){long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);if(end<=start)continue;
-                boolean current=start<=now&&end>now;String day=dayFormat.format(new java.util.Date(start));String heading=day.equals(previousDay)?"":day.equals(tomorrowLabel)?"Mañana · "+day:day;previousDay=day;
-                String time=(current?"Ahora · ":"")+clock.format(new java.util.Date(start))+" – "+clock.format(new java.util.Date(end))+" · "+Math.max(1,(end-(current?now:start))/60000)+(current?" min restantes":" min");
-                LiveChannelGuideUiModel.Row row=new LiveChannelGuideUiModel.Row(heading,time,p.title,p.description,current?(now-start)/(float)(end-start):0f,current);
-                row.selected=programs.indexOf(p)==selected;
-                if(row.selected)row.programmeMetadata=programmeMetadata(channel,p);
+        long began=android.os.SystemClock.elapsedRealtimeNanos(),now=System.currentTimeMillis();
+        final List<EpgRepository.EpgProgram> input=programs==null?java.util.Collections.emptyList():programs;
+        int selected=liveGuideSelection.resolve(liveGuideKey(channel),liveGuideIds(input),liveGuideCurrent(input));
+        List<LiveChannelGuideUiModel.Row> templates=liveGuideRenderCache.get(liveGuideKey(channel),input,now/30000L,()->{
+            List<LiveChannelGuideUiModel.Row> formatted=new ArrayList<>();
+            SimpleDateFormat dayFormat=new SimpleDateFormat("EEEE dd/MM",Locale.getDefault());
+            SimpleDateFormat clock=new SimpleDateFormat("HH:mm",Locale.getDefault());
+            String previousDay="";
+            for(EpgRepository.EpgProgram p:input){
+                long start=parseIsoMillis(p.startTime),end=parseIsoMillis(p.endTime);
+                boolean current=start<=now&&end>now;
+                String day=dayFormat.format(new Date(start));
+                String heading=day.equals(previousDay)?"":day;previousDay=day;
+                String time=(current?"Ahora · ":"")+clock.format(new Date(start))+" – "+clock.format(new Date(end))+" · "+Math.max(1,(end-(current?now:start))/60000)+(current?" min restantes":" min");
+                LiveChannelGuideUiModel.Row row=new LiveChannelGuideUiModel.Row(heading,time,p.title,p.description,current?(now-start)/(float)Math.max(1,end-start):0f,current);
+                row.key=p.startTime;
                 row.onClick=()->{liveGuideSelection.select(liveGuideKey(channel),p.startTime);openLiveGuideProgramme(channel,p);};
-                rows.add(row);
-            }
+                formatted.add(row);
+            }return formatted;
+        });
+        List<LiveChannelGuideUiModel.Row> rows=new ArrayList<>(templates);
+        if(selected>=0&&selected<rows.size()){
+            LiveChannelGuideUiModel.Row base=rows.get(selected);
+            LiveChannelGuideUiModel.Row row=new LiveChannelGuideUiModel.Row(base.day,base.time,base.title,base.description,base.progress,base.current);
+            row.key=base.key;row.onClick=base.onClick;row.selected=true;row.programmeMetadata=programmeMetadata(channel,input.get(selected));rows.set(selected,row);
         }
         LiveChannelGuideUiModel model=new LiveChannelGuideUiModel(displayName(channel),rows.isEmpty()&&message.isEmpty()?"Sin programación disponible para este día":message,rows);
         model.windowKey=liveGuideKey(channel);model.selectedIndex=selected;
@@ -11659,6 +11674,7 @@ public class MainActivity extends FragmentActivity {
         model.scrollRequest=liveGuideScrollRequest;
         model.previousDay=()->moveLiveGuideDay(-1);model.nextDay=()->moveLiveGuideDay(1);
         LiveChannelGuideComposeBinder.bind((ComposeView)findViewById(R.id.liveChannelGuide),model);
+        Log.d(TAG,"GuideBindCost rows="+rows.size()+" micros="+((android.os.SystemClock.elapsedRealtimeNanos()-began)/1000L));
     }
     private void refreshOverlayChannelList() {
         requestChannelOverlaySurfaceRender();

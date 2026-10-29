@@ -1,0 +1,114 @@
+ESTADO CONSOLIDADO DEL PLAN — 28/10/2026, despues de beta783
+Prevalece sobre pendientes-20261027.txt y los estados de preparacion anteriores.
+Desarrollo Android en .185, rama qoder/disneyplus-vod-582, base 1b868591c1c84ed9a98dd79b51197239fbf0c535.
+Publicacion anterior: beta783 universal ya publicada; identidad y comprobaciones
+en beta783-release-20261028.txt. Este bloque NO publica, no hace commit/push,
+no modifica .223, stable, claves, asociaciones ni rutas de reproduccion.
+
+BLOQUE ACTUAL
+1. Duplicados del carrusel:
+   Una correccion de hora en la guia dejaba en SQLite tanto la entrada vieja como
+   la nueva, porque la identidad incluye canal+inicio y el refresco solo insertaba.
+   El refresco oficial sustituye ahora atomicamente el dia de ese canal y usuario.
+   Respuestas vacias/invalidas no borran datos. Guardados se conservan. Retirada
+   la escritura asincrona posterior del agregado que podia reintroducir horarios.
+   No hay deduplicacion por titulo: dos emisiones diferentes del mismo titulo
+   siguen siendo dos entradas.
+   Regresion en Fire con DB sintetica: horario modificado, repeticion con igual
+   titulo, guardado, otro canal/usuario y respuesta vacia/invalida. Correcta.
+   Captura real controls.png: una entrada de Directo al grano, 16:24-18:33;
+   no aparecen las dos horas iniciales del caso observado en beta783.
+   Limite: un guardado antiguo se conserva expresamente; no se migra su identidad
+   ni se declara resuelta toda posible discrepancia del proveedor.
+
+2. Miniguia:
+   Cache de una sola ventana formateada, invalida por lista/dia/usuario/reloj y
+   se libera al cerrar. Metadatos detallados solo para la seleccion.
+   Evita ordenar, formatear todas las filas y buscar indexOf por cada pulsacion.
+   Claves estables de fila. Solo desplaza cuando la seleccion sale de la ventana,
+   no coloca cada programa seleccionado arriba.
+   1025 tests unitarios: 0 fallos/errores. 3 tests instrumentales en Fire: OK.
+   Recorrido real guia y retorno probado; muestras de dibujo:
+   baseline TV3 39 frames/7 janky, p50 9ms/p95 20ms;
+   candidata Vamos 38/7, p50 8ms/p95 21ms;
+   ensayo M+Hits 36/5, p50 7ms/p95 22ms.
+   Son canales distintos: NO calcular ganancia porcentual ni afirmar eliminacion
+   de tirones a partir de esa comparacion. La reduccion del trabajo de preparacion
+   esta cubierta por el test de reutilizacion, no por una cifra inventada.
+
+3. TV:
+   Traza corta: primer frame UI hasta540ms; predomina Compose/medida/colocacion.
+   Creacion de9 logos:2,67ms; dibujo18logos:1,92ms; enlace9logos:39,03ms.
+   No atribuir el pico global a los logotipos.
+   Movistar HLS baseline entrada p95 600ms; recorrido p50 31/p95 93/p99 350ms.
+   Candidata sin cambio TV: entrada700ms; recorrido32/109/200ms.
+   Ensayo sin capa global de lista: entrada750ms; recorrido27/89/150ms.
+   Retirado: no mejora consistente, peor primera entrada.
+   No declarar solucionada la primera entrada a TV.
+   Conservado el segundo ensayo: retirar solo el recorte grafico redundante de
+   cada fila (el fondo sigue redondeado, hijos con margen, capa global conservada).
+   Dos recorridos HLS: p50 25/26ms, p95 77/77ms, p99 250/350ms.
+   Referencia783:31/93/350ms. Entrada p95 600ms en ambas repeticiones, igual
+   al baseline; NO solucionado ese pico. Janky81,86/81,91% frente87,88%;
+   la fluidez sigue lejos de perfecta. Todos los XML de inicio confirman mismo
+   foco: LA1, grupo MovistarHLS. No extrapolar a todas las fuentes/dispositivos.
+   Captura tv-row-trial-hls/tv-after.png conserva estetica, foco y miniatura.
+   Candidata final instalada: tv-row-trial.apk, privada ARM32 version783.
+   SHA256 91c0d14829d05b4190d96b60efb16333fb5a5877c3c9f9f4fbccc1847f876174.
+   Build release perfilable correcto; sin nueva publicacion.
+
+EVIDENCIAS Y RETORNO
+/srv/drbep-dev/reviews/carousel-tv-20261028:
+build.log, device-tests.log, baseline*, candidate-hls, tv-trial-hls,
+tv-layer-trial.log, tv-row-trial.log, controls.png.
+rollback.apk: privada beta783 anterior; instalar -r, no desinstalar ni borrar datos.
+device-backup: copia privada de cache SQLite antes de las pruebas; no incorporar
+a Git ni usar como fixture. Cambios sin migracion de esquema.
+candidate.apk: correccion de catalogo/miniguia, SHA
+7bc4b0d429ad825be4bb6b15eca3323fb5972afde3946a6adb686ce338a87efb.
+No confundir APK privada ARM32 con universal de distribucion.
+
+SIGUIENTE ORDEN
+- Continuar primer layout de TV y presion de memoria. Comparacion de este bloque
+  cerrada en HLS; pico de entrada abierto, mejora parcial al recorrer filas.
+- Repetir miniguia mismo canal/dia y seleccion, ficha, cambio de dia y retorno.
+- Xiaomi: actualizacion real universal, gestos/controles, agenda y foco/retorno.
+- XMLTV extremo durante reproduccion: fluidez y cancelacion con datos sinteticos.
+- Caja negra: correlacion con zapeo/reintentos/multiview sin mezclar reproductores.
+- Pruebas fisicas de parada por usuario, inactividad y salida HDMI.
+- M+Indie/HLS sigue separado y sin resolver por estos cambios.
+- Commit/push/nueva publicacion solo cuando se solicite; beta783 actual no cambia.
+
+YA HECHO, NO REINICIAR
+Buscador por origen, progreso agrupado, lateral configurable, Plex incremental,
+agenda/favoritos, panel/cuentas/enlaces Palantir, diagnostico de red y bloques
+TeVas0.4.9 incluidos en783. Consultar documentos de cada bloque para limitaciones.
+OpenWebif requiere receptor/caso de uso; Trakt, AceStream, proveedor deportivo
+externo y DNS son opcionales, no pendientes obligatorios ni autorizacion de alta.
+
+ARCHIVOS DE ESTE BLOQUE (relativos al repositorio Android)
+app/src/main/java/com/drbep/tvplayer/U7dCatalogStore.java
+app/src/main/java/com/drbep/tvplayer/MainActivity.java
+app/src/main/java/com/drbep/tvplayer/LiveGuideRenderCache.java
+app/src/main/java/com/drbep/tvplayer/LiveChannelGuideComposeBinder.kt
+app/src/main/java/com/drbep/tvplayer/LiveChannelGuideUiModel.java
+app/src/main/java/com/drbep/tvplayer/StartupHomeHubComposeBinder.kt
+app/src/test/java/com/drbep/tvplayer/LiveGuideRenderCacheTest.java
+app/src/androidTest/java/com/drbep/tvplayer/LiveGuideArchiveDeviceTest.java
+
+CIERRE DE VALIDACION FINAL EN FIRE
+Candidata tv-row-trial.apk instalada sin borrar datos. Recorrido real La1:
+guia -> siguiente programa -> ficha -> Atras -> dia27/10 -> hoy -> salida a TV.
+La asercion inicial del auxiliar buscaba el literal Ayer; la UI muestra mar.27/10.
+Se comprobo el XML y se completo el recorrido; no era un fallo de la app.
+final-guide/detail/yesterday/return.xml y final-miniature-a/b.png conservados.
+Miniatura visible con video tras retorno. Ultimos4000 registros del proceso:
+0 FATAL EXCEPTION,0 OutOfMemoryError,0 Playback error,0 ANR in.
+Esta ventana no acredita ausencia absoluta de errores ni prueba prolongada.
+No se han vuelto a probar seek/replay/multiview; su logica no se modifica.
+Diff --check correcto. Cambios locales en .185; sin commit/push ni publicacion.
+
+CONSOLIDACION GIT —29/10/2026
+Usuario solicita commit/push de los cambios pendientes. Este bloque incorpora
+los cambios y evidencias anteriores a Git. No instala APK ni publica beta/stable.
+Las limitaciones y pruebas pendientes anteriores siguen vigentes.

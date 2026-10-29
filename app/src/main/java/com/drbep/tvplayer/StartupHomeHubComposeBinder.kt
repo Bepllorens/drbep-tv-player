@@ -1092,7 +1092,8 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                                     true
                                 } else false
                             }
-                            .clip(OfflineTvTheme.Menu.shape)
+                            // The row draws its own rounded background; children are inset.
+                            // Avoid a separate clipping layer for every visible channel.
                             // Focus changes only invalidate drawing, not the logo/text composition.
                             .drawBehind {
                                 val radius = CornerRadius(3.dp.toPx())

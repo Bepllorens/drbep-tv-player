@@ -21,7 +21,12 @@ object LiveChannelGuideComposeBinder {
   view.setStableContent("live-channel-guide",model) { m ->
    val list = rememberLazyListState()
    LaunchedEffect(m.windowKey, m.selectedIndex) {
-    if(m.selectedIndex>=0) list.scrollToItem(m.selectedIndex)
+    if(m.selectedIndex>=0) {
+     val viewport=list.layoutInfo
+     val selected=viewport.visibleItemsInfo.firstOrNull { it.index==m.selectedIndex }
+     if(selected==null || selected.offset<viewport.viewportStartOffset ||
+        selected.offset+selected.size>viewport.viewportEndOffset) list.scrollToItem(m.selectedIndex)
+    }
    }
    Column(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xEE101D29),Color(0xBF101D29),Color(0x66101D29)))).padding(18.dp)) {
     BasicText(m.channel,style=TextStyle(Color.White,20.sp,FontWeight.Bold),maxLines=2,overflow=TextOverflow.Ellipsis)
@@ -33,7 +38,7 @@ object LiveChannelGuideComposeBinder {
     BasicText("← → Día · ↑ ↓ Programas · OK Ficha · Atrás Canales",Modifier.padding(vertical=10.dp),style=TextStyle(Color(0xFFACBECF),10.sp))
     if(m.message.isNotBlank()) BasicText(m.message,style=TextStyle(Color(0xFFACBECF),13.sp))
     LazyColumn(state=list,verticalArrangement=Arrangement.spacedBy(14.dp)) {
-     items(m.rows) { row ->
+     items(m.rows, key = { it.key.ifBlank { it.time + it.title } }) { row ->
       Column(Modifier.fillMaxWidth().background(if(row.selected) Color(0x223FCBDC) else Color.Transparent)
        .clickable { row.onClick?.run() }.padding(horizontal=8.dp,vertical=6.dp)) {
        if(row.day.isNotBlank())BasicText(row.day,Modifier.padding(bottom=8.dp),style=TextStyle(Color(0xFF78D6EB),13.sp,FontWeight.Bold))

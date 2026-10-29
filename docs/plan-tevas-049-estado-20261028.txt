@@ -1,3 +1,5 @@
+Estado actualizado: pendientes-20261028.txt. Las notas de preparacion/publicacion siguientes son historicas.
+
 Plan TeVas 0.4.9 adaptado a DRBEP — 28/10/2026
 
 Entorno: /srv/drbep-dev/repos/drbep-tv-player, rama qoder/disneyplus-vod-582. Cambios de desarrollo, sin commit/push/publicacion ni modificaciones .223/stable. Referencia del analisis: /srv/drbep-dev/reviews/tevas-049-20261028/informe.txt.

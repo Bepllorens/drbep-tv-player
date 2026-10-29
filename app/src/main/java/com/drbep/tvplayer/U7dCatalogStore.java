@@ -253,6 +253,26 @@ final class U7dCatalogStore extends SQLiteOpenHelper {
         } finally {db.endTransaction();}
         if(!db.inTransaction())genreCache.invalidate(scope);
     }
+    /** Replace one complete provider day, preserving explicit user bookmarks. Empty/invalid replies are non-destructive. */
+    void replaceGuideDay(String scope,String channel,String day,List<EpgRepository.EpgProgram> items) throws Exception {
+        if(items.isEmpty())return;
+        for(EpgRepository.EpgProgram p:items) {
+            if(!channel.equals(p.channelId)||!day.equals(ArchiveWindow.day(p.startTime))
+                    ||EpgTimeCodec.parseEpochMillis(p.endTime)<=EpgTimeCodec.parseEpochMillis(p.startTime))
+                throw new IllegalArgumentException("Invalid guide day");
+        }
+        synchronized(writeLock) {
+            SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();
+            try {
+                db.delete("programs","scope=? AND channel=? AND day=? AND NOT EXISTS (SELECT 1 FROM saved s WHERE s.scope=programs.scope AND s.id=programs.id)",new String[]{scope,channel,day});
+                for(EpgRepository.EpgProgram p:items)putProgram(db,scope,p);
+                db.execSQL("INSERT OR REPLACE INTO catalog VALUES(?,?,?,?)",new Object[]{scope,channel,System.currentTimeMillis(),"[]"});
+                pruneExpiredPrograms(db,scope);
+                db.setTransactionSuccessful();
+            } finally {db.endTransaction();}
+            genreCache.invalidate(scope);
+        }
+    }
     void indexAll(String scope,java.util.Map<String,List<EpgRepository.EpgProgram>> channels) throws Exception { synchronized(writeLock) {
         SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();
         try {for(java.util.Map.Entry<String,List<EpgRepository.EpgProgram>> channel:channels.entrySet())for(EpgRepository.EpgProgram p:channel.getValue())if(ArchiveWindow.retained(p.startTime,System.currentTimeMillis()))putProgram(db,scope,p);db.setTransactionSuccessful();}

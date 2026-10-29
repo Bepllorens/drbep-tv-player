@@ -1,3 +1,5 @@
+Referencia vigente: docs/pendientes-20261029.md (beta784). Este archivo conserva historia y evidencias.
+
 ESTADO CONSOLIDADO DEL PLAN — 28/10/2026, despues de beta783
 Prevalece sobre pendientes-20261027.txt y los estados de preparacion anteriores.
 Desarrollo Android en .185, rama qoder/disneyplus-vod-582, base 1b868591c1c84ed9a98dd79b51197239fbf0c535.

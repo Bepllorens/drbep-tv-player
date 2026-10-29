@@ -1,5 +1,8 @@
 # DRBEP TV Player (Android TV)
 
+
+- [Plan y pendientes actualizados tras la beta 784](docs/pendientes-20261029.md).
+
 Reproductor nativo para Android TV, Fire TV y tablet. Usa Media3/ExoPlayer y una
 ruta libVLC acotada para formatos que Media3 no puede reproducir correctamente.
 

@@ -1,3 +1,5 @@
+Referencia vigente: docs/pendientes-20261029.md (beta784). Este archivo conserva historia y evidencias.
+
 Estado actualizado: pendientes-20261028.txt. Las notas de preparacion/publicacion siguientes son historicas.
 
 Plan TeVas 0.4.9 adaptado a DRBEP — 28/10/2026

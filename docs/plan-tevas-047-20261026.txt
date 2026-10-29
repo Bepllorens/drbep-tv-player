@@ -1,3 +1,5 @@
+Referencia vigente: docs/pendientes-20261029.md (beta784). Este archivo conserva historia y evidencias.
+
 Estado único actualizado: docs/pendientes-20261027.txt. Las notas que siguen incluyen historia.
 
 PLAN DRBEP — revisión de Te Vas 0.4.7

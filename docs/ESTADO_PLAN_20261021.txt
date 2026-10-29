@@ -1,3 +1,5 @@
+Referencia vigente: docs/pendientes-20261029.md (beta784). Este archivo conserva historia y evidencias.
+
 Punto de continuacion del plan DRBEP — 21/10/2026
 
 El usuario pide guardar el estado y pasar primero a estudiar la tipografia.

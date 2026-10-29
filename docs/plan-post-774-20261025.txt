@@ -1,3 +1,5 @@
+Referencia vigente: docs/pendientes-20261029.md (beta784). Este archivo conserva historia y evidencias.
+
 PLAN TRAS LA BETA 774 - ESTADO DEL 25/10/2026
 
 Entorno: desarrollo y compilacion en .185. Produccion .223.

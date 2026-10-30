@@ -49,4 +49,3 @@ public class LiveMembershipEquivalenceTest {
   assertFalse(LiveHomePolicy.visibleInHome(c,p));
  }
 }
-

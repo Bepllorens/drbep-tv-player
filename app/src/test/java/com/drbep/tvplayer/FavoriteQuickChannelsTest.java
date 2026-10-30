@@ -49,4 +49,3 @@ public class FavoriteQuickChannelsTest {
   assertEquals(2,result.size());assertEquals(3,calls[0]);
  }
 }
-

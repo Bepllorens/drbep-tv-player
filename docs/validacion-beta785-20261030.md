@@ -61,3 +61,15 @@ Queda optimizacion de picos y una comparacion prolongada controlada.
 Evidencias privadas (no incorporar bases, sesiones ni registros con contenido):
 /srv/drbep-dev/reviews/android-close-20261030.
 Publicacion y commits se verifican por separado al cerrar el turno.
+
+## Publicacion verificada
+Beta785 publicada el30/10 con autorizacion explicita para sesiones activas.
+APK descargada del canal: SHA256 exacto del artefacto probado. Estado de
+stable y su ruta conservados, version582. Sin reinicio/despliegue de backend.
+Git Android:5b399b6 (cambios) y7240d89 (espacios finales en dos tests).
+Git backend:ab7d5b5 (estudio del dashboard). Remotos verificados.
+Respaldo de beta anterior y evidencias:
+/srv/drbep-dev/artifacts/beta785-publication.
+Auxiliares de respaldo retirados de Fire y Xiaomi; respaldos privados conservados.
+Xiaomi: filtro de grupos de series abre y cierra, regreso a portada/TV correcto;
+catalogo de series vacio, por lo que episodios siguen pendientes.

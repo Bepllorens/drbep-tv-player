@@ -9074,7 +9074,7 @@ public class MainActivity extends FragmentActivity {
     }
     private List<String> homeLiveOrder(String key) {
         String scope = homeOrderPreferenceKey();
-        return jsonStringList(homeLiveOrderSnapshot.ids(scope, prefs.getString(scope, "{}"), key), 10000);
+        return homeLiveOrderSnapshot.orderedIds(scope, prefs.getString(scope, "{}"), key, 10000);
     }
     private void saveHomeLiveOrder(String key, List<String> ids) {
         JSONObject orders = homeLiveOrders();
@@ -11645,6 +11645,7 @@ public class MainActivity extends FragmentActivity {
         long began=android.os.SystemClock.elapsedRealtimeNanos(),now=System.currentTimeMillis();
         final List<EpgRepository.EpgProgram> input=programs==null?java.util.Collections.emptyList():programs;
         int selected=liveGuideSelection.resolve(liveGuideKey(channel),liveGuideIds(input),liveGuideCurrent(input));
+        long prepared=android.os.SystemClock.elapsedRealtimeNanos();
         List<LiveChannelGuideUiModel.Row> templates=liveGuideRenderCache.get(liveGuideKey(channel),input,now/30000L,()->{
             List<LiveChannelGuideUiModel.Row> formatted=new ArrayList<>();
             SimpleDateFormat dayFormat=new SimpleDateFormat("EEEE dd/MM",Locale.getDefault());
@@ -11662,6 +11663,8 @@ public class MainActivity extends FragmentActivity {
                 formatted.add(row);
             }return formatted;
         });
+        long formatted=android.os.SystemClock.elapsedRealtimeNanos();
+        boolean reused=liveGuideRenderCache.wasHit();
         List<LiveChannelGuideUiModel.Row> rows=new ArrayList<>(templates);
         if(selected>=0&&selected<rows.size()){
             LiveChannelGuideUiModel.Row base=rows.get(selected);
@@ -11673,8 +11676,11 @@ public class MainActivity extends FragmentActivity {
         model.dateLabel=liveGuideDay.equals(java.time.LocalDate.now())?"Hoy":liveGuideDay.format(java.time.format.DateTimeFormatter.ofPattern("EEE dd/MM",Locale.getDefault()));
         model.scrollRequest=liveGuideScrollRequest;
         model.previousDay=()->moveLiveGuideDay(-1);model.nextDay=()->moveLiveGuideDay(1);
+        long selectedAt=android.os.SystemClock.elapsedRealtimeNanos();
         LiveChannelGuideComposeBinder.bind((ComposeView)findViewById(R.id.liveChannelGuide),model);
-        Log.d(TAG,"GuideBindCost rows="+rows.size()+" micros="+((android.os.SystemClock.elapsedRealtimeNanos()-began)/1000L));
+        long bound=android.os.SystemClock.elapsedRealtimeNanos();
+        BlackBox.guideBind(reused,rows.size(),(bound-began)/1000L,(prepared-began)/1000L,
+                (formatted-prepared)/1000L,(selectedAt-formatted)/1000L,(bound-selectedAt)/1000L);
     }
     private void refreshOverlayChannelList() {
         requestChannelOverlaySurfaceRender();
@@ -14915,6 +14921,7 @@ public class MainActivity extends FragmentActivity {
                     byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1)output.write(buffer,0,n);page=output.toByteArray();
                 }
                 final DevicePanelScreen panelScreen = new DevicePanelScreen(this);
+                final ImageCacheReport imageCacheReport = new ImageCacheReport(getCacheDir());
                 DeviceWebPanel candidate=new DeviceWebPanel(new DeviceWebPanel.Host() {
                     public byte[] screen() throws Exception { return panelScreen.capture(); }
                     public String ui() throws Exception { return panelScreen.ui(); }
@@ -14927,6 +14934,7 @@ public class MainActivity extends FragmentActivity {
                     public String metadataIndex(String command)throws Exception{return command.isEmpty()?MetadataIndexWorker.status(getApplicationContext()):MetadataIndexWorker.command(getApplicationContext(),command);}
                     public String blackBoxLease(String client,long sequence,boolean active)throws Exception{return BlackBox.detailLease(client,sequence,active);}
                     public String blackBox()throws Exception{return BlackBox.summary();}
+                    public String imageCache()throws Exception{return imageCacheReport.read(ImageDiskBudget.configuredBytes);}
                     public String networkCheck()throws Exception{return NetworkDiagnostic.SHARED.check(catalogRepository.vodApiBaseUrl());}
                     public byte[] blackBoxExport()throws Exception{return BlackBox.export();}
                     public byte[] blackBoxExport(int minutes)throws Exception{return BlackBox.export(minutes);}
@@ -15243,6 +15251,22 @@ public class MainActivity extends FragmentActivity {
                     importedVodReturnAction=()->showAlfaAdultLibrary(back);
                     modalReturnAction=importedVodReturnAction;
                     playChannelItem(item,true);
+                });
+            }
+            public boolean canReturnToPlayback() {
+                ChannelItem current=getCurrentPlaybackChannelItem();
+                return ActivePlaybackReturnPolicy.allows(importedVodReturnId,
+                        current==null?null:current.id,
+                        playerController!=null&&playerController.hasPlaybackForSafety(),
+                        currentOfflinePermissions!=null&&currentOfflinePermissions.allowsAlfaAdult()
+                                &&current!=null&&AlfaAdultPrivacy.privateID(current.id));
+            }
+            public void returnToPlayback(Dialog dialog) {
+                if(!canReturnToPlayback())return;
+                dismissModalForNextAction(dialog,()->{
+                    restorePlaybackAfterModal();
+                    hideOverlay();
+                    if(playerView!=null)playerView.requestFocus();
                 });
             }
             public void back(Dialog dialog) { dismissModalForNextAction(dialog,back); }
@@ -15644,28 +15668,43 @@ public class MainActivity extends FragmentActivity {
     private void stopPlaybackForSafety(String reason, String commandId) {
         if (playbackSafetyStopping) return;
         playbackSafetyStopping = true;
+        final long stopTrace=BlackBox.operation(), stopStarted=System.nanoTime();
+        final boolean needsAck=commandId!=null&&!commandId.isEmpty()&&catalogSnapshotStore!=null;
+        BlackBox.event(BlackBoxStore.Event.SAFETY_STOP_BEGIN,stopTrace,0,
+                needsAck?1:0,multiPlayerControllers.size());
         playbackIdleGuard.playback(false, android.os.SystemClock.elapsedRealtime());
         uiHandler.removeCallbacks(playbackIdleTick);
         cancelRemoteZap();
         cancelPendingU7dSeek();
         rememberCurrentVodPosition();
         rememberCurrentRecordingPosition();
+        BlackBox.event(BlackBoxStore.Event.SAFETY_PROGRESS_SAVED,stopTrace,BlackBox.elapsed(stopStarted),0,0);
         ComposeDialogHost.dismissAll(this);
         stopStartupLivePreview();
         releaseMultiViewControllers();
         if (playerController != null) playerController.stopByPlaybackPolicy();
         stopPlaybackHeartbeat("stop");
+        BlackBox.event(BlackBoxStore.Event.SAFETY_STOP_ISSUED,stopTrace,BlackBox.elapsed(stopStarted),0,0);
         showStatus("Reproducción detenida · " + reason);
         if (commandId == null || commandId.isEmpty() || catalogSnapshotStore == null) {
             exitPlaybackAndFinish();
             return;
         }
         boolean submitted = submitControlTask("playback-stop-ack", () -> {
-            try { catalogSnapshotStore.acknowledgePlaybackStop(baseUrl, commandId); }
-            catch (Exception error) { Log.w(TAG, "No se pudo confirmar la parada remota"); }
+            try {
+                catalogSnapshotStore.acknowledgePlaybackStop(baseUrl, commandId);
+                BlackBox.event(BlackBoxStore.Event.SAFETY_STOP_ACK,stopTrace,BlackBox.elapsed(stopStarted),1,0);
+            }
+            catch (Exception error) {
+                BlackBox.event(BlackBoxStore.Event.SAFETY_STOP_ACK,stopTrace,BlackBox.elapsed(stopStarted),2,0);
+                Log.w(TAG, "No se pudo confirmar la parada remota");
+            }
             finally { postUiIfAlive(this::exitPlaybackAndFinish); }
         });
-        if (!submitted) exitPlaybackAndFinish();
+        if (!submitted) {
+            BlackBox.event(BlackBoxStore.Event.SAFETY_STOP_ACK,stopTrace,BlackBox.elapsed(stopStarted),3,0);
+            exitPlaybackAndFinish();
+        }
     }
 
     private final SleepTimerState sleepTimer = new SleepTimerState();
@@ -20392,22 +20431,18 @@ public class MainActivity extends FragmentActivity {
         };
         discoveryHomeState.refreshHome = () -> uiHandler.post(homeRefresh);
         StartupHomeHubComposeBinder.bind(composeView, model, new StartupHomeHubArtworkBinder() {
-            private final java.util.Map<String, String[]> libraryInfo = new java.util.HashMap<>();
+            private final LibraryInfoCache libraryInfo = new LibraryInfoCache();
             @Override
             public Runnable loadLibraryInfo(StartupHomeHubUiModel.ContinueCard card, java.util.function.Consumer<String[]> ready) {
                 if (!card.description.isEmpty() || !card.libraryId.startsWith("hbomax:")) {
                     ready.accept(new String[]{card.description, card.facts}); return () -> {};
                 }
-                String[] cached = libraryInfo.get(card.libraryId);
-                if (cached != null) { ready.accept(cached); return () -> {}; }
                 HboWatchHistory.Entry entry = hboHistory().get(card.libraryId);
                 if (entry == null) { ready.accept(new String[]{"", card.facts}); return () -> {}; }
                 final String id = entry.id, title = entry.title, kind = entry.kind, series = entry.seriesId;
                 final String revision = hboPosterRevision;
                 final CatalogRepository repository = catalogRepository;
-                final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
-                interactiveExecutor.execute(() -> {
-                    if (cancelled.get()) return;
+                return libraryInfo.request(card.libraryId + "|" + revision, () -> {
                     String description = "", facts = card.facts;
                     try {
                         String rev = revision.isEmpty() ? repository.fetchPrivateVodMetadata("").optString("revision") : revision;
@@ -20423,15 +20458,11 @@ public class MainActivity extends FragmentActivity {
                             if (row.optInt("release_year") > 0) facts += " · " + row.optInt("release_year");
                             break;
                         }
-                    } catch (Exception ignored) { }
-                    final String[] info = {description, facts};
-                    postUiIfAlive(() -> {
-                        if (cancelled.get() || dialogHolder[0] == null || !dialogHolder[0].isShowing()) return;
-                        if (!info[0].isEmpty()) libraryInfo.put(card.libraryId, info);
-                        ready.accept(info);
-                    });
-                });
-                return () -> cancelled.set(true);
+                    } catch (Exception failure) { throw new IllegalStateException(failure); }
+                    return new String[]{description, facts};
+                }, info -> {
+                    if (dialogHolder[0] != null && dialogHolder[0].isShowing()) ready.accept(info);
+                }, interactiveExecutor, action -> postUiIfAlive(action));
             }
             @Override
             public void bindLogo(ImageView imageView, String logoUrl, String channelName, int widthDp, int heightDp) {
@@ -21168,13 +21199,19 @@ public class MainActivity extends FragmentActivity {
 
     private StartupHomeHubUiModel.ContinueCard buildHomeLiveCard(ChannelItem item, String providerKey,
             Function<Runnable, Runnable> open) {
-        EpgRepository.EpgProgramPair pair = normalizedEpgPair(item.id);
+        return buildHomeLiveCard(item, providerKey, open, true);
+    }
+
+    private StartupHomeHubUiModel.ContinueCard buildHomeLiveCard(ChannelItem item, String providerKey,
+            Function<Runnable, Runnable> open, boolean resolveProgramme) {
+        EpgRepository.EpgProgramPair pair = resolveProgramme ? normalizedEpgPair(item.id) : null;
         EpgRepository.EpgProgram current = pair == null ? null : pair.current;
         EpgRepository.EpgProgram next = pair == null ? null : pair.next;
         String title = current == null ? (pair == null ? item.nowProgram : "") : current.title;
         if (title == null || title.trim().isEmpty()) title = "Programación no disponible";
+        String channelName = displayName(item);
         StartupHomeHubUiModel.ContinueCard card = new StartupHomeHubUiModel.ContinueCard(
-                displayName(item), title, item.logoUrl, displayName(item), false,
+                channelName, title, item.logoUrl, channelName, false,
                 current == null ? 0f : Math.max(0, current.progress) / 100f, open.apply(() -> {
                     ChannelItem allowed = findAllowedHomeLiveChannel(item.id);
                     if (allowed == null) return;
@@ -21190,12 +21227,13 @@ public class MainActivity extends FragmentActivity {
                     hideTouchControlsForRemote();
                     hideZapBanner();
                 }));
-        card.programmeMetadata = programmeMetadata(item,current);
+        card.programmeMetadata = resolveProgramme ? programmeMetadata(item,current) : null;
         card.channelId = item.id;
-        card.programmeSnapshotUptimeMs = android.os.SystemClock.uptimeMillis();
+        card.programmeSnapshotUptimeMs = resolveProgramme ? android.os.SystemClock.uptimeMillis() : 0L;
+        if (!resolveProgramme) card.initialProgramme = () -> buildHomeLiveCard(item, providerKey, open);
         card.refreshProgramme = () -> buildHomeLiveCard(item, providerKey, open);
         card.description = current == null || current.description == null ? "" : current.description;
-        card.schedule = current == null || parseIsoMillis(current.startTime) <= 0L || parseIsoMillis(current.endTime) <= parseIsoMillis(current.startTime) ? "" : shortTime(current.startTime) + " – " + shortTime(current.endTime);
+        card.schedule = current == null ? "" : EpgScheduleFormatter.format(current.startTime, current.endTime);
         card.nextProgram = next == null ? (pair != null || item.nextProgram == null ? "" : item.nextProgram)
                 : shortTime(next.startTime) + " · " + next.title;
         return card;
@@ -21217,6 +21255,8 @@ public class MainActivity extends FragmentActivity {
         // No VOD queries or artwork work for the lightweight start page.
         if (!"En directo".equals(section)) return page;
         if ("En directo".equals(section)) {
+            android.os.Trace.beginSection("DRBEP.tvPage");
+            try {
             page.heading = "Tu televisión, ahora";
             page.description = "Canales favoritos y recientes · Consulta la programación en la guía";
             page.actionLabel = "Abrir guía de TV";
@@ -21228,13 +21268,16 @@ public class MainActivity extends FragmentActivity {
             for (ChannelItem item : allChannels) {
                 // Discard other groups before expensive permission/name checks.
                 if (item == null || !LiveHomePolicy.matches(item, providerKey) || !LiveHomePolicy.visibleInHome(item, currentOfflinePermissions) || shouldHideProtectedItem(item)) continue;
-                page.cards.add(buildHomeLiveCard(item, providerKey, open));
+                // Resolve EPG only when a row is composed or inspected by search.
+                // Visible rows and the detail panel receive the full snapshot.
+                page.cards.add(buildHomeLiveCard(item, providerKey, open, false));
             }
             List<String> channelOrder = homeLiveOrder("channels:" + providerKey);
             java.util.Map<String, Integer> rank = new java.util.HashMap<>();
             for (int i = 0; i < channelOrder.size(); i++) rank.putIfAbsent(channelOrder.get(i), i);
             page.cards.sort(java.util.Comparator.comparingInt(c -> rank.getOrDefault(c.channelId, Integer.MAX_VALUE)));
             return page;
+            } finally { android.os.Trace.endSection(); }
         }
         VodVisualTypeFilter type = "Series".equals(section) ? VodVisualTypeFilter.SERIES : VodVisualTypeFilter.MOVIES;
         VodVisualPlatformFilter provider;
@@ -24634,30 +24677,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private List<ChannelItem> buildFavoriteQuickChannels() {
-        List<ChannelItem> favorites = new ArrayList<>();
-        if (favoriteChannelIds.isEmpty()) {
-            return favorites;
-        }
-        Map<String, ChannelItem> byId = new LinkedHashMap<>();
-        for (ChannelItem item : allChannels) {
-            if (item != null && item.id != null && !item.id.trim().isEmpty() && !byId.containsKey(item.id)) {
-                byId.put(item.id, item);
-            }
-        }
+        if (favoriteChannelIds.isEmpty()) return new ArrayList<>();
         List<String> orderedIds = favoriteOrderStore == null ? new ArrayList<>() : favoriteOrderStore.getOrderedIds();
-        Set<String> addedIds = new HashSet<>();
-        for (String favoriteId : orderedIds) {
-            ChannelItem match = byId.get(favoriteId);
-            if (match != null && !shouldHideProtectedItem(match) && favoriteChannelIds.contains(favoriteId) && addedIds.add(favoriteId)) {
-                favorites.add(match);
-            }
-        }
-        for (ChannelItem item : allChannels) {
-            if (item != null && item.id != null && !shouldHideProtectedItem(item) && favoriteChannelIds.contains(item.id) && addedIds.add(item.id)) {
-                favorites.add(item);
-            }
-        }
-        return favorites;
+        return FavoriteQuickChannels.build(allChannels, favoriteChannelIds, orderedIds, this::shouldHideProtectedItem);
     }
 
     private void returnToLiveTv() {

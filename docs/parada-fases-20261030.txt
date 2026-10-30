@@ -1,0 +1,40 @@
+Parada e inactividad: fases para validacion — 30/10/2026
+Desarrollo .185. No Fire/produccion/stable, sin instalar/publicar.
+Respaldo: /srv/drbep-dev/reviews/playback-stop-phases-20261030.
+
+No cambios en reglas, plazos, HDMI, secuencia de parada, progreso,
+reintentos ni confirmaciones. Nuevos hitos numericos en stopPlaybackForSafety:
+SAFETY_STOP_BEGIN: operacion propia, a0,b=requiere ack(1/0),c=numero multiview.
+SAFETY_PROGRESS_SAVED: a=ms desde inicio; significa que retornaron las llamadas
+de recordar progreso, NO confirma escritura duradera ni que hubiera contenido
+con progreso guardable. Persistencia debe verificarse tras reiniciar.
+SAFETY_STOP_ISSUED: a=ms desde inicio; retornaron paradas de miniatura/multiview/
+player y llamada stopPlaybackHeartbeat. NO garantiza ausencia de trafico/audio.
+SAFETY_STOP_ACK: a=ms desde inicio;b=1 llamada termino,2 excepcion,3 no encolada.
+No ack para parada local. No se registran motivo textual, usuario, canal,
+posicion, commandId, URLs ni errores. Misma cola/rotacion de caja negra.
+Operaciones separadas de playback y HTTP; no inferir vinculos por proximidad.
+Nada se emite por tick o cada segundo de aviso: solo al ejecutar la parada.
+
+Pruebas de politica ampliadas:
+Deshabilitar inactividad durante aviso; nuevo intervalo tras parar/reanudar;
+recuperacion de salida tras parada sin emitir parada duplicada.
+No demuestran que el Activity cierre superficies ni conectividad.
+
+Pendiente Fire/tablet:
+- Parada individual y de usuario en directo, miniatura, VOD, U7D, multiview, PiP.
+- Conservar progreso real tras abrir de nuevo y no afectar otro usuario.
+- Confirmar audio/video/trafico detenidos; medir fases y ack, fallo/reintento.
+- Caducidad/duplicados de comandos, restauracion breve de HDMI y perdida larga.
+- Aviso con mando y tactil; accion humana renueva, red/refrescos no renuevan.
+- Respaldar datos actuales antes de instalar candidata acumulada (esquema10).
+No se ha enviado ninguna orden remota ni reiniciado dispositivos/servidores.
+
+Archivos:
+MainActivity.java (stopPlaybackForSafety)
+BlackBoxStore.java (eventos)
+PlaybackIdleGuardTest.java (tres regresiones nuevas)
+
+Validacion final:1114 pruebas JVM y70 panel correctas.
+Release ARM32 beta compilada en2m48s; diff --check correcto.
+Sin instalar/publicar, sin pruebas de dispositivo.

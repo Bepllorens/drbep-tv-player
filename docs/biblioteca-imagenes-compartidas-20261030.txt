@@ -1,0 +1,51 @@
+Biblioteca: consultas de imagenes compartidas — 30/10/2026
+
+Solo desarrollo .185. Sin instalar, publicar ni modificar .223/stable.
+Respaldo: /srv/drbep-dev/reviews/library-artwork-sharing-20261030.
+
+Hallazgos:
+- HomeTmdbArtwork solo deduplicaba renovaciones con cache ya existente.
+  Dos peticiones sin cache para la misma imagen iniciaban dos consultas.
+- HomePosterLoader.CardRequest cambia la escala a CENTER_CROP al recibir
+  una imagen: el FIT_CENTER inicial de DiscoveryLibrary no era suficiente.
+
+Correcciones:
+- ArtworkLookupQueue comparte una consulta en curso por clave existente
+  (hash de endpoint y cabeceras de sesion/dispositivo). Poster/backdrop y
+  cuentas distintas conservan claves distintas. No se registran esas claves.
+- Cada consumidor conserva su cancelacion. Cancelar una tarjeta no interrumpe
+  la consulta de otra; respuestas ya encoladas se descartan si se cancela.
+- Si no quedan consumidores antes de iniciar el trabajo, se omite la consulta.
+  Una consulta HTTP ya iniciada puede terminar y guardar la cache existente;
+  mantiene los timeouts4000/6500ms y los dos hilos originales.
+- Se vuelve a consultar la cache antes del HTTP para evitar repetirlo si
+  otra tarea acaba de rellenarla. Renovacion de7dias y limite200 conservados.
+- Errores y rechazos liberan la entrada y permiten reintentar; cada consumidor
+  conserva su propia imagen de respaldo.
+- Biblioteca restablece FIT_CENTER en el callback de imagen lista; no cambia
+  el recorte de los demas carruseles.
+
+Archivos:
+app/src/main/java/com/drbep/tvplayer/ArtworkLookupQueue.java
+app/src/main/java/com/drbep/tvplayer/HomeTmdbArtwork.java
+app/src/main/java/com/drbep/tvplayer/StartupHomeHubComposeBinder.kt
+app/src/test/java/com/drbep/tvplayer/ArtworkLookupQueueTest.java
+
+Validacion:
+9 casos:50 consumidores/1consulta, cancelacion parcial, descarte en cola,
+entrega cancelada, fallo/reintento, separacion de claves, rechazo de executor,
+consumidor con error y adhesión a consulta en curso tras cancelar el primero.
+Datos sinteticos, sin credenciales ni conexion al proveedor. La reduccion
+50a1 describe peticiones iguales concurrentes; no mide tiempos reales Fire.
+
+Pendiente:
+Verificar visualmente fondo completo, contraste y foco de biblioteca;
+red/cache fria y caliente durante reproduccion, cambio rapido de seleccion,
+salida/retorno y memoria. No afirmar mejora real de latencia hasta medir.
+Logos de titulos siguen pendientes del soporte del resolvedor.
+Siguiente bloque del plan: comparacion equivalente de miniguia; su medicion
+en dispositivo requiere television encendida, se mantiene pendiente.
+
+Resultado final:1093 pruebas JVM y70 del panel correctas, sin fallos.
+Compilacion release ARM32 beta correcta en2m58s; diff --check correcto.
+No instalado ni publicado. Validacion visual y rendimiento Fire pendientes.

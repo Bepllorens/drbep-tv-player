@@ -64,4 +64,28 @@ public class PlaybackTraceSummaryTest {
   traces.accept(event("one",1,"PLAY_MANIFEST_LOADED",120,-1,20,0));
   JSONObject row=traces.json().getJSONObject(0);assertFalse(row.has("details"));assertFalse(row.getJSONObject("stages").has("MANIFEST"));
  }
+
+ @Test public void resolutionIsExplicitAndDoesNotChangeExistingStageTimes() throws Exception {
+  PlaybackTraceSummary t=new PlaybackTraceSummary();
+  t.accept(event("one",10,"PLAY_RESOLVE_BEGIN",100,3,0,0));
+  t.accept(event("one",11,"PLAY_PREPARE",150,0,0,1));
+  t.accept(event("one",11,"PLAY_RESOLVE_LINK",151,10,50,3));
+  t.accept(event("one",11,"PLAY_FRAME",200,50,0,0));
+  JSONObject row=t.json().getJSONObject(0);
+  assertEquals(50,row.getJSONObject("resolution").getLong("durationMs"));
+  assertEquals(10,row.getJSONObject("resolution").getLong("operation"));
+  assertEquals(50,row.getJSONObject("stages").getLong("FRAME"));
+ }
+ @Test public void wrongProcessGenerationAndMissingStartCannotBeInferred() throws Exception {
+  PlaybackTraceSummary t=new PlaybackTraceSummary();
+  t.accept(event("one",10,"PLAY_RESOLVE_BEGIN",100,3,0,0));
+  t.accept(event("two",11,"PLAY_PREPARE",150,0,0,1));
+  t.accept(event("two",11,"PLAY_RESOLVE_LINK",151,10,50,3));
+  assertFalse(t.json().getJSONObject(0).has("resolution"));
+  t.accept(event("one",12,"PLAY_PREPARE",160,0,0,1));
+  t.accept(event("one",12,"PLAY_RESOLVE_LINK",161,10,60,4));
+  assertFalse(t.json().getJSONObject(1).has("resolution"));
+  t.accept(event("one",12,"PLAY_RESOLVE_LINK",162,99,60,3));
+  assertFalse(t.json().getJSONObject(1).has("resolution"));
+ }
 }

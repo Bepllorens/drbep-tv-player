@@ -66,4 +66,25 @@ public class PlaybackIdleGuardTest {
         guard.playback(true,0);guard.playback(false,HOUR);
         assertEquals(PlaybackIdleGuard.Event.NONE,guard.poll(24*HOUR));
     }
+
+    @Test public void disablingIdleDuringWarningDoesNotStopPlayback() {
+        PlaybackIdleGuard guard=new PlaybackIdleGuard(0);guard.playback(true,0);
+        assertEquals(PlaybackIdleGuard.Event.WARN,guard.poll(4*HOUR));
+        guard.configure(0,60,false,20);
+        assertEquals(PlaybackIdleGuard.Event.NONE,guard.poll(5*HOUR));
+    }
+    @Test public void restartAfterStopGetsNewWindowAndOnlyOneStop() {
+        PlaybackIdleGuard guard=new PlaybackIdleGuard(0);guard.playback(true,0);
+        assertEquals(PlaybackIdleGuard.Event.STOP_IDLE,guard.poll(5*HOUR));
+        guard.playback(false,5*HOUR);guard.playback(true,6*HOUR);
+        assertEquals(PlaybackIdleGuard.Event.NONE,guard.poll(6*HOUR));
+        assertEquals(PlaybackIdleGuard.Event.STOP_IDLE,guard.poll(11*HOUR));
+        assertEquals(PlaybackIdleGuard.Event.NONE,guard.poll(12*HOUR));
+    }
+    @Test public void outputRecoveryAfterStopDoesNotGenerateAnotherStop() {
+        PlaybackIdleGuard guard=new PlaybackIdleGuard(0);guard.playback(true,0);guard.output(false,0);
+        assertEquals(PlaybackIdleGuard.Event.STOP_OUTPUT,guard.poll(20000));
+        guard.output(true,21000);guard.interaction(22000);
+        assertEquals(PlaybackIdleGuard.Event.NONE,guard.poll(10*HOUR));
+    }
 }

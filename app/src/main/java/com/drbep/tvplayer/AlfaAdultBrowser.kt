@@ -52,6 +52,8 @@ internal object AlfaAdultBrowser{
  interface Host{
   fun play(item:ChannelItem,dialog:Dialog?)
   fun back(dialog:Dialog?)
+  fun canReturnToPlayback():Boolean
+  fun returnToPlayback(dialog:Dialog?)
   fun closed()
   fun input(value:String,submit:Consumer<String>)
   fun pin(submit:Consumer<String>)
@@ -61,12 +63,12 @@ internal object AlfaAdultBrowser{
   var dialog:Dialog?=null
   var back=Runnable{host.back(dialog)}
   val api=PalantirHttp(base,headers)
-  view.setContent{AlfaLibrary(api,host,{host.back(dialog)},{back=it}){host.play(it,dialog)}}
+  view.setContent{AlfaLibrary(api,host,{host.back(dialog)},{host.returnToPlayback(dialog)},{back=it}){host.play(it,dialog)}}
   dialog=ComposeDialogHost.showFullscreen(activity,view,{back.run()},{host.closed()})
   dialog?.setOnKeyListener{_,code,event->if(code==android.view.KeyEvent.KEYCODE_BACK){if(event.action==android.view.KeyEvent.ACTION_UP)back.run();true}else false}
  }
 }
-@Composable private fun AlfaLibrary(api:PalantirHttp,host:AlfaAdultBrowser.Host,exit:()->Unit,setBack:(Runnable)->Unit,play:(ChannelItem)->Unit){
+@Composable private fun AlfaLibrary(api:PalantirHttp,host:AlfaAdultBrowser.Host,exit:()->Unit,resume:()->Unit,setBack:(Runnable)->Unit,play:(ChannelItem)->Unit){
  var source by remember{mutableStateOf("")}
  var search by remember{mutableStateOf("")}
  var offset by remember{mutableStateOf(0)}
@@ -121,7 +123,10 @@ internal object AlfaAdultBrowser{
   Column(Modifier.fillMaxSize().focusGroup(),verticalArrangement=Arrangement.spacedBy(12.dp)){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
     BasicText("Alfa Adultos",style=TextStyle(Color.White,25.sp,FontWeight.Bold))
-    AlfaAction(if(detail==null)"Volver"else"Volver al catálogo",Modifier.focusRequester(fallbackFocus)){if(detail!=null)detail=null else exit()}
+    Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){
+     if(host.canReturnToPlayback())AlfaAction("Volver al vídeo"){resume()}
+     AlfaAction(if(detail==null)"Volver"else"Volver al catálogo",Modifier.focusRequester(fallbackFocus)){if(detail!=null)detail=null else exit()}
+    }
    }
    if(error.isNotBlank()){
     BasicText(if(error.contains("parental PIN"))"Desbloquea el catálogo con el PIN de tu cuenta."else error,style=TextStyle(Color(0xFFFFBE80),14.sp))

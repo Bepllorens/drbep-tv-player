@@ -1,0 +1,38 @@
+Categorias adaptativas — 30/10/2026
+Segundo bloque plan-mejoras-20261030.md. Estado: preparado, no instalado.
+
+Alcance real
+ImportedMovies.kt comparte pantalla para peliculas y series importadas.
+Sus filtros usan panel superpuesto; NO hay rail permanente de categorias.
+Se adapta ese panel existente sin cambiar arquitectura ni el lateral68dp.
+Antes:panel360dp, opciones max240dp y una linea.
+Ahora:panel segun etiquetas/titulo/area, opciones ocupan ancho interior,
+hasta dos lineas con elipsis. Resto de botones mantienen defaults anteriores.
+En TV:240..360dp y como maximo38% del area disponible. Ventanas <600dp:
+hasta90% y nunca mas360dp. En ventanas diminutas prevalece no desbordar.
+No hay ajuste manual de ancho en este selector que deba sobreescribirse.
+
+Coste
+Muestreo de cuatro etiquetas mas largas en una pasada O(n), sin ordenar
+todo el catalogo; solo se miden cuatro etiquetas y el titulo.
+remember incluye opciones/titulo/area/densidad/medidor. La seleccion/foco
+no es clave: la navegacion no recalcula ni cambia anchura.
+Las cuatro mas largas por caracteres son una heuristica, no garantizan ser
+las mas anchas en pixeles; nombres extremos conservan elipsis/semantica completa.
+A960dp de area: etiquetas100dp y titulo100dp => panel240dp (120dp menos
+que antes); etiqueta400dp =>312dp; etiquetas extremas=>360dp.
+Es una mejora de distribucion, no una medicion de tiempo de carga.
+No aumenta columnas automaticamente: mantiene los carruseles actuales.
+
+Pruebas
+Muestra acotada frente a ordenacion estable sobre100catalogos de1000nombres;
+entrada intacta, vacios/nulos, limites de ventanas1..599dp, TV y no finitos.
+Suite y compilacion se completan en validation.log.
+Pendiente Fire/tablet: abrir Grupo/Genero/Lista, nombres largos, preview al
+mover mando, confirmar/cerrar/atras y restaurar foco, pantalla pequena,
+densidad/texto ampliado. Las dimensiones no prueban capturas reales.
+
+Respaldo:/srv/drbep-dev/reviews/category-panel-20261030/ImportedMovies.kt.before
+Sin instalacion/publicacion, cambios de produccion ni beta/stable.
+
+Validacion .185:1054 pruebas correctas; release ARM32 beta compilado.

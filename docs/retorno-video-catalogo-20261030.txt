@@ -1,0 +1,19 @@
+Retorno del catalogo al video activo — 30/10/2026
+Incidencia: Atrás reabre el catalogo manteniendo video, sin control para
+volver a la reproduccion. Revisado en codigo, no reproducido en Fire.
+Correccion exclusivamente de navegacion .185, sin fuentes/resolucion/red:
+boton Volver al video en cabecera del navegador cuando coincide el item
+activo con el origen guardado y el permiso sigue vigente.
+Cierra el modal mediante flujo existente, restaura superficie y foco.
+No llama play, seek, prepare, pausa ni guarda historial. Volver al catalogo
+y la salida original se conservan. Video pausado conserva su pausa.
+No ofrece retorno si playback termino, se detuvo, cambio de item o no hay permiso.
+Politica de identidad ActivePlaybackReturnPolicy con tres pruebas.
+Respaldo/logs /srv/drbep-dev/reviews/catalog-player-return-20261030.
+Pendiente Fire: reproducir, Atrás, navegar cabecera con mando, Volver al video,
+confirmar posicion/pausa/audio y repetir ciclo; salir al menu general y terminar
+video no deben dejar un retorno activo incorrecto. Verificar foco visual.
+Sin instalar/publicar ni modificar produccion/stable.
+
+Validacion:1117 pruebas JVM y77 panel correctas. Release ARM32 beta
+compilada2m53s; diff --check correcto. No instalada.

@@ -60,6 +60,21 @@ final class BlackBox {
     }
     static void event(BlackBoxStore.Event e,long op,long a,long b,long c){BlackBoxStore s=store;if(s!=null)s.event(e,op,a,b,c);}
     static void foreground(boolean value){foreground=value;event(value?BlackBoxStore.Event.FOREGROUND:BlackBoxStore.Event.BACKGROUND,0,0,0,0);}
+    static HttpRequestTrace httpRequest() {
+        BlackBoxStore active=store;
+        if(active==null || !active.detailed())return HttpRequestTrace.OFF;
+        return new HttpRequestTrace(operation(),()->System.nanoTime()/1000000,
+                (phase,op,a,b,c)->event(phase==HttpRequestTrace.START?BlackBoxStore.Event.HTTP_REQUEST_START:
+                        phase==HttpRequestTrace.HEADERS?BlackBoxStore.Event.HTTP_RESPONSE_HEADERS:
+                        BlackBoxStore.Event.HTTP_REQUEST_END,op,a,b,c));
+    }
+    static void guideBind(boolean cached,int rows,long totalUs,long prepareUs,long formatUs,long selectionUs,long bindUs) {
+        BlackBoxStore active=store;
+        if(active==null || !active.detailed())return;
+        long op=operation();
+        active.event(cached?BlackBoxStore.Event.GUIDE_BIND_CACHED:BlackBoxStore.Event.GUIDE_BIND_COLD,op,totalUs,formatUs,rows);
+        active.event(BlackBoxStore.Event.GUIDE_BIND_PHASES,op,prepareUs,selectionUs,bindUs);
+    }
     static long sampleInterval(){BlackBoxStore s=store;return s!=null&&s.detailed()?5000:30000;}
     static String detailLease(String client,long sequence,boolean active)throws Exception{
         return store.detailLease(client,sequence,active);

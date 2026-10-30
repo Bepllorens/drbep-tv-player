@@ -20,7 +20,9 @@ final class LiveHomePolicy {
         // Non-admin snapshots already enforce channel-specific grants and denials.
         if (!p.admin) return true;
         if (platformAllowed(p, c.platformId)) return true;
-        for (String group : groups(c)) if (groupAllowed(p, group)) return true;
+        if (c.group != null && !c.group.trim().isEmpty() && groupAllowed(p, c.group)) return true;
+        if (c.customGroups != null)
+            for (String group : c.customGroups) if (groupAllowed(p, group)) return true;
         return false;
     }
     static List<String> groups(ChannelItem c) {
@@ -34,7 +36,10 @@ final class LiveHomePolicy {
         if (key == null) return false;
         if (key.startsWith("live:")) return ("live:" + c.platformId).equals(key);
         if (!key.startsWith("group:")) return false;
-        for (String group : groups(c)) if (("group:" + normalized(group)).equals(key)) return true;
+        String target = key.substring("group:".length());
+        if (c.group != null && !c.group.trim().isEmpty() && normalized(c.group).equals(target)) return true;
+        if (c.customGroups != null)
+            for (String group : c.customGroups) if (normalized(group).equals(target)) return true;
         return false;
     }
     static List<StartupHomeHubUiModel.Provider> categories(List<ChannelItem> visible, OfflinePermissions p) {

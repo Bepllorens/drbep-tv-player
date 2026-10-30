@@ -1,0 +1,122 @@
+TV: coordinacion del refresco visible y coste de montaje —29/10/2026
+
+Estado: coordinacion de TV implementada y probada; el pico de colocacion sigue abierto.
+Trabajo y compilacion en185, rama qoder/disneyplus-vod-582, base2bb83fd
+con todos los cambios previos conservados. Sin backend, produccion, publicacion,
+commit/push ni cambios en stable. No repetir experimentos de filas ya retirados.
+
+Cambio acotado
+- SharedVisibleProgrammeRefresh.kt: un coordinador por pantalla TV, con un
+  observador de ciclo de vida y un reloj para las suscripciones montadas.
+- VisibleProgrammeRefreshQueue.java: plazos individuales,15s de cadencia,
+  registro/cancelacion por identidad y pausa. No almacena catalogo ni hace I/O.
+- VisibleProgrammeRefresh.kt: dentro de TV las filas se registran/disponen;
+  fuera del proveedor compartido conserva su ruta anterior. Conserva las
+  lecturas mas recientes, comparacion de campos y retraso inicial por snapshot.
+- StartupHomeHubComposeBinder.kt: proveedor solo alrededor de En directo.
+- Se mantiene la comprobacion por lectura de isShown/hasWindowFocus para cubrir
+  una ocultacion anterior a la cancelacion del recolector.
+- Visibilidad/adjuncion/foco de ventana controlan el reloj. Se reinstalan los
+  listeners si cambia el ViewTreeObserver al reinsertar la vista.
+- Un error de lectura en cache no detiene otras suscripciones; se registra solo
+  el nombre del tipo de error, sin mensaje, URL o datos de reproduccion.
+
+No cambia filas, alturas, picones, fuente, callbacks de navegacion/reproduccion,
+permisos, asociaciones, diales ni rutas. El indice ligero anterior se conserva.
+La miniatura y el motor de video no se modifican.
+
+Pruebas de comportamiento
+1035unitarios,0fallos/errores/omitidas. Seis nuevos tests cubren plazos y
+resultados, pausa/reanudacion, eliminacion de filas, cancelacion dentro del lote,
+aislamiento de errores y nuevas altas sin esperar el plazo anterior.
+Build release/R8 perfilable ARM32 beta correcto. APK privada firmada con la
+identidad ya instalada; payload verificado antes/despues de la firma.
+Sin desinstalar ni borrar datos. Firma de distribucion verificada por separado.
+
+Comparacion control/compartido en UNA APK
+Selector temporal antes de crear la pantalla; orden A1/B1/B2/A2.
+Mismo componente, La1, MovistarHLS133canales, foco y12abajo/12arriba.
+Sin traza durante estas pasadas; memoria antes/despues archivada por pasada.
+                           A1      B1      B2      A2
+entrada p50(ms)            150      73     125     105
+entrada p95(ms)            450     300     300     350
+recorrido p50(ms)           24      25      24      25
+recorrido p95(ms)           53      53      65      81
+recorrido p99(ms)          150     101     109     300
+Dos pasadas por variante NO acreditan un porcentaje de mejora general.
+A1 puede incluir calentamiento. Se conservan todas las cifras y su variacion.
+El p50 de navegacion apenas cambia. No declarar la interfaz perfectamente fluida.
+
+Limite importante: CPU/colocacion
+Una pareja adicional con traza corta completa, mismo binario:
+control: frame380ms/320CPU; layout196ms/180CPU.
+compartido: frame385ms/328CPU; layout201ms/181CPU.
+La colocacion NO mejora en esa pareja. Los ambitos son anidados, no sumar.
+La mejora observada de entrada/picos no permite atribuir un ahorro de CPU
+en layout a esta coordinacion. Mantener abierto el objetivo de primera entrada.
+Trazas gfx/view/sched:2048KiB porCPU,8MiB total, sin sobrescritura.
+Al terminar tracing_on=0 y buffer_size_kb=1.
+
+Verificacion real del reloj, APK FINAL sin selector
+El primer auxiliar fallo porque release elimina Log.i, no porque se probara
+una ausencia de refresco. Archivado como check-lifecycle-log-stripped.py;
+check-lifecycle.py remite ahora a la comprobacion por trazas.
+Trazas de18s, solo app,1024KiB/CPU, todas completas:
+- TV visible:2lotes/2lecturas periodicas en esa ventana.
+- TV oculta por pantalla completa:0lotes y0lecturas compartidas.
+- De vuelta:1lote con9lecturas; duracion2,503ms.
+Las lecturas de snapshots iniciales se cuentan por separado:18 en el primer
+intervalo visible con2homeModel/2tvPage;0en el intervalo de retorno.
+No confundir snapshots de un nuevo modelo con el reloj periodico.
+Sin perdidas de foco, busqueda Calle13 fuera de pantalla, limpieza a133canales,
+pantalla completa y retorno comprobados.
+
+Sesion prolongada en APK final
+Duracion conjunta629,317s (10min29s):
+- Video antes:251,866s,6293fotogramas,25fps,0descartes nuevos,
+  0huecos>80ms, max66,654ms, sin reinicio de decoder/proceso.
+- Navegacion:15abajo/15arriba, p95=65ms; foco vuelve aLa1.
+  OK a pantalla completa y Atras a miniatura correctos.
+- Video despues:313,947s,7844fotogramas,24,996fps,0descartes nuevos,
+  0huecos>80ms, max66,758ms, sin reinicio de decoder/proceso.
+Se elige la SurfaceView que realmente presenta imagen al iniciar cada ventana.
+Anillos de presentacion solapados cada~2s: max2,588/2,243s entre consultas.
+No se mezclan los huecos del zapeo ni superficies ocultas con los intervalos idle.
+No garantiza estabilidad durante horas ni sustituye pruebas en tablet.
+
+Memoria
+Muestreo cada30s, sin forzar GC, reiniciar el Fire ni cerrar otras apps.
+Los hilos vuelven a74 despues de la navegacion (pico observado89).
+Inicio video: VmRSS135252KiB yVmSwap50880KiB.
+Fin segundo video: VmRSS134932KiB yVmSwap60024KiB.
+No hay crecimiento sostenido observado en esta ventana. VmRSS puede bajar por
+intercambio: no presentarlo como ahorro de RAM, ni sumar estas medidas como PSS.
+La memoria global y el intercambio del Fire siguen variando independientemente.
+Ultimos5000registros al cierre:0FATAL EXCEPTION/OutOfMemoryError/Playback error/
+ANR in/Cached refresh failed. No se exportan logs brutos con datos privados.
+
+Artefacto conservado e identidad
+reviews/tv-refresh-mount-20261029/final-fire.apk
+SHA256 c068107a0605ccb5e84c946001037b98f340d6a2d9741a4c622027d5ca296076
+Version784, ARM32, release perfilable, firma privada compatible.
+Se verifica el hash del APK instalado, no solo el del archivo de build.
+Selector temporal ausente del codigo y del DEX final; MainActivity identica a
+la copia anterior a este bloque. Build final/source-hashes.json preservados.
+Retorno verificado: reviews/tv-refresh-mount-20261029/before.apk
+SHA256 9b2a613415834b37ace2c55251e1f3eba5f2e83e0946070aaa6737ef7d883d54
+NO publicar la firma privada como beta. No desinstalar para cambiar de firma.
+
+Evidencias privadas185
+reviews/tv-refresh-mount-20261029/: APK/identidades, fuentes previas y candidata,
+tests, comparison.json, lifecycle-trace.json, batch-durations.json, video-before/
+after.json, stress-navigation.json, session-memory/summary.json y XML/capturas.
+reviews/tv-entry-20261029/fire/mount-*: gfx, presion y trazas de comparacion.
+No incorporar APK, respaldos, logs brutos o secretos a Git.
+
+Siguiente objetivo
+Primera construccion/colocacion: ~180msCPU en la pareja actual, sin ahorro
+acreditado. Separar subcomposicion/aplicacion de cambios y medida real de hijos.
+Examinar por que la primera entrada publica2modelos y18snapshots, mientras el
+retorno caliente no los repite. Comprobar que informacion cambia antes de
+reutilizar modelos; mantener invalidacion por catalogo, EPG oficial, permisos,
+proveedor y usuario. No introducir caches basadas solo en el ID del canal.

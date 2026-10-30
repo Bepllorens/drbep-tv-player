@@ -1,0 +1,50 @@
+Cache de imagenes — 30/10/2026
+Bloque3 del plan. Preparado en .185, sin instalar/publicar.
+
+Inventario
+Glide: disco128MiB previo; RAM8/12MiB, bitmaps4/8MiB segun lowRam, arrays2MiB.
+ChannelSvgDiskCache:8MiB de SVG, caducidad7dias; antes escaneo/ordenacion
+sincronos tras cada descarga antes de devolver la imagen.
+ArtworkMemoryCache: entradas acotadas e invalidacion por generacion.
+ArtworkGridDiskCache guarda JSON de guia (4MiB max por archivo), no bitmaps;
+no se incluye en limpieza de imagenes para no borrar guia.
+clearRuntimeCaches es accion manual: se conserva.
+
+Cambios
+Glide presupuesto disco2% de espacio libre, suelo32MiB/techo128MiB; se consulta
+al construir la cache de disco de forma diferida, no en applyOptions.
+No clearDiskCache automatico ni cambios RAM. Usa eviction propia LRU de Glide.
+Ejemplos:2000MiB libres=>40MiB,6400MiB=>128MiB; consulta fallida=>32MiB.
+El suelo puede superar2% si queda muy poco espacio; no reserva ni descarga
+esa cantidad, solo limita cache. Recalculo al crear cache, no continuo.
+
+SVG: solicitud coalescida con AtomicBoolean, ejecutor unico/baja prioridad;
+retraso30s desde primer acceso tras la pasada previa. Sin escaneo ni ordenacion
+en la devolucion de la descarga. Solo ordena cuando supera8MiB.
+Cada pasada elimina como maximo32SVG, mantiene ficheros escritos hace<60s;
+no toca tmp/JSON/journal. Sin temporizador recurrente autonomo: una nueva
+lectura pide otra pasada. El limite puede excederse temporalmente mientras
+se recorre el catalogo; sin actividad no se sigue borrando.
+IOException al leer una entrada evictada provoca recuperacion por red.
+No se vacian imagenes ya decodificadas. Los logos antiguos evictados pueden
+requerir descarga futura; verificar hit rate en Fire antes de adoptar.
+No hay garantia de mejora global de arranque por esta inspeccion.
+
+Pruebas
+Presupuesto minimo/maximo/valores extremos. Directorio sintetico: sin borrados
+bajo limite, oldest-first, maximo por pasada, preservacion de recientes y
+archivos ajenos, carpeta ausente. Sin datos ni archivos reales del usuario.
+Respaldo y logs:/srv/drbep-dev/reviews/image-cache-20261030.
+
+Pendiente
+Medir Fire: arranque, recorridos repetidos, IO, memoria/red, caratulas seguir
+viendo y logos SVG. Validar reintento de lectura concurrente con mantenimiento.
+Falta mostrar uso y presupuesto desde el panel web con consulta bajo demanda,
+sin escanear el disco en cada refresco del panel. No dar bloque3 por cerrado.
+Sin cambios .223, stable/beta ni instalacion.
+
+Validacion final:1060 pruebas, cero fallos/errores/omitidas.
+Release ARM32 beta correcto (3m9s), final-validation.log.
+Primer intento fallo al empaquetar por solapamiento accidental de dos builds
+(classes.dex ausente); no se instala/publica ese artefacto. Segundo build
+terminado sin otra compilacion activa, con el ajuste de lectura evictada.

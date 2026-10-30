@@ -28,8 +28,11 @@ public final class XmltvStreamReader {
                 if(b==marker[matched]){if(++matched==marker.length)throw new IOException("DTD forbidden");}
                 else matched=b==marker[0]?1:0;
             }
-            public int read()throws IOException{int b=in.read();if(b>=0)check(b);return b;}
-            public int read(byte[] b,int off,int len)throws IOException{int n=in.read(b,off,len);for(int i=0;i<n;i++)check(b[off+i]&255);return n;}
+            private void checkCancelled()throws InterruptedIOException {
+                if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("XMLTV cancelled");
+            }
+            public int read()throws IOException{checkCancelled();int b=in.read();checkCancelled();if(b>=0)check(b);return b;}
+            public int read(byte[] b,int off,int len)throws IOException{checkCancelled();int n=in.read(b,off,len);checkCancelled();for(int i=0;i<n;i++)check(b[off+i]&255);return n;}
         };
         // DateFormat is mutable: keep it local to this read, never shared between imports.
         final DateParser dates=new DateParser();

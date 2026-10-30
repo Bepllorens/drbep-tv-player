@@ -141,6 +141,11 @@ public final class StartupHomeHubUiModel {
         public final boolean livePreview;
         public ProgrammeMetadataUiModel programmeMetadata;
         public java.util.function.Supplier<ContinueCard> refreshProgramme;
+        public java.util.function.Supplier<ContinueCard> initialProgramme;
+        public ContinueCard resolveProgrammeSnapshot() {
+            ContinueCard resolved = initialProgramme == null ? this : initialProgramme.get();
+            return resolved == null ? this : resolved;
+        }
         public long programmeSnapshotUptimeMs;
         public String channelId = "", description = "", schedule = "", nextProgram = "";
         public String libraryId = "", facts = "";

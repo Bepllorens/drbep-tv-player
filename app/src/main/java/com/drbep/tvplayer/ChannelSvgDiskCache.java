@@ -4,11 +4,28 @@ import java.io.*;
 import java.net.*;
 
 import java.security.MessageDigest;
-import java.util.Arrays;
-import java.util.Comparator;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Small, disposable raw-image cache; no tokens or URLs are written to filenames or logs. */
 final class ChannelSvgDiskCache {
+    private static final AtomicBoolean CLEANUP_PENDING = new AtomicBoolean();
+    private static final ScheduledExecutorService CLEANUP = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "drbep-svg-cache");
+        thread.setDaemon(true);
+        thread.setPriority(Thread.MIN_PRIORITY);
+        return thread;
+    });
+    private static void requestPrune(File directory) {
+        if (!CLEANUP_PENDING.compareAndSet(false, true)) return;
+        CLEANUP.schedule(() -> {
+            try { SvgCachePruner.prune(directory, 8L * 1024 * 1024, 32, System.currentTimeMillis()); }
+            catch (RuntimeException ignored) { /* Disposable cache maintenance must never break artwork. */ }
+            finally { CLEANUP_PENDING.set(false); }
+        }, 30, TimeUnit.SECONDS);
+    }
     private static final Object[] LOCKS = new Object[32];
     static { for(int i=0;i<LOCKS.length;i++)LOCKS[i]=new Object(); }
     static String key(String url)throws Exception {
@@ -18,11 +35,15 @@ final class ChannelSvgDiskCache {
     static byte[] read(File cache,String url)throws Exception {
         synchronized(LOCKS[(url.hashCode()&Integer.MAX_VALUE)%LOCKS.length]) {
             long start=android.os.SystemClock.elapsedRealtime();
-            File directory=new File(cache,"channel-svg-v1");directory.mkdirs();
+            File directory=new File(cache,"channel-svg-v1");directory.mkdirs();requestPrune(directory);
             File file=new File(directory,key(url)+".svg");
             if(file.isFile()&&file.length()<=1024*1024&&System.currentTimeMillis()-file.lastModified()<7*86400000L) {
-                byte[] data; try(InputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);data=out.toByteArray();}
-                android.util.Log.println(android.util.Log.INFO, "LogoPerf","source=disk ms="+(android.os.SystemClock.elapsedRealtime()-start));return data;
+                try {
+                    byte[] data; try(InputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);data=out.toByteArray();}
+                    android.util.Log.println(android.util.Log.INFO, "LogoPerf","source=disk ms="+(android.os.SystemClock.elapsedRealtime()-start));return data;
+                } catch (IOException evictedOrUnreadable) {
+                    // A disposable entry may disappear between exists() and open(); fetch normally.
+                }
             }
             HttpURLConnection connection=(HttpURLConnection)new URL(url).openConnection();
             connection.setConnectTimeout(4000);connection.setReadTimeout(4000);
@@ -39,13 +60,8 @@ final class ChannelSvgDiskCache {
                 com.caverock.androidsvg.SVG.getFromInputStream(new ByteArrayInputStream(data));
             } finally { connection.disconnect(); }
             File tmp=new File(file+".tmp");try(FileOutputStream out=new FileOutputStream(tmp)){out.write(data);}
-            if(!tmp.renameTo(file))tmp.delete();prune(directory);
+            if(!tmp.renameTo(file))tmp.delete();
             android.util.Log.println(android.util.Log.INFO, "LogoPerf","source=network ms="+(android.os.SystemClock.elapsedRealtime()-start));return data;
         }
-    }
-    private static synchronized void prune(File directory) {
-        File[] files=directory.listFiles((d,n)->n.endsWith(".svg"));if(files==null)return;
-        Arrays.sort(files,Comparator.comparingLong(File::lastModified));long size=0;for(File f:files)size+=f.length();
-        for(File f:files){if(size<=8*1024*1024)return;long bytes=f.length();if(f.delete())size-=bytes;}
     }
 }

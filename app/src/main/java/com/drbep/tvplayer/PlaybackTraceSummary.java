@@ -6,11 +6,17 @@ import java.util.*;
 /** Reconstructs only recorded phases of the last eight globally identified playback attempts. */
 final class PlaybackTraceSummary {
     private final LinkedHashMap<String,JSONObject> traces=new LinkedHashMap<>();
+    private final LinkedHashMap<String,long[]> resolutions=new LinkedHashMap<>();
     void accept(JSONObject event) throws JSONException {
         String kind=event.optString("event"),session=event.optString("session");
         long op=event.optLong("op"),elapsed=event.optLong("elapsed",-1);
         if(session.isEmpty() || op<=0 || elapsed<0)return;
         String key=session+"|"+op;
+        if(kind.equals("PLAY_RESOLVE_BEGIN")) {
+            resolutions.put(key,new long[]{elapsed,event.optLong("a")});
+            while(resolutions.size()>16)resolutions.remove(resolutions.keySet().iterator().next());
+            return;
+        }
         if(kind.equals("PLAY_PREPARE") && event.optLong("c")==1) {
             JSONObject trace=new JSONObject().put("operation",op).put("at",event.optLong("at"))
                     .put("started",elapsed).put("stages",new JSONObject().put("PREPARE",0L));
@@ -20,6 +26,15 @@ final class PlaybackTraceSummary {
         }
         JSONObject trace=traces.get(key);
         if(trace==null || elapsed<trace.getLong("started"))return;
+        if(kind.equals("PLAY_RESOLVE_LINK")) {
+            long[] parent=resolutions.get(session+"|"+event.optLong("a"));
+            if(parent!=null && parent[0]<=trace.getLong("started") && parent[1]==event.optLong("c")
+                    && event.optLong("b",-1)>=0 && !trace.has("resolution")) {
+                trace.put("resolution",new JSONObject().put("operation",event.optLong("a"))
+                        .put("durationMs",event.optLong("b")).put("generation",event.optLong("c")));
+            }
+            return;
+        }
         String stage=null;
         if(kind.equals("PLAY_STATE")) {
             if(event.optLong("a")==2)stage="BUFFERING";

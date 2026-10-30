@@ -1,0 +1,28 @@
+Foco del lateral — primer bloque del plan30/10
+
+Estado: cambio preparado en .185, sin instalar/publicar ni tocar produccion.
+MainRailItem mantiene dimensiones48/40/23dp, escala1.06, borde1.5dp,
+colores, marcador seleccionado, semantica y acciones originales.
+MainRailIcon lee el foco dentro de graphicsLayer/drawWithContent.
+MainRailFocusLabel es el unico ambito de composicion que observa el foco:
+crear/retirar el Popup sigue siendo necesario. El padre no lee su valor.
+No se modifican navegacion, seleccion, focusRequester ni reproductor.
+No se copia codigo de TeVas: adaptacion independiente del componente existente.
+
+Inspeccion
+El lateral principal ya es fijo68dp. No habia animacion de ancho que retirar.
+Por tanto no se atribuye ninguna ganancia a evitar una animacion inexistente.
+No se dispone de medicion de recomposiciones ni tiempos en dispositivo.
+No afirmar que este cambio corrige el pico de entrada ni los tirones del video.
+
+Validacion pendiente Fire
+Comparar misma APK/control y candidata optimizadas, mismo grupo y canal.
+Recorrer lateral con mando; volver a miniatura y pantalla completa; verificar
+etiqueta, resaltado, marcador seleccionado, ajustes/salir y foco inicial.
+Medir recomposiciones/frame/coste grafico y mantener muestras desfavorables.
+La etiqueta usa otra superficie Popup: comprobar tambien posicion y cierre.
+Respaldo: /srv/drbep-dev/reviews/tevas-051-focus-20261030/MainRailItem.kt.before
+Regresion/build: validation.log en esa misma carpeta.
+
+Resultado .185:1049 pruebas, cero fallos/errores/omitidas.
+Build release ARM32 beta correcto; validacion conjunta2m55s.

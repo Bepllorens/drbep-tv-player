@@ -1,0 +1,58 @@
+XMLTV extremo: cancelacion por bloques — 30/10/2026
+
+Desarrollo .185, sin acceder al Fire ni instalar/publicar/desplegar.
+Respaldo y evidencias: /srv/drbep-dev/reviews/xmltv-cancel-20261030.
+Corpus previo reutilizado: /srv/drbep-dev/reviews/xmltv-load-20261026.
+1000 canales/168000 eventos,7dias,99.656.048 bytes XML, gzip1.164.469.
+Datos sinteticos; sin conexiones ni credenciales reales.
+
+Hallazgo y correccion
+El reader comprobo interrupcion al empezar una etiqueta, pero podia seguir
+consumiendo un comentario largo sin encontrar otra etiqueta.
+Ahora el guard de InputStream comprueba isInterrupted antes y despues de cada
+lectura (simple o bloque) y lanza InterruptedIOException sin limpiar la marca.
+No cambia fechas, metadatos, limites de texto, DTD/entidades, SQL o esquema.
+No puede interrumpir por si solo una llamada de red bloqueada dentro de read;
+siguen siendo necesarios los timeouts y cierre del stream del importador.
+
+Cuatro pruebas nuevas:
+- Cancelacion dentro de comentario sintetico10MiB al llegar a32KiB; exige
+  detenerse antes de36KiB, sin descargar/almacenar el comentario completo.
+- Mismo escenario con chunks de un byte.
+- Hilo ya interrumpido: no leer el stream.
+- Nueva lectura correcta despues de que el llamante limpie la interrupcion.
+
+Conservacion de datos
+Revision estatica: importSharedGuide activa la generacion solo tras lectura
+completa/check y conserva la previa ante fallo, limpiando la nueva incompleta.
+No se han cambiado esas transacciones ni probado SQLite Android en este bloque.
+No afirmar que las pruebas del reader demuestran por si solas rollback real.
+La ruta legacy importGuide puede conservar filas de generacion incompleta
+invisible al fallar; no se ha alterado ni ejecutado limpieza general.
+
+Medicion
+Benchmark XmltvBench anterior compilado contra snapshot previo y reader actual,
+mismo gzip y warmup. Java con heap128MiB, procesos ABBA,3rondas/proceso.
+Huella de todos los campos, nombres y creditos; sin retener todos los eventos.
+No incluye red, SQLite, Compose ni reproduccion real.
+
+Pendiente Fire
+Conservar protocolo docs/xmltv-load-20261026.txt: respaldo nuevo coherente,
+validar carga/cache/cancelacion compartida mientras reproduce, datos y referencias,
+retirar solo UUIDs propios y dejar video funcionando.
+Candidata acumulada contiene esquema10 de listas; preparar retorno de DB,
+no asumir que bajar solo APK basta. Auxiliar de26/10 requiere revision frente
+a la candidata actual antes de instalarlo, no reutilizar a ciegas APK vieja.
+No reactivar COOPERATIVE_IMPORTS. No usar maintainGuides como limpieza.
+
+Resultados finales
+1100 pruebas JVM y70 del panel correctas; release ARM32 beta2m43s.
+12rondas ABBA,6por variante; todas1000canales/168000eventos y SHA256
+bf6958ee233fad18b4eced3ff0ed0692be6ccd57142e992740185806be9d345f.
+Mediana previo/actual:
+elapsed1593.946/1574.604ms; CPU1561.361/1527.258ms;
+asignacion acumulada1268.204826/1268.205040MiB;34/34ciclosGC.
+Diferencia pequena, no atribuir mejora de velocidad: objetivo cancelacion.
+Asignacion acumulada no es RAM residente. Heap max128MiB.
+La prueba del comentario confirma detencion antes de36KiB tras señal a32KiB.
+No se ha ejecutado auxiliar Android ni migrado datos de dispositivos.

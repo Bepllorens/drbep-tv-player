@@ -1,0 +1,44 @@
+Horarios de listas — bloque4, 30/10/2026
+Estado: motor de calculo preparado, NO activado ni conectado al trabajador.
+
+Situacion real existente
+PlaylistRefreshWorker selecciona auto_refresh y antiguedad12h; trabajo periodico
+unico cada12h. Refresca tambien guias y ejecuta maintainGuides.
+PlaylistImportJobs.enqueue ya deduplica queued/running/retry por fuente.
+Panel: Editar lista ofrece automatico12h; sources guarda auto_refresh.
+No cambiar esas reglas implicitamente ni elevar frecuencia de mantenimiento
+de guias al incorporar horarios personalizados.
+
+Primera parte
+PlaylistRefreshSchedule.java, sin Android/IO/trabajadores ni credenciales:
+hora inicial0..1439, intervalo30..720min,1..24franjas, sin duplicar un mismo
+minuto del dia. Codificacion daily:start:interval:count validada estrictamente.
+Cruce medianoche en horario local, zona explicita; siguiente estrictamente
+posterior y ultima franja inclusiva. Cambio primavera ajusta hora inexistente
+y agrupa colisiones; otono usa primera ocurrencia, no repite importacion.
+Due se calcula frente a ultima sincronizacion correcta: una decision, no
+reproduce todas las franjas perdidas. Exito futuro por reloj corregido no
+provoca repeticion inmediata.
+Sin llamadas desde produccion de app: el modo12h sigue igual.
+
+Pruebas
+Limites, medianoche, primavera/otono Madrid, larga ausencia, codificacion
+invalida y proxima/ultima franja en UTC,Madrid,NewYork,Kathmandu,LordHowe
+durante cambio de ano. No equivale a prueba de WorkManager ni tareas reales.
+
+Siguiente integracion pendiente
+- Persistencia por fuente con defaults manual/12h intactos; horario optativo.
+- Formulario y siguiente hora prevista en panel web; no prometer exactitud:
+  Android puede diferir el trabajo por red, bateria o reposo.
+- Reutilizar cola y restricciones existentes, evitar nueva importacion durante
+  otra activa; mantener cancelacion y reintentos, revalidar permiso/fuente.
+- Evitar que un trabajador de comprobacion mas frecuente cambie ritmo de guias.
+- Probar edicion/desactivacion/eliminacion con tareas en vuelo y recuperacion
+  tras reinicio; luego Fire con video y retorno de reposo.
+No dar bloque4 por cerrado ni decir que usuario puede configurar horarios aun.
+
+Evidencias:/srv/drbep-dev/reviews/playlist-schedule-20261030/validation.log
+Sin instalacion, publicacion, commit/push, cambios .223 ni stable.
+
+Validacion .185:1071 pruebas correctas, cero fallos/errores/omitidas.
+Release ARM32 beta compilado correctamente en2m36s.

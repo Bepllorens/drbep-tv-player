@@ -33,7 +33,7 @@ final class HomeTmdbArtwork {
   for(int i=0;i<keys.size()-199;i++){String old=keys.get(i);edit.remove(old).remove(old.substring(5));}
   edit.putString(key,url).putLong("time:"+key,System.currentTimeMillis()).apply();
  }
- static final java.util.Set<String> pending=java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
+ static final ArtworkLookupQueue lookups = new ArtworkLookupQueue();
 
  static final class Source {
   final Object original; final String endpoint; final Map<String,String> headers;
@@ -52,11 +52,14 @@ final class HomeTmdbArtwork {
   boolean served=cached!=null;
   if(served) {
    deliver.accept(cached);
-   if(System.currentTimeMillis()-disk.getLong("time:"+key,0)<7L*24*60*60*1000 || !pending.add(key))
+   if(System.currentTimeMillis()-disk.getLong("time:"+key,0)<7L*24*60*60*1000)
     return ()->{cancelled.set(true);if(fallback[0]!=null)fallback[0].run();};
   }
 
-  Future<?> task=IO.submit(()->{
+  Runnable cancelLookup=lookups.request(key, ()->{
+   // Another lookup may have filled disk after resolve checked it.
+   String recent=disk==null?null:disk.getString(key,null);
+   if(recent!=null && System.currentTimeMillis()-disk.getLong("time:"+key,0)<7L*24*60*60*1000) return recent;
    String url="";
    try {
     HttpClient http=new HttpClient();HttpClient.Response response=http.get(source.endpoint,4000,6500,source.headers,4096);
@@ -67,9 +70,8 @@ final class HomeTmdbArtwork {
      save(key,url);
     }
    }catch(Exception ignored) { }
-   pending.remove(key);
-   final String result=url;if(!served)MAIN.post(()->deliver.accept(result));
-  });
-  return ()->{cancelled.set(true);task.cancel(true);if(fallback[0]!=null)fallback[0].run();};
+   return url;
+  }, result -> { if(!served) deliver.accept(result); }, IO, action -> MAIN.post(action));
+  return ()->{cancelled.set(true);cancelLookup.run();if(fallback[0]!=null)fallback[0].run();};
  }
 }

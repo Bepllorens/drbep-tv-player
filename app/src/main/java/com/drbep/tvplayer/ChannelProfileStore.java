@@ -23,6 +23,8 @@ final class ChannelProfileStore {
         }
     }
 
+    private static final ChannelProfile EMPTY_PROFILE = new ChannelProfile("", "", false);
+
     private final SharedPreferences prefs;
     private final String preferenceKey;
     private final Map<String, ChannelProfile> values = new HashMap<>();
@@ -59,7 +61,7 @@ final class ChannelProfileStore {
     ChannelProfile getProfile(String channelId) {
         ChannelProfile profile = getProfileValue(channelId);
         if (profile == null) {
-            return new ChannelProfile("", "", false);
+            return EMPTY_PROFILE;
         }
         return profile;
     }

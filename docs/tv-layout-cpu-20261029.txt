@@ -1,0 +1,96 @@
+TV: coste de filas, CPU y miniatura — 29/10/2026
+
+Estado: mejora acotada conservada; primer pico de entrada sigue abierto.
+Desarrollo/compilacion en185. Comparacion en Fire190, La1/MovistarHLS133canales.
+No hay despliegue backend, publicacion beta/stable ni commit/push en este bloque.
+Conservar los cambios previos de snapshots visibles y patrones de titulos.
+
+Cambio conservado
+StartupHomeHubComposeBinder.kt usa TvChannelRowNumber para el indice y ▶.
+TvChannelRowText.kt dibuja esos caracteres con un Paint cacheado por fila,
+sin crear otro parrafo BasicText ni ocupar el TextMeasurer de los programas.
+Conserva10sp, colores, centrado, anchura18dp, recorte y texto accesible.
+No cambia alturas, picons, foco, acciones, reproductor, EPG ni rutas.
+
+Diagnostico de layout
+Instrumentacion TEMPORAL por lista/fila/detalles, retirada del codigo final.
+Control: layout196-243ms; lista131-165ms; detalles17-26ms.
+Ocho filas:21-26ms de medida agregada, mediana2,4-2,9ms/fila.
+EPG visible~0,5-0,8ms/fila; los logos NO explican todo el pico.
+Los ambitos estan anidados: NO sumar layout, lista y filas.
+
+Primer ensayo retirado
+Dibujar el indice con el TextMeasurer compartido reduce la medida por fila,
+pero no acredita una mejora sostenida del recorrido (77ms en dos pasadas finales).
+Se retira ese ensayo y sus dos estilos extra. No recuperar esa variante.
+Evidencias trace-comparison.json y layout-number*/layout-final-untraced*.
+
+Ensayo Paint
+Dos primeras pasadas sin recorte explicito: entrada750/300ms, recorrido57/57ms.
+750ms se conserva como muestra desfavorable; no declarar solucionado el arranque.
+La candidata final conserva el recorte original. Una pasada aislada dio89ms
+en recorrido; tampoco se oculta ni se usa solo el mejor valor.
+
+Comparacion mas fiable: MISMA APK
+Se construyo UN binario privado con ambas variantes, elegidas antes de iniciar
+la pantalla. Una instalacion y orden control1/directo1/directo2/control2.
+Cada pasada reinicia SOLO el proceso DRBEP, mismo componente, grupo, canal,
+foco, busqueda vacia y12abajo/12arriba. Sin traza durante estos recorridos.
+Memoria antes/despues en cada pressure.json; no se cerraron otras apps.
+                        control1  directo1  directo2  control2
+entrada p95(ms)             500       350       350       350
+recorrido p50(ms)            28        24        25        25
+recorrido p95(ms)            77        73        65        69
+recorrido p99(ms)           200       200       250       200
+janky recorrido(%)         83,92     84,85     84,78     81,82
+Mejora observada modesta en p95; dos pasadas/variante NO son prueba estadistica.
+El primer control puede incluir calentamiento del APK. El control final tambien
+entra en350ms: NO atribuir una mejora sostenida del arranque a este cambio.
+La proporcion de frames janky sigue alta. No marcar fluidez como terminada.
+Selector y clase de benchmark eliminados del checkout y del APK conservado.
+
+Trabajo vs espera
+Traza corta gfx/view/sched con2048KiB/CPU (8MiB total), sin sobrescritura.
+Una muestra de la candidata: frame416ms=314CPU+102fueraCPU;
+layout215ms=170CPU+45fueraCPU. R indica espera de CPU; D/S no prueban
+por si solos que la causa sea disco, red o una fuga de memoria.
+Una pareja en MISMO APK:
+control: frame453ms,354CPU; layout254ms,210CPU.
+directo: frame327ms,275CPU; layout169ms,153CPU.
+Tambien cambia la espera y el estado de memoria. No atribuir toda la diferencia
+a los numeros con una sola pareja. Sirve para no culpar solo a la RAM:
+queda un coste real de CPU de composicion/aplicacion/medida.
+Trace entries-written=entries-in-buffer; tracing desactivado y buffer a1KiB.
+
+Validacion final
+1029 pruebas unitarias,0fallos/errores/omitidas.
+APK release perfilable ARM32, version784, firma privada compatible verificada.
+Payload identico antes/despues de firma; firma de distribucion tambien verificada.
+Busqueda Calle13 fuera de pantalla, limpiar filtro a133canales, foco/navegacion,
+pantalla completa y retorno comprobados. Numeros/picons/metadatos revisados.
+Miniatura de la APK final durante156,09s:3898fotogramas,24,99fps,
+0nuevos descartes, sin reinicio del decoder/proceso,0huecos>80ms;
+hueco max59,24ms. Muestreo cada~2s, max2,27s, anillo de126frames solapado.
+No se cuentan huecos de superficies ocultas ni zapeos como fallos de miniatura.
+La ventana NO acredita estabilidad durante horas.
+
+Artefacto conservado
+reviews/tv-layout-20261029/paint-final-fire.apk
+SHA256 9b2a613415834b37ace2c55251e1f3eba5f2e83e0946070aaa6737ef7d883d54
+APK temporal de prueba, no distribuida en beta.
+Retorno previo: reviews/tv-entry-details-20261029/visible-fire.apk
+SHA256 c5c911edf899771d81d77852f486d074bd239f7effdf7fdf1f0a35f6b8928ed0
+No desinstalar ni borrar datos para cambiar de firma.
+
+Evidencias privadas185
+reviews/tv-layout-20261029/: identidades, tests, snapshots fuente, scheduler.json,
+same-apk-comparison.json, video-paint-final.json, capturas y verificaciones.
+reviews/tv-entry-20261029/fire/: layout-* y same-apk-* con XML/gfx/trazas.
+No copiar APK, registros brutos o secretos a Git.
+
+Siguiente trabajo
+- Mantener abierto el primer dibujo: coste CPU aun153-170ms en estas muestras.
+- Separar subcomposicion/aplicacion de cambios y medida real de los hijos.
+- Priorizar futuras comparaciones en una APK, sin reinstalar entre variantes.
+- Mantener el recorrido caliente y el video como criterios de aceptacion.
+- Sesion larga normal/tablet sigue pendiente. No prometer fluidez perfecta.

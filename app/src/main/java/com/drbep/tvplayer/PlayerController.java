@@ -488,6 +488,7 @@ final class PlayerController {
     private VlcDirectPlayController vlcDirectPlayController;
     private PlaybackRequest currentRequest;
     private boolean suspendedForMultiView;
+    private final PlaybackResolutionTrace blackBoxResolution=new PlaybackResolutionTrace();
     private long blackBoxPlayback=BlackBox.operation();
     private final long blackBoxWindow=BlackBox.operation();
     private boolean blackBoxWindowClosed;
@@ -1456,6 +1457,8 @@ final class PlayerController {
         blackBoxPlayback=BlackBox.operation();
         startupPhaseGate.begin(blackBoxPlayback,playbackAttemptGeneration.get());
         BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,blackBoxPlayback,0,0,1);
+        long[] resolution=blackBoxResolution.link(playbackAttemptGeneration.get(),System.nanoTime()/1000000);
+        if(resolution!=null)BlackBox.event(BlackBoxStore.Event.PLAY_RESOLVE_LINK,blackBoxPlayback,resolution[0],resolution[1],resolution[2]);
         multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
         perfStage("prepare");
         currentReadyElapsedMs = -1L;
@@ -3408,6 +3411,8 @@ final class PlayerController {
         blackBoxPlayback=BlackBox.operation();
         startupPhaseGate.begin(blackBoxPlayback,playbackAttemptGeneration.get());
         BlackBox.event(BlackBoxStore.Event.PLAY_PREPARE,blackBoxPlayback,0,0,1);
+        long[] resolution=blackBoxResolution.link(playbackAttemptGeneration.get(),System.nanoTime()/1000000);
+        if(resolution!=null)BlackBox.event(BlackBoxStore.Event.PLAY_RESOLVE_LINK,blackBoxPlayback,resolution[0],resolution[1],resolution[2]);
         multiEvent(BlackBoxStore.Event.MULTI_PREPARE,playbackAttemptGeneration.get(),host.multiViewQualityRole(),0);
         perfStage("prepare");
         currentReadyElapsedMs = -1L;
@@ -3458,6 +3463,9 @@ final class PlayerController {
         if(origin.startsWith("playChannel")){hlsDvrPreview=-1;uiHandler.removeCallbacks(hlsDvrCommit);lastLiveAnchor=null;pendingLiveAnchor=null;hlsDvrStart=0;hlsDvrEnd=0;hlsDvrAnchor=0;hlsDvrTarget=0;hlsDvrChecked=0;hlsDvrLoading=false;}
         hlsDvrLoading=false;hlsDvrChecked=0;
         int generation = playbackAttemptGeneration.incrementAndGet();
+        long resolutionOperation=BlackBox.operation();
+        blackBoxResolution.begin(generation,resolutionOperation,System.nanoTime()/1000000);
+        BlackBox.event(BlackBoxStore.Event.PLAY_RESOLVE_BEGIN,resolutionOperation,generation,0,0);
         remoteZapTrace.bind(request == null ? null : request.channelId, generation);
         String initialPhase = "playChannelAfterResolvingStreamInfo".equals(origin) ? "resolving_stream_info" : "starting";
         String nextChannelId = request == null || request.channelId == null ? "" : request.channelId.trim();

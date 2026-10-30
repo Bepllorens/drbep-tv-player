@@ -1,0 +1,27 @@
+Panel: presentacion de fases de diagnostico — 30/10/2026
+Solo .185, sin dispositivos ni produccion. Respaldo/evidencias:
+ /srv/drbep-dev/reviews/panel-diagnostic-phases-20261030.
+
+Cierre de presentacion para bloques8/9; los puntos posteriores necesitan
+servicios reales/dispositivos, no se simula su validacion ni se modifican.
+device-panel.html:
+- Tiempo anterior a prepare separado de hitos relativos a prepare.
+- Sin registro correlacionado para trazas antiguas/incompletas/valor invalido.
+- Etiquetas de HTTP (cabeceras, total, lectura/procesamiento, resultado).
+- Etiquetas de fases de parada y confirmacion; avisa que persistencia real y
+  cese de audio/video/trafico aun deben comprobarse.
+- Mantiene formato previo para eventos no reconocidos.
+- Sin peticiones, polling, leases, almacenamiento o controles nuevos.
+- Texto por textContent; no interpretar valores como HTML ni mostrar URLs.
+- No sumar tiempos de prepare y resolucion como supuesto tiempo total real.
+
+Siete pruebas JS: separacion de bases temporales, registros antiguos,
+vacio, HTTP sin cuerpo, cancelacion, parada no confirmada, evento desconocido
+y campos inesperados. Datos sinteticos y DOM minimo; no equivalen a prueba
+visual del navegador ni a flujo autenticado completo.
+Pendiente: panel real conectado a Fire, legibilidad, pestaña abierta/cerrada,
+actualizacion sin cambiar sesion y contraste con reproduccion real.
+No instalar/publicar/commit/push en este bloque.
+
+Validacion final:1114 pruebas JVM y77 del panel correctas.
+Release ARM32 beta compilada32s, diff --check correcto. Sin instalar.

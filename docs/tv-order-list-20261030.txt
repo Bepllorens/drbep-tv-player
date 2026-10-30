@@ -1,0 +1,33 @@
+Orden guardado de canales y categorias — 30/10/2026
+
+Cambio
+HomeLiveOrderSnapshot conserva como maximo cuatro listas limpias de IDs.
+Cada lectura sigue devolviendo una copia mutable. Cambio de usuario o JSON
+invalida todas las listas inmediatamente; cambiar el limite recalcula la entrada.
+No se cachean permisos, canales ni decisiones de visibilidad.
+MainActivity.homeLiveOrder usa esta lectura; jsonStringList general no cambia.
+La primera lectura sigue limpiando y deduplicando: se optimizan las repetidas.
+
+Medicion aislada JVM en .185
+Datos sinteticos: 4000 IDs, duplicados cada siete, espacios. 1000 consultas
+por tanda, calentamiento previo, secuencia ABBA repetida.
+Control ms: 219.033, 217.030, 159.003, 153.017.
+Candidata ms: 8.176, 3.669, 1.786, 1.622.
+Mediana: 188.0165 -> 2.7275 ms por 1000 consultas.
+Asignaciones: 467920056 -> 16040056 bytes (-96.6%).
+Igualdad exacta comprobada antes de medir. Coste por consulta en esta carga:
+aproximadamente 0.188 -> 0.0027 ms; no es una medicion del frame completo.
+No representa el primer acceso, otros tamanos de lista ni memoria residente.
+
+Regresion
+Pruebas de espacios, duplicados, valores JSON no string, limites, invalidacion,
+copias mutables, datos malformados, cambio de usuario y doce grupos alternos.
+Suite completa: 1049 pruebas, cero fallos/errores/omitidas.
+Compilacion release optimizada beta ARM32 correcta: validacion conjunta 2m49s.
+git diff --check correcto. Sin instalacion ni publicacion.
+Respaldo y evidencias privadas: /srv/drbep-dev/reviews/tv-order-list-20261030.
+
+Pendiente Fire
+Primera entrada TV, paginas sucesivas, editar orden, volver al grupo y cambiar
+usuario; comprobar foco y miniatura con television encendida.
+Sin instalar, publicar, tocar produccion ni beta/stable.

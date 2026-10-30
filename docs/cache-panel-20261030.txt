@@ -1,0 +1,48 @@
+Cache de imagenes en panel web — 30/10/2026
+Diagnostico -> Cache de imagenes -> Consultar uso.
+Consulta manual POST /image-cache, sin cuerpo, protegida por sesion, Host y
+Origin existentes. No se integra en polling de status, caja negra ni informe.
+Sin escrituras, borrados o cambios de presupuesto desde esta ruta.
+
+Muestra por separado Glide y SVG: bytes/archivos de disco, presupuesto y
+hora real de la medicion. Glide comunica presupuesto configurado al construir
+su cache; si aun no se ha construido se muestra 'aun no inicializado'.
+No se fuerza su inicializacion al consultar ni se presenta un calculo nuevo
+como si fuera presupuesto aplicado. El resultado se reutiliza30s, tambien
+entre peticiones simultaneas del mismo panel (lectura sincronizada).
+Cerrar sesion limpia el texto; respuestas antiguas no sustituyen la sesion nueva.
+Se mantiene ultima hora de medicion al reutilizar el resultado.
+
+Implementacion
+ImageCacheReport.java: solo carpetas image_manager_disk_cache y channel-svg-v1
+bajo cacheDir. No recorre subdirectorios ni sigue symlinks fuera del directorio.
+Max10000entradas examinadas por carpeta; exceso/fallo marca recuento parcial.
+Glide incluye archivos auxiliares del journal: uso de carpeta, no solo bitmaps.
+No incluye RAM, bases de datos, guia JSON ni catalogos.
+listFiles materializa la lista de la carpeta; el limite acota procesamiento,
+no la asignacion inicial de esa lista. No afirmar coste constante.
+MainActivity crea el informador al abrir servidor; se ejecuta en trabajador
+HTTP, no hilo UI. No consulta disco durante el arranque/polling.
+DeviceWebPanel.java: ruta protegida de solo consulta.
+device-panel.html: tarjeta existente estilo glass, boton y estado accesible;
+sin eliminar ni mover controles anteriores.
+ImageDiskBudget/DrbepGlideModule: publica presupuesto vigente en memoria.
+
+Pruebas
+JVM: directorios sinteticos, recuento, TTL30s, lectura no destructiva,
+exclusion de rutas/nombres de respuesta, carpetas ausentes y enlaces.
+HTTP: sin sesion401; metodo/cuerpo invalidos400; Origin ajeno403;
+peticion valida200 y una llamada al host.
+JS: consulta exclusivamente manual; muestra presupuesto; respuesta vieja
+descartada; error libera boton. Regresion tools/test-panel-*.cjs.
+Primer intento: errores del fixture HTTP por escapes CRLF y asercion del orden
+de limpieza de sesion; corregidos sin relajar autenticacion ni las aserciones.
+
+Pendientes Fire
+Abrir panel emparejado real, consultar antes/despues de recorrer caratulas,
+comprobar uso/hora y presupuesto real, hit rate, ausencia de impacto en video,
+reconexion y lectura repetida30s. No instalar/publicar en este turno.
+Respaldo y registros:/srv/drbep-dev/reviews/cache-panel-20261030.
+
+Validacion final:1064 pruebas JVM y66 pruebas JS correctas, cero fallos.
+Release ARM32 beta correcto,2m42s. Sin instalacion/publicacion.

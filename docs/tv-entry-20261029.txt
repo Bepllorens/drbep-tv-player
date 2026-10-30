@@ -1,0 +1,121 @@
+Continuacion vigente: docs/tv-entry-visible-20261029.txt. El control se sustituyo despues por la nueva candidata de resolucion visible validada; no por el ensayo grafico rechazado.
+
+ESTADO VIGENTE: prueba Fire completada; ensayo grafico retirado. Ver cierre al final.
+Las notas de preparacion previas se conservan como historia.
+
+TV: trabajo repetido de presentacion —29/10/2026
+
+Estado: desarrollo .185, base Android2bb83fd (beta784 ya publicada).
+No se ha usado ADB ni instalado/publicado APK. TV apagada segun usuario.
+No cambios en .223, stable, motor, superficies, rutas, EPG ni permisos.
+
+Hallazgo y cambio acotado:
+- HomeProgramPresentation.of compilaba tres regex en cada llamada. Se conservan
+  exactamente las expresiones y salidas, pero se reutilizan Pattern inmutables.
+  Cada llamada mantiene Matcher independiente, sin cache de contenido.
+- TvChannelRowText: separar fraccion de progreso de la geometria de texto.
+  rememberUpdatedState se lee solo dentro del dibujo; la presencia de barra
+  continua invalidando geometria cuando pasa de null a valor o al reves.
+  El avance de la fraccion no debe provocar dos mediciones TextMeasurer.
+  Mantiene titulos, tipografia, posiciones, dimensiones y colores.
+- No se ensayan otra vez layouts de filas ni cambios de superficie descartados.
+
+Comparacion reproducible JVM del185:
+Corpus sintetico512titulos, nulos, prefijos Directo/Jornada, temporadas y Unicode.
+Equivalencia de titulo/metadatos contra copia anterior exacta; checksum igual.
+Cuatro procesos A/B/B/A con Java21, heap128MiB,30000llamadas calentamiento,
+5rondas de90000llamadas cada uno,10muestras por variante.
+Medianas:
+                            anterior       candidata
+tiempo                      86,022ms       38,075ms (-55,74%)
+CPU hilo                    81,040ms       37,959ms (-53,16%)
+asignacion acumulada        329895040B     74213200B (-77,50%)
+Asignacion acumulada NO es RAM residente ni pico de memoria.
+
+Primera llamada independiente:8procesos A/B/B/A/A/B/B/A,9titulos por proceso.
+Medianas total12,275->10,937ms; CPU6,471->6,474ms; asignacion389960->366616B.
+Variabilidad alta, CPU inicial sin mejora demostrada. NO atribuir al cambio una
+reduccion del pico Fire600ms. El benchmark de titulos no mide Compose ni video.
+La reduccion de invalidaciones de texto tiene revision de codigo/compilacion;
+todavia no dispone de una medicion de dibujo en Android.
+
+Evidencias privadas:
+/srv/drbep-dev/reviews/tv-entry-20261029
+Copias *.before, fuentes baseline/candidata, PresentationBench.java,
+benchmark.jsonl, comparison.json, cold-entry.jsonl y cold-comparison.json.
+tests.log y build.log conservan validacion completa.
+
+Pendiente cuando TV este encendida:
+1. Confirmar HDMI/mando libre, version/firma y respaldo nuevos del Fire.
+2. Preparar control784 y candidata con mismo ABI/firma/flags y fuentes
+   correspondientes. No comparar debug con release ni activar flags.
+3. Mismo canal/grupo MovistarHLS, portada estable y capturas antes/despues:
+   al menos3entradas frias por variante y recorridos calientes iguales.
+4. gfxinfo con buffers habituales. Si se precisa traza corta, usar limites AGENTS;
+   medir DRBEP.tvRowTextMeasure al avanzar la fraccion, antes/despues,
+   sin cambiar titulo/texto. Registrar invocaciones y coste, no solo tiempo global.
+5. Miniatura durante varios avances de EPG, navegacion rapida/paginado,
+   mismo canal de fondo, pantalla completa y retorno. Video en movimiento,
+   audio estable, memoria y sin cierres ni nuevas sintonizaciones innecesarias.
+6. Conservar todas las muestras. Retirar el cambio de dibujo si no reduce
+   mediciones o provoca artefactos. Primera entrada y tirones siguen ABIERTOS.
+No instalar mientras TV siga apagada; no publicar la candidata automaticamente.
+
+Cierre tecnico: 1027 unitarios,0fallos/errores; build release ARM32
+correcta, firma verificada. Candidata:candidate-784-tv-entry-arm32.apk
+SHA256:67efef510c63520c03f4cf3fa4f0dd4cffb19905039cbaa3ebe54020fc346bae
+Sin instalacion/publicacion; version784 privada de ensayo, distinta a la
+beta784 universal publicada. No sustituir el archivo del canal con esta APK.
+
+CIERRE FIRE —29/10
+Usuario confirma TV encendida y autoriza pruebas.
+APK783 privada instalada respaldada en fire/rollback-installed.apk.
+Control y candidata784 ARM32/release perfilable, firma privada compatible:
+control a9e8bd2abd16daa7c67d10db530ea273590ec9ae9cb40a6688efd1145d8cb8bd
+candidata fa332dd23d95a8a2950ee83995bc9b8510a82d70b286566f45eca5b72a0b43e6
+Contenido no-META-INF identico a sus originales de distribucion tras firmar.
+Control construido sustituyendo temporalmente SOLO los2archivos del ensayo;
+finally restauro las fuentes de trabajo. No se perdieron cambios anteriores.
+No se desinstalo ni borro datos. Misma La1/grupo MovistarHLS133canales.
+
+gfxinfo, p95 agregado de ventana de entrada:
+control A1/A2/A3:600/750/550ms; candidata B1/B2/B3:950/800/700ms.
+Recorrido12abajo/12arriba: control A2/A3 p9577/61ms;
+candidata B1/B2/B3 p95117/150/77ms.
+A1 no completa recorrido por asercion del auxiliar: foco en padre, etiqueta
+en hijo. XML confirma La1; no se trata de fallo de la app.
+Se corrigio el comprobador conservando esa muestra.
+Control restaurado A4: entrada1100ms y recorrido150ms.
+Por la variacion incluso del control NO atribuir causalidad exclusiva al codigo.
+No hay mejora global acreditada; tampoco afirmar regresion causal demostrada.
+Las ventanas de entrada tienen pocas frames; p95 no es latencia directa de tecla.
+
+Presion del sistema real:
+dumpsys cpuinfo observo kswapd43% en su intervalo historico.
+Muestra independiente10s durante TV:
+5430paginas swap-in,4964swap-out,5485fallos mayores; MemAvailable~165MiB.
+Es actividad medida de memoria del sistema, no prueba de fuga de DRBEP.
+No se cerraron apps ajenas, no se reinicio el Fire ni se cambiaron limites.
+
+Trazas idle18s:2text-measure control/0candidata, PERO entries-written supera
+entries-in-buffer en ambas. Sobrescritura del anillo: recuentos incompletos.
+NO sirven como prueba de eliminacion de mediciones. Buffers liberados a1KiB.
+Experimento TvChannelRowText RETIRADO del checkout y guardado como .rejected.
+HomeProgramPresentation conserva solo la reutilizacion de Pattern, con la
+equivalencia y benchmarkJVM anteriores. Sin mejora Fire aislada acreditada.
+La candidata combinada NO es el estado final de fuente ni una APK publicable.
+
+Fire termina con control784 ARM32 compatible instalado, SHA indicado arriba.
+Pantalla completa y retorno a TV con miniatura en movimiento comprobados
+por dos capturas distintas. Foco La1/MovistarHLS conservado.
+Ultimos4000registros del proceso:0FATAL EXCEPTION,0OutOfMemoryError,
+0Playback error,0ANR in. No equivale a una prueba prolongada sin errores.
+Evidencias en fire/: A1/A2/A3/B1/B2/B3/A4-return, comparison.json,
+system-pressure.json, final-full/return.xml, final-miniature-a/b.png,
+final-error-counts.json, A/B-idle.trace.
+No se modificaron backend, beta publicada ni stable.
+
+Siguiente: medir modelo/layout con ventana de traza acotada sin sobrescritura
+y registrar presion del sistema en cada pasada; repetir muestras equivalentes
+antes de adoptar cualquier variante. No descartar los controles desfavorables.
+Pico inicial y tirones siguen ABIERTOS.

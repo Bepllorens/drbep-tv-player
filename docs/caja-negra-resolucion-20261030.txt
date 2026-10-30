@@ -1,0 +1,46 @@
+Caja negra: correlacion antes de prepare — 30/10/2026
+
+Desarrollo .185. No Fire/.223, instalacion, publicacion ni cambios de reproduccion.
+Respaldo: /srv/drbep-dev/reviews/blackbox-resolution-20261030.
+
+PlayerController.beginPlaybackAttempt registra PLAY_RESOLVE_BEGIN con operacion
+global propia y generacion numerica. PlaybackResolutionTrace conserva solamente
+el intento actual por controlador, sin nombres/URLs/credenciales.
+En los dos puntos PLAY_PREPARE (Media3/VLC) se emite PLAY_RESOLVE_LINK con:
+op=operacion prepare existente; a=operacion previa; b=duracion previa ms;
+c=generacion. No sustituye identificadores, tags ni StartupPhaseGate.
+Si la generacion ya no coincide, no hay vinculo. Cada reprepare mantiene su
+operacion nueva, pudiendo referenciar el mismo comienzo de intento.
+La duracion de un reprepare se mide desde el comienzo original, no implica
+una segunda consulta de red de esa duracion.
+
+PlaybackTraceSummary conserva los tiempos PREPARE/FRAME anteriores y agrega
+resolution {operation,durationMs,generation} solo con vinculo explicito,
+mismo proceso y generacion, comienzo conocido y anterior a prepare.
+Sin comienzo (rotacion/exportacion parcial), no inventa una correlacion.
+Limites:16comienzos auxiliares y8trazas como antes. No nueva tarea periodica.
+Eventos disponibles en exportacion, resolution en resumen backend del panel;
+no se cambia el dibujo del panel ni se asegura que la UI muestre ese campo.
+
+Limites de la medida:
+Incluye espera en cola, resolucion StreamInfo y preparacion local entre
+beginPlaybackAttempt y prepare. NO mide trabajo anterior a entrar al controller,
+ni separa red/CPU ni enlaza cada HttpClient individual con ese intento.
+No atribuir HTTP por proximidad temporal. Sin cambios en rutas, claves,
+seleccion del canal, cache, generacion funcional o callbacks del reproductor.
+
+Pruebas nuevas:
+Intento vacio/antiguo, dos controladores, reprepare, reloj anterior, vinculo
+explicito sin alterar tiempos de FRAME, rechazo de proceso/generacion incorrectos
+y falta de evento inicial. Se mantienen todos los tests previos del resumen.
+
+Pendiente Fire:
+Mismo canal y recorrido; zapeo rapido A/B/A, reintento, multiview y vuelta
+miniatura. Comparar sin/con diagnostico ampliado y panel cerrado/abierto.
+Verificar que el prepare real recibe el vinculo correcto y no falta por un
+camino que no utiliza beginPlaybackAttempt. Confirmar video/audio/foco.
+No hay medicion real ni se declara mejora de velocidad. TV apagada/no confirmada.
+
+Validacion final:1111 pruebas JVM y70 panel correctas.
+Release ARM32 beta compilada en2m54s; diff --check correcto.
+Sin instalar/publicar; pruebas del Fire pendientes.

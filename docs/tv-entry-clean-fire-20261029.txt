@@ -1,0 +1,89 @@
+TV y miniatura tras reinicio autorizado del Fire —29/10/2026
+
+Estado: validacion realizada, candidata visible conservada en Fire.
+Este pase NO cambia codigo Android de produccion, backend, beta ni stable.
+No se ha publicado otra beta. 1029unitarios correctos en la candidata existente.
+
+Antes del reinicio:
+DRBEP residente126860KiB, intercambiada76060KiB (lectura /proc, sin forzarGC).
+Con DRBEP detenido15s el sistema sigue intercambiando memoria:
+swap-in19088paginas, swap-out53208 y20577fallos mayores.
+Esto acredita actividad de memoria FUERA del proceso; no prueba por si solo
+la causa de cada pico ni una fuga de DRBEP. No se cerraron otras aplicaciones.
+
+Usuario autoriza expresamente reiniciar SOLO el Fire y continuar.
+APK activa respaldada/verificada: before-reboot.apk, SHA:
+c5c911edf899771d81d77852f486d074bd239f7effdf7fdf1f0a35f6b8928ed0
+Reinicio enviado una vez. ADB TCP requirio desconectar/reconectar ese destino;
+se conservo el servidor y la autorizacion, sin nuevo aviso ni claves nuevas.
+Arranque comprobado sys.boot_completed=1 y uptime~105s, TV ON.
+MemAvailable554712KiB (~542MiB), frente~165MiB anteriores con app activa.
+No confundir esta comparacion con el consumo exclusivo de la app.
+
+Comparacion despues del reinicio
+Inicio explicito com.drbep.tvplayer.TvLauncherActivity para AMBAS variantes.
+El primer auxiliar monkey no completo el arranque; se conserva el intento fallido
+sin usarlo como muestra. Usar en adelante profile-clean-entry.py/measure-clean.py.
+Antes del reinicio se habia usado monkey; no atribuir todas las diferencias entre
+esas fases a un solo factor. La comparacion control/candidata posterior usa
+el mismo componente explicito y recorrido La1/MovistarHLS133canales.
+Orden: candidata1, control1, control2, candidata2.
+ARM32/release perfilable, firma privada compatible, flags sin cambios.
+
+                             control1    control2   candidata1  candidata2
+frame mas largo (ms)          507,976     395,540      390,057     434,503
+layout max(ms)                228,537     199,337      201,945     230,314
+recomposicion max(ms)          159,285     124,873      119,842     130,310
+tvPage max(ms)                   n/d         n/d       24,296      32,264
+UI CPU en ventana(s)             0,60        0,54        0,44        0,69
+ventana completa(s)              3,293       3,113       3,155       3,132
+fallos mayores hiloUI             186          14          85           8
+
+Todas las trazas cortas tienen entries-in-buffer=entries-written.
+Buffers liberados a1KiB despues. Los ambitos son anidados, NO sumar.
+Dos muestras por variante NO constituyen un benchmark estadistico.
+El descenso tras el reinicio no es una ganancia atribuible solo al codigo.
+El beneficio de resolver datos solo visibles sigue documentado en el informe
+anterior; la variacion entre muestras impide prometer un porcentaje global.
+
+Repeticion sin traza, candidata y mismo componente TV:
+entrada:8frames, p95=350ms.
+recorrido12abajo/12arriba:201frames,154janky(76,62%),p50=21ms,p95=42ms,p99=81ms.
+Antes de reiniciar se observo p95entrada950ms y navegacion150ms.
+Inicio de auxiliar distinto entre fases y estado del dispositivo distinto:
+son observaciones, no un A/B puro del codigo ni prueba de fluidez perfecta.
+El porcentaje janky continua alto; no dar por terminado el primer punto.
+
+Video real
+Se usan logs NUMERICOS PreviewPerf y timestamps de presentacion SurfaceFlinger.
+No se abre/omite autenticacion del panel ni se exporta configuracion.
+Primera captura mixta de40s incluye zapeo: contadores se reinician al sintonizar;
+huecos largos no se usan como prueba de fallo de una emision constante.
+La superficie0 es la anterior/oculta; medir superficie1 activa de miniatura.
+Ventana independiente SIN ZAPEO:
+889fotogramas presentados,35,519s,25fps segun contadores Media3;
+0nuevos descartes, sin reinicios de contador.
+Intervalo mediano33,500ms, max50,326ms;0huecos>80ms en la ventana fusionada.
+Esto verifica esa ventana corta; no garantiza ausencia de cortes durante horas.
+
+Evidencias privadas185:
+reviews/tv-entry-pressure-20261029:
+app-memory-before.json, without-app.json, before-reboot.apk/.json,
+control-preview.json, surface-presentations.json, video-after-reboot.json,
+video-idle-after-reboot.json, video-check.py, video-idle.py,
+final-return.xml, final-video-a/b.png, final-errors.json, memory-final.json.
+Perfiles en reviews/tv-entry-20261029/fire/clean-visible1/2 y clean-control1/2;
+clean-visible-navigation conserva ventana sin traza y paginado.
+APK candidata y retorno: docs/tv-entry-visible-20261029.txt.
+No desinstalar/borrar datos. No copiar APK, respaldos ni material privado a Git.
+
+Siguiente trabajo acotado:
+- Primer layout sigue costando~200-230ms en estas muestras.
+- Mantener separadas medicion de UI, video, sintonias y presion del sistema.
+- Validar sesion prolongada, recorridos intercalados y estado de memoria por pase.
+- No introducir reinicios automaticos ni cerrar servicios/apps ajenas.
+- No reactivar experimentos retirados sin una nueva comparacion.
+
+Cierre: retorno a TV verificado; MemAvailable403376KiB (~394MiB).
+Ultimos4000registros:0FATAL EXCEPTION/OutOfMemoryError/Playback error/ANR.
+Sin commit/push/publicacion en este bloque.

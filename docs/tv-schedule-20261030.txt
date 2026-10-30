@@ -1,0 +1,44 @@
+TV: horarios sin conversiones redundantes —30/10/2026
+
+Desarrollo exclusivo en185; cambios previos preservados.
+Fire despertado por ADB (KEYCODE_WAKEUP224), Awake/Display ON.
+No se puede confirmar TV/HDMI fisico; no se instala ni se mide fluidez.
+No cambios de backend, produccion, canales de actualizacion o firma.
+
+EpgScheduleFormatter convierte inicio y fin una sola vez por intervalo.
+La ruta anterior hacia cinco consultas EpgTimeCodec para intervalos validos,
+aunque varias ya aprovechaban su cache. Ahora son dos; se reduce tambien
+la construccion de claves del cache y entrada a sus bloques sincronizados.
+Se conserva EpgClockFormatter, locale/zona actuales y el texto exacto.
+Sin nueva cache ni reutilizacion por canal: la informacion se lee igual.
+MainActivity cambia solo la asignacion de card.schedule en buildHomeLiveCard.
+
+Validacion:
+1037unitarios:0fallos,0errores,0omitidos.
+Nuevo test de equivalencia:15entradas cruzadas,3locales,4zonas,
+formatos ISO/offset/XMLTV/numericos/locales, DST, nulos e invalidos.
+Otro test conserva cambios de horario e intervalos no validos.
+No confundir pruebas JVM con comportamiento visual real.
+
+Benchmark en185, JVM caliente,133intervalos sinteticos,100000iteraciones
+por pasada, calentamiento previo, orden ABBA repetido:
+control ms:59,178 /46,738 /60,762 /50,141.
+candidata ms:44,896 /41,428 /43,977 /38,213.
+Medianas54,660 ->42,703ms (-21,9%).
+Asignacion por pasada77,6MB ->58,4MB (-24,7%); NO es RAM residente.
+Comprobacion de resultados identicos antes de medir.
+No permite atribuir mejora porcentual del frame o del arranque de la app.
+
+Artefactos privados:
+/srv/drbep-dev/reviews/tv-schedule-20261030/
+MainActivity.java.before, ScheduleBench.java, benchmark.txt, tests.log, build.log.
+No incluir binarios, datos privados o trazas en Git.
+
+Pendiente Fire: APK optimizada, entrada TV, programa actual/siguiente,
+horarios incluidos limites de dia, foco, miniatura/pantalla completa/retorno,
+comparacion intercalada equivalente y memoria. Sigue abierto el coste
+de composicion/colocacion~180ms y la doble publicacion inicial del modelo.
+No se ha corregido ni ocultado ese punto mediante cache.
+
+Compilacion release ARM32 beta perfilable: BUILD SUCCESSFUL (2m40s).
+Sin instalar, publicar, commit ni push en este bloque.

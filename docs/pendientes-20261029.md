@@ -1,10 +1,11 @@
 # Estado consolidado del plan — 29/10/2026, beta 784
 
-Este documento es la referencia vigente. Los documentos anteriores conservan
+Prioridades actualizadas en [plan-mejoras-20261030.md](plan-mejoras-20261030.md).
+Este documento conserva el detalle historico y las evidencias. Los documentos anteriores conservan
 evidencias historicas; sus frases "sin publicar", "ADB no autorizado" o versiones
 antiguas no describen necesariamente el estado actual.
-Revision documental basada en los registros de los repositorios del .185.
-Este pase no repite pruebas del dispositivo ni consulta/modifica produccion.
+Consolidado con registros del .185 y las continuaciones de pruebas Fire del29/10.
+Las continuaciones Android no modifican produccion ni publican otra beta.
 
 ## Entrega actual
 
@@ -12,8 +13,8 @@ Este pase no repite pruebas del dispositivo ni consulta/modifica produccion.
 - Version: 2.0.784-beta-guide-refresh. Firma de distribucion verificada.
 - 1025 pruebas unitarias correctas. Fuente/version publicada: Android ba21388.
 - Mejoras de carrusel/miniguia/filas: commit 129ebb3.
-- Pruebas Fire del codigo: candidata privada 783 del 28/10. La nueva APK 784
-  no se ha instalado por ADB en este ultimo pase; tablet pendiente.
+- Fire: candidata privada ARM32/784 actualizada el29/10, con firma de pruebas;
+  es distinta de la APK publica. Detalle y limites en el punto1. Tablet pendiente.
 - Stable 582 y rescue 543 se conservaron en la publicacion.
 - Backend: seguridad, EPG e informes en Git hasta 983bebb.
 
@@ -56,7 +57,108 @@ Referencia comparable Movistar HLS del 28/10:
 No atribuir todo el pico a los logos: su coste medido era menor que layout.
 Medir mismo grupo/canal, frio/caliente, CPU/espera/frame y memoria.
 Comprobar miniatura, mismo canal de fondo, pantalla completa y retorno.
-Siguiente bloque de desarrollo recomendado.
+Continuacion29/10: patrones de titulos reutilizados, mismo resultado;
+benchmarkJVM caliente -55,74% tiempo/-77,50% asignacion, sin mejora CPU fria.
+Prueba Fire con La1/HLS completada: no hay mejora global acreditada.
+Ensayo de progreso/dibujo retirado; Fire restaurado a control784 compatible.
+Presion de memoria/swap medida y tambien peor repeticion del control;
+no atribuir automaticamente los picos a DRBEP ni a una fuga.
+Traces idle sobrescribieron el anillo: no prueban eliminacion de mediciones.
+Pantalla completa/retorno y miniatura en movimiento correctos al finalizar.
+Detalle: tv-entry-20261029.txt. Pico de entrada y tirones siguen abiertos.
+Nueva continuacion29/10: construccion de lista sin resolver programacion de filas
+ocultas; snapshots completos al componer fila o buscar. Prueba Fire correcta.
+Paso intermedio tvPage164-191ms; final25-37ms mas12-20ms de snapshots visibles.
+Frame max medido en las dos trazas finales695/556ms frente804/725ms del control;
+no atribuir una ganancia estadistica con solo dos muestras y memoria variable.
+1029unitarios correctos; ficha, busqueda fuera de pantalla, pantalla completa/
+retorno y video en miniatura comprobados. Candidata privada instalada, sin publicar.
+Repeticion sin traza: entrada p95950ms, navegacion p95150ms (87,75%janky).
+Paginado funciona, pero NO hay reduccion sostenida demostrada del pico global.
+Conservar esta muestra desfavorable. Pendiente comparacion intercalada y sesion
+larga, registrando memoria en cada pasada.
+Detalle: tv-entry-visible-20261029.txt.
+Reinicio Fire autorizado29/10 y comparacion intercalada: control396-508ms,
+candidata390-435ms (maxframe en trazas cortas). Sin traza: entrada p95350ms,
+navegacion p9542ms. Memoria disponible recuperada; no atribuir todo al codigo.
+Miniatura estable35,5s:25fps,0nuevos descartes,0huecos>80ms.
+No cierra estabilidad prolongada; layout aun200-230ms y janky sigue alto.
+Estado/evidencia mas reciente: tv-entry-clean-fire-20261029.txt.
+Continuacion29/10: indice visual ligero con Paint cacheado; mismos tamaño,
+colores, recorte, semantica, foco y acciones. Ensayo TextMeasurer retirado.
+Comparacion ABBA en una APK: entrada control500/350ms, directo350/350ms;
+p95recorrido control77/69ms, directo73/65ms. Janky sigue alto; ganancia modesta,
+sin evidencia de una reduccion sostenida del arranque con solo estas muestras.
+Traza CPU: control layout254ms/210CPU, directo169ms/153CPU (una pareja).
+No atribuir toda la diferencia a este cambio: tambien varian las esperas.
+Miniatura final156s,24,99fps,0descartes y0huecos>80ms. 1029unitarios correctos.
+Candidata privada784 instalada; sin publicar, commit/push ni cambios de servidor.
+Paso anterior de este punto: tv-layout-cpu-20261029.txt.
+Nueva continuacion29/10: coordinador de refresco por pantalla TV, con suscripciones
+solo montadas; sin un temporizador/observador por fila. Pausa por visibilidad y
+ciclo de vida, cancelacion por identidad y misma cadencia15s. 1035unitarios.
+Una APK/ABBA: entrada control450/350ms, compartido300/300ms; p95recorrido
+control53/81ms, compartido53/65ms. Ganancia observada limitada, n=2porvariante.
+La pareja CPU NO mejora layout:180->181ms; no cerrar el pico inicial.
+Trazas finales:0lotes ocultos, vuelta9lecturas en un lote2,503ms.
+Sesion final10min29s con navegacion y pantalla completa:14137fotogramas en las
+dos ventanas idle,25fps,0descartes y0huecos>80ms; sin reinicios del proceso.
+Foco/busqueda/retorno correctos, memoria sin crecimiento sostenido observado.
+Candidata privada784 instalada; sin publicar, commit/push ni modificar servidor.
+Referencia vigente: tv-shared-refresh-20261029.txt.
+Intento posterior29/10: NO se ha corregido el pico~180ms. Fire dormido; se
+desperto, pero el usuario esta fuera y no confirma TV/HDMI. Captura por coordenadas
+invalida; auxiliares de trazado no completan una muestra util. No hay cifras nuevas
+de mejora/regresion. Herramientas compiladas en185, aun sin validacion de ejecucion.
+Instrumentacion temporal retirada, APK anteriorc068107... restaurada/verificada,
+auxiliar eliminado y salida de build limpia equivalente al paso previo.
+Detalle y reanudacion: tv-mount-cost-pending-20261029.txt.
+Validacion actual de TV/miniatura pendiente; mantener datos y correccion anterior.
+
+Continuacion30/10 sin TV confirmada: Fire responde ADB y tras KEYCODE_WAKEUP
+declara Awake/ON; no demuestra televisor/HDMI ni video. Sin instalar APK.
+Horarios de filas TV: EpgScheduleFormatter reutiliza los dos tiempos ya
+interpretados (antes cinco consultas para un intervalo valido). Sin cache de
+canales/modelos, ni cambios de invalidacion, permisos, EPG o reproductor.
+1037unitarios correctos, incluidas equivalencias de formatos/zona/DST.
+Microbenchmark JVM caliente,133intervalos,4pasadas por variante intercaladas:
+mediana54,660->42,703ms por100000intervalos (-21,9%),
+asignacion77,6->58,4MB (-24,7%). No es una medida Fire ni ahorro de memoria
+residente; el pico~180ms sigue abierto. Detalle: tv-schedule-20261030.txt.
+
+Continuacion30/10, pertenencia a grupos: matches y visibleInHome comprueban
+grupo principal/custom directamente, sin crear LinkedHashSet/ArrayList temporal.
+Sin cache nueva ni reglas de permiso distintas. 1040unitarios correctos.
+BenchmarkJVM con4000canales sinteticos,400000pares de comprobaciones/pasada,
+ABBA repetido:mediana64,436->23,012ms (-64,3%);296->76,8MB asignados (-74,1%).
+Ganancia local, no del arranque total ni RAM residente. Sin Fire/instalacion.
+Detalle: tv-membership-20261030.txt. Mantener abierto el pico de montaje.
+
+Continuacion30/10, favoritos: indice local solo de IDs favoritos, sin indexar
+catalogo completo; filtro de proteccion solo para candidatos favoritos.
+Sin cache persistente ni cambios de orden/proteccion.1044unitarios correctos.
+Benchmark JVM4000canales/20favoritos,1000reconstrucciones:mediana92,559->27,412ms
+(-70,4%),227,112->2,600MB asignados (-98,9%). No mide pantalla completa.
+Pruebas Fire pendientes; detalle tv-favorites-20261030.txt.
+
+Continuacion30/10, perfiles/nombres: perfil vacio inmutable compartido en
+ChannelProfileStore; nombre consultado una vez por fila TV en vez de dos.
+Sin cache de alias ni cambios de persistencia.1046unitarios correctos.
+Benchmark JVM1Mfilas,4000IDs/10%alias:mediana18,743->9,574ms (-48,9%);
+43,2MB temporales->residuo de medicion. Coste absoluto pequeno, no del layout.
+Pendiente Fire; detalle tv-profiles-20261030.txt.
+
+Continuacion 30/10: cache acotada del orden limpio de canales/categorias.
+Mediana aislada JVM 188.017 -> 2.728 ms/1000 lecturas repetidas; asignaciones
+-96.6%, mismo orden. Primera lectura sin ahorro; pendiente recorrido real Fire.
+Detalle: tv-order-list-20261030.txt. No instalado ni publicado.
+
+Siguiente: coste de subcomponer/aplicar filas y2modelos/18snapshots de la entrada;
+validar diferencias reales de EPG/catalogo/permisos antes de reutilizar objetos.
+
+
+
+
 Evidencia: pendientes-20261028.txt y reviews/carousel-tv-20261028.
 
 ### 2. Miniguia — completar comparacion equivalente

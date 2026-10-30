@@ -51,4 +51,28 @@ public class ChannelProfileStoreTest {
         assertFalse(store.hasTag("ch-1"));
         assertEquals("", store.getTag("ch-1"));
     }
+
+    @Test public void emptyProfilesStayIsolatedAcrossStoresAndEdits() {
+        ChannelProfileStore first = new ChannelProfileStore(null, "one");
+        ChannelProfileStore second = new ChannelProfileStore(null, "two");
+        ChannelProfileStore.ChannelProfile before = first.getProfile("a");
+        first.setAlias("a", "Nuevo"); first.setTag("a", "Etiqueta"); first.setHidden("a", true);
+        assertEquals("", before.alias); assertEquals("", before.tag); assertFalse(before.hidden);
+        assertEquals("Nuevo", first.getDisplayName("a", "Original"));
+        assertEquals("Original", second.getDisplayName("a", "Original"));
+        assertFalse(second.isHidden("a"));
+        first.setAlias("a", ""); first.setTag("a", ""); first.setHidden("a", false);
+        assertEquals("Original", first.getDisplayName("a", "Original"));
+        assertFalse(first.hasTag("a")); assertFalse(first.isHidden("a"));
+    }
+    @Test public void missingProfilesRetainFallbackAndReloadBehaviour() {
+        ChannelProfileStore store = new ChannelProfileStore(null, "profiles");
+        for (String id : new String[]{null, "", " ", "missing"}) {
+            assertEquals("", store.getDisplayName(id, null));
+            assertEquals("Nombre", store.getDisplayName(id, "Nombre"));
+            assertFalse(store.hasAlias(id)); assertFalse(store.hasTag(id)); assertFalse(store.isHidden(id));
+        }
+        store.setAlias("a", "Alias"); store.load();
+        assertEquals("Fallback", store.getDisplayName("a", "Fallback"));
+    }
 }

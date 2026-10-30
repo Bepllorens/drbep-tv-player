@@ -24,7 +24,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         this(context, "personal-playlists.db");
     }
     private PlaylistDatabase(Context context, String name) {
-        super(context.getApplicationContext(), name, null, 9);
+        super(context.getApplicationContext(), name, null, 10);
         setWriteAheadLoggingEnabled(true);
     }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
@@ -43,6 +43,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         migrateV7(db);
         migrateV8(db);
         migrateV9(db);
+        migrateV10(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) migrateV2(db);
@@ -53,6 +54,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         if (oldVersion < 7) migrateV7(db);
         if (oldVersion < 8) migrateV8(db);
         if (oldVersion < 9) migrateV9(db);
+        if (oldVersion < 10) migrateV10(db);
     }
     private void migrateV9(SQLiteDatabase db) {
         // Group membership checks must narrow to one series before visiting episodes.
@@ -98,6 +100,14 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
                 db.setTransactionSuccessful();
             } finally {db.endTransaction();}
         }
+    }
+    private void migrateV10(SQLiteDatabase db) {
+        db.execSQL("ALTER TABLE sources ADD COLUMN refresh_schedule TEXT NOT NULL DEFAULT ''");
+        db.execSQL("ALTER TABLE sources ADD COLUMN refresh_slot INTEGER NOT NULL DEFAULT 0");
+    }
+    public void refreshSchedule(String id,String schedule,long now) {
+        ContentValues values=new ContentValues();values.put("refresh_schedule",schedule);values.put("refresh_slot",now);
+        getWritableDatabase().update("sources",values,"id=? AND refresh_schedule<>?",new String[]{id,schedule});
     }
     private void migrateV2(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE sources ADD COLUMN locator TEXT NOT NULL DEFAULT ''");
@@ -178,7 +188,7 @@ public final class PlaylistDatabase extends SQLiteOpenHelper {
         getWritableDatabase().update("sources",v,"id=?",new String[]{id});
     }
     public Cursor source(String id) { return getReadableDatabase().rawQuery("SELECT * FROM sources WHERE id=?",new String[]{id}); }
-    public Cursor dueSources(long before) { return getReadableDatabase().rawQuery("SELECT id,name,locator,origin FROM sources WHERE auto_refresh=1 AND (origin='server' OR locator<>'') AND updated<?",new String[]{Long.toString(before)}); }
+    public Cursor dueSources(long before) { return getReadableDatabase().rawQuery("SELECT id,name,locator,origin FROM sources WHERE auto_refresh=1 AND refresh_schedule='' AND (origin='server' OR locator<>'') AND updated<?",new String[]{Long.toString(before)}); }
     public Cursor browse(String id,String kind,String query,boolean favorites,boolean hidden,int offset,int limit) {
         return getReadableDatabase().rawQuery("SELECT e.*,COALESCE(p.sort_order,0) AS sort_order,COALESCE(p.favorite,0) AS favorite,COALESCE(p.hidden,0) AS hidden,COALESCE(NULLIF(p.label,''),e.title) AS display_title FROM entries e JOIN sources s ON s.id=e.source AND COALESCE(s.active,s.preview)=e.generation LEFT JOIN preferences p ON p.source=e.source AND p.identity=e.identity AND p.occurrence=e.occurrence WHERE e.source=? AND (?='' OR e.kind=?) AND (?='' OR instr(lower(e.title),lower(?))>0) AND (?='0' OR p.favorite=1) AND (?='1' OR COALESCE(p.hidden,0)=0) ORDER BY COALESCE(p.sort_order,0),e.position LIMIT ? OFFSET ?",new String[]{id,kind,kind,query,query,favorites?"1":"0",hidden?"1":"0",Integer.toString(Math.min(100,Math.max(1,limit))),Integer.toString(Math.max(0,offset))});
     }

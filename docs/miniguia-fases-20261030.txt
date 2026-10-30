@@ -1,0 +1,55 @@
+Miniguia: medicion comparable por fases — 30/10/2026
+
+Estado: preparada en .185; no instalada, publicada ni probada en Fire.
+No cambios en .223/stable, consultas, playback, foco, contenido ni formatos.
+Respaldo y log: /srv/drbep-dev/reviews/miniguide-phases-20261030.
+
+Motivo:
+El pendiente del bloque6 es una comparacion equivalente en dispositivo.
+GuideBindCost solo daba coste total; muestras de canales/dias distintos no
+demuestran ganancia. No aplicar otra optimizacion sin localizar el coste.
+
+Instrumentacion:
+LiveGuideRenderCache.wasHit indica el resultado de la ultima consulta.
+MainActivity.bindLiveChannelGuide conserva el campo micros y añade:
+- prepare_us: seleccion inicial/IDs antes de obtener plantillas.
+- format_us: obtencion o reconstruccion de plantillas formateadas.
+- selection_us: copia superficial, metadatos seleccionados y modelo.
+- bind_us: llamada al binder Compose.
+- cache_hit y numero de filas.
+Son tiempos transcurridos en microsegundos, NO tiempo CPU ni frame.
+bind_us NO mide la composicion/layout/dibujo posteriores de Compose.
+Solo numeros y booleanos: sin titulos, URLs, tokens ni identificadores.
+Tres lecturas de reloj adicionales y ampliacion del log ya existente.
+
+Pruebas .185:
+LiveGuideRenderCacheTest amplia la comprobacion de acierto/fallo y equivalencia
+en240 selecciones; verifica que modificar la lista visible no modifica las
+plantillas. Refresco de datos/reloj/cierre reconstruyen datos equivalentes.
+No demuestra identidad de todos los metadatos reales ni comportamiento visual.
+tools/summarize-miniguide-cost.py resume median/p95/max por numero de filas
+y acierto/fallo/registro legado; nunca mezcla esos grupos ni emite texto original.
+Cuatro pruebas del resumidor: separacion, rechazo de muestra inconsistente,
+privacidad de salida y percentiles. No mide reproduccion ni frame.
+
+Protocolo Fire PENDIENTE (TV encendida y mando libre):
+1. Respaldar APK/datos cuando se autorice adopcion; candidata acumulada contiene
+   migracion de listas a esquema10, no basta bajar APK para revertir esa DB.
+2. Capturas separadas para cada version: mismo canal, dia, programa seleccionado,
+   numero de filas y mismo estado de reproduccion. No mezclar usuarios/canales.
+3. ABBA con release perfilable, separar primera apertura de20 movimientos
+   calientes; repetir ayer/hoy, abrir ficha, cerrar y retornar a la miniatura.
+4. Archivos separados por recorrido; procesar cada uno con
+   python3 tools/summarize-miniguide-cost.py archivo-local.log
+   El resumen no identifica canales: la equivalencia se fija en el protocolo.
+5. Contrastar con gfxinfo/framestats, memoria y continuidad del video. Sin
+   trazas grandes ni usar logcat como prueba de video visible.
+6. Conservar datos crudos privados y resumen; no atribuir ahorro a la cache
+   comparando filas/dias distintos. No hay nueva cifra de rendimiento real.
+
+Siguiente trabajo sin Fire: revisar preparacion del ensayo XMLTV extremo.
+La medicion de miniguia, logos de biblioteca y validacion visual siguen abiertas.
+
+Validacion final:1096 pruebas JVM,70 panel y4 resumidor correctas.
+Release ARM32 beta compilada en2m49s; diff --check correcto.
+Sin instalar ni publicar. No hay nueva medicion de rendimiento Fire.

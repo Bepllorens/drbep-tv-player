@@ -7,6 +7,17 @@ import java.util.*;
 import java.util.zip.*;
 import static org.junit.Assert.*;
 public class BlackBoxStoreTest {
+ @Test public void guidePhasesPreserveUnitsAndOperation()throws Exception{
+  File dir=Files.createTempDirectory("guide-numeric").toFile();
+  try(BlackBoxStore s=new BlackBoxStore(dir,785)){
+   s.event(BlackBoxStore.Event.GUIDE_BIND_CACHED,77,150,10,24);
+   s.event(BlackBoxStore.Event.GUIDE_BIND_PHASES,77,30,40,70);
+   JSONArray events=new JSONObject(s.summary()).getJSONArray("events");int found=0;
+   for(int i=0;i<events.length();i++){JSONObject e=events.getJSONObject(i);
+    if(e.getString("event").startsWith("GUIDE_BIND_")){assertEquals(77,e.getLong("op"));assertEquals(9,e.length());found++;}
+   }assertEquals(2,found);
+  }
+ }
  @Test public void retainsHistoryAcrossProcessesAndNeverAcceptsText()throws Exception{
   File dir=Files.createTempDirectory("blackbox").toFile();
   try(BlackBoxStore s=new BlackBoxStore(dir,745)){

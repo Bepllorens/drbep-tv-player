@@ -1,0 +1,31 @@
+Foco de controles y miniatura — 30/10/2026
+Continuacion del primer bloque del plan-mejoras-20261030.md.
+
+Cambio acotado en StartupHomeHubComposeBinder.kt:
+- StartupIconButton: fondo/borde leen foco al dibujar, no al componer.
+- StartupShortcut: mismo tratamiento; textos/acciones/semantica conservados.
+- Miniatura de la portada: borde lee foco al dibujar; no se lee para
+  componer el bloque que contiene DiscoveryLivePreview.
+- startupFocusBorder admite anchuras explicitas, conservando defaults3/1dp
+  de todos los usuarios previos. Controles2/1dp y miniatura2/2dp.
+- Clip, dimensiones, radios, colores, requesters y callbacks conservados.
+  No se modifica DiscoveryLivePreview ni codigo de reproduccion.
+DiscoveryButton no se ha cambiado: su foco tambien cambia el texto; necesita
+un analisis separado, no sustituirlo por dibujo sin comprobar accesibilidad.
+
+Alcance de evidencia
+Inspeccion del diff: las lecturas de foco de estos tres puntos quedan en
+drawBehind/drawWithContent; no demuestra un ahorro concreto de milisegundos.
+Compilacion/pruebas no verifican pixeles, foco fisico ni fluidez del video.
+Pendiente Fire: comparar frio/caliente, boton buscar/ajustes/accesos,
+entrar/salir de miniatura, OK a pantalla completa y retorno; revisar
+radios/bordes a distintas densidades y conservar foco inicial en miniatura.
+Si hay regresion visual o de rendimiento, revertir solo este bloque.
+
+Respaldo y diff aislado:
+ /srv/drbep-dev/reviews/focus-controls-20261030/
+ StartupHomeHubComposeBinder.kt.before, change.diff, validation.log
+Sin instalar, publicar, commit/push ni tocar .223/beta/stable.
+
+Validacion .185:1049 pruebas correctas, cero fallos/errores/omitidas.
+Compilacion release ARM32 beta completada correctamente.

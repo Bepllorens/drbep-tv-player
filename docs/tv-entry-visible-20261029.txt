@@ -1,0 +1,98 @@
+TV: resolver programacion solo para filas visibles —29/10/2026
+
+Estado: implementado/compilado en185 y probado en Fire. Mejora parcial.
+No se ha publicado otra beta ni modificado223/stable. Mantener referencias
+anteriores de la beta784 universal. Esta APK es privada ARM32 con firma Fire.
+
+Diagnostico
+Las trazas anteriores largas sobrescribian el anillo y no eran aptas para
+contar operaciones ausentes. Nuevo perfil: ventana corta,2048KiB/CPU con
+gfx/view y tags de app; counts entries-in-buffer/entries-written IDENTICOS.
+Buffers liberados a1KiB al finalizar. No se usa dumpsys meminfo durante ensayo.
+Se mide /proc del hilo principal y vmstat antes/despues de la misma apertura.
+Los intervalos completos incluyen comandosADB y espera posterior al frame:
+sus contadores no son CPU exclusiva del primer frame ni latencia de tecla.
+
+Referencia privada784, La1/MovistarHLS133canales:
+cost-control1/2: frame max804,289/724,910ms.
+Recomposicion max355,409/272,622; layout323,756/321,481ms.
+HomeModel max205,758/79,707ms. Ambitos anidados: NO sumar.
+Fallos mayores del hiloUI2519/1468 en ventanas6,889/5,115s.
+La presion del sistema se conserva como limitacion; no prueba fuga de DRBEP.
+
+Primer ensayo: quitar solo metadatos detallados de las tarjetas iniciales.
+No basta: pagina aun crea horarios/programas de TODOS los canales.
+cost-details1/2: tvPage max190,973/163,643ms, frames972,570/881,338ms.
+Queda como paso intermedio, NO es la referencia publicada del canal beta.
+
+Cambio final
+- MainActivity.buildHomeLiveCard: ruta diferida solo para construir tarjetas de
+  la lista TV. No consulta el parEPG ni horarios/detalles de las filas ocultas.
+- ContinueCard.resolveProgrammeSnapshot obtiene el snapshot completo cuando
+  una fila se compone. La resolucion se recuerda por tarjeta en Compose,
+  sin cache global ni copia de proveedores/cuentas.
+- VisibleProgrammeRefresh mantiene refresco solo visible, ciclo de vida y
+  temporizacion existentes. Primer dato completo antes de dibujar, no skeleton.
+- Busqueda no vacia resuelve snapshots completos y conserva contains literal,
+  incluyendo espacios. No se busca solo en el texto provisional del canal.
+- Panel seleccionado recibe programa/horario/progreso/sinopsis/metadatos completos.
+- Callbacks de reproduccion y revalidacion de permisos intactos. No hay cambios
+  en URL, motor, superficies, fuentes, asociaciones ni categorias.
+- Se conserva la optimizacion independiente de Pattern de titulos.
+- El ensayo grafico TvChannelRowText sigue retirado.
+
+Medicion final Fire
+cost-visible1/2, mismas capturas cortas completas:
+tvPage max24,911/37,119ms; total30,083/45,705ms.
+Snapshots visibles18/27llamadas: total11,550/20,398ms, max2,362/6,300ms.
+La preparacion no se ha trasladado integra al layout de las filas.
+Frames max695,310/555,951ms; recomposicion204,801/190,667ms;
+layout371,097/251,185ms. Sigue habiendo picos.
+Son DOS muestras por variante, con presion de memoria variable, no un
+benchmark estadistico ni garantia de reduccion global para todos los canales.
+No presentar porcentajes del paso intermedio como mejora de toda la app.
+Fallos mayores UI1862/1532 en ventanas5,112/3,621s; swap sigue activo.
+
+Validacion
+1029unitarios,0fallos/errores. Build optimizada ARM32 correcta y firma verificada.
+Contenido no-META-INF igual tras aplicar firma privada Fire.
+Tests nuevos verifican resolucion bajo demanda, fila oculta no consultada,
+no invocar reproduccion al resolver datos y preservacion de tarjetas ya completas.
+Fire: busqueda Calle13 fuera de pantalla encuentra canal con programa;
+borrado del filtro recupera133canales. Pantalla completa/retorno correctos.
+Capturas visible-miniature-a/b revisadas: video distinto, año2026, edad+16,
+tematica y sinopsis presentes. Foco/seleccion La1 y grupoHLS conservados.
+Ultimos4000registros del proceso:0FATAL EXCEPTION,0OutOfMemoryError,
+0Playback error,0ANR in. No es prueba prolongada de ausencia de glitches.
+Se conserva candidata instalada para pruebas; no se desinstalo ni borro datos.
+
+Artefactos/evidencias privadas
+/srv/drbep-dev/reviews/tv-entry-details-20261029:
+MainActivity.before.java (antes de esta tarea), *.before-visible (paso intermedio),
+tests.log/build.log, visible-tests.log/visible-build.log,
+visible-candidate.json, visible-distribution.apk, visible-fire.apk,
+visible-*.xml, visible-miniature-a/b.png, visible-errors.json.
+APK privada final SHA256:
+c5c911edf899771d81d77852f486d074bd239f7effdf7fdf1f0a35f6b8928ed0
+
+Las seis capturas de coste y scripts comunes estan en:
+reviews/tv-entry-20261029/fire/cost-control1/2, cost-details1/2, cost-visible1/2.
+No incorporar APK, datos del dispositivo ni configuracion privada a Git.
+Retorno compatible conocido:
+reviews/tv-entry-20261029/fire/control.apk
+SHA256 a9e8bd2abd16daa7c67d10db530ea273590ec9ae9cb40a6688efd1145d8cb8bd
+Instalar-r autorizado, nunca desinstalar para cambiar firma.
+
+Pendiente: mas repeticiones intercaladas sin traza, sesion larga miniatura,
+carga/paginado rapidos y reevaluacion de memoria por pasada.
+Pico global y tirones NO se dan por cerrados.
+Sin commit/push/publicacion en este bloque.
+
+REPETICION SIN TRAZA
+Recorrido visible-navigation (mismo script de24pulsaciones, grupoHLS/La1):
+ventana entrada p95=950ms; navegacion204frames,179janky (87,75%),
+p50=31ms, p95=150ms, p99=300ms. Se conserva la muestra desfavorable.
+La reduccion de tvPage NO acredita reduccion sostenida del pico global.
+Paginado funciona, pero fluidez sigue pendiente. Comparar de nuevo con
+referencia intercalada, midiendo memoria y manteniendo fuentes equivalentes.
+No extrapolar los frames max de dos trazas al funcionamiento general sin traza.

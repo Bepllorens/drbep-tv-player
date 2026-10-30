@@ -1,0 +1,74 @@
+Horarios conectados a cola y panel — 30/10/2026
+Preparado en .185; no instalado/publicado ni activado en ningun dispositivo.
+
+Uso
+Mis listas -> seleccionar lista -> Editar.
+Actualizar automaticamente sin horario personalizado mantiene12h.
+Horario personalizado: primera hora local, intervalo30..720min,1..24franjas
+dentro de24h sin duplicar minuto. Se muestra zona del dispositivo y siguiente
+franja prevista. Desmarcar automatico deja manual, conserva configuracion.
+Cambiar horario comienza desde siguiente franja; no descarga al guardar.
+Los horarios son aproximados: comprobacion cada15min, Android/red/reposo
+pueden retrasar. Ausencias largas se agrupan en una actualizacion, no una
+descarga por cada franja pasada.
+
+Integracion
+PlaylistDatabase version9->10: dos columnas aditivas refresh_schedule=''
+y refresh_slot=0. No modifica entradas, favoritos/progreso, diales, URLs o
+asociaciones. Configure guarda campos y horario en transaccion; valida antes.
+Clientes que no envian refresh_schedule conservan el horario existente.
+Listas existentes sin horario siguen en consulta legacy12h.
+No modifica cadencia12h de guias/maintainGuides.
+
+ScheduledPlaylistRefreshWorker es unico/opcional: solo existe si hay listas
+automaticas con horario.15min, red disponible y almacenamiento no bajo.
+Se conserva WorkManager/cola PlaylistImportJobs existente.
+Reconcile al guardar/borrar y al iniciar controlador en ejecutor STAGING;
+recupera programacion persistida tras reinicio sin ejecutar SQL en hilo UI.
+Eliminar ultimo horario activo cancela comprobador, NO importaciones existentes.
+
+No duplicacion
+PlaylistScheduledDispatch protege comprobacion fresca+enqueue+marca con
+monitor PlaylistImportJobs.class (mismo que enqueue manual).
+Relee fuente, auto, horario, updated y queued/running/retry bajo ese monitor.
+Configure/delete del panel usan mismo bloqueo. Legacy relee auto/horario
+antes de encolar para descartar candidatas obtenidas antes de una edicion.
+Marca franja SOLO despues de enqueue aceptado; fallo no la consume.
+Persistencia evita que cancelar trabajo relance misma franja.
+Cambiar/desactivar no cancela una importacion ya aceptada; usuario puede
+cancelarla expresamente en Actividad. No se cambian los reintentos del importador.
+En caso de cierre entre enqueue y marca, cola existente o updated exitoso
+evitan duplicacion habitual; no afirmar transaccion distribuida exactly-once
+entre WorkManager y SQLite ni cierre probado ante crash en cada instruccion.
+
+Pruebas .185
+Motor calendario previo: DST/medianoche/multipleszonas.
+Dispatch real compartido:40comprobaciones simultaneas -> una entrega;
+busy/manual/noURL/reciente/franja consumida/cancelacion; fallo enqueue no marca.
+Formulario:modo12h por defecto, validacion, guardar/recuperar valores,
+omitir URL vacia, manual y rechazo de sesion vieja.
+SQL SQLite sintetico usando ALTER/query del codigo:cinco fuentes preservadas,
+resultados legacy identicos despues de migracion, exclusiones custom,
+rollback atomico.
+No equivale a ejecutar WorkManager Android real; validacion Fire pendiente.
+
+Antes de instalar/probar en Fire
+Respaldar DB personal-playlists.db consistentemente con WAL/SHM o backupSQLite,
+APK previa y configuracion. La migracion incrementa version a10: volver solo
+a APK de esquema9 no es retorno suficiente; requiere restaurar respaldo
+consistente, sin perder progresos acumulados entre pruebas.
+No se ha migrado la DB del Fire ni de produccion en esta tarea.
+Probar horarios porfranja real, reposo/red, reinicio, desactivar/editar/borrar
+durante importacion, manual concurrente, cancelacion y reproduccion fluida.
+
+Archivos
+PlaylistRefreshSchedule/Decision/ScheduledDispatch.java
+ScheduledPlaylistRefreshWorker.java, PlaylistRefreshWorker.java
+playlists/PlaylistDatabase.java, PersonalPlaylistController.java
+assets/device-panel.html
+Pruebas PlaylistScheduledDispatchTest.java,
+tools/test-panel-playlist-schedule.cjs y test-playlist-schedule-migration.py.
+Respaldo/evidencias:/srv/drbep-dev/reviews/playlist-schedule-integration-20261030.
+
+Validacion final:1077 pruebas JVM y70 JS correctas, cero fallos.
+Migracion SQL sintetica correcta; release ARM32 beta correcto en3m3s.

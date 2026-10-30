@@ -1,0 +1,94 @@
+TV: intento de desglose del pico de montaje —29/10/2026
+
+Estado: SIN NUEVA CORRECCION FUNCIONAL. El pico ~180msCPU sigue pendiente.
+La medicion actual no ha producido una muestra valida de entrada a TV.
+No se publican APK, no hay commit/push ni cambios backend/stable/produccion.
+Los cambios anteriores (incluido refresco compartido) se conservan.
+
+Disponibilidad del dispositivo
+El Fire190 estaba dormido, mWakefulness=Asleep/DisplayPower=OFF.
+Se envio KEYCODE_WAKEUP224, sin alternar POWER. Paso aAwake/ON.
+El usuario aclaro que esta fuera de casa y NO puede confirmar la TV/HDMI.
+No considerar el estado ON del Fire como confirmacion fisica del televisor.
+La salida tiene physical3840x2160/override1920x1080; no se modifico.
+No esta probado que esa configuracion cause el fallo de las coordenadas.
+El recorrido por coordenadas no alcanzo TV: la verificacion de grupo fallo
+y despues se observo el launcher. Muestra INVALIDA conservada como evidencia:
+reviews/tv-entry-20261029/fire/mount-cost-baseline/INVALID.txt.
+No usar sus tiempos como un nuevo control o como una regresion de DRBEP.
+
+Video
+Tras despertar/abrir, los metodos anteriores no encontraron contadores
+PreviewPerf ni superficies SurfaceView de DRBEP avanzando.
+Una captura de portada con imagen fija NO demuestra reproduccion.
+No hay nueva prueba valida de miniatura, zapeo o retorno en este bloque.
+
+Preparacion de trazado mas fino
+Se inspecciono la API instalada de Compose1.7.8, sin actualizar dependencias.
+Tracer temporal con Composer.setTracer/CompositionTracer y marcas android.os.Trace
+para distinguir funciones Compose dentro de la primera medida.
+Compilo en release optimizada/perfilable, ARM32, con firma privada compatible.
+No forma parte del codigo final ni de la APK restaurada.
+Guia consultada: https://developer.android.com/develop/ui/compose/tooling/tracing
+La guia explica el trazado de composicion; el adaptador directo de1.7.8 es
+experimental y NO se ha validado en ejecucion con una captura util.
+Su sobrecarga impediria usarlo como prueba de ganancia de una APK normal.
+
+Auxiliares e incidencias
+1. AndroidJUnitRunner del modulo androidTest no inicio el test contra la APK R8:
+   NoClassDefFoundError kotlin/jvm/internal/Intrinsics.
+   Era una incompatibilidad del auxiliar/debug classpath, no una prueba de fallo
+   del codigo funcional en uso normal. Se restauro el APK test anterior.
+2. Auxiliar de plataforma, solo android.app.Instrumentation/UiAutomation,
+   sin Kotlin/AndroidX y firmado con la identidad de pruebas.
+   La primera variante no encontro la portada; se aislo como self-instrumentation.
+3. am start -W no completo su espera de forma fiable. Se detuvo SOLO el cliente
+   del ensayo. No inferir la causa (HDMI, framework o herramienta) sin validar.
+4. Ultimo ensayo: lanzamiento sin-W, busqueda de nodos visibles por accesibilidad
+   en ventanas de DRBEP y tiempos maximos. No termino dentro de75s:
+   bounded-result.json capture_valid=false, TimeoutExpired, restored=true.
+   No hay composition.trace util ni datos para localizar un componente culpable.
+
+Retorno y limpieza comprobados
+- MainActivity.java coincide exactamente con la copia previa a esta tarea.
+- StartupHomeHubComposeBinder.kt no se modifico en este bloque.
+- TvMountTracing.kt y TvMountTraceDeviceTest.java temporales retirados del checkout;
+  sus fuentes se conservan en reviews para revisar el intento.
+- APK Fire restaurada y hash del archivo instalado verificado:
+  c068107a0605ccb5e84c946001037b98f340d6a2d9741a4c622027d5ca296076
+  reviews/tv-refresh-mount-20261029/final-fire.apk
+- El auxiliar nuevo com.drbep.mountdiag fue detenido y desinstalado.
+  DRBEP y sus datos NO se desinstalaron ni borraron.
+- El auxiliar offline.test anterior fue reinstalado desde before-test.apk.
+- Servidor ADB y autorizaciones conservados. Sin reiniciar el Fire ni cerrar
+  otras aplicaciones o servicios.
+- tracing_on=0 y buffer_size_kb=1 verificados.
+- Se recompilo el checkout restaurado para no dejar en outputs una APK temporal.
+  Build correcto; payload no-META-INF identico al de la distribucion conocida
+  del paso anterior; no contiene TvMountTracing.
+- No se vuelven a presentar los1035unitarios previos como nuevos tests de hoy:
+  no ha quedado una modificacion funcional nueva que validar.
+
+Fuentes/evidencias185
+/srv/drbep-dev/reviews/tv-mount-cost-20261029/
+MainActivity.java.before / MainActivity.traced.java, TvMountTracing.kt,
+TvMountTraceDeviceTest.java, platform-helper/, capture-bounded.py,
+APKs temporales e identidades, before-test.apk, registros de compilacion,
+unreliable-device.json, capture-block.json, restoration.json y capturas.
+Los auxiliares estan compilados pero NO validados como un procedimiento util.
+No incorporar APK, firmas, logs brutos o archivos privados a Git.
+
+Reanudacion segura
+1. Confirmar TV encendida en la entrada HDMI, mando libre y video avanzando.
+2. Empezar por la candidata restaurada y comprobar inicio/En directo por mando.
+   Usar esperas condicionadas a la pantalla; no confiar solo en una pausa fija.
+3. Revisar el auxiliar de captura antes de repetir. No usar androidTest debug
+   sobre release R8 sin resolver la compatibilidad. El auxiliar de plataforma
+   es independiente; evitar esperas am start-W sin limite y restaurar al fallar.
+4. Capturar la primera medida con trazas pequenas y cobertura completa.
+   Separar subcomposicion, applyChanges, creacion AndroidView y medida/colocacion.
+5. Identificar el coste real antes de cambiar la implementacion.
+   No introducir caches solo por ID ni ignorar EPG oficial, permisos/proveedor/
+   usuario para eliminar los18snapshots de la entrada.
+6. Comparar control/candidata en la misma APK, luego validar navegacion y video
+   con una APK limpia. Solo conservar una mejora demostrable.

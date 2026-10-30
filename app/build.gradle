@@ -85,8 +85,8 @@ android {
         applicationId "com.drbep.tvplayer.offline"
         minSdk 23
         targetSdk 34
-        versionCode 784
-        versionName "2.0.784-beta-guide-refresh"
+        versionCode 785
+        versionName "2.0.785-beta-navigation-cache"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             if (emulatorAbiOnly) {

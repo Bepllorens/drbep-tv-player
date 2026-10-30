@@ -16,6 +16,25 @@ public class DeviceWebPanelTest {
             ByteArrayOutputStream response=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=s.getInputStream().read(b))!=-1)response.write(b,0,n);return response.toString("UTF-8");
         }
     }
+    @Test public void imageCacheRequiresSessionPostAndEmptyBody() throws Exception {
+        AtomicInteger calls=new AtomicInteger();
+        DeviceWebPanel.Host host=new DeviceWebPanel.Host(){
+            public String status(){return "{}";}public long importPlaylist(InputStream in){return 0;}
+            public String imageCache(){calls.incrementAndGet();return "{}";}
+        };
+        try(DeviceWebPanel panel=new DeviceWebPanel(host,new byte[0])){
+            int port=panel.start();
+            assertTrue(request(port,"POST","/image-cache","","",0).startsWith("HTTP/1.1 401"));
+            String login=request(port,"POST","/session","",panel.pin(),6);
+            String token=new JSONObject(login.split("\r\n\r\n",2)[1]).getString("token");
+            String auth="X-Panel-Token: "+token+"\r\n";
+            assertTrue(request(port,"GET","/image-cache",auth,"",0).startsWith("HTTP/1.1 400"));
+            assertTrue(request(port,"POST","/image-cache",auth,"x",1).startsWith("HTTP/1.1 400"));
+            assertTrue(request(port,"POST","/image-cache",auth+"Origin: http://other.test\r\n","",0).startsWith("HTTP/1.1 403"));
+            assertTrue(request(port,"POST","/image-cache",auth,"",0).startsWith("HTTP/1.1 200"));
+            assertEquals(1,calls.get());
+        }
+    }
     @Test public void networkProbeRequiresSessionPostAndEmptyBody() throws Exception {
         AtomicInteger calls=new AtomicInteger();
         DeviceWebPanel.Host host=new DeviceWebPanel.Host(){

@@ -241,27 +241,31 @@ private fun StartupTopBar(model: StartupHomeHubUiModel, compact: Boolean) {
 
 @Composable
 private fun StartupIconButton(icon: String, label: String, action: Runnable?, compact: Boolean) {
-    var focused by remember { mutableStateOf(false) }
+    val focused = remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .size(if (compact) 38.dp else 42.dp)
             .clip(OfflineTvTheme.Menu.shape)
-            .border(if (focused) 2.dp else 1.dp, if (focused) OfflineTvTheme.Colors.focus else Color(0x22FFFFFF), OfflineTvTheme.Menu.shape)
-            .background(if (focused) OfflineTvTheme.Menu.row else Color(0x22FFFFFF))
-            .onFocusChanged { focused = it.isFocused }
+            .startupFocusFill({ focused.value }, Color(0x22FFFFFF), OfflineTvTheme.Menu.row)
+            .startupFocusBorder({ focused.value }, 3.dp, Color(0x22FFFFFF), activeWidth = 2.dp)
+            .onFocusChanged { focused.value = it.isFocused }
             .tvButtonSemantics(action != null, label)
             .clickable(enabled = action != null) { action?.run() },
         contentAlignment = Alignment.Center
     ) { BasicText(icon, style = TextStyle(Color.White, if (compact) 18.sp else 20.sp, FontWeight.Bold)) }
 }
 
+// The surrounding clip retains the menu shape; focus does not rebuild the label.
+private fun Modifier.startupFocusFill(isFocused: () -> Boolean, idle: Color, active: Color): Modifier =
+    drawBehind { drawRect(if (isFocused()) active else idle) }
+
 // Read focus during drawing, not composition: changing selection must not
 // rebuild text measurement or the native preview/artwork subtree.
-private fun Modifier.startupFocusBorder(isFocused: () -> Boolean, radius: Dp, idle: Color, focus: Color = OfflineTvTheme.Colors.focus): Modifier =
+private fun Modifier.startupFocusBorder(isFocused: () -> Boolean, radius: Dp, idle: Color, focus: Color = OfflineTvTheme.Colors.focus, activeWidth: Dp = 3.dp, idleWidth: Dp = 1.dp): Modifier =
     drawWithContent {
         drawContent()
         val active = isFocused()
-        val stroke = (if (active) 3.dp else 1.dp).toPx()
+        val stroke = (if (active) activeWidth else idleWidth).toPx()
         val inset = stroke / 2f
         val corner = (radius.toPx() - inset).coerceAtLeast(0f)
         drawRoundRect(
@@ -425,14 +429,14 @@ private fun StartupShortcuts(items: List<StartupHomeHubUiModel.Shortcut>, compac
 
 @Composable
 private fun StartupShortcut(item: StartupHomeHubUiModel.Shortcut, modifier: Modifier, compact: Boolean) {
-    var focused by remember { mutableStateOf(false) }
+    val focused = remember { mutableStateOf(false) }
     Row(
         modifier = modifier
             .height(if (compact) 62.dp else 68.dp)
             .clip(OfflineTvTheme.Menu.shape)
-            .border(if (focused) 2.dp else 1.dp, if (focused) OfflineTvTheme.Colors.focus else OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.2f), OfflineTvTheme.Menu.shape)
-            .background(if (focused) OfflineTvTheme.Menu.row else OfflineTvTheme.Colors.panelGlass.copy(alpha = 0.6f))
-            .onFocusChanged { focused = it.isFocused }
+            .startupFocusFill({ focused.value }, OfflineTvTheme.Colors.panelGlass.copy(alpha = 0.6f), OfflineTvTheme.Menu.row)
+            .startupFocusBorder({ focused.value }, 3.dp, OfflineTvTheme.Colors.accentSecondary.copy(alpha = 0.2f), activeWidth = 2.dp)
+            .onFocusChanged { focused.value = it.isFocused }
             .tvButtonSemantics(
                 item.onClick != null,
                 listOf(item.title, item.subtitle).filter { it.isNotBlank() }.joinToString(". ")
@@ -572,10 +576,12 @@ private fun DiscoveryLibrary(model: StartupHomeHubUiModel, artwork: StartupHomeH
     }
     var selectedId by remember { mutableStateOf(model.discovery?.librarySelectedId.orEmpty()) }
     val selected = cards.firstOrNull { identity(it) == selectedId } ?: cards.firstOrNull()
+    var artworkCard by remember(selected?.libraryId, selected?.title) { mutableStateOf<StartupHomeHubUiModel.ContinueCard?>(null) }
     var details by remember(selected?.libraryId, selected?.title) { mutableStateOf(arrayOf(selected?.description.orEmpty(), selected?.facts.orEmpty())) }
     LaunchedEffect(selected?.libraryId, selected?.title) {
         val card = selected ?: return@LaunchedEffect
         delay(350)
+        artworkCard = card
         if (artwork != null) details = kotlinx.coroutines.suspendCancellableCoroutine<Array<String>> { continuation ->
             val cancel = artwork.loadLibraryInfo(card) { info -> if (continuation.isActive) continuation.resume(info) }
             continuation.invokeOnCancellation { cancel.run() }
@@ -599,9 +605,25 @@ private fun DiscoveryLibrary(model: StartupHomeHubUiModel, artwork: StartupHomeH
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         model.onSavedArchive?.let { action -> DiscoveryButton("Programas U7D guardados", action = { action.run() }) }
         BasicText("MI BIBLIOTECA", style = TextStyle(OfflineTvTheme.Colors.accentCyan, 12.sp, FontWeight.Bold, letterSpacing = 1.5.sp))
-        Column(Modifier.fillMaxWidth().height(176.dp)
-            .background(Brush.horizontalGradient(listOf(Color(0xB009121C), Color.Transparent)))
-            .padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Box(Modifier.fillMaxWidth().height(176.dp).clip(RoundedCornerShape(6.dp))) {
+            artworkCard?.let { card ->
+                AndroidView(modifier = Modifier.align(Alignment.CenterEnd).fillMaxWidth(0.42f).fillMaxHeight(),
+                    factory = { AppCompatImageView(it).apply {
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    } }, onReset = null, onRelease = { artwork?.releaseArtwork(it) },
+                    update = { image ->
+                        val request = identity(card) + "|" + card.imageUrl
+                        if (image.getTag(R.id.startup_home_artwork_request) != request) {
+                            image.setTag(R.id.startup_home_artwork_request, request)
+                            artwork?.bindArtworkCard(image, card, false, 560, 352, java.util.function.Consumer { image.scaleType = ImageView.ScaleType.FIT_CENTER })
+                        }
+                    })
+            }
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+                listOf(Color(0xF009121C), Color(0xDD09121C), Color(0x8009121C)))))
+            Column(Modifier.fillMaxSize().padding(vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)) {
             BasicText(selected?.title ?: "Tu próxima historia empieza aquí", maxLines = 2, overflow = TextOverflow.Ellipsis,
                 style = TextStyle(Color.White, 25.sp, FontWeight.Bold))
             BasicText(selected?.let { listOf(it.providerKey, details[1].ifBlank { it.kind }).filter(String::isNotBlank).joinToString("  ·  ") }
@@ -626,6 +648,7 @@ private fun DiscoveryLibrary(model: StartupHomeHubUiModel, artwork: StartupHomeH
                 } else BasicText("${if(selected.progress>=.95f) "Casi terminado" else if(selected.progress>0f) "En curso" else "Sin empezar"} · ${selected.subtitle}  ·  OK para ver opciones", maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(if(selected.progress>=.95f) ContentStatusColors.live else if(selected.progress>0f) ContentStatusColors.pending else OfflineTvTheme.Colors.textMuted, 11.sp))
             }
+        }
         }
         if (cards.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -737,11 +760,11 @@ private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHu
             }
             Box(Modifier.weight(1.1f).fillMaxHeight(),contentAlignment=Alignment.CenterEnd) {
                 if(live!=null) {
-                    var focused by remember { mutableStateOf(false) }
+                    val focused = remember { mutableStateOf(false) }
                     Box(Modifier.fillMaxHeight().aspectRatio(16f/9f,true)
                         .focusRequester(previewFocus)
-                        .border(2.dp,if(focused) Color.White else Color.Transparent,RoundedCornerShape(6.dp))
-                        .onFocusChanged { focused=it.isFocused; if(it.isFocused) { discovery.startupPreviewFocusPending=false; discovery.homeFocusedChannel="@preview" } }
+                        .startupFocusBorder({ focused.value }, 6.dp, Color.Transparent, Color.White, activeWidth = 2.dp, idleWidth = 2.dp)
+                        .onFocusChanged { focused.value=it.isFocused; if(it.isFocused) { discovery.startupPreviewFocusPending=false; discovery.homeFocusedChannel="@preview" } }
                         .tvButtonSemantics(true,"Ver ${live.title} a pantalla completa")
                         .clickable { live.onClick?.run() }) {
                         DiscoveryLivePreview(live,artwork,Modifier.fillMaxSize())
@@ -798,9 +821,17 @@ private fun LiveHomeLanding(model: StartupHomeHubUiModel, artwork: StartupHomeHu
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiModel.Page, provider: String,
+    artwork: StartupHomeHubArtworkBinder?, modifier: Modifier, selectProvider: (String) -> Unit) {
+    SharedVisibleProgrammeRefresh {
+        DiscoveryLiveContent(model, page, provider, artwork, modifier, selectProvider)
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun DiscoveryLiveContent(model: StartupHomeHubUiModel, page: StartupHomeHubUiModel.Page, provider: String,
     artwork: StartupHomeHubArtworkBinder?, modifier: Modifier, selectProvider: (String) -> Unit) {
     val discovery = model.discovery ?: return
     var groupsOpen by remember { mutableStateOf(false) }
@@ -856,7 +887,12 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
     var beforeChannels by remember(provider) { mutableStateOf(channelRows) }
     var channelLongPress by remember { mutableStateOf(false) }
     LaunchedEffect(page) { if (movingChannel == null) channelRows = page.cards.toList() }
-    val channels = remember(channelRows, query) { channelRows.filter { it.title.contains(query, true) || it.subtitle.contains(query, true) } }
+    val channels = remember(channelRows, query) {
+        if (query.isEmpty()) channelRows else channelRows.filter {
+            val programme = it.resolveProgrammeSnapshot()
+            programme.title.contains(query, true) || programme.subtitle.contains(query, true)
+        }
+    }
     val channelFocus = remember { mutableMapOf<String, FocusRequester>() }
     androidx.compose.runtime.SideEffect {
         discovery.cancelLiveOrder = when {
@@ -1109,7 +1145,8 @@ private fun DiscoveryLive(model: StartupHomeHubUiModel, page: StartupHomeHubUiMo
                             .clickable { selectedId = channel.channelId; discovery.selectedLiveChannel = channel.channelId; discovery.selectedLiveChannels[provider] = channel.channelId; channel.onClick?.run() }
                             .padding(9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                BasicText(if (playing) "▶" else "${index + 1}", modifier = Modifier.width(18.dp), style = TextStyle(if (playing) Color(0xFF67DBEA) else Color(0xFF9BB4C5), 10.sp))
+                                TvChannelRowNumber(if (playing) "▶" else "${index + 1}", playing,
+                                    Modifier.width(18.dp).fillMaxHeight())
                                 DiscoveryArtwork(channel.imageUrl, channel.title, false, artwork, Modifier.width(42.dp).height(34.dp).padding(3.dp), 42, 34)
                                 TvChannelRowText(channel.title,
                                     if (hasProgramme) remember(channel.subtitle) { HomeProgramPresentation.of(channel.subtitle).title } else "Sin programación",

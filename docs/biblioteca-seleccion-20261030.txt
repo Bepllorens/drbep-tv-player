@@ -1,0 +1,50 @@
+Biblioteca / Continuar viendo — 30/10/2026
+
+Alcance: desarrollo en .185, sin instalar, publicar, tocar .223 ni stable.
+Respaldo previo: /srv/drbep-dev/reviews/library-selection-20261030.
+Los cambios anteriores del checkout se conservan.
+
+Cambios:
+- Fondo del elemento seleccionado en Mi biblioteca, usando el resolvedor
+  TMDB/Glide existente y sus caches. Espera350ms de seleccion estable.
+  FIT_CENTER evita deformar o recortar una portada cuando no hay backdrop.
+  Degradado oscuro conserva el contraste; dimensiones del panel/carrusel,
+  tipografia, foco y callbacks de reanudacion/episodios se conservan.
+- Sin nuevas consultas de catalogos completos ni cargas VOD al arrancar.
+- LibraryInfoCache por instancia del binder: LRU32 resultados, incluye
+  respuestas vacias correctas; errores no quedan cacheados.
+- Una consulta simultanea por identificador/revision. Cancelar un consumidor
+  no cancela el trabajo que necesita otro. Respuestas canceladas no se entregan.
+  Trabajos en cola sin consumidores se omiten antes de acceder a la red.
+- La consulta de sinopsis remota sigue limitada al caso HBO ya existente.
+  Otros proveedores conservan description/facts del historial.
+  La cache termina con el binder: no se comparte entre sesiones/cuentas.
+
+Archivos:
+app/src/main/java/com/drbep/tvplayer/LibraryInfoCache.java
+app/src/main/java/com/drbep/tvplayer/MainActivity.java (binder loadLibraryInfo)
+app/src/main/java/com/drbep/tvplayer/StartupHomeHubComposeBinder.kt (DiscoveryLibrary)
+app/src/test/java/com/drbep/tvplayer/LibraryInfoCacheTest.java
+
+Pruebas:
+7 casos nuevos: consulta compartida, cancelacion de consumidor, copia defensiva,
+resultado vacio, reintento tras error, cancelacion de entrega ya encolada,
+eviccion LRU, descarte previo a IO y consultas repetidas (casos agrupados).
+Ensayo sintetico100 selecciones repetidas:1 llamada al proveedor frente a100
+sin reutilizacion para una respuesta vacia. No es una medida de latencia Fire.
+
+Pendiente Fire:
+- Entrar/salir biblioteca, recorrer rapidamente y volver a una ficha:
+  no debe aparecer imagen/sinopsis anterior ni perder foco.
+- Continuar/empezar de nuevo/episodios/quitar: mismo progreso y navegacion.
+- Revisar contraste, poster de fallback y memoria durante reproduccion.
+- Comprobar red y tiempo de ficha fria/caliente con permisos reales.
+- No se han añadido logos de titulos: el resolvedor actual solo expone
+  poster/backdrop; quedan para una ampliacion separada con datos fiables.
+- No se afirma mejora medida de fluidez ni se cierra validacion visual.
+
+
+Validacion final:1084 pruebas JVM correctas,70 panel correctas,
+release ARM32 beta compilada en3m2s; git diff --check correcto.
+Primera compilacion fallo por argumento Modifier sin nombre en AndroidView;
+corregido y validacion completa repetida. Sin pruebas de dispositivo.

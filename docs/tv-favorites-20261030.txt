@@ -1,0 +1,47 @@
+TV/portada: reconstruccion de favoritos —30/10/2026
+
+Trabajo solo en185; cambios anteriores conservados.
+Sin Fire, instalacion, publicacion ni cambios de produccion.
+
+Cambio:
+Extraida FavoriteQuickChannels.build, invocada desde buildFavoriteQuickChannels.
+Indice temporal limitado a favoritos. Si no hay orden guardado, no se rellena
+el indice. Filtro de proteccion consultado solo para IDs favoritos.
+Se conserva primer objeto por ID para el orden guardado, fallback en orden del
+catalogo, duplicados y el caso primer duplicado bloqueado/segundo visible.
+Se mantienen filtros antes de añadir cada elemento; no hay cache de permisos
+ni decision de acceso persistente. No cambia favoritos guardados ni su orden.
+La reduccion de llamadas al filtro es intencionada: no se consulta para objetos
+que no pueden formar parte del resultado.
+
+Pruebas:
+1044unitarios,0fallos/errores/omitidas.
+300catalogos sinteticos con orden aleatorio reproducible, duplicados, nulos,
+vacios y elementos ausentes: mismos objetos y orden que antes.
+Casos dedicados: duplicado bloqueado, retirada de favorito, cambio de proteccion
+y ausencia de consultas de proteccion sobre no favoritos.
+
+Medicion JVM caliente, clases reales, datos sinteticos:
+4000canales,20favoritos,10IDs ordenados,1000reconstrucciones por pasada.
+Orden ABBA repetido;500calentamientos por variante.
+Control ms:116,571 /88,356 /96,762 /87,983.
+Candidata ms:59,014 /27,911 /26,010 /26,913.
+Medianas92,559->27,412ms (-70,4%).
+Asignaciones medianas227112056->2600056bytes (-98,9%).
+Se conserva primera pasada desfavorable/caliente incompleta.
+Este resultado depende de catalogo/favoritos; no representa ahorro de RAM
+residente, tiempo Compose ni ganancia porcentual de la pantalla completa.
+Sigue pendiente el pico~180ms y la doble construccion inicial de modelos.
+
+Evidencia privada:
+/srv/drbep-dev/reviews/tv-favorites-20261030/
+MainActivity.java.before, FavoritesBench.java, benchmark.txt, tests.log, build.log.
+
+Pendiente Fire:
+Favoritos ordenados, cambios de favorito y de proteccion, portada/lista,
+foco, miniatura, pantalla completa/retorno y medicion equivalente.
+No modificar asociaciones ni rutas de reproduccion para medir esta mejora.
+Sin commit/push en este bloque.
+
+Compilacion release beta ARM32 perfilable correcta:2m37s.
+No instalada ni publicada.

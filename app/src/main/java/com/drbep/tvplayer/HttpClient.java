@@ -67,9 +67,11 @@ final class HttpClient {
             for (Map.Entry<String, String> entry : headers.entrySet()) request.header(entry.getKey(), entry.getValue());
         }
         okhttp3.Call call = NetworkClients.withTimeouts(connectTimeoutMs, readTimeoutMs).newCall(request.build());
+        HttpRequestTrace trace = BlackBox.httpRequest();
         try (RequestCancellationScope.Registration ignored = RequestCancellationScope.registerCurrent(call::cancel);
              okhttp3.Response response = call.execute()) {
             int code = response.code();
+            trace.headers(code);
             if (code < 200 || code >= 300) throw new IllegalStateException("catalogo: HTTP " + code);
             ResponseBody body = response.body();
             if (body == null) throw new IllegalStateException("catalogo vacio");
@@ -77,6 +79,11 @@ final class HttpClient {
             try (InputStream input = new LimitedInputStream(body.byteStream(), maxBytes)) {
                 return StreamingCatalogJson.read(input);
             }
+        } catch (Exception failure) {
+            trace.finish(call.isCanceled() || Thread.currentThread().isInterrupted() ? 1 : 2);
+            throw failure;
+        } finally {
+            trace.finish(0);
         }
     }
 
@@ -165,9 +172,11 @@ final class HttpClient {
         RequestBody requestBody = body == null ? null : RequestBody.create(JSON_MEDIA_TYPE, body);
         request.method(method, requestBody);
         okhttp3.Call call = client.newCall(request.build());
+        HttpRequestTrace trace = BlackBox.httpRequest();
         try (RequestCancellationScope.Registration ignored = RequestCancellationScope.registerCurrent(call::cancel);
              okhttp3.Response response = call.execute()) {
             int code = response.code();
+            trace.headers(code);
             ResponseBody responseBody = response.body();
             long contentLengthLong = responseBody == null ? 0L : responseBody.contentLength();
             int contentLength = contentLengthLong > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) contentLengthLong;
@@ -177,6 +186,11 @@ final class HttpClient {
             String responseText = responseBody == null ? "" : readAll(responseBody.byteStream(), maxResponseBytes);
             Log.d(TAG, method + " " + safeEndpoint(url) + " status=" + code + " responseChars=" + responseText.length());
             return new Response(code, responseText, response.request().url().toString(), response.header("ETag"), response.header("Last-Modified"));
+        } catch (Exception failure) {
+            trace.finish(call.isCanceled() || Thread.currentThread().isInterrupted() ? 1 : 2);
+            throw failure;
+        } finally {
+            trace.finish(0);
         }
     }
 

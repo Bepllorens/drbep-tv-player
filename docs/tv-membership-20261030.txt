@@ -1,0 +1,46 @@
+TV: pertenencia a grupos sin colecciones temporales —30/10/2026
+
+Desarrollo en185, rama qoder/disneyplus-vod-582.
+Conservados todos los cambios anteriores sin commit/push.
+Sin conexiones al Fire en este bloque; sin instalar/publicar/desplegar.
+
+Cambio:
+LiveHomePolicy.matches y visibleInHome recorren grupo principal y customGroups
+directamente. Las consultas de existencia no necesitan construir primero un
+LinkedHashSet y ArrayList. Duplicados no cambian el resultado booleano.
+Se conserva la exclusion del grupo principal vacio, la normalizacion ROOT,
+las claves completas de plataforma, ALL y las reglas admin/no-admin.
+La funcion groups se conserva para consumidores que necesitan una lista.
+No se cachean resultados: revocaciones y ediciones son efectivas al leer.
+No se reutilizan modelos ni snapshots de EPG.
+
+Pruebas:
+1040unitarios,0fallos,0errores,0omitidos.
+LiveMembershipEquivalenceTest compara con la implementacion anterior:
+grupos vacios, nulos, duplicados, Unicode, claves de plataforma completas,
+combinaciones de permisos/admin/live/metadatos, VOD y revocacion de permisos.
+
+Microbenchmark:
+Clases reales compiladas, JVM en185, datos sinteticos.
+4000canales,4tipos de selector,400000pares matches/visible por pasada.
+Orden control/candidata/candidata/control repetido, calentamiento previo.
+Control ms:125,801 /72,018 /55,695 /56,853.
+Candidata ms:33,201 /21,611 /22,397 /23,627.
+Medianas64,436->23,012ms (-64,3%).
+Asignacion mediana296000056->76800056bytes (-74,1%).
+Primera pasada de ambas variantes aun afectada por calentamiento; se conserva.
+No prueba mejora del64% en TV ni reduccion de RAM residente.
+No mide trabajo Compose/colocacion~180ms, que sigue abierto.
+
+Evidencia privada:
+/srv/drbep-dev/reviews/tv-membership-20261030/
+LiveHomePolicy.java.before, MembershipBench.java, benchmark.txt,
+tests.log y build.log. No incorporar artefactos compilados a Git.
+
+Pendiente con TV encendida:
+validar lista/grupos, usuarios con distintos permisos, cambiar proveedor,
+buscar y limpiar filtro, foco y retorno, miniatura y comparacion intercalada.
+Conservar La1/Vamos y rutas de reproduccion. No instalar una firma distinta.
+
+Build release beta ARM32 perfilable: correcto en2m34s.
+Sin instalar, publicar, commit ni push.

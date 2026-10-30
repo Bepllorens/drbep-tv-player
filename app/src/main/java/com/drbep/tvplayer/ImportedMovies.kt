@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -290,19 +291,35 @@ internal object ImportedMovies {
             BasicText("TMDB ${page?.identified?:0}/${page?.total?:0} · Completa fichas y géneros desde el panel web → Actividad · Disponibles después sin conexión",style=TextStyle(Color(0xFF8094A8),10.sp),modifier=Modifier.padding(top=6.dp))
         }
         picker?.let {options->
-            Column(Modifier.fillMaxHeight().width(360.dp).background(OfflineTvTheme.Menu.background).background(Color(0xED101722)).padding(24.dp)) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+            val density = LocalDensity.current
+            val measurer = rememberTextMeasurer()
+            val panelWidth = remember(options, pickerTitle, maxWidth, density, measurer) {
+                val labels = CategoryPanelSizing.longestLabels(options.map { it.first })
+                val widest = labels.maxOfOrNull { measurer.measure(it,
+                    TextStyle(fontSize=12.sp,fontWeight=FontWeight.Bold),
+                    softWrap=false,maxLines=1).size.width } ?: 0
+                val titleWidth = measurer.measure(pickerTitle,
+                    TextStyle(fontSize=20.sp,fontWeight=FontWeight.Bold),
+                    softWrap=false,maxLines=1).size.width
+                CategoryPanelSizing.width(maxWidth.value,
+                    with(density) { widest.toDp().value },
+                    with(density) { titleWidth.toDp().value }).dp
+            }
+            Column(Modifier.fillMaxHeight().width(panelWidth).background(OfflineTvTheme.Menu.background).background(Color(0xED101722)).padding(24.dp)) {
                 BasicText(pickerTitle,style=TextStyle(Color.White,20.sp,FontWeight.Bold));Spacer(Modifier.height(12.dp))
                 MovieButton("Cerrar",true){closePicker()}
-                LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {items(options.size){i->MovieButton(options[i].first,modifier=Modifier.onFocusChanged{if(it.isFocused)pickerFocus=i}){val action=options[i].second;picker=null;action()}}}
+                LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {items(options.size){i->MovieButton(options[i].first,modifier=Modifier.fillMaxWidth().onFocusChanged{if(it.isFocused)pickerFocus=i},maxLines=2,limitWidth=false){val action=options[i].second;picker=null;action()}}}
+            }
             }
         }
     }
 }
-@Composable private fun MovieButton(label:String,initial:Boolean=false,modifier:Modifier=Modifier,onClick:()->Unit) {
+@Composable private fun MovieButton(label:String,initial:Boolean=false,modifier:Modifier=Modifier,maxLines:Int=1,limitWidth:Boolean=true,onClick:()->Unit) {
     var focused by remember{mutableStateOf(false)}
     val requester=rememberTvInitialFocusRequester(initial,label)
-    BasicText(label,maxLines=1,overflow=TextOverflow.Ellipsis,
-        style=TextStyle(if(focused)Color(0xFF101722)else Color.White,12.sp,FontWeight.Bold),modifier=modifier.widthIn(max=240.dp)
+    BasicText(label,maxLines=maxLines,overflow=TextOverflow.Ellipsis,
+        style=TextStyle(if(focused)Color(0xFF101722)else Color.White,12.sp,FontWeight.Bold),modifier=modifier.then(if(limitWidth) Modifier.widthIn(max=240.dp) else Modifier)
         .then(if(initial)Modifier.focusRequester(requester)else Modifier)
         .onFocusChanged{focused=it.isFocused}.background(if(focused)Color.White else Color.Transparent,RoundedCornerShape(4.dp))
         .semantics(mergeDescendants=true){contentDescription=label;role=Role.Button}.clickable(onClick=onClick).padding(horizontal=12.dp,vertical=10.dp))

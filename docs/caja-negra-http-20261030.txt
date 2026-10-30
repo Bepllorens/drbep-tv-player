@@ -1,0 +1,54 @@
+Caja negra: tiempos HTTP bajo diagnostico ampliado — 30/10/2026
+
+Desarrollo .185. Sin instalar/publicar ni acceder a .223/Fire.
+Respaldo y logs: /srv/drbep-dev/reviews/blackbox-http-20261030.
+Alcance parcial del bloque8: desglose HTTP del cliente. No se cierra el bloque.
+
+Cambios:
+HttpRequestTrace recibe exclusivamente operacion, reloj y sumidero numerico.
+BlackBox solo crea una traza si la caja negra esta habilitada y el modo detallado
+esta activo (peticion temporal u observador del panel). Resto: singleton OFF,
+sin reloj, operacion nueva ni eventos. Mantiene cola512/rotacion actuales.
+HttpClient instrumenta request y getStreamingObject sin alterar request,
+cabeceras, timeouts, limites, respuesta, registro de cancelacion o excepciones.
+Tres eventos maximos por llamada, con identificador unico global:
+HTTP_REQUEST_START: a/b/c=0
+HTTP_RESPONSE_HEADERS: a=ms desde inicio, b=codigo HTTP, c=0
+HTTP_REQUEST_END: a=total ms, b=ms desde cabeceras o -1 si faltan,
+c=0 completada,1 cancelada,2 excepcion.
+Solo primeras cabeceras y un final; finally no sobrescribe el fallo.
+Los eventos normales aparecen en exportacion y lista reciente existentes.
+No se añade una tarjeta nueva del panel.
+
+Semantica y privacidad:
+El tiempo hasta cabeceras incluye cola/conexion/servidor; no separa DNS/TLS.
+El tiempo posterior incluye lectura, limites, parseo cuando procede y cierre.
+No equivale a tiempo puro de descarga ni mide ancho de banda.
+HTTP de error puede ser una respuesta completa con codigo4xx/5xx; el lector
+de catalogo que la rechaza registra excepcion2, conservando ese codigo.
+No se guardan host, URL, rutas, cabeceras, cuerpo, nombres ni texto de error.
+No se modifica el logcat previo ni se afirma auditar toda su privacidad.
+Cada llamada tiene operacion independiente: no se atribuye por proximidad a
+un PLAY_PREPARE. La correlacion resolucion-previa/reproduccion queda pendiente.
+No instrumenta segmentos Media3 ni el cliente de licencias.
+Una llamada iniciada durante modo detallado puede terminar tras caducar este;
+deshabilitar caja negra mantiene su politica existente de descartar eventos.
+
+Pruebas:
+Reloj sintetico: separacion cabeceras/lectura/total, fallo sin cabeceras,
+cancelacion no sobrescrita, llamadas intercaladas, cabeceras repetidas y OFF.
+Sin solicitudes externas ni secretos como fixtures.
+Pendiente Fire: zapeo/reintentos/multiview, detalle activo/inactivo, perdida de
+eventos bajo carga, coste del panel y relacion con hitos reales de reproduccion.
+No afirmar mejora de rendimiento: este bloque aumenta capacidad diagnostica.
+
+Archivos:
+app/src/main/java/com/drbep/tvplayer/HttpRequestTrace.java
+app/src/main/java/com/drbep/tvplayer/HttpClient.java
+app/src/main/java/com/drbep/tvplayer/BlackBox.java
+app/src/main/java/com/drbep/tvplayer/BlackBoxStore.java
+app/src/test/java/com/drbep/tvplayer/HttpRequestTraceTest.java
+
+Validacion final:1106 pruebas JVM y70 panel correctas.
+Release ARM32 beta compilada en2m50s; diff --check correcto.
+No instalada ni publicada. Sin cambios en produccion/stable.

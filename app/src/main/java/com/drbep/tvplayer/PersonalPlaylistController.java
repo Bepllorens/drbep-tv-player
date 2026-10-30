@@ -238,7 +238,16 @@ final class PersonalPlaylistController {
         try(Cursor c=db.source(id)){if(!c.moveToFirst())throw new IOException("Unknown source");}
         if(action.startsWith("guide-")) return new PlaylistGuidePanel(db).manage(request);
         if(action.equals("source-info")) {
-            try(Cursor c=db.source(id)){c.moveToFirst();return result.put("automatic",c.getInt(c.getColumnIndexOrThrow("auto_refresh"))!=0).toString();}
+            try(Cursor c=db.source(id)){
+                c.moveToFirst();boolean automatic=c.getInt(c.getColumnIndexOrThrow("auto_refresh"))!=0;
+                String schedule=c.getString(c.getColumnIndexOrThrow("refresh_schedule"));
+                result.put("automatic",automatic).put("refresh_schedule",schedule).put("refresh_zone",java.time.ZoneId.systemDefault().getId());
+                if(automatic && !schedule.isEmpty())try {
+                    result.put("next_refresh",PlaylistRefreshSchedule.decode(schedule).nextAfter(
+                        Math.max(System.currentTimeMillis(),c.getLong(c.getColumnIndexOrThrow("refresh_slot"))),java.time.ZoneId.systemDefault()));
+                }catch(IllegalArgumentException invalid){result.put("schedule_invalid",true);}
+                return result.toString();
+            }
         }
         if(action.equals("series")||action.equals("episodes")||action.equals("watched")||action.equals("clear-history")||action.equals("play-entry"))return libraryWeb(request);
         if(action.equals("entries")) {
@@ -254,15 +263,32 @@ final class PersonalPlaylistController {
             int occurrence=Math.max(0,request.optInt("occurrence"));int order=request.optInt("order");
             try(Cursor c=db.preferenceState(id,identity,occurrence)){if(c.moveToFirst()){if(!request.has("label"))label=c.getString(0);if(!request.has("order"))order=c.getInt(1);}}
             db.preference(id,identity,occurrence,request.optBoolean("favorite"),request.optBoolean("hidden"),label,order);
-        } else if(action.equals("delete")) { if(busy)throw new IOException("Import running");db.deleteSource(id);
+        } else if(action.equals("delete")) { if(busy)throw new IOException("Import running");
+            synchronized(PlaylistImportJobs.class){db.deleteSource(id);ScheduledPlaylistRefreshWorker.reconcile(context);}
         } else if(action.equals("configure")) {
+            String schedule=request.has("refresh_schedule")?request.getString("refresh_schedule"):null;
+            if(schedule!=null && !schedule.isEmpty()) {
+                try {schedule=PlaylistRefreshSchedule.decode(schedule).encode();}
+                catch(IllegalArgumentException invalid){throw new DeviceWebPanel.PanelError("Horario inválido. Revisa la hora, el intervalo y las repeticiones.");}
+            }
+            synchronized(PlaylistImportJobs.class) {
             try(Cursor c=db.source(id)){c.moveToFirst();String name=request.optString("name",c.getString(c.getColumnIndexOrThrow("name"))).trim();String url=request.optString("url",c.getString(c.getColumnIndexOrThrow("locator")));
                 if(name.isEmpty()||name.length()>160||(!url.isEmpty()&&okhttp3.HttpUrl.parse(url)==null))throw new IOException("Invalid source");
                 String epg=request.has("epg")?request.getString("epg"):null;
                 if(epg!=null&&!epg.isEmpty()&&okhttp3.HttpUrl.parse(epg)==null)throw new IOException("Invalid EPG URL");
                 if("server".equals(c.getString(c.getColumnIndexOrThrow("origin")))&&!url.isEmpty())throw new IOException("Server lists are managed by the server");
-                db.configure(id,name,url,request.optBoolean("automatic"));
-                if(epg!=null){db.setGuideUrl(id,epg);db.guideMode(id,epg.isEmpty()?"off":"manual");}
+                if(schedule!=null && !schedule.isEmpty() && request.optBoolean("automatic") &&
+                    !"server".equals(c.getString(c.getColumnIndexOrThrow("origin"))) && url.isEmpty())
+                    throw new DeviceWebPanel.PanelError("Esta lista necesita una URL para actualizarse automáticamente.");
+                android.database.sqlite.SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
+                try {
+                    db.configure(id,name,url,request.optBoolean("automatic"));
+                    if(schedule!=null)db.refreshSchedule(id,schedule,System.currentTimeMillis());
+                    if(epg!=null){db.setGuideUrl(id,epg);db.guideMode(id,epg.isEmpty()?"off":"manual");}
+                    sql.setTransactionSuccessful();
+                } finally {sql.endTransaction();}
+            }
+            ScheduledPlaylistRefreshWorker.reconcile(context);
             }
         } else if(action.equals("refresh")) { refreshSource(id,false);
         } else if(action.equals("guide")) { refreshSource(id,true);

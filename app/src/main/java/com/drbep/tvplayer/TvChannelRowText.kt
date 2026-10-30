@@ -6,7 +6,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -50,6 +55,25 @@ internal fun TvChannelRowText(title: String, programme: String, progress: Float?
                 drawRect(Color(0xFF67DBEA), topLeft = position,
                     size = Size(size.width * progress.coerceIn(0f, 1f), trackHeight))
             }
+        }
+    })
+}
+
+
+// Numeric indices and the playing glyph need no paragraph layout. Keep their
+// accessibility text while leaving the bounded programme-text cache unchanged.
+@Composable
+internal fun TvChannelRowNumber(label: String, playing: Boolean, modifier: Modifier) {
+    Spacer(modifier.semantics { text = AnnotatedString(label) }.drawWithCache {
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = if (playing) 0xFF67DBEA.toInt() else 0xFF9BB4C5.toInt()
+            textSize = 10.sp.toPx()
+            typeface = android.graphics.Typeface.DEFAULT
+        }
+        val metrics = paint.fontMetrics
+        val baseline = (size.height - metrics.ascent - metrics.descent) / 2f
+        onDrawBehind {
+            clipRect { drawContext.canvas.nativeCanvas.drawText(label, 0f, baseline, paint) }
         }
     })
 }

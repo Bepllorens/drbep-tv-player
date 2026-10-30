@@ -1,0 +1,45 @@
+TV: consultas de nombres/perfiles —30/10/2026
+
+Trabajo solo en185. Cambios previos conservados, sin Fire ni produccion.
+
+Cambio:
+ChannelProfileStore usa un EMPTY_PROFILE con campos String/boolean finales.
+Antes getProfile construia un objeto nuevo para cada canal sin personalizacion.
+El objeto vacio no se guarda en el mapa ni se modifica; ediciones siguen
+creando perfiles propios y consultando el mapa actual.
+buildHomeLiveCard resuelve displayName una vez y usa el mismo valor en titulo
+e imageLabel. No se conserva el nombre entre filas ni entre actualizaciones.
+No cambia persistencia, usuario, EPG, permisos ni reproductor.
+
+Pruebas:
+1046unitarios,0fallos,0errores,0omitidos.
+Nuevas pruebas de aislamiento entre almacenes y respecto a un perfil obtenido
+antes de editar; cambios/borrado de alias, tag y ocultacion; nulos/vacios,
+fallback y load. Pruebas previas conservadas.
+
+Medicion:
+Version anterior real y candidata compiladas con Java del185.
+4000IDs sinteticos,10%alias,1Mfilas simuladas por pasada.
+Cada fila anterior consulta nombre dos veces; candidata una vez y lo reutiliza.
+Calentamiento100000lecturas,orden ABBA repetido:
+control ms:24,819 /17,332 /16,693 /20,153.
+candidata ms:17,271 /12,041 /6,884 /7,107.
+Medianas18,743->9,574ms (-48,9%).
+Asignaciones43,2MB->56bytes por pasada (residuo de medicion).
+No representa memoria residente ni tiempo total de dibujar1Mfilas.
+Calentamiento/JIT variable; conservar todas las muestras. Coste absoluto pequeno.
+El pico de montaje~180ms sigue abierto, no se atribuye su resolucion a esto.
+
+Evidencia privada:
+/srv/drbep-dev/reviews/tv-profiles-20261030/
+ChannelProfileStore.java.before, MainActivity.java.before,
+BaselineProfileStore.java, ProfilesBench.java, benchmark.txt, tests.log, build.log.
+
+Pendiente Fire:
+nombres sin alias/con alias, editar/borrar alias y ocultacion, cambiar usuario,
+retorno a TV, foco, miniatura y comparacion equivalente de primera entrada.
+No instalar ni publicar una candidata sin la validacion que corresponda.
+Sin commit/push en este bloque.
+
+Compilacion release beta ARM32 perfilable correcta:2m36s.
+Sin instalacion ni publicacion.

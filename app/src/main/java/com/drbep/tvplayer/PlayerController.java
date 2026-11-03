@@ -2721,7 +2721,7 @@ final class PlayerController {
             if (info == null) {
                 info = buildLocalStreamInfoFromRequest(request);
                 if (info == null) {
-                    info = fetchStreamInfo(channelId);
+                    info = fetchStreamInfoForRequest(request);
                 }
                 if (info != null) {
                     streamInfoCache.put(channelId, info);
@@ -2778,7 +2778,7 @@ final class PlayerController {
             if (info == null) {
                 info = buildLocalStreamInfoFromRequest(request);
                 if (info == null) {
-                    info = fetchStreamInfo(channelId);
+                    info = fetchStreamInfoForRequest(request);
                 }
                 if (info != null && streamInfoCache != null) {
                     streamInfoCache.put(channelId, info);
@@ -2950,6 +2950,12 @@ final class PlayerController {
     }
 
     boolean isPanelSeekable() { return !isVlcDirectPlayActive() && player != null && player.isCurrentMediaItemSeekable(); }
+
+    boolean seekImportedCatchupTo(long positionMs) {
+        if(!isPanelSeekable())return false;
+        player.seekTo(Math.max(0L,positionMs)); // Keep playWhenReady, including an explicit seek to zero.
+        return true;
+    }
 
     void seekToPosition(long positionMs) {
         if (isVlcDirectPlayActive()) {
@@ -3426,7 +3432,7 @@ final class PlayerController {
         perfStage("startup fastHls=" + fastHls + " initialMs=" + (fastHls ? 500 : 1500) + " dvr=" + liveDvr + " format=" + safeString(decision.mimeType));
         builder.setTag(new PlaybackAttemptTag(generation,blackBoxPlayback));
         player.setMediaItem(builder.build());
-        if (resumePositionMs > 0L) {
+        if (resumePositionMs > 0L || "imported_catchup".equals(request.playbackProfile)) {
             player.seekTo(resumePositionMs);
         }
         player.prepare();
@@ -4349,6 +4355,31 @@ final class PlayerController {
 
     static boolean isSecureDrmReference(String licenseUrl) {
         return licenseUrl != null && licenseUrl.trim().startsWith(SECURE_STREAM_LICENSE_PREFIX);
+    }
+
+    static String streamInfoChannelId(PlaybackRequest request) {
+        if (request == null) return "";
+        String id = request.channelId;
+        if (!"imported_catchup".equals(request.playbackProfile)) return id;
+        String[] parts = id.split(":", -1);
+        return parts.length == 3 && "imported-catchup".equals(parts[0])
+                && parts[1].matches("[0-9]+") && parts[2].matches("[0-9]+") ? parts[1] : "";
+    }
+
+    private StreamInfo fetchStreamInfoForRequest(PlaybackRequest request) {
+        String id = streamInfoChannelId(request);
+        if (id.isEmpty()) return null;
+        StreamInfo info = fetchStreamInfo(id);
+        if (info != null && "imported_catchup".equals(request.playbackProfile)) {
+            // Keep the source channel identity for its existing playback information,
+            // but never substitute the live manifest for the selected archive.
+            info.sourceUrl = request.playUrl;
+            info.patchedClearKeyManifestDataUri = null;
+            info.patchedSmoothClearKeyManifestDataUri = null;
+            String url = safeLower(request.playUrl);
+            info.type = url.contains(".mpd") ? "dash" : url.contains(".m3u8") ? "hls" : "";
+        }
+        return info;
     }
 
     private StreamInfo fetchStreamInfo(String channelId) {

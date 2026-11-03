@@ -11,6 +11,8 @@ final class ChannelActionsCoordinator {
 
     interface Host {
         void tuneSelectedChannel();
+        default boolean canPlayImportedCatchup(ChannelItem c,EpgRepository.EpgProgram p){return false;}
+        default void playImportedCatchup(ChannelItem c,EpgRepository.EpgProgram p){}
 
         void tuneChannel(ChannelItem channelItem);
 
@@ -106,6 +108,9 @@ final class ChannelActionsCoordinator {
         List<Runnable> actions = new ArrayList<>();
         options.add(context.getString(R.string.menu_tune_channel));
         actions.add(() -> host.tuneChannel(channelItem));
+        if(host.canPlayImportedCatchup(channelItem,program)){
+            options.add("Ver desde el inicio");actions.add(()->host.playImportedCatchup(channelItem,program));
+        }
         options.add(context.getString(scheduled ? R.string.recording_action_cancel : R.string.menu_record));
         actions.add(() -> {
             if (scheduled) {

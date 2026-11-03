@@ -7,6 +7,10 @@ final class PlaylistCatchup {
         if(days<=0||days>365||start>=now||end<=start||start<now-days*86400000L||template.isEmpty())throw new IllegalArgumentException("Programme outside catch-up window");
         if(!type.isEmpty()&&!Arrays.asList("default","append","shift").contains(type))throw new IllegalArgumentException("Unsupported catchup mode");
         String value=template;Map<String,String> tokens=new LinkedHashMap<>();
+        SimpleDateFormat iso=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'",Locale.ROOT);
+        iso.setTimeZone(TimeZone.getTimeZone("UTC"));
+        tokens.put("start_iso",iso.format(new Date(start)));
+        tokens.put("end_iso",iso.format(new Date(end)));
         for(String k:Arrays.asList("utc","start","timestamp","start-timestamp"))tokens.put(k,Long.toString(start/1000));
         for(String k:Arrays.asList("end","utcend"))tokens.put(k,Long.toString(end/1000));
         for(String k:Arrays.asList("lutc","now"))tokens.put(k,Long.toString(now/1000));

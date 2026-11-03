@@ -333,6 +333,12 @@ final class CatalogRepository {
                     directPlayback,
                     playbackProfile
             );
+            JSONObject importedCatchup = channel.optJSONObject("catchup");
+            if (importedCatchup != null) {
+                item.importedCatchupType=importedCatchup.optString("type","");
+                item.importedCatchupSource=importedCatchup.optString("source","");
+                item.importedCatchupDays=importedCatchup.optInt("days",0);
+            }
             item.platformLogoUrl = safeCatalogUrl(channel.optString("platform_logo", ""));
             JSONObject customGroupLogos = channel.optJSONObject("custom_group_logos");
             if (customGroupLogos != null) {
@@ -2053,6 +2059,9 @@ final class ChannelItem implements Serializable {
     transient boolean alfaChaturbateLive;
     transient boolean alfaLiveRenewed;
     String playlistMimeType = "";
+    String importedCatchupType = "";
+    String importedCatchupSource = "";
+    int importedCatchupDays;
     String playlistPlaybackError = "";
     String vodReleaseDate = "";
     String vodSeriesId = "";

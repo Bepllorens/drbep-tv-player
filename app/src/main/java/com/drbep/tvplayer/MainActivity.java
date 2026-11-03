@@ -935,6 +935,8 @@ public class MainActivity extends FragmentActivity {
         loadLearnedPlaybackModes();
         channelOverlayCoordinator = new ChannelOverlayCoordinator(channels, allChannels, filters, favoriteChannelIds, favoriteOrderStore, channelCollectionStore, channelProfileStore, parentalControlStore);
         channelActionsCoordinator = new ChannelActionsCoordinator(this, new ChannelActionsCoordinator.Host() {
+            @Override public boolean canPlayImportedCatchup(ChannelItem c,EpgRepository.EpgProgram p){return importedCatchupAvailable(c,p);}
+            @Override public void playImportedCatchup(ChannelItem c,EpgRepository.EpgProgram p){playImportedChannelCatchup(c,p);}
             @Override
             public void tuneSelectedChannel() {
                 MainActivity.this.tuneSelectedChannel();
@@ -2193,6 +2195,9 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void onU7dFinished() {
+        if (ImportedChannelCatchup.replay(currentPlaybackU7dItem)) {
+            showStatus("Programa terminado. Puedes volver al directo."); return;
+        }
         if (!isCurrentU7dPlayback() || u7dContinuationLoading || u7dPrompt != null) return;
         long local = playerController == null ? 0 : playerController.getU7dBufferedPlaybackPosition();
         long position = currentPlaybackU7dOffsetMs + local;
@@ -2396,7 +2401,7 @@ public class MainActivity extends FragmentActivity {
     }
 
     private boolean isU7dReplayItem(ChannelItem item) {
-        return item != null && "u7d_proxy".equals(safeLower(item.playbackProfile));
+        return item != null && ("u7d_proxy".equals(safeLower(item.playbackProfile)) || ImportedChannelCatchup.replay(item));
     }
 
     private void clearCurrentU7dPlayback() {
@@ -2421,7 +2426,7 @@ public class MainActivity extends FragmentActivity {
         if (pendingU7dSeekTargetMs >= 0L) {
             currentMs = pendingU7dSeekTargetMs;
         } else {
-            long localPositionMs = playerController == null ? 0L : Math.max(0L, playerController.getU7dBufferedPlaybackPosition());
+            long localPositionMs = playerController == null ? 0L : Math.max(0L, ImportedChannelCatchup.replay(currentPlaybackU7dItem) ? playerController.getCurrentPlaybackPosition() : playerController.getU7dBufferedPlaybackPosition());
             currentMs = currentPlaybackU7dOffsetMs + localPositionMs;
         }
         currentMs = Math.max(0L, Math.min(currentPlaybackU7dDurationMs, currentMs));
@@ -2435,6 +2440,11 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void seekCurrentU7dPlaybackTo(long targetMs) {
+        if (ImportedChannelCatchup.replay(currentPlaybackU7dItem)) {
+            if(playerController==null || !playerController.seekImportedCatchupTo(Math.max(0,Math.min(targetMs,currentPlaybackU7dDurationMs))))
+                showStatus("Este archivo todavía no permite desplazarse.");
+            return;
+        }
         if (!isCurrentU7dPlayback()) {
             showStatus(getString(R.string.timeshift_status_unavailable));
             return;
@@ -2483,6 +2493,7 @@ public class MainActivity extends FragmentActivity {
 
     // One attempt per programme: removing the opt-in also removes it from later seeks.
     private boolean fallbackFromNativeU7d() {
+        if (ImportedChannelCatchup.replay(currentPlaybackU7dItem)) return false;
         if (playerController != null && playerController.isCatchupPermissionDenied()) return false;
         if (!isCurrentU7dPlayback() || currentPlaybackU7dBaseUrl == null) return false;
         Uri uri = Uri.parse(currentPlaybackU7dBaseUrl);
@@ -2507,6 +2518,10 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void restartCurrentU7dPlaybackAt(long offsetMs, boolean autoPlay) {
+        if (ImportedChannelCatchup.replay(currentPlaybackU7dItem)) {
+            currentPlaybackU7dOffsetMs=0L;
+            playChannelItemInternal(currentPlaybackU7dItem,autoPlay,offsetMs); return;
+        }
         currentPlaybackU7dOffsetMs = offsetMs;
         ChannelItem source = currentPlaybackU7dItem;
         String seekUrl = buildU7dUrlWithOffset(currentPlaybackU7dBaseUrl, offsetMs);
@@ -3971,7 +3986,7 @@ public class MainActivity extends FragmentActivity {
             recentChannelsStore.add(ch.id, displayName(ch));
         }
         if (ch.isVod) currentPlaybackVodId = ch.id;
-        if (ch.isVod && !AlfaAdultPrivacy.privateID(ch.id)) {
+        if (ch.isVod && !isU7dReplayItem(ch) && !AlfaAdultPrivacy.privateID(ch.id)) {
             lastVodId = ch.id;
             rememberVodResumeItem(ch);
             if (prefs != null) {
@@ -6952,6 +6967,34 @@ public class MainActivity extends FragmentActivity {
                 : program.title.trim();
         String duration = endMs > startMs ? " · " + formatDurationShort(endMs - startMs) : "";
         return day + " · " + shortTime(program.startTime) + "  " + title + duration;
+    }
+
+    private boolean importedCatchupAvailable(ChannelItem channel,EpgRepository.EpgProgram program) {
+        return program!=null && currentOfflinePermissions!=null && currentOfflinePermissions.vodEnabled
+          && ImportedChannelCatchup.available(channel,parseIsoMillis(program.startTime),parseIsoMillis(program.endTime),System.currentTimeMillis());
+    }
+    private void playImportedChannelCatchup(ChannelItem source,EpgRepository.EpgProgram program) {
+        ChannelItem channel=source==null?null:findAllowedHomeLiveChannel(source.id);
+        if(channel==null||isProtectedItem(channel)||!importedCatchupAvailable(channel,program)) {
+            showStatus("Programa fuera de la ventana de catchup o canal no disponible.");return;
+        }
+        try {
+            long start=parseIsoMillis(program.startTime),end=parseIsoMillis(program.endTime);
+            ChannelItem replay=ImportedChannelCatchup.item(channel,program.title,ProgramArtworkResolver.resolve(program,channel),start,end,System.currentTimeMillis());
+            cancelPendingU7dSeek();
+            hideOverlay();hideZapBanner();
+            currentPlaybackU7dChannel=channel;
+            currentPlaybackU7dItem=replay;
+            currentPlaybackU7dPreviewEntry=null;
+            currentPlaybackU7dBaseUrl=replay.playUrl;
+            currentPlaybackU7dDurationMs=end-start;
+            currentPlaybackU7dProgramStartMs=start;
+            currentPlaybackU7dProgramEndMs=end;
+            currentPlaybackU7dOffsetMs=0;
+            u7dRecoveryAttempts=0;u7dLastRecoveryPosition=0;
+            epgProgramPairByChannelId.put(replay.id,new EpgRepository.EpgProgramPair(program,null));
+            playChannelItemInternal(replay,true,0);
+        } catch(Exception ignored){showStatus("No se pudo preparar el catchup de esta lista.");}
     }
 
     private void playMovistarIsmU7dProgram(ChannelItem channel, EpgRepository.EpgProgram program) {
@@ -11525,6 +11568,8 @@ public class MainActivity extends FragmentActivity {
         if(phase==LiveGuideActionPolicy.Phase.LIVE)
             actions.add(new TvMessageActionUiModel("Ver en directo",false,()->leave.accept(()->tuneChannelById(c.id))));
         boolean supports=supportsU7d(c);
+        if(importedCatchupAvailable(c,program))
+            actions.add(new TvMessageActionUiModel("Ver desde el inicio",false,()->leave.accept(()->playImportedChannelCatchup(c,program))));
         boolean confirmed=archiveAvailability!=null&&archiveAvailability.cached(archiveScope,c)==ArchiveAvailability.State.AVAILABLE;
         if(LiveGuideActionPolicy.replay(start,end,now,supports,confirmed))
             actions.add(new TvMessageActionUiModel("Ver desde el inicio",false,()->leave.accept(()->runArchiveAction(c,()->playMovistarIsmU7dProgram(c,program)))));
@@ -21126,6 +21171,7 @@ public class MainActivity extends FragmentActivity {
                     if (allowed != null && supportsU7d(allowed)) playMovistarIsmU7dProgram(allowed, program);
                 });
             }
+            if(importedCatchupAvailable(active,program)) homeModel.onLiveStartOver=open.apply(()->playImportedChannelCatchup(active,program));
             if (program != null && !isOfflineRecordingsDisabled() && canScheduleRecordings()) homeModel.onLiveRecord = open.apply(() -> {
                 ChannelItem allowed = findAllowedHomeLiveChannel(active.id);
                 if (allowed != null && !isOfflineRecordingsDisabled()) scheduleProgram(allowed, program);

@@ -191,3 +191,27 @@ Candidata785 instalada en Fire y Xiaomi, respaldos y migracion verificados.
 XMLTV168000, cache y horario real completados; fixtures retirados sin alterar
 los datos originales. Consultar validacion-beta785-20261030.md para medidas
 y pendientes: no se declara cerrado el pico inicial ni la parada fisica.
+
+## Pausa tras publicar beta 785 — 30/10/2026
+Por petición del usuario se aparca Android y se retoma el estudio del dashboard.
+Beta785 publicada, instalada en Fire/Xiaomi y respaldada; no hay que repetir la
+publicación. Informe de referencia: validacion-beta785-20261030.md.
+Pendientes conservados para la siguiente reanudación:
+1. Comparación controlada ABBA de entrada a TV/miniguía y reproducción prolongada;
+   siguen presentes picos iniciales y pequeños saltos de vídeo.
+2. Parada física por HDMI/inactividad y comprobación de audio, tráfico y progreso.
+3. Actualización OTA completa en Xiaomi, avance táctil VOD/catchup y temporadas
+   con una biblioteca real.
+4. Validación física del retorno al vídeo desde el catálogo reportado.
+5. Logos de títulos, pendientes de soporte del resolvedor.
+No dar estos puntos por cerrados por las pruebas unitarias ni por la publicación.
+Siguiente trabajo activo: backend docs/estudio-dashboard-20261030.md, fases0/1.
+
+## Consolidación del catchup M3U — 03/11/2026
+
+El soporte importado y su caché binaria v18 se incluyen en Git con sus pruebas y
+documentación: [validación y alcance](imported-catchup-20261102.md). La prueba
+física de La 1 HD Vodafone y la regresión acotada de La 1 ISM están documentadas;
+no certifican todos los canales ni sustituyen los pendientes anteriores del plan.
+Se conserva la beta785 publicada: la candidata instalada fue privada y esta
+consolidación no publica APK ni cambia stable/beta/rescue.

@@ -7,7 +7,7 @@ final class PlaybackStreamInfoPolicy {
     }
 
     static boolean shouldResolveBeforePlayback(boolean standaloneMode, ChannelItem channel, PlayerController.PlaybackRequest request, String displayName) {
-        if (!standaloneMode || request == null || channel == null || channel.isVod) {
+        if (!standaloneMode || request == null || channel == null || (channel.isVod && !"imported_catchup".equals(request.playbackProfile))) {
             return false;
         }
         if (request.directPlayback) {

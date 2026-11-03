@@ -3,6 +3,8 @@ package com.drbep.tvplayer;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import androidx.media3.common.PlaybackException;
+
 import org.junit.Test;
 
 public class PlayerControllerCodecRecoveryTest {
@@ -18,6 +20,26 @@ public class PlayerControllerCodecRecoveryTest {
         RuntimeException codec = new RuntimeException("Media codec failed while queuing input");
         assertTrue(PlayerController.isMediaCodecRendererError(
                 new IllegalStateException("Playback failed", codec)
+        ));
+    }
+
+    @Test
+    public void doesNotRecreatePlayerForDrmSystemFailureWithCodecCause() {
+        RuntimeException codec = new IllegalStateException("MediaCodecVideoRenderer: CryptoException");
+
+        assertFalse(PlayerController.shouldRecreateMedia3ForCodecRecovery(
+                PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR,
+                codec
+        ));
+    }
+
+    @Test
+    public void recreatesPlayerForCodecFailureWithoutDrmSystemError() {
+        RuntimeException codec = new IllegalStateException("MediaCodecVideoRenderer failed");
+
+        assertTrue(PlayerController.shouldRecreateMedia3ForCodecRecovery(
+                PlaybackException.ERROR_CODE_UNSPECIFIED,
+                codec
         ));
     }
 

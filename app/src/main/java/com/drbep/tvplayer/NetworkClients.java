@@ -11,6 +11,8 @@ import okhttp3.Connection;
 import okhttp3.EventListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.Response;
+import okio.ByteString;
 
 final class NetworkClients {
     private static final int PROTECTED_HOST_CONNECT_TIMEOUT_MS = 2_500;
@@ -69,6 +71,27 @@ final class NetworkClients {
         return clean.build();
     }
 
+    private static void logDecryptResponse(Request request, Response response) {
+        if (!"fire.tvbep.com".equals(request.url().host())
+                || !request.url().encodedPath().startsWith("/decrypt/")) {
+            return;
+        }
+        String prefix;
+        try {
+            prefix = ByteString.of(response.peekBody(16).bytes()).hex();
+        } catch (Exception error) {
+            prefix = "unavailable";
+        }
+        Log.w("PlaybackHttp", "path=" + request.url().encodedPath()
+                + " status=" + response.code()
+                + " contentType=" + response.header("Content-Type")
+                + " authorization=" + (request.header("Authorization") != null)
+                + " accessToken=" + (request.header("X-DRBEP-Access-Token") != null)
+                + " device=" + (request.header("X-DRBEP-Device-Id") != null)
+                + " queryAuth=" + (request.url().queryParameter("access_token") != null)
+                + " prefix=" + prefix);
+    }
+
     static final class PlaybackCallFactory implements Call.Factory {
         private final AtomicInteger readTimeoutMs;
         private final int connectTimeoutMs;
@@ -111,7 +134,12 @@ final class NetworkClients {
             }
             OkHttpClient client = NetworkClients.withTimeouts(connect, read)
                     .newBuilder()
-                    .addNetworkInterceptor(chain -> chain.proceed(disneyMediaRequest(chain.request())))
+                    .addNetworkInterceptor(chain -> {
+                        Request mediaRequest = disneyMediaRequest(chain.request());
+                        Response response = chain.proceed(mediaRequest);
+                        logDecryptResponse(mediaRequest, response);
+                        return response;
+                    })
                     .build();
             if (reuseTransport) transports[index] = new TransportSlot(connect, read, client);
             return client;

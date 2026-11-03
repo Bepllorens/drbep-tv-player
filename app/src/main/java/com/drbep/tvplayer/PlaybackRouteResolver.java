@@ -84,6 +84,17 @@ final class PlaybackRouteResolver {
             );
         }
 
+        if ("1103933".equals(request.channelId) && safeLower(request.platformName).contains("tivify")) {
+            return new Decision(
+                    decryptedStreamUrl(request.channelId),
+                    MimeTypes.VIDEO_MP2T,
+                    "",
+                    playbackMode,
+                    false,
+                    false
+            );
+        }
+
         if (request.directPlayback) {
             String targetUrl = resolveStandaloneDirectUrl(request, streamInfo);
             return new Decision(
@@ -544,6 +555,10 @@ final class PlaybackRouteResolver {
 
     private String sampleAesDirectStreamUrl(String channelId) {
         return baseUrl + "/drm/direct/" + channelId;
+    }
+
+    private String decryptedStreamUrl(String channelId) {
+        return baseUrl + "/decrypt/" + channelId;
     }
 
     private String liveStreamUrl(String channelId) {

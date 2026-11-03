@@ -269,6 +269,34 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
+    public void tivifyLa1CbcsUsesServerDecryptedTransport() {
+        PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
+        streamInfo.drmType = "clearkey";
+        streamInfo.type = "dash";
+        streamInfo.encrypted = true;
+        streamInfo.sourceUrl = "https://origin.example.com/live/la1/manifest.mpd";
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                requestWithPlatformAndProfile(
+                        "1103933",
+                        "La 1",
+                        "Tivify",
+                        "https://iptv.example.com/live/1103933",
+                        "https://iptv.example.com/proxy/manifest/1103933",
+                        PlaybackModeStore.MODE_AUTO,
+                        "direct"
+                ),
+                false,
+                streamInfo
+        );
+
+        assertEquals("https://iptv.example.com/decrypt/1103933", decision.targetUrl);
+        assertEquals(MimeTypes.VIDEO_MP2T, decision.mimeType);
+        assertEquals("", decision.drmType);
+        assertFalse(decision.allowCompatibilityFallback);
+    }
+
+    @Test
     public void clearkeySmoothStreamInfoUsesNativeSmoothRoute() {
         PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
         streamInfo.drmType = "clearkey";

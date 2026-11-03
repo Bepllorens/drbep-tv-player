@@ -2022,7 +2022,10 @@ final class PlayerController {
             }
             return true;
         }
-        if (!attemptedCodecPlayerRecreation && isMediaCodecRendererError(error)) {
+        if (!attemptedCodecPlayerRecreation && shouldRecreateMedia3ForCodecRecovery(
+                error != null ? error.errorCode : PlaybackException.ERROR_CODE_UNSPECIFIED,
+                error
+        )) {
             attemptedCodecPlayerRecreation = true;
             Log.w(TAG, "recreating Media3 after decoder failure channel=" + describeRequest(request)
                     + " decision=" + describeDecision(decision)
@@ -2140,6 +2143,11 @@ final class PlayerController {
                     + describeRequest(request), recoveryError);
             return false;
         }
+    }
+
+    static boolean shouldRecreateMedia3ForCodecRecovery(int errorCode, Throwable error) {
+        return errorCode != PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR
+                && isMediaCodecRendererError(error);
     }
 
     static boolean isMediaCodecRendererError(Throwable error) {

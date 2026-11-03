@@ -215,3 +215,11 @@ física de La 1 HD Vodafone y la regresión acotada de La 1 ISM están documenta
 no certifican todos los canales ni sustituyen los pendientes anteriores del plan.
 Se conserva la beta785 publicada: la candidata instalada fue privada y esta
 consolidación no publica APK ni cambia stable/beta/rescue.
+
+## Beta786 universal preparada — 03/11/2026
+
+Candidata de distribución ARM32/ARM64 compilada y firmada, con seis pruebas
+focalizadas de catchup correctas y respaldo de la beta785 pública verificado.
+Pruebas del Fire y Xiaomi aplazadas por indicación del usuario, que está fuera de
+casa; instalación y publicación pendientes. No cambia la beta785 publicada ni
+stable/rescue. [Identidad, respaldos y siguiente paso](beta786-preparacion-20261103.md).

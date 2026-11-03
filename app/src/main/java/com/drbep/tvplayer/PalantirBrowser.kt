@@ -73,14 +73,14 @@ private fun java.io.InputStream.readBytesBounded(limit:Int):ByteArray{
     return output.toByteArray()
 }
 internal object PalantirBrowser{
-    interface Host{fun play(item:ChannelItem,dialog:Dialog?);fun back(dialog:Dialog?);fun closed();fun input(value:String,submit:Consumer<String>)}
+    interface Host{fun canReturnToPlayback():Boolean;fun returnToPlayback(dialog:Dialog?);fun play(item:ChannelItem,dialog:Dialog?);fun back(dialog:Dialog?);fun closed();fun input(value:String,submit:Consumer<String>)}
     @JvmStatic fun open(activity:Activity,view:ComposeView,base:String,headers:Map<String,String>,host:Host){
         view.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
         var dialog:Dialog?=null
         var onBack=Runnable{host.back(dialog)}
         val exit={host.back(dialog)}
         val api=PalantirHttp(base,headers)
-        view.setContent{PalantirLibrary(api,host,exit,{onBack=it}){item->host.play(item,dialog)}}
+        view.setContent{PalantirLibrary(api,host,exit,{host.returnToPlayback(dialog)},{onBack=it}){item->host.play(item,dialog)}}
         dialog=ComposeDialogHost.showFullscreen(activity,view,{host.back(dialog)},{host.closed()})
         dialog?.setOnKeyListener{_,code,event->if(code==android.view.KeyEvent.KEYCODE_BACK){if(event.action==android.view.KeyEvent.ACTION_UP)onBack.run();true}else false}
     }
@@ -95,7 +95,7 @@ internal fun palantirFocusTarget(keys:List<String>, preferred:String):String =
     preferred.takeIf{it in keys} ?: keys.firstOrNull().orEmpty()
 private val palantirAccent get()=OfflineTvTheme.Colors.accentCyan
 
-@Composable private fun PalantirLibrary(api:PalantirHttp,host:PalantirBrowser.Host,exit:()->Unit,setBack:(Runnable)->Unit,play:(ChannelItem)->Unit){
+@Composable private fun PalantirLibrary(api:PalantirHttp,host:PalantirBrowser.Host,exit:()->Unit,resume:()->Unit,setBack:(Runnable)->Unit,play:(ChannelItem)->Unit){
     var filter by remember{mutableStateOf(PalantirFilter())}
     var offset by remember{mutableStateOf(0)}
     var page by remember{mutableStateOf<JSONObject?>(null)}
@@ -195,6 +195,10 @@ private val palantirAccent get()=OfflineTvTheme.Colors.accentCyan
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
                 BasicText(if(detail==null)"Palantir" else detail!!.optJSONObject("item")?.optString("title").orEmpty(),maxLines=1,overflow=TextOverflow.Ellipsis,
                     style=TextStyle(Color.White,25.sp,FontWeight.Bold),modifier=Modifier.weight(1f))
+                if(host.canReturnToPlayback()) {
+                    PAction("Volver al vídeo"){resume()}
+                    Spacer(Modifier.width(10.dp))
+                }
                 PAction(if(detail==null)"Volver" else "Volver al catálogo",initial=detail!=null,modifier=Modifier.focusRequester(catalogBackFocus)){if(detail!=null)closeDetail() else exit()}
             }
             if(error.isNotBlank())BasicText(error,style=TextStyle(Color(0xFFFFB86B),14.sp))

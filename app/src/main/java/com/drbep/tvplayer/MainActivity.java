@@ -15348,6 +15348,23 @@ public class MainActivity extends FragmentActivity {
                     playChannelItem(item,true);
                 });
             }
+            public boolean canReturnToPlayback() {
+                ChannelItem current = getCurrentPlaybackChannelItem();
+                return ActivePlaybackReturnPolicy.allows(importedVodReturnId,
+                        current == null ? null : current.id,
+                        playerController != null && playerController.hasPlaybackForSafety(),
+                        currentOfflinePermissions != null && currentOfflinePermissions.allowsPalantir()
+                                && current != null && current.id != null
+                                && current.id.startsWith("palantir:"));
+            }
+            public void returnToPlayback(Dialog libraryDialog) {
+                if (!canReturnToPlayback()) return;
+                dismissModalForNextAction(libraryDialog, () -> {
+                    restorePlaybackAfterModal();
+                    hideOverlay();
+                    if (playerView != null) playerView.requestFocus();
+                });
+            }
             public void back(Dialog libraryDialog){dismissModalForNextAction(libraryDialog,back);}
             public void closed(){handleModalDismissed();}
             public void input(String value,java.util.function.Consumer<String> submit){

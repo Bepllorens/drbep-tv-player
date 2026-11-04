@@ -1,35 +1,23 @@
-# Orden de listas y retorno de Palantir — 2026-11-03
+# Orden de listas y retorno de Palantir
 
-## Estado
-Desarrollo en .185. Sin desplegar backend, instalar esta candidata, publicar ni cambiar stable.
-Los cinco archivos del ensayo Tivify de otra IA se conservan; no forman parte de la candidata aislada.
+Estado actualizado el 4 de noviembre de 2026. Sustituye el estado previo de desarrollo del 3/11.
 
-## Orden
-Lectura de producción: ZapiTV (plataforma5,232 canales activos) y Vodafone (plataforma6,131) tienen sort_order=0.
-El catálogo ordenaba esos empates por nombre. Los canales importados llevan external_id manual_ y conservan el orden de inserción.
-offline_channel_order.go mantiene los órdenes personalizados y explícitos; para importados sin dial conserva el orden de creación.
-No se inventan diales ni se actualiza la base. Los importadores siguen leyendo tvg-chno cuando existe.
-Pruebas específicas y todo internal/api pasan (221,601s). Pendiente preparar despliegue respaldado y autorización antes de activar.
+La ordenación se desplegó inicialmente en r59 y se comprobó en Fire el 3/11. Un despliegue posterior de Tivify sustituyó ese backend por una compilación sin el comparador corregido.
 
-## Palantir
-MainActivity.java y PalantirBrowser.kt añaden Volver al vídeo con ActivePlaybackReturnPolicy.
-Requiere permiso Palantir, misma identidad y reproducción activa. Cierra modal y devuelve foco, sin iniciar una nueva resolución.
-13 pruebas de política, reproducción, foco y permisos pasan; release perfilable ARM32 beta786 compila.
-Worktree aislado: /srv/drbep-dev/worktrees/android-order-palantir-20261103
-Candidata privada: /srv/drbep-dev/reviews/android-order-palantir-20261103/palantir-return-786.apk
-SHA256 bb682e398c9e269c888149c28dd6b51a9d9da96e019680f57de96a05871c2643
-Firma de pruebas coincide con Fire. NO instalada todavía. Pendiente navegación real y retorno conservando posición.
+El 4/11 se ha desplegado r60 sobre la fuente exacta del backend de Tivify, reproducida byte por byte antes de modificarla.
+ZapiTV y Vodafone recuperan el orden de importación cuando no hay dial; diales explícitos y órdenes manuales siguen prevaleciendo.
+El cambio queda limitado a esas dos plataformas. Se comprobaron 232 y 131 canales y el orden sin cambios del resto.
+La fuente y la imagen persistente del despliegue también incluyen la corrección.
 
-## Audio
-Usuario identifica La bola negra, versión4K, proveedor1fichier. Prueba18:07–18:08:
-AudioTimeline EAC3,48000Hz,6 canales; encodedPtsVsSamplesUs=0 en muestras.
-AudioFlinger confirma salida directa HDMI EAC3; no prueba por sí solo la causa del desfase.
-Backend PalantirStream retransmite bytes sin transformar audio.
-El usuario confirma que ahora va bien y pide dejar el audio como está. NO se aplica cambio PCM ni retraso ni modificación global.
-No se atribuye el fallo a memoria sin evidencia. Diagnósticos privados (sin medios) en la carpeta de revisión; no añadirlos a Git.
+Palantir conserva Volver al vídeo en el código y en la compilación actual; pasan sus 13 pruebas de política, permisos, foco y reproducción.
+La APK actual es la de Tivify posterior, no la candidata aislada inicial. No se ha reinstalado ni se ha modificado audio.
+La validación física con el mando queda pendiente por indicación del usuario (TV no disponible).
 
-## Tivify
-Continúa pendiente. El bloqueo de revisión automática sobre el cambio CBCS sigue vigente.
-La comparación actual muestra una excepción ajena no confirmada para La1 hacia /decrypt.
-La ruta original precede los últimos cambios del dashboard; no hay prueba histórica suficiente para atribuir o descartar todas las regresiones.
-Ver documentos tivify-fire-diagnostico-20261103.md y tivify-live-corruption-diagnostico-20261103.md.
+Informe completo del backend:
+docs/deploy-channel-order-r60-20261104.md
+Ruta absoluta en .185:
+/srv/drbep-dev/repos/drbep/docs/deploy-channel-order-r60-20261104.md
+
+Tivify: su arreglo posterior se conserva sin modificar. Los diagnósticos del 3/11 son históricos y no describen por sí solos el estado actual.
+Audio: el usuario confirmó que La bola negra 4K con 1fichier iba bien y pidió dejarlo sin cambios; se mantiene esa decisión.
+No se publican APK ni se modifican los canales beta/stable/rescue.

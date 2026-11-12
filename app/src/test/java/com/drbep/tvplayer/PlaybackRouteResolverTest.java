@@ -269,7 +269,7 @@ public class PlaybackRouteResolverTest {
     }
 
     @Test
-    public void tivifyLa1CbcsUsesServerDecryptedTransport() {
+    public void tivifyLa1CbcsUsesServerLiveTransport() {
         PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
         streamInfo.drmType = "clearkey";
         streamInfo.type = "dash";
@@ -290,10 +290,65 @@ public class PlaybackRouteResolverTest {
                 streamInfo
         );
 
-        assertEquals("https://iptv.example.com/decrypt/1103933", decision.targetUrl);
+        assertEquals("https://iptv.example.com/live/1103933?client=firestick", decision.targetUrl);
         assertEquals(MimeTypes.VIDEO_MP2T, decision.mimeType);
         assertEquals("", decision.drmType);
         assertFalse(decision.allowCompatibilityFallback);
+    }
+
+    @Test
+    public void tivifyOtherChannelUsesServerLiveTransport() {
+        PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
+        streamInfo.drmType = "clearkey";
+        streamInfo.type = "dash";
+        streamInfo.encrypted = true;
+        streamInfo.sourceUrl = "https://live.tvup.edge2befaster.io/la2/la2.mpd";
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                requestWithPlatformAndProfile(
+                        "1103934",
+                        "La 2",
+                        "Tivify",
+                        "https://live.tvup.edge2befaster.io/la2/la2.mpd",
+                        "",
+                        PlaybackModeStore.MODE_AUTO,
+                        "auto"
+                ),
+                false,
+                streamInfo
+        );
+
+        assertEquals("https://iptv.example.com/live/1103934?client=firestick", decision.targetUrl);
+        assertEquals(MimeTypes.VIDEO_MP2T, decision.mimeType);
+        assertEquals("", decision.drmType);
+        assertFalse(decision.allowCompatibilityFallback);
+    }
+
+    @Test
+    public void tivifyUrlWithoutPlatformUsesServerLiveTransport() {
+        PlayerController.StreamInfo streamInfo = new PlayerController.StreamInfo();
+        streamInfo.drmType = "clearkey";
+        streamInfo.type = "dash";
+        streamInfo.encrypted = true;
+        streamInfo.sourceUrl = "https://live.tvup.edge2befaster.io/antena3hd/antena3hd.mpd";
+
+        PlaybackRouteResolver.Decision decision = resolver.buildDecision(
+                requestWithPlatformAndProfile(
+                        "1103935",
+                        "Antena 3",
+                        "Cable",
+                        "https://live.tvup.edge2befaster.io/antena3hd/antena3hd.mpd",
+                        "",
+                        PlaybackModeStore.MODE_AUTO,
+                        "auto"
+                ),
+                false,
+                streamInfo
+        );
+
+        assertEquals("https://iptv.example.com/live/1103935?client=firestick", decision.targetUrl);
+        assertEquals(MimeTypes.VIDEO_MP2T, decision.mimeType);
+        assertEquals("", decision.drmType);
     }
 
     @Test

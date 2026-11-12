@@ -84,9 +84,9 @@ final class PlaybackRouteResolver {
             );
         }
 
-        if ("1103933".equals(request.channelId) && safeLower(request.platformName).contains("tivify")) {
+        if (isTivifyPlayback(request, directUrl)) {
             return new Decision(
-                    decryptedStreamUrl(request.channelId),
+                    liveStreamUrl(request.channelId),
                     MimeTypes.VIDEO_MP2T,
                     "",
                     playbackMode,
@@ -557,10 +557,6 @@ final class PlaybackRouteResolver {
         return baseUrl + "/drm/direct/" + channelId;
     }
 
-    private String decryptedStreamUrl(String channelId) {
-        return baseUrl + "/decrypt/" + channelId;
-    }
-
     private String liveStreamUrl(String channelId) {
         return baseUrl + "/live/" + channelId + "?client=firestick";
     }
@@ -619,6 +615,16 @@ final class PlaybackRouteResolver {
             return MimeTypes.VIDEO_MATROSKA;
         }
         return null;
+    }
+
+    private static boolean isTivifyPlayback(PlayerController.PlaybackRequest request, String directUrl) {
+        if (request == null || request.vod) {
+            return false;
+        }
+        if (safeLower(request.platformName).contains("tivify")) {
+            return true;
+        }
+        return directUrl != null && directUrl.toLowerCase(Locale.ROOT).contains("tvup.edge2befaster.io");
     }
 
     private static String safeLower(String value) {
